@@ -1,9 +1,11 @@
 import type { GoodId, LocationDef, MarketState, World } from "./types";
 import { recomputePrices } from "./pricing";
+import { stepTraders, type TraderEvent } from "./traders";
 
 export interface TickReport {
   tick: number;
   shortages: { location: string; good: GoodId; missing: number }[];
+  traderEvents: TraderEvent[];
 }
 
 function produce(loc: LocationDef, market: MarketState): void {
@@ -47,6 +49,8 @@ function consume(
 export function tickWorld(world: World): TickReport {
   const shortages: TickReport["shortages"] = [];
 
+  const traderEvents = stepTraders(world);
+
   for (const loc of Object.values(world.locations)) {
     const market = world.markets[loc.id];
     produce(loc, market);
@@ -55,7 +59,7 @@ export function tickWorld(world: World): TickReport {
   }
 
   world.tick += 1;
-  return { tick: world.tick, shortages };
+  return { tick: world.tick, shortages, traderEvents };
 }
 
 export function tickN(world: World, n: number): TickReport[] {

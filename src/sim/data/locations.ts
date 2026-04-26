@@ -25,6 +25,7 @@ export const LOCATIONS: Record<string, LocationDef> = {
     produces: [
       { good: "ore",   ratePerTick: 12 },
       { good: "tools", ratePerTick: 3, inputs: [{ good: "ore", perUnit: 1.5 }] },
+      { good: "fuel",  ratePerTick: 14 },
     ],
     consumes: [
       { good: "grain", ratePerTick: 6 },
