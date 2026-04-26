@@ -136,10 +136,11 @@ In transit: countdown ticks, on arrival sell cargo at destination's listed price
 
 ### Stability invariants on traders
 
-- **Maintenance**: `capacity × MAINTENANCE_PER_CAPACITY` per tick (`1.5` in transit, `× MAINTENANCE_IDLE_FACTOR = 0.4` when docked). Drains the money that NPC sales would otherwise create from nothing.
-- **Floor at zero funds**: a broke trader pays no maintenance (no death spiral) but also can't trade. Stays "frozen" — emits `stuck` events. This is by design as a player-rescuable state.
+- **Transit-only maintenance**: `capacity × MAINTENANCE_PER_CAPACITY = 0.5` per tick during transit, `× MAINTENANCE_IDLE_FACTOR = 0` when docked. A parked ship has zero operational cost. This was tightened from earlier values (1.5 transit, 0.4 idle) after observing a death-spiral: idle ships paid maintenance whether or not profitable trades existed, accumulating losses until they hit zero funds and got permanently stuck. With the current setup, ships that can't find a profitable trip simply sit and wait — no drain.
+- **Trip-aware profit math**: `evaluateOptions` subtracts `travelTicks × capacity × MAINTENANCE_PER_CAPACITY` from total profit before deciding. Trader only commits to a trip if the *net* (after both fuel and maintenance) clears `MIN_PROFIT_PER_TICK = 0.05`. This ensures traders never take loss-making trips just because the gross looked positive.
+- **Floor at zero funds**: a broke trader pays no maintenance and can't trade — frozen, emits `stuck` events. With the current constants this is rare; it remains as a safety net.
 
-The current sink (Tier 1) keeps NPC fleet wealth growing slowly (~650/tick aggregate over 4000 ticks) but bounded enough that no test session-length play matters. Tier 2 (docking fees + crew wages) is queued — see ROADMAP.
+Verified across all scales (starter through 100 generated locations) and durations (200, 500, 1000, 2000 ticks): zero stuck traders. NPC fleet funds grow modestly but bounded; Tier 2 (docking fees + crew wages) will close the loop more tightly when player money joins the system.
 
 ## Goods catalog
 

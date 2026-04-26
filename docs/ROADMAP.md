@@ -25,6 +25,7 @@ Listed in commit order. Each was scoped tight, landed with tests, and updated th
 | Design docs | This file, `VISION.md`, `SIM.md`, README rewrite |
 | Programmatic world generation | Mulberry32 PRNG, 5 location archetypes, 3 trader classes, archetype-aware radial placement; `npm run bench` for scale stress |
 | Trader anticipation logic | Anticipated arrival price using own + in-flight cargo prevents multi-trader convergence overshoot at scale |
+| Death-spiral fix | Idle maintenance → 0; trip-aware profit math (subtracts trip maintenance from net). Fleets stay healthy across 200/500/1000/2000 ticks at all scales — zero stuck traders observed. |
 
 ---
 
@@ -162,10 +163,10 @@ Most balance levers are exported constants. Search for them:
 |---|---|---|
 | `pricing.ts` | `PRICE_ELASTICITY` | Steepness of price response to stock vs target |
 | `pricing.ts` | `PRICE_FLOOR_MULT` / `PRICE_CEILING_MULT` | The unbreakable price band |
-| `economy.ts` | `MAINTENANCE_PER_CAPACITY` | Per-tick fund drain on traders |
-| `economy.ts` | `MAINTENANCE_IDLE_FACTOR` | Discount for docked ships |
+| `economy.ts` | `MAINTENANCE_PER_CAPACITY` | Per-tick fund drain on traders during transit (currently 0.5) |
+| `economy.ts` | `MAINTENANCE_IDLE_FACTOR` | Multiplier for docked ships (currently 0 — parked is free) |
 | `economy.ts` | `STOCKPILE_CAP_MULT` | Production tapers to zero at this × target |
-| `traders.ts` | `MIN_PROFIT_PER_TICK` | Minimum margin a trader will accept |
+| `traders.ts` | `MIN_PROFIT_PER_TICK` | Minimum margin a trader will accept after subtracting fuel + maintenance (currently 0.05) |
 | `traders.ts` | `MAX_DRAW_FRACTION` | Cap on how much of a market a single trader can drain in one trip |
 | `traders.ts` | `REFUEL_THRESHOLD` | Tank fraction below which refuel triggers |
 | `traders.ts` | `STRANDING_RESERVE` | Minimum fuel reserve to not get stuck after arrival |

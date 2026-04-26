@@ -1,12 +1,13 @@
 import type { FuelType, GoodId, LocationId, Trader, World } from "./types";
 import { distance, nearestDistance } from "./geometry";
 import { priceFor } from "./pricing";
+import { MAINTENANCE_PER_CAPACITY } from "./economy";
 
-export const MIN_PROFIT_PER_TICK = 0.5;
+export const MIN_PROFIT_PER_TICK = 0.05;
 export const MAX_DRAW_FRACTION = 0.5;
 export const REFUEL_THRESHOLD = 0.4;
 export const STRANDING_RESERVE = 0.2;
-export const INFLIGHT_WEIGHT = 1.0;
+export const INFLIGHT_WEIGHT = 0.3;
 
 export interface TraderEvent {
   trader: string;
@@ -122,11 +123,13 @@ function evaluateOptions(world: World, trader: Trader, inflight: Map<string, num
         ? priceFor(world.goods[goodId].basePrice, dstStockAfter, dstTarget)
         : dstMarket.prices[goodId];
       const fuelCost = fuelNeeded * localFuelPrice;
-      const profitPerUnit = sellPrice - buyPrice - fuelCost / maxQty;
-      if (profitPerUnit <= 0) continue;
+      const grossProfitPerUnit = sellPrice - buyPrice - fuelCost / maxQty;
+      if (grossProfitPerUnit <= 0) continue;
 
       const travelTicks = Math.max(1, Math.ceil(dist / trader.speed));
-      const totalProfit = profitPerUnit * maxQty;
+      const tripMaintenance = travelTicks * trader.capacity * MAINTENANCE_PER_CAPACITY;
+      const totalProfit = grossProfitPerUnit * maxQty - tripMaintenance;
+      if (totalProfit <= 0) continue;
       const profitPerTick = totalProfit / (travelTicks + 1);
       if (profitPerTick < MIN_PROFIT_PER_TICK) continue;
 

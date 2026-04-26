@@ -1,7 +1,7 @@
 import type { World } from "./types";
 
-export const MAINTENANCE_PER_CAPACITY = 1.5;
-export const MAINTENANCE_IDLE_FACTOR = 0.4;
+export const MAINTENANCE_PER_CAPACITY = 0.5;
+export const MAINTENANCE_IDLE_FACTOR = 0;
 export const STOCKPILE_CAP_MULT = 3.0;
 
 export function productionScale(stock: number, target: number): number {
