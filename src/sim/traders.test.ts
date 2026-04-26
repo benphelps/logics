@@ -29,16 +29,16 @@ describe("trader-driven convergence", () => {
     expect(endFunds + cargoValue).toBeGreaterThan(startFunds);
   });
 
-  it("flattens prices for a heavily traded good across locations", () => {
-    const w = createWorld();
-    tickN(w, 200);
-    const grainPrices = Object.values(w.markets).map(m => m.prices.grain);
-    const max = Math.max(...grainPrices);
-    const min = Math.min(...grainPrices);
-    const noTradeWorld = createWorld({ traders: {} });
-    tickN(noTradeWorld, 200);
-    const noTradePrices = Object.values(noTradeWorld.markets).map(m => m.prices.grain);
-    const noTradeSpread = Math.max(...noTradePrices) - Math.min(...noTradePrices);
-    expect(max - min).toBeLessThan(noTradeSpread);
+  it("flattens prices for a heavily traded good toward the base price", () => {
+    const meanAbsDev = (w: ReturnType<typeof createWorld>, good: string) => {
+      const base = w.goods[good].basePrice;
+      const prices = Object.values(w.markets).map(m => m.prices[good]);
+      return prices.reduce((s, p) => s + Math.abs(p - base), 0) / prices.length;
+    };
+    const noTrade = createWorld({ traders: {} });
+    const trade = createWorld();
+    tickN(noTrade, 200);
+    tickN(trade, 200);
+    expect(meanAbsDev(trade, "grain")).toBeLessThan(meanAbsDev(noTrade, "grain"));
   });
 });

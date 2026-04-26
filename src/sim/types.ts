@@ -44,6 +44,9 @@ export interface Trader {
   name: string;
   capacity: number;
   speed: number;
+  fuelCapacity: number;
+  fuelPerDistance: number;
+  fuelTank: number;
   funds: number;
   location: LocationId;
   state: TraderState;

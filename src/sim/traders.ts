@@ -1,12 +1,14 @@
 import type { GoodId, LocationId, Trader, World } from "./types";
 
-export const TRANSPORT_RATE = 0.15;
 export const MIN_PROFIT_PER_TICK = 0.5;
 export const MAX_DRAW_FRACTION = 0.5;
+export const REFUEL_THRESHOLD = 0.4;
+export const STRANDING_RESERVE = 0.2;
+export const FUEL_GOOD: GoodId = "fuel";
 
 export interface TraderEvent {
   trader: string;
-  kind: "buy" | "sell" | "depart" | "arrive" | "idle";
+  kind: "buy" | "sell" | "depart" | "arrive" | "idle" | "refuel" | "stuck";
   good?: GoodId;
   qty?: number;
   unitPrice?: number;
@@ -21,13 +23,31 @@ interface TradeOption {
   buyPrice: number;
   sellPrice: number;
   travelTicks: number;
+  fuelNeeded: number;
   totalProfit: number;
   profitPerTick: number;
+}
+
+function tryRefuel(world: World, trader: Trader, events: TraderEvent[]): void {
+  if (trader.fuelTank >= trader.fuelCapacity * REFUEL_THRESHOLD) return;
+  const market = world.markets[trader.location];
+  const stock = market.stock[FUEL_GOOD] ?? 0;
+  if (stock <= 0) return;
+  const price = market.prices[FUEL_GOOD];
+  const need = trader.fuelCapacity - trader.fuelTank;
+  const affordable = price > 0 ? trader.funds / price : 0;
+  const buyQty = Math.min(need, stock, affordable);
+  if (buyQty <= 0.001) return;
+  market.stock[FUEL_GOOD] = stock - buyQty;
+  trader.funds -= buyQty * price;
+  trader.fuelTank += buyQty;
+  events.push({ trader: trader.id, kind: "refuel", good: FUEL_GOOD, qty: buyQty, unitPrice: price });
 }
 
 function evaluateOptions(world: World, trader: Trader): TradeOption | null {
   const here = trader.location;
   const srcMarket = world.markets[here];
+  const localFuelPrice = srcMarket.prices[FUEL_GOOD];
   let best: TradeOption | null = null;
 
   for (const goodId of Object.keys(world.goods) as GoodId[]) {
@@ -42,11 +62,20 @@ function evaluateOptions(world: World, trader: Trader): TradeOption | null {
 
     for (const dstId of Object.keys(world.locations) as LocationId[]) {
       if (dstId === here) continue;
-      const dstMarket = world.markets[dstId];
-      const sellPrice = dstMarket.prices[goodId];
       const distance = world.distances[here][dstId];
-      const transportPerUnit = distance * good.weight * TRANSPORT_RATE;
-      const profitPerUnit = sellPrice - buyPrice - transportPerUnit;
+      const fuelNeeded = distance * trader.fuelPerDistance;
+      if (fuelNeeded > trader.fuelTank) continue;
+
+      const dstMarket = world.markets[dstId];
+      const fuelAfter = trader.fuelTank - fuelNeeded;
+      const dstFuelStock = dstMarket.stock[FUEL_GOOD] ?? 0;
+      const canRefuelAtDst = dstFuelStock >= trader.fuelCapacity * REFUEL_THRESHOLD;
+      const safeReserve = fuelAfter >= trader.fuelCapacity * STRANDING_RESERVE;
+      if (!canRefuelAtDst && !safeReserve) continue;
+
+      const sellPrice = dstMarket.prices[goodId];
+      const fuelCost = fuelNeeded * localFuelPrice;
+      const profitPerUnit = sellPrice - buyPrice - fuelCost / maxQty;
       if (profitPerUnit <= 0) continue;
 
       const travelTicks = Math.max(1, Math.ceil(distance / trader.speed));
@@ -62,6 +91,7 @@ function evaluateOptions(world: World, trader: Trader): TradeOption | null {
           buyPrice,
           sellPrice,
           travelTicks,
+          fuelNeeded,
           totalProfit,
           profitPerTick,
         };
@@ -95,9 +125,12 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[]): void {
     return;
   }
 
+  tryRefuel(world, trader, events);
+
   const choice = evaluateOptions(world, trader);
   if (!choice) {
-    events.push({ trader: trader.id, kind: "idle" });
+    const noFuel = trader.fuelTank < trader.fuelPerDistance;
+    events.push({ trader: trader.id, kind: noFuel ? "stuck" : "idle" });
     return;
   }
 
@@ -106,6 +139,7 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[]): void {
   srcMarket.stock[choice.good] = (srcMarket.stock[choice.good] ?? 0) - choice.qty;
   trader.funds -= choice.qty * choice.buyPrice;
   trader.cargo = { good: choice.good, qty: choice.qty };
+  trader.fuelTank -= choice.fuelNeeded;
   events.push({
     trader: trader.id,
     kind: "buy",
