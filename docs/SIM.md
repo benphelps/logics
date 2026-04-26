@@ -211,3 +211,53 @@ If a change breaks one of these, it should be deliberate and documented.
 - Trade count
 
 This is the tuning workbench. When you change a constant in `economy.ts`, run the harness before and after to see the effect.
+
+## World generation
+
+`src/sim/gen/` contains a seeded archetype-based world generator. The hand-tuned starter universe is the default and the tutorial-friendly map; the generator is for stress-testing, future "new game" flows, and any time you want a bigger universe than 4 stations.
+
+```ts
+import { generateWorld } from "./gen/world";
+const w = generateWorld({ seed: 42, locationCount: 50 });
+```
+
+5 location archetypes:
+- `trade-hub` (tech 5–7, central placement)
+- `mining-belt` (tech 6–8, conditionally produces antimatter at tech ≥7)
+- `agricultural-ring` (tech 3–5, big population)
+- `frontier-outpost` (tech 4–6, picks xenospice or silk)
+- `research-station` (tech 7–10, electronics specialist)
+
+3 trader classes (basic_hauler, fast_scout, antimatter_hybrid). Antimatter ships only spawn if the world has at least one antimatter producer.
+
+`mulberry32` PRNG → same seed = identical world + identical tick history. Verified by `npm test`.
+
+## Scale: trader anticipation
+
+At scale (50+ locations, 75+ traders), naive trader logic causes simultaneous over-convergence: many traders see the same listed destination price and all decide to ship there in the same tick, oversupplying the market past its cap. The fix is in `evaluateOptions`:
+
+```
+sellPrice = priceFor(base, dstStock + inflightCargoToHere + ownCargo, target)
+```
+
+The trader anticipates the post-delivery arrival price including all *other* in-flight cargo bound for the same destination. `INFLIGHT_WEIGHT = 1.0` (full anticipation). `inTransitArrivalsByDestGood` is recomputed at the start of each trader step and updated as each trader commits, so within a tick traders also coordinate sequentially.
+
+Effect: more conservative trades, fewer convergence overshoots, all 5 stability invariants hold at 200 locations. Trade-off: at small scale (4 locations), shortage relief is reduced from ~38% to ~15% because some marginal trades are now correctly skipped — they were previously taken at a loss.
+
+## Benchmark
+
+`npm run bench` runs the generator at increasing scales and reports ms/tick:
+
+| Locations | Traders | ms/tick | ticks/sec |
+|---|---|---|---|
+| 10 | 15 | 0.18 | 5600 |
+| 25 | 38 | 0.70 | 1430 |
+| 50 | 75 | 1.9 | 530 |
+| 100 | 150 | 8.1 | 123 |
+| 200 | 300 | 29 | 34 |
+| 500 | 750 | 139 | 7 |
+| 1000 | 1500 | 480 | 2 |
+
+`evaluateOptions` is `O(traders × goods × locations)` per tick, with early-exits making it sub-quadratic in practice. For real-time play with 1 tick/sec, ~200 locations is the comfortable ceiling. Beyond that, optimization paths exist (cache distances, K-nearest-neighbor consideration, typed arrays) but aren't yet needed.
+
+Per-location-per-tick shortage rate stays remarkably consistent (~8–11 units) across all scales — the economy stays proportionally as functional at 1000 locations as at 10.

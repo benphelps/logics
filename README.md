@@ -15,8 +15,9 @@ Currently: the simulation layer. No UI yet, no player. The sim is a pure TypeScr
 
 ```sh
 npm install
-npm test          # run all sim tests (≈65 tests, ~0.3s)
-npm run sim 500   # run the headless economy for 500 ticks, print state
+npm test          # run all sim tests (~93 tests, ~10s)
+npm run sim 500   # run the hand-tuned economy for 500 ticks, print state
+npm run bench     # scale benchmark: 10 → 1000 locations, ms/tick
 npm run dev       # Vite dev server (UI shell only — no game yet)
 ```
 
@@ -33,7 +34,9 @@ src/sim/                          pure TS sim, no React
   tick.ts                         orchestrates: trade → produce → consume → reprice → maintenance
   data/                           starter universe content
   scenarios/run.ts                CLI harness — `npm run sim`
-  *.test.ts                       65 tests across 8 files
+  scenarios/bench.ts              scale benchmark — `npm run bench`
+  gen/                            seeded archetype-based world generator
+  *.test.ts                       93 tests across 9 files
 ```
 
 ## Docs

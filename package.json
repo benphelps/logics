@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "sim": "tsx src/sim/scenarios/run.ts"
+    "sim": "tsx src/sim/scenarios/run.ts",
+    "bench": "tsx src/sim/scenarios/bench.ts"
   },
   "dependencies": {
     "@tanstack/react-table": "^8.21.3",

@@ -105,6 +105,7 @@ describe("generated world structure", () => {
 describe("invariants hold at scale", () => {
   const seeds = [1, 2, 3];
   const sizes = [20, 50];
+  const heavySize = 200;
 
   for (const seed of seeds) {
     for (const locationCount of sizes) {
@@ -142,4 +143,19 @@ describe("invariants hold at scale", () => {
       });
     }
   }
+
+  it(`heavy load: invariants hold at ${heavySize} locations (single seed, fewer ticks)`, () => {
+    const w = generateWorld({ seed: 99, locationCount: heavySize });
+    tickN(w, 100);
+    for (const loc of Object.values(w.locations)) {
+      for (const good of Object.values(w.goods)) {
+        const p = w.markets[loc.id].prices[good.id];
+        expect(p).toBeGreaterThanOrEqual(good.basePrice * 0.25 - 0.01);
+        expect(p).toBeLessThanOrEqual(good.basePrice * 5 + 0.01);
+      }
+    }
+    for (const t of Object.values(w.traders)) {
+      expect(t.funds).toBeGreaterThanOrEqual(0);
+    }
+  });
 });

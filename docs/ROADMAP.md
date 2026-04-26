@@ -23,6 +23,8 @@ Listed in commit order. Each was scoped tight, landed with tests, and updated th
 | Location traits | `traits: { techLevel, tags, faction? }`; `primaryExports/Imports` |
 | Multi-tier supply chains | Tier-2 goods + `requiresTechLevel` gating |
 | Design docs | This file, `VISION.md`, `SIM.md`, README rewrite |
+| Programmatic world generation | Mulberry32 PRNG, 5 location archetypes, 3 trader classes, archetype-aware radial placement; `npm run bench` for scale stress |
+| Trader anticipation logic | Anticipated arrival price using own + in-flight cargo prevents multi-trader convergence overshoot at scale |
 
 ---
 
@@ -114,6 +116,15 @@ The `lanes` modifier system is in. No content uses it. Natural fit for: rim rout
 ### A "balance sweep" tuning script
 Not built. Would sweep one constant (e.g. `MAINTENANCE_PER_CAPACITY`) over a range, run scenarios, report steady-state shortage and fund-growth metrics for each. Turns balancing from guesswork into search. Worth building when manual tuning gets tedious.
 
+### Performance optimization beyond ~200 locations
+Current bench shows ms/tick goes 1.9 → 29 → 480 from 50 → 200 → 1000 locations. Sub-quadratic but not great. Known levers (none implemented):
+- **Cache distances**: precompute the L×L distance matrix once at world creation. `distance()` is called O(traders × locations) times per tick.
+- **K-nearest-neighbor consideration**: each trader only evaluates the K closest destinations instead of all of them. Loses some long-distance arbitrage but realistic.
+- **Index goods by category**: traders could skip evaluating goods their ship "doesn't typically carry."
+- **Typed arrays for stocks/prices**: replace `Record<GoodId, number>` with a flat `Float64Array` indexed by good index. Cache-friendly.
+
+Worth doing when targeting 500+ locations or when player feedback says ticks feel slow.
+
 ### Fuel weight as cargo cost
 Currently cargo capacity is independent of fuel tank capacity. Realistic: fuel takes physical space. Not modeled because it'd require redesigning the capacity math. Probably never — game fiction wins over realism here.
 
@@ -158,5 +169,6 @@ Most balance levers are exported constants. Search for them:
 | `traders.ts` | `MAX_DRAW_FRACTION` | Cap on how much of a market a single trader can drain in one trip |
 | `traders.ts` | `REFUEL_THRESHOLD` | Tank fraction below which refuel triggers |
 | `traders.ts` | `STRANDING_RESERVE` | Minimum fuel reserve to not get stuck after arrival |
+| `traders.ts` | `INFLIGHT_WEIGHT` | How much in-flight cargo from other traders counts in arrival-price anticipation (1.0 = full) |
 
 Tuning workflow: change a constant → `npm test` (ensure invariants hold) → `npm run sim 500` (eyeball the steady state).
