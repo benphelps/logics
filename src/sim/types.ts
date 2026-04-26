@@ -28,11 +28,20 @@ export interface Position {
   y: number;
 }
 
+export interface LocationTraits {
+  techLevel: number;
+  tags: string[];
+  faction?: string;
+}
+
 export interface LocationDef {
   id: LocationId;
   name: string;
   position: Position;
   population: number;
+  traits: LocationTraits;
+  primaryExports: GoodId[];
+  primaryImports: GoodId[];
   produces: ProductionEntry[];
   consumes: ConsumptionEntry[];
   targetStock: Partial<Record<GoodId, number>>;

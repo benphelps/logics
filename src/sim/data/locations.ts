@@ -6,6 +6,13 @@ export const LOCATIONS: Record<string, LocationDef> = {
     name: "Haven Station",
     position: { x: 0, y: 0 },
     population: 1200,
+    traits: {
+      techLevel: 6,
+      tags: ["trade-hub", "core", "civilian"],
+      faction: "League",
+    },
+    primaryExports: ["protein", "fiber"],
+    primaryImports: ["grain", "polymer", "parts"],
     produces: [
       { good: "protein", ratePerTick: 14 },
       { good: "fiber",   ratePerTick: 4, inputs: [{ good: "polymer", perUnit: 0.2 }] },
@@ -24,6 +31,13 @@ export const LOCATIONS: Record<string, LocationDef> = {
     name: "Ironhold Belt",
     position: { x: 4, y: 0 },
     population: 800,
+    traits: {
+      techLevel: 8,
+      tags: ["industrial", "core", "mining"],
+      faction: "League",
+    },
+    primaryExports: ["ore", "parts", "plasma", "antimatter"],
+    primaryImports: ["grain", "protein", "polymer"],
     produces: [
       { good: "ore",        ratePerTick: 12 },
       { good: "parts",      ratePerTick: 3, inputs: [{ good: "ore", perUnit: 1.5 }] },
@@ -44,6 +58,13 @@ export const LOCATIONS: Record<string, LocationDef> = {
     name: "Verdant Ring",
     position: { x: 1, y: 3 },
     population: 1500,
+    traits: {
+      techLevel: 4,
+      tags: ["agricultural", "ring-habitat", "core"],
+      faction: "League",
+    },
+    primaryExports: ["grain", "vatmeat", "polymer"],
+    primaryImports: ["parts", "fiber"],
     produces: [
       { good: "grain",   ratePerTick: 22 },
       { good: "vatmeat", ratePerTick: 5 },
@@ -62,6 +83,13 @@ export const LOCATIONS: Record<string, LocationDef> = {
     name: "Saffron Rim",
     position: { x: 8, y: 8 },
     population: 600,
+    traits: {
+      techLevel: 5,
+      tags: ["frontier", "rim", "luxury"],
+      faction: "Outerguild",
+    },
+    primaryExports: ["xenospice", "silk"],
+    primaryImports: ["grain", "protein", "parts"],
     produces: [
       { good: "xenospice", ratePerTick: 4 },
       { good: "silk",      ratePerTick: 2 },

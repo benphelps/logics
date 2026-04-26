@@ -4,9 +4,9 @@ import { createWorld } from "./world";
 import type { LaneMap, LocationDef } from "./types";
 
 const tinyLocations: Record<string, LocationDef> = {
-  a: { id: "a", name: "A", position: { x: 0, y: 0 }, population: 1, produces: [], consumes: [], targetStock: {} },
-  b: { id: "b", name: "B", position: { x: 3, y: 4 }, population: 1, produces: [], consumes: [], targetStock: {} },
-  c: { id: "c", name: "C", position: { x: 0, y: 10 }, population: 1, produces: [], consumes: [], targetStock: {} },
+  a: { id: "a", name: "A", position: { x: 0, y: 0 }, population: 1, traits: { techLevel: 1, tags: [] }, primaryExports: [], primaryImports: [], produces: [], consumes: [], targetStock: {} },
+  b: { id: "b", name: "B", position: { x: 3, y: 4 }, population: 1, traits: { techLevel: 1, tags: [] }, primaryExports: [], primaryImports: [], produces: [], consumes: [], targetStock: {} },
+  c: { id: "c", name: "C", position: { x: 0, y: 10 }, population: 1, traits: { techLevel: 1, tags: [] }, primaryExports: [], primaryImports: [], produces: [], consumes: [], targetStock: {} },
 };
 
 describe("euclidean", () => {
@@ -88,7 +88,7 @@ describe("nearestDistance", () => {
 
   it("returns 0 when there are no other locations", () => {
     const w = createWorld({
-      locations: { only: { id: "only", name: "Only", position: { x: 0, y: 0 }, population: 1, produces: [], consumes: [], targetStock: {} } },
+      locations: { only: { id: "only", name: "Only", position: { x: 0, y: 0 }, population: 1, traits: { techLevel: 1, tags: [] }, primaryExports: [], primaryImports: [], produces: [], consumes: [], targetStock: {} } },
       lanes: {},
       traders: {},
     });
