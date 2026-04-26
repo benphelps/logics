@@ -1,73 +1,43 @@
-# React + TypeScript + Vite
+# Logics
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A spreadsheet-style, single-player browser game where a dense market simulation is the primary thing you interact with — not a backdrop. You run a fleet across a small universe of stations; the universe is already running an economy with NPC traders moving goods between specialized ports, and you make money by reading the same numbers they're reading.
 
-Currently, two official plugins are available:
+Currently: the simulation layer. No UI yet, no player. The sim is a pure TypeScript module that runs headless under `vitest` and a CLI scenario harness.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Stack
 
-## React Compiler
+- Vite + React + TypeScript (UI scaffold; not yet built)
+- Zustand + TanStack Table (planned, for the dense grid UI)
+- Vitest for the sim test suite
+- `tsx` for the headless scenario harness
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Run
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```sh
+npm install
+npm test          # run all sim tests (≈65 tests, ~0.3s)
+npm run sim 500   # run the headless economy for 500 ticks, print state
+npm run dev       # Vite dev server (UI shell only — no game yet)
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Where things live
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
 ```
+src/sim/                          pure TS sim, no React
+  types.ts                        Goods, Locations, Markets, Traders, World
+  pricing.ts                      price = base × clamp((target/stock)^0.6, 0.25, 5)
+  economy.ts                      maintenance + stockpile cap (anti-drift)
+  geometry.ts                     distance(a, b) = euclidean × laneModifier
+  locations.ts                    net production + trait-based queries
+  traders.ts                      NPC arbitrage with multi-fuel
+  tick.ts                         orchestrates: trade → produce → consume → reprice → maintenance
+  data/                           starter universe content
+  scenarios/run.ts                CLI harness — `npm run sim`
+  *.test.ts                       65 tests across 8 files
+```
+
+## Docs
+
+- [`docs/VISION.md`](docs/VISION.md) — what the game is, what it isn't, the design pillars
+- [`docs/SIM.md`](docs/SIM.md) — current simulation model in detail (economy, geometry, ships, supply chains)
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — what's done, what's queued, what's deferred, and what we've discussed but parked
