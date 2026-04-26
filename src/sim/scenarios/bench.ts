@@ -1,6 +1,5 @@
 import { generateWorld } from "../gen/world";
 import { tickN, tickWorld } from "../tick";
-import type { World } from "../types";
 
 interface BenchResult {
   locations: number;

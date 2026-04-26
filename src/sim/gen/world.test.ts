@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import { generateWorld } from "./world";
 import { tickN } from "../tick";
 import { STOCKPILE_CAP_MULT } from "../economy";
-import { mulberry32, pick } from "./rng";
 
 describe("seeded generation", () => {
   it("same seed produces identical worlds", () => {

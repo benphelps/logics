@@ -1,0 +1,63 @@
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 8px 16px;
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--border);
+  height: 44px;
+  flex-shrink: 0;
+}
+
+.topbar-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.topbar-title {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text);
+  letter-spacing: 0.02em;
+}
+
+.topbar-subtitle {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.topbar-stats {
+  display: flex;
+  gap: 18px;
+  font-size: 12px;
+}
+
+.topbar-stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.topbar-stat-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.topbar-stat-value {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.topbar-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.topbar-spacer {
+  width: 8px;
+}

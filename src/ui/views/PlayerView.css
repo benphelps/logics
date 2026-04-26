@@ -1,0 +1,35 @@
+.player-stub {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.stub-card {
+  background: var(--bg-1);
+  border: 1px dashed var(--border-strong);
+  border-radius: 4px;
+  padding: 14px 16px;
+}
+
+.stub-card h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.stub-card p {
+  margin: 0 0 10px;
+  font-size: 12px;
+}
+
+.planned {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.planned li {
+  list-style-type: square;
+}

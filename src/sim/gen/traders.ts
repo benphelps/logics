@@ -1,6 +1,6 @@
 import type { FuelType, GoodId, LocationDef, LocationId, Trader } from "../types";
 import { generateShipName } from "./names";
-import { jitter, pick, rangeFloat, rangeInt, type Rng } from "./rng";
+import { jitter, pick, rangeInt, type Rng } from "./rng";
 
 type ShipClass = "basic_hauler" | "fast_scout" | "antimatter_hybrid";
 

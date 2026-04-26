@@ -1,8 +1,8 @@
 import type { LocationDef, LocationId, Position, World } from "../types";
 import { createWorld } from "../world";
-import { ARCHETYPE_BUILDERS, ARCHETYPE_NAMES, type ArchetypeName } from "./archetypes";
+import { ARCHETYPE_BUILDERS, type ArchetypeName } from "./archetypes";
 import { generateName } from "./names";
-import { mulberry32, pick, rangeFloat, type Rng } from "./rng";
+import { mulberry32, rangeFloat, type Rng } from "./rng";
 import { generateTraders, locationsHaveAntimatter } from "./traders";
 
 export interface GenerateWorldOptions {
