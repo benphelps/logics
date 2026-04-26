@@ -1,6 +1,7 @@
 import type { GoodId, LocationDef, MarketState, World } from "./types";
 import { recomputePrices } from "./pricing";
 import { stepTraders, type TraderEvent } from "./traders";
+import { chargeMaintenance, productionScale } from "./economy";
 
 export interface TickReport {
   tick: number;
@@ -10,7 +11,10 @@ export interface TickReport {
 
 function produce(loc: LocationDef, market: MarketState): void {
   for (const entry of loc.produces) {
-    let amount = entry.ratePerTick;
+    const target = loc.targetStock[entry.good] ?? 0;
+    const currentStock = market.stock[entry.good] ?? 0;
+    const scale = productionScale(currentStock, target);
+    let amount = entry.ratePerTick * scale;
 
     if (entry.inputs && entry.inputs.length > 0) {
       let limit = amount;
@@ -25,7 +29,7 @@ function produce(loc: LocationDef, market: MarketState): void {
       }
     }
 
-    market.stock[entry.good] = (market.stock[entry.good] ?? 0) + amount;
+    market.stock[entry.good] = currentStock + amount;
   }
 }
 
@@ -57,6 +61,8 @@ export function tickWorld(world: World): TickReport {
     consume(loc, market, shortages);
     recomputePrices(world, loc, market);
   }
+
+  chargeMaintenance(world);
 
   world.tick += 1;
   return { tick: world.tick, shortages, traderEvents };
