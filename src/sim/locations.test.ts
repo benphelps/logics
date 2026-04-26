@@ -89,6 +89,6 @@ describe("declared exports/imports vs derived", () => {
     expect(haven.traits.techLevel).toBe(6);
     expect(haven.traits.tags).toContain("trade-hub");
     expect(haven.traits.faction).toBe("League");
-    expect(haven.primaryExports).toEqual(["protein", "fiber"]);
+    expect(haven.primaryExports).toEqual(["protein", "fiber", "medkits"]);
   });
 });

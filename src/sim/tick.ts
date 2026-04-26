@@ -11,6 +11,7 @@ export interface TickReport {
 
 function produce(loc: LocationDef, market: MarketState): void {
   for (const entry of loc.produces) {
+    if (entry.requiresTechLevel != null && loc.traits.techLevel < entry.requiresTechLevel) continue;
     const target = loc.targetStock[entry.good] ?? 0;
     const currentStock = market.stock[entry.good] ?? 0;
     const scale = productionScale(currentStock, target);

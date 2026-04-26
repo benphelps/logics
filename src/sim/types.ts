@@ -2,7 +2,7 @@ export type GoodId = string;
 export type LocationId = string;
 export type TraderId = string;
 
-export type GoodCategory = "food" | "raw" | "intermediate" | "luxury" | "fuel";
+export type GoodCategory = "food" | "raw" | "intermediate" | "luxury" | "fuel" | "advanced";
 
 export interface Good {
   id: GoodId;
@@ -16,6 +16,7 @@ export interface ProductionEntry {
   good: GoodId;
   ratePerTick: number;
   inputs?: { good: GoodId; perUnit: number }[];
+  requiresTechLevel?: number;
 }
 
 export interface ConsumptionEntry {

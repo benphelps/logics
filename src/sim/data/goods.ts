@@ -12,4 +12,9 @@ export const GOODS: Record<string, Good> = {
   silk:      { id: "silk",      name: "Quantum Silk",     category: "luxury",       basePrice:  90, weight: 0.3 },
   plasma:    { id: "plasma",    name: "Plasma Fuel",      category: "fuel",         basePrice:  15, weight: 1.0 },
   antimatter:{ id: "antimatter",name: "Antimatter Cell",  category: "fuel",         basePrice:  30, weight: 0.5 },
+
+  electronics:  { id: "electronics",  name: "Electronics",  category: "advanced", basePrice:  80, weight: 0.4 },
+  weapons:      { id: "weapons",      name: "Weapons",      category: "advanced", basePrice:  70, weight: 1.2 },
+  luxury_goods: { id: "luxury_goods", name: "Luxury Goods", category: "advanced", basePrice: 120, weight: 0.4 },
+  medkits:      { id: "medkits",      name: "Medkits",      category: "advanced", basePrice:  50, weight: 0.3 },
 };
