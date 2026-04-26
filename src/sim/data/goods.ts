@@ -11,4 +11,5 @@ export const GOODS: Record<string, Good> = {
   xenospice: { id: "xenospice", name: "Xenospice",        category: "luxury",       basePrice:  60, weight: 0.3 },
   silk:      { id: "silk",      name: "Quantum Silk",     category: "luxury",       basePrice:  90, weight: 0.3 },
   plasma:    { id: "plasma",    name: "Plasma Fuel",      category: "fuel",         basePrice:  15, weight: 1.0 },
+  antimatter:{ id: "antimatter",name: "Antimatter Cell",  category: "fuel",         basePrice:  30, weight: 0.5 },
 };

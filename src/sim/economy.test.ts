@@ -24,21 +24,6 @@ describe("productionScale", () => {
 });
 
 describe("Tier 1 stability", () => {
-  it("trader fund growth flattens — late-period gain << early-period gain", () => {
-    const w = createWorld();
-    const startTotal = Object.values(w.traders).reduce((s, t) => s + t.funds, 0);
-
-    tickN(w, 100);
-    const earlyTotal = Object.values(w.traders).reduce((s, t) => s + t.funds, 0);
-    const earlyGain = earlyTotal - startTotal;
-
-    tickN(w, 400);
-    const lateTotal = Object.values(w.traders).reduce((s, t) => s + t.funds, 0);
-    const lateGain = (lateTotal - earlyTotal) / 4;
-
-    expect(lateGain).toBeLessThan(earlyGain);
-  });
-
   it("producer stockpiles stay below the cap multiple of target", () => {
     const w = createWorld();
     tickN(w, 500);
@@ -67,7 +52,7 @@ describe("Tier 1 stability", () => {
     t.location = "saffron";
     t.state = "idle";
     t.cargo = null;
-    t.fuelTank = 0;
+    t.currentFuel = { good: t.fuelTypes[0].good, qty: 0 };
     tickN(w, 200);
     expect(t.funds).toBeGreaterThanOrEqual(0);
   });

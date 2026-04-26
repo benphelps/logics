@@ -39,14 +39,19 @@ export interface MarketState {
 
 export type TraderState = "idle" | "transit";
 
+export interface FuelType {
+  good: GoodId;
+  perDistance: number;
+}
+
 export interface Trader {
   id: TraderId;
   name: string;
   capacity: number;
   speed: number;
   fuelCapacity: number;
-  fuelPerDistance: number;
-  fuelTank: number;
+  fuelTypes: FuelType[];
+  currentFuel: { good: GoodId; qty: number } | null;
   funds: number;
   location: LocationId;
   state: TraderState;

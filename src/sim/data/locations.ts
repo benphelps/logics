@@ -23,9 +23,10 @@ export const LOCATIONS: Record<string, LocationDef> = {
     name: "Ironhold Belt",
     population: 800,
     produces: [
-      { good: "ore",    ratePerTick: 12 },
-      { good: "parts",  ratePerTick: 3, inputs: [{ good: "ore", perUnit: 1.5 }] },
-      { good: "plasma", ratePerTick: 14 },
+      { good: "ore",        ratePerTick: 12 },
+      { good: "parts",      ratePerTick: 3, inputs: [{ good: "ore", perUnit: 1.5 }] },
+      { good: "plasma",     ratePerTick: 14 },
+      { good: "antimatter", ratePerTick: 3, inputs: [{ good: "plasma", perUnit: 0.8 }] },
     ],
     consumes: [
       { good: "grain",   ratePerTick: 6 },
@@ -33,7 +34,7 @@ export const LOCATIONS: Record<string, LocationDef> = {
       { good: "polymer", ratePerTick: 4 },
       { good: "plasma",  ratePerTick: 4 },
     ],
-    targetStock: { ore: 120, parts: 30, grain: 60, protein: 20, polymer: 30, plasma: 30 },
+    targetStock: { ore: 120, parts: 30, grain: 60, protein: 20, polymer: 30, plasma: 30, antimatter: 40 },
   },
 
   verdant: {

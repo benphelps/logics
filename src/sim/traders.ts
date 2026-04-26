@@ -1,10 +1,9 @@
-import type { GoodId, LocationId, Trader, World } from "./types";
+import type { FuelType, GoodId, LocationId, Trader, World } from "./types";
 
 export const MIN_PROFIT_PER_TICK = 0.5;
 export const MAX_DRAW_FRACTION = 0.5;
 export const REFUEL_THRESHOLD = 0.4;
 export const STRANDING_RESERVE = 0.2;
-export const FUEL_GOOD: GoodId = "plasma";
 
 export interface TraderEvent {
   trader: string;
@@ -28,26 +27,52 @@ interface TradeOption {
   profitPerTick: number;
 }
 
-function tryRefuel(world: World, trader: Trader, events: TraderEvent[]): void {
-  if (trader.fuelTank >= trader.fuelCapacity * REFUEL_THRESHOLD) return;
+function activeFuelType(trader: Trader): FuelType | null {
+  if (!trader.currentFuel) return null;
+  return trader.fuelTypes.find(f => f.good === trader.currentFuel!.good) ?? null;
+}
+
+function selectRefuelType(world: World, trader: Trader): FuelType | null {
   const market = world.markets[trader.location];
-  const stock = market.stock[FUEL_GOOD] ?? 0;
-  if (stock <= 0) return;
-  const price = market.prices[FUEL_GOOD];
-  const need = trader.fuelCapacity - trader.fuelTank;
+  for (const ft of trader.fuelTypes) {
+    if ((market.stock[ft.good] ?? 0) > 0) return ft;
+  }
+  return null;
+}
+
+function tryRefuel(world: World, trader: Trader, events: TraderEvent[]): void {
+  const tankFraction = (trader.currentFuel?.qty ?? 0) / trader.fuelCapacity;
+  if (tankFraction >= REFUEL_THRESHOLD) return;
+
+  const choice = selectRefuelType(world, trader);
+  if (!choice) return;
+
+  const market = world.markets[trader.location];
+  const stock = market.stock[choice.good];
+  const price = market.prices[choice.good];
+
+  const switching = !trader.currentFuel || trader.currentFuel.good !== choice.good;
+  const currentQty = switching ? 0 : trader.currentFuel!.qty;
+
+  const need = trader.fuelCapacity - currentQty;
   const affordable = price > 0 ? trader.funds / price : 0;
   const buyQty = Math.min(need, stock, affordable);
   if (buyQty <= 0.001) return;
-  market.stock[FUEL_GOOD] = stock - buyQty;
+
+  market.stock[choice.good] = stock - buyQty;
   trader.funds -= buyQty * price;
-  trader.fuelTank += buyQty;
-  events.push({ trader: trader.id, kind: "refuel", good: FUEL_GOOD, qty: buyQty, unitPrice: price });
+  trader.currentFuel = { good: choice.good, qty: currentQty + buyQty };
+
+  events.push({ trader: trader.id, kind: "refuel", good: choice.good, qty: buyQty, unitPrice: price });
 }
 
 function evaluateOptions(world: World, trader: Trader): TradeOption | null {
   const here = trader.location;
   const srcMarket = world.markets[here];
-  const localFuelPrice = srcMarket.prices[FUEL_GOOD];
+  const fuel = trader.currentFuel;
+  const ft = activeFuelType(trader);
+  if (!fuel || !ft) return null;
+  const localFuelPrice = srcMarket.prices[fuel.good];
   let best: TradeOption | null = null;
 
   for (const goodId of Object.keys(world.goods) as GoodId[]) {
@@ -63,15 +88,16 @@ function evaluateOptions(world: World, trader: Trader): TradeOption | null {
     for (const dstId of Object.keys(world.locations) as LocationId[]) {
       if (dstId === here) continue;
       const distance = world.distances[here][dstId];
-      const fuelNeeded = distance * trader.fuelPerDistance;
-      if (fuelNeeded > trader.fuelTank) continue;
+      const fuelNeeded = distance * ft.perDistance;
+      if (fuelNeeded > fuel.qty) continue;
 
       const dstMarket = world.markets[dstId];
-      const fuelAfter = trader.fuelTank - fuelNeeded;
-      const dstFuelStock = dstMarket.stock[FUEL_GOOD] ?? 0;
-      const canRefuelAtDst = dstFuelStock >= trader.fuelCapacity * REFUEL_THRESHOLD;
+      const fuelAfter = fuel.qty - fuelNeeded;
+      const dstHasMyFuel = trader.fuelTypes.some(
+        f => (dstMarket.stock[f.good] ?? 0) >= trader.fuelCapacity * REFUEL_THRESHOLD,
+      );
       const safeReserve = fuelAfter >= trader.fuelCapacity * STRANDING_RESERVE;
-      if (!canRefuelAtDst && !safeReserve) continue;
+      if (!dstHasMyFuel && !safeReserve) continue;
 
       const sellPrice = dstMarket.prices[goodId];
       const fuelCost = fuelNeeded * localFuelPrice;
@@ -102,6 +128,17 @@ function evaluateOptions(world: World, trader: Trader): TradeOption | null {
   return best;
 }
 
+function isStuck(world: World, trader: Trader): boolean {
+  const ft = activeFuelType(trader);
+  if (!ft || !trader.currentFuel || trader.currentFuel.qty <= 0) return true;
+  const reachable = Object.entries(world.distances[trader.location])
+    .filter(([dst]) => dst !== trader.location)
+    .map(([_, d]) => d);
+  if (reachable.length === 0) return false;
+  const minDistance = Math.min(...reachable);
+  return trader.currentFuel.qty < minDistance * ft.perDistance;
+}
+
 function stepTrader(world: World, trader: Trader, events: TraderEvent[]): void {
   if (trader.state === "transit") {
     trader.ticksRemaining -= 1;
@@ -129,8 +166,7 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[]): void {
 
   const choice = evaluateOptions(world, trader);
   if (!choice) {
-    const noFuel = trader.fuelTank < trader.fuelPerDistance;
-    events.push({ trader: trader.id, kind: noFuel ? "stuck" : "idle" });
+    events.push({ trader: trader.id, kind: isStuck(world, trader) ? "stuck" : "idle" });
     return;
   }
 
@@ -139,7 +175,7 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[]): void {
   srcMarket.stock[choice.good] = (srcMarket.stock[choice.good] ?? 0) - choice.qty;
   trader.funds -= choice.qty * choice.buyPrice;
   trader.cargo = { good: choice.good, qty: choice.qty };
-  trader.fuelTank -= choice.fuelNeeded;
+  trader.currentFuel = { good: trader.currentFuel!.good, qty: trader.currentFuel!.qty - choice.fuelNeeded };
   events.push({
     trader: trader.id,
     kind: "buy",

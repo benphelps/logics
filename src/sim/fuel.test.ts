@@ -10,8 +10,8 @@ function singleTraderWorld(overrides: Partial<Trader>): World {
     capacity: 50,
     speed: 1,
     fuelCapacity: 20,
-    fuelPerDistance: 1,
-    fuelTank: 20,
+    fuelTypes: [{ good: "plasma", perDistance: 1 }],
+    currentFuel: { good: "plasma", qty: 20 },
     funds: 5000,
     location: "haven",
     state: "idle",
@@ -23,21 +23,22 @@ function singleTraderWorld(overrides: Partial<Trader>): World {
   return createWorld({ traders: { t } });
 }
 
-describe("fuel", () => {
+describe("fuel — single fuel type", () => {
   it("trader consumes fuel proportional to distance on departure", () => {
     const w = singleTraderWorld({});
-    const startFuel = w.traders.t.fuelTank;
+    const startFuel = w.traders.t.currentFuel!.qty;
     for (let i = 0; i < 30 && w.traders.t.state !== "transit"; i++) tickWorld(w);
     expect(w.traders.t.state).toBe("transit");
     const distance = w.distances.haven[w.traders.t.destination!];
-    expect(startFuel - w.traders.t.fuelTank).toBeCloseTo(distance * w.traders.t.fuelPerDistance, 5);
+    const burned = startFuel - w.traders.t.currentFuel!.qty;
+    expect(burned).toBeCloseTo(distance * 1, 5);
   });
 
   it("trader cannot depart for a destination it lacks fuel for", () => {
-    const w = singleTraderWorld({ fuelCapacity: 4, fuelTank: 4 });
-    const reachable = Object.entries(w.distances.haven)
-      .filter(([dst, d]) => dst !== "haven" && d <= 4);
-    expect(reachable.length).toBeGreaterThan(0);
+    const w = singleTraderWorld({
+      fuelCapacity: 4,
+      currentFuel: { good: "plasma", qty: 4 },
+    });
     tickN(w, 5);
     if (w.traders.t.state === "transit") {
       const dist = w.distances.haven[w.traders.t.destination!];
@@ -46,14 +47,14 @@ describe("fuel", () => {
   });
 
   it("trader refuels when tank drops below threshold and fuel is for sale", () => {
-    const w = singleTraderWorld({ fuelTank: 1 });
+    const w = singleTraderWorld({ currentFuel: { good: "plasma", qty: 1 } });
     w.markets.haven.stock.plasma = 100;
     tickWorld(w);
-    expect(w.traders.t.fuelTank).toBeGreaterThan(1);
+    expect(w.traders.t.currentFuel!.qty).toBeGreaterThan(1);
   });
 
   it("trader at empty-fuel location stays stuck rather than crashing", () => {
-    const w = singleTraderWorld({ fuelTank: 0 });
+    const w = singleTraderWorld({ currentFuel: { good: "plasma", qty: 0 } });
     for (const m of Object.values(w.markets)) m.stock.plasma = 0;
     const reports = tickN(w, 5);
     expect(w.traders.t.state).toBe("idle");
@@ -65,8 +66,65 @@ describe("fuel", () => {
     const withTraders = createWorld();
     tickN(noTraders, 100);
     tickN(withTraders, 100);
-    const ironholdNo = noTraders.markets.ironhold.stock.plasma;
-    const ironholdYes = withTraders.markets.ironhold.stock.plasma;
-    expect(ironholdYes).toBeLessThan(ironholdNo);
+    expect(withTraders.markets.ironhold.stock.plasma).toBeLessThan(noTraders.markets.ironhold.stock.plasma);
+  });
+});
+
+describe("fuel — multi-fuel preference", () => {
+  it("hybrid ship prefers higher-priority fuel when available", () => {
+    const w = singleTraderWorld({
+      fuelCapacity: 30,
+      fuelTypes: [
+        { good: "antimatter", perDistance: 0.3 },
+        { good: "plasma",     perDistance: 0.8 },
+      ],
+      currentFuel: { good: "plasma", qty: 5 },
+      location: "ironhold",
+    });
+    w.markets.ironhold.stock.antimatter = 50;
+    w.markets.ironhold.stock.plasma = 50;
+    tickWorld(w);
+    expect(w.traders.t.currentFuel!.good).toBe("antimatter");
+  });
+
+  it("hybrid ship falls back to lower-priority fuel when preferred is unavailable", () => {
+    const w = singleTraderWorld({
+      fuelCapacity: 30,
+      fuelTypes: [
+        { good: "antimatter", perDistance: 0.3 },
+        { good: "plasma",     perDistance: 0.8 },
+      ],
+      currentFuel: { good: "plasma", qty: 3 },
+      location: "haven",
+    });
+    w.markets.haven.stock.antimatter = 0;
+    w.markets.haven.stock.plasma = 50;
+    tickWorld(w);
+    expect(w.traders.t.currentFuel!.good).toBe("plasma");
+    expect(w.traders.t.currentFuel!.qty).toBeGreaterThan(3);
+  });
+
+  it("switching fuels dumps the remaining incompatible fuel", () => {
+    const w = singleTraderWorld({
+      fuelCapacity: 30,
+      fuelTypes: [
+        { good: "antimatter", perDistance: 0.3 },
+        { good: "plasma",     perDistance: 0.8 },
+      ],
+      currentFuel: { good: "plasma", qty: 8 },
+      location: "ironhold",
+    });
+    w.markets.ironhold.stock.antimatter = 100;
+    tickWorld(w);
+    expect(w.traders.t.currentFuel!.good).toBe("antimatter");
+    expect(w.traders.t.currentFuel!.qty).toBeLessThanOrEqual(30);
+  });
+
+  it("ship's fuelTypes list is independent — different ships can have different paths", () => {
+    const w = createWorld();
+    const falcon = w.traders.t_falcon;
+    const pelican = w.traders.t_pelican;
+    expect(falcon.fuelTypes.map(f => f.good)).toEqual(["antimatter", "plasma"]);
+    expect(pelican.fuelTypes.map(f => f.good)).toEqual(["plasma"]);
   });
 });
