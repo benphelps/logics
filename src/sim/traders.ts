@@ -1,10 +1,12 @@
 import type { FuelType, GoodId, LocationId, Trader, World } from "./types";
 import { distance, nearestDistance } from "./geometry";
+import { priceFor } from "./pricing";
 
 export const MIN_PROFIT_PER_TICK = 0.5;
 export const MAX_DRAW_FRACTION = 0.5;
 export const REFUEL_THRESHOLD = 0.4;
 export const STRANDING_RESERVE = 0.2;
+export const INFLIGHT_WEIGHT = 1.0;
 
 export interface TraderEvent {
   trader: string;
@@ -67,7 +69,18 @@ function tryRefuel(world: World, trader: Trader, events: TraderEvent[]): void {
   events.push({ trader: trader.id, kind: "refuel", good: choice.good, qty: buyQty, unitPrice: price });
 }
 
-function evaluateOptions(world: World, trader: Trader): TradeOption | null {
+function inTransitArrivalsByDestGood(world: World): Map<string, number> {
+  const acc = new Map<string, number>();
+  for (const t of Object.values(world.traders)) {
+    if (t.state === "transit" && t.destination && t.cargo) {
+      const key = `${t.destination}|${t.cargo.good}`;
+      acc.set(key, (acc.get(key) ?? 0) + t.cargo.qty);
+    }
+  }
+  return acc;
+}
+
+function evaluateOptions(world: World, trader: Trader, inflight: Map<string, number>): TradeOption | null {
   const here = trader.location;
   const srcMarket = world.markets[here];
   const fuel = trader.currentFuel;
@@ -100,7 +113,14 @@ function evaluateOptions(world: World, trader: Trader): TradeOption | null {
       const safeReserve = fuelAfter >= trader.fuelCapacity * STRANDING_RESERVE;
       if (!dstHasMyFuel && !safeReserve) continue;
 
-      const sellPrice = dstMarket.prices[goodId];
+      const dst = world.locations[dstId];
+      const dstTarget = dst.targetStock[goodId] ?? 0;
+      const dstStockNow = dstMarket.stock[goodId] ?? 0;
+      const inflightToDst = inflight.get(`${dstId}|${goodId}`) ?? 0;
+      const dstStockAfter = dstStockNow + INFLIGHT_WEIGHT * inflightToDst + maxQty;
+      const sellPrice = dstTarget > 0
+        ? priceFor(world.goods[goodId].basePrice, dstStockAfter, dstTarget)
+        : dstMarket.prices[goodId];
       const fuelCost = fuelNeeded * localFuelPrice;
       const profitPerUnit = sellPrice - buyPrice - fuelCost / maxQty;
       if (profitPerUnit <= 0) continue;
@@ -137,7 +157,7 @@ function isStuck(world: World, trader: Trader): boolean {
   return trader.currentFuel.qty < minDist * ft.perDistance;
 }
 
-function stepTrader(world: World, trader: Trader, events: TraderEvent[]): void {
+function stepTrader(world: World, trader: Trader, events: TraderEvent[], inflight: Map<string, number>): void {
   if (trader.state === "transit") {
     trader.ticksRemaining -= 1;
     if (trader.ticksRemaining > 0) return;
@@ -162,7 +182,7 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[]): void {
 
   tryRefuel(world, trader, events);
 
-  const choice = evaluateOptions(world, trader);
+  const choice = evaluateOptions(world, trader, inflight);
   if (!choice) {
     events.push({ trader: trader.id, kind: isStuck(world, trader) ? "stuck" : "idle" });
     return;
@@ -187,12 +207,16 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[]): void {
   trader.state = "transit";
   trader.ticksRemaining = choice.travelTicks;
   events.push({ trader: trader.id, kind: "depart", from: here, to: choice.to });
+
+  const key = `${choice.to}|${choice.good}`;
+  inflight.set(key, (inflight.get(key) ?? 0) + choice.qty);
 }
 
 export function stepTraders(world: World): TraderEvent[] {
   const events: TraderEvent[] = [];
+  const inflight = inTransitArrivalsByDestGood(world);
   for (const trader of Object.values(world.traders)) {
-    stepTrader(world, trader, events);
+    stepTrader(world, trader, events, inflight);
   }
   return events;
 }
