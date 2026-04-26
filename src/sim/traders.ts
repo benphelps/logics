@@ -1,4 +1,5 @@
 import type { FuelType, GoodId, LocationId, Trader, World } from "./types";
+import { distance, nearestDistance } from "./geometry";
 
 export const MIN_PROFIT_PER_TICK = 0.5;
 export const MAX_DRAW_FRACTION = 0.5;
@@ -87,8 +88,8 @@ function evaluateOptions(world: World, trader: Trader): TradeOption | null {
 
     for (const dstId of Object.keys(world.locations) as LocationId[]) {
       if (dstId === here) continue;
-      const distance = world.distances[here][dstId];
-      const fuelNeeded = distance * ft.perDistance;
+      const dist = distance(world, here, dstId);
+      const fuelNeeded = dist * ft.perDistance;
       if (fuelNeeded > fuel.qty) continue;
 
       const dstMarket = world.markets[dstId];
@@ -104,7 +105,7 @@ function evaluateOptions(world: World, trader: Trader): TradeOption | null {
       const profitPerUnit = sellPrice - buyPrice - fuelCost / maxQty;
       if (profitPerUnit <= 0) continue;
 
-      const travelTicks = Math.max(1, Math.ceil(distance / trader.speed));
+      const travelTicks = Math.max(1, Math.ceil(dist / trader.speed));
       const totalProfit = profitPerUnit * maxQty;
       const profitPerTick = totalProfit / (travelTicks + 1);
       if (profitPerTick < MIN_PROFIT_PER_TICK) continue;
@@ -131,12 +132,9 @@ function evaluateOptions(world: World, trader: Trader): TradeOption | null {
 function isStuck(world: World, trader: Trader): boolean {
   const ft = activeFuelType(trader);
   if (!ft || !trader.currentFuel || trader.currentFuel.qty <= 0) return true;
-  const reachable = Object.entries(world.distances[trader.location])
-    .filter(([dst]) => dst !== trader.location)
-    .map(([_, d]) => d);
-  if (reachable.length === 0) return false;
-  const minDistance = Math.min(...reachable);
-  return trader.currentFuel.qty < minDistance * ft.perDistance;
+  const minDist = nearestDistance(world, trader.location);
+  if (minDist === 0) return false;
+  return trader.currentFuel.qty < minDist * ft.perDistance;
 }
 
 function stepTrader(world: World, trader: Trader, events: TraderEvent[]): void {

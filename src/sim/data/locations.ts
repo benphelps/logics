@@ -1,9 +1,10 @@
-import type { LocationDef } from "../types";
+import type { LaneMap, LocationDef } from "../types";
 
 export const LOCATIONS: Record<string, LocationDef> = {
   haven: {
     id: "haven",
     name: "Haven Station",
+    position: { x: 0, y: 0 },
     population: 1200,
     produces: [
       { good: "protein", ratePerTick: 14 },
@@ -21,6 +22,7 @@ export const LOCATIONS: Record<string, LocationDef> = {
   ironhold: {
     id: "ironhold",
     name: "Ironhold Belt",
+    position: { x: 4, y: 0 },
     population: 800,
     produces: [
       { good: "ore",        ratePerTick: 12 },
@@ -40,6 +42,7 @@ export const LOCATIONS: Record<string, LocationDef> = {
   verdant: {
     id: "verdant",
     name: "Verdant Ring",
+    position: { x: 1, y: 3 },
     population: 1500,
     produces: [
       { good: "grain",   ratePerTick: 22 },
@@ -57,6 +60,7 @@ export const LOCATIONS: Record<string, LocationDef> = {
   saffron: {
     id: "saffron",
     name: "Saffron Rim",
+    position: { x: 8, y: 8 },
     population: 600,
     produces: [
       { good: "xenospice", ratePerTick: 4 },
@@ -72,9 +76,4 @@ export const LOCATIONS: Record<string, LocationDef> = {
   },
 };
 
-export const DISTANCES: Record<string, Record<string, number>> = {
-  haven:    { haven: 0, ironhold: 5, verdant: 3, saffron: 8 },
-  ironhold: { haven: 5, ironhold: 0, verdant: 4, saffron: 9 },
-  verdant:  { haven: 3, ironhold: 4, verdant: 0, saffron: 7 },
-  saffron:  { haven: 8, ironhold: 9, verdant: 7, saffron: 0 },
-};
+export const LANES: LaneMap = {};

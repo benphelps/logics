@@ -23,14 +23,22 @@ export interface ConsumptionEntry {
   ratePerTick: number;
 }
 
+export interface Position {
+  x: number;
+  y: number;
+}
+
 export interface LocationDef {
   id: LocationId;
   name: string;
+  position: Position;
   population: number;
   produces: ProductionEntry[];
   consumes: ConsumptionEntry[];
   targetStock: Partial<Record<GoodId, number>>;
 }
+
+export type LaneMap = Record<LocationId, Record<LocationId, number>>;
 
 export interface MarketState {
   stock: Record<GoodId, number>;
@@ -65,6 +73,6 @@ export interface World {
   goods: Record<GoodId, Good>;
   locations: Record<LocationId, LocationDef>;
   markets: Record<LocationId, MarketState>;
-  distances: Record<LocationId, Record<LocationId, number>>;
+  lanes: LaneMap;
   traders: Record<TraderId, Trader>;
 }

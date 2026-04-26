@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createWorld } from "./world";
 import { tickN, tickWorld } from "./tick";
+import { distance } from "./geometry";
 import type { Trader, World } from "./types";
 
 function singleTraderWorld(overrides: Partial<Trader>): World {
@@ -29,9 +30,9 @@ describe("fuel — single fuel type", () => {
     const startFuel = w.traders.t.currentFuel!.qty;
     for (let i = 0; i < 30 && w.traders.t.state !== "transit"; i++) tickWorld(w);
     expect(w.traders.t.state).toBe("transit");
-    const distance = w.distances.haven[w.traders.t.destination!];
+    const dist = distance(w, "haven", w.traders.t.destination!);
     const burned = startFuel - w.traders.t.currentFuel!.qty;
-    expect(burned).toBeCloseTo(distance * 1, 5);
+    expect(burned).toBeCloseTo(dist * 1, 5);
   });
 
   it("trader cannot depart for a destination it lacks fuel for", () => {
@@ -41,7 +42,7 @@ describe("fuel — single fuel type", () => {
     });
     tickN(w, 5);
     if (w.traders.t.state === "transit") {
-      const dist = w.distances.haven[w.traders.t.destination!];
+      const dist = distance(w, "haven", w.traders.t.destination!);
       expect(dist).toBeLessThanOrEqual(4);
     }
   });

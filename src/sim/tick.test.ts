@@ -41,13 +41,14 @@ describe("tick loop", () => {
         forge: {
           id: "forge",
           name: "Forge",
+          position: { x: 0, y: 0 },
           population: 100,
           produces: [{ good: "parts", ratePerTick: 5, inputs: [{ good: "ore", perUnit: 1.5 }] }],
           consumes: [],
           targetStock: { parts: 50, ore: 50 },
         },
       },
-      distances: { forge: { forge: 0 } },
+      lanes: {},
       traders: {},
     });
     w.markets.forge.stock.ore = 0;
