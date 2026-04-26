@@ -41,4 +41,5 @@ describe("trader-driven convergence", () => {
     tickN(trade, 200);
     expect(meanAbsDev(trade, "grain")).toBeLessThan(meanAbsDev(noTrade, "grain"));
   });
+
 });

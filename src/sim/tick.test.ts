@@ -42,17 +42,17 @@ describe("tick loop", () => {
           id: "forge",
           name: "Forge",
           population: 100,
-          produces: [{ good: "tools", ratePerTick: 5, inputs: [{ good: "ore", perUnit: 1.5 }] }],
+          produces: [{ good: "parts", ratePerTick: 5, inputs: [{ good: "ore", perUnit: 1.5 }] }],
           consumes: [],
-          targetStock: { tools: 50, ore: 50 },
+          targetStock: { parts: 50, ore: 50 },
         },
       },
       distances: { forge: { forge: 0 } },
       traders: {},
     });
     w.markets.forge.stock.ore = 0;
-    w.markets.forge.stock.tools = 10;
+    w.markets.forge.stock.parts = 10;
     tickWorld(w);
-    expect(w.markets.forge.stock.tools).toBeCloseTo(10, 5);
+    expect(w.markets.forge.stock.parts).toBeCloseTo(10, 5);
   });
 });

@@ -4,7 +4,7 @@ export const MIN_PROFIT_PER_TICK = 0.5;
 export const MAX_DRAW_FRACTION = 0.5;
 export const REFUEL_THRESHOLD = 0.4;
 export const STRANDING_RESERVE = 0.2;
-export const FUEL_GOOD: GoodId = "fuel";
+export const FUEL_GOOD: GoodId = "plasma";
 
 export interface TraderEvent {
   trader: string;
