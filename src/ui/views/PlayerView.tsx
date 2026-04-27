@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { IconType } from "react-icons";
 import { MdPushPin } from "react-icons/md";
@@ -34,6 +34,8 @@ import "./PlayerView.css";
 
 const SHOW_DEV_SHIP_PLAN_PANEL = false;
 const GUIDANCE_LOCKED_TEXT = "Hire a navigator for guided suggestions.";
+const DEPART_SUGGESTION_GUARD_MS = 1800;
+const SUGGESTION_PULSE_MS = 3700;
 
 export function PlayerView() {
   const world = useStore((s) => s.world);
@@ -443,6 +445,19 @@ function DockedView({ ship, world, loc, guidedPlan, hint, target, hintText, cueT
   const [hoveredFocus, setHoveredFocus] = useState<InfoFocus | null>(null);
   const [pinnedFocuses, setPinnedFocuses] = useState<InfoFocus[]>([]);
   const [activePinnedKey, setActivePinnedKey] = useState<string | null>(null);
+  const [suggestionPulse, setSuggestionPulse] = useState(0);
+  const suggestionPulseTimer = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (suggestionPulseTimer.current != null) window.clearTimeout(suggestionPulseTimer.current);
+  }, []);
+  const pulseSuggestionActions = () => {
+    setSuggestionPulse(prev => (prev % 2) + 1);
+    if (suggestionPulseTimer.current != null) window.clearTimeout(suggestionPulseTimer.current);
+    suggestionPulseTimer.current = window.setTimeout(() => {
+      setSuggestionPulse(0);
+      suggestionPulseTimer.current = null;
+    }, SUGGESTION_PULSE_MS);
+  };
   const activePinned = activePinnedKey
     ? pinnedFocuses.find(focus => infoFocusKey(focus) === activePinnedKey) ?? null
     : null;
@@ -477,8 +492,14 @@ function DockedView({ ship, world, loc, guidedPlan, hint, target, hintText, cueT
     else pinnedMarketGoods.add(pinned.good);
   }
 
+  const pulseClass = suggestionPulse === 0
+    ? ""
+    : suggestionPulse === 1
+      ? "suggestion-pulse-odd"
+      : "suggestion-pulse-even";
+
   return (
-    <div className="docked-view">
+    <div className={`docked-view ${pulseClass}`}>
       <div className="bridge">
         <ShipCard ship={ship} world={world} guidedPlan={guidedPlan} target={target} hintText={hintText} cueText={cueText} critical={critical} inTransit={inTransit} />
         {inTransit
@@ -496,6 +517,7 @@ function DockedView({ ship, world, loc, guidedPlan, hint, target, hintText, cueT
               onSelectStation={(station) => togglePinnedFocus({ kind: "station", loc: station, source: "travel" })}
               onHoverStation={(station) => setHoveredFocus(station ? { kind: "station", loc: station, source: "travel" } : null)}
               onClearInfoFocus={clearInfoFocus}
+              onPulseSuggestions={pulseSuggestionActions}
             />
           )}
         <CargoBridgeCard
@@ -1390,6 +1412,18 @@ function targetSuggestsCargoAction(target: HintTarget): boolean {
   return [target.sellGood, ...(target.sellGoods ?? [])]
     .filter((good): good is GoodId => good != null)
     .some(good => !isUpgradeGood(good));
+}
+
+function shouldGuardDepartureForSuggestions(target: HintTarget, destination: LocationId, ship: Trader): boolean {
+  const hasLocalSuggestedAction =
+    targetBuyGoods(target).length > 0
+    || target.sellGood != null
+    || (target.sellGoods?.length ?? 0) > 0
+    || targetSuggestsContracts(target)
+    || target.refuel === true
+    || (ship.maintenanceDebt ?? 0) >= MAINTENANCE_DEBT_TRAVEL_BLOCK;
+  const suggestedDifferentDestination = target.travelTo != null && target.travelTo !== destination;
+  return hasLocalSuggestedAction || suggestedDifferentDestination;
 }
 
 function StationExchangeCard({ ship, world, loc, target, hintText, cueText, selectedGood, pinnedGoods, onSelectGood, onHoverGood }: {
@@ -2713,7 +2747,7 @@ function tierClass(tier: number): "high" | "medium" | "low" {
   return tier >= 3 ? "high" : tier === 2 ? "medium" : "low";
 }
 
-function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedStation, pinnedStations, onSelectStation, onHoverStation, onClearInfoFocus }: {
+function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedStation, pinnedStations, onSelectStation, onHoverStation, onClearInfoFocus, onPulseSuggestions }: {
   ship: Trader;
   world: World;
   loc: LocationDef;
@@ -2725,8 +2759,14 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
   onSelectStation: (station: LocationId) => void;
   onHoverStation: (station: LocationId | null) => void;
   onClearInfoFocus: () => void;
+  onPulseSuggestions: () => void;
 }) {
   const travel = useStore((s) => s.travel);
+  const [armedDepart, setArmedDepart] = useState<LocationId | null>(null);
+  const departGuardTimer = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (departGuardTimer.current != null) window.clearTimeout(departGuardTimer.current);
+  }, []);
   const manualActions = ship.pilot !== "auto";
   const ft = ship.fuelTypes.find(f => f.good === ship.currentFuel?.good);
   const fuel = ship.currentFuel?.qty ?? 0;
@@ -2795,6 +2835,8 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
             const destinationJobs = activeJobsByDestination.get(d.to) ?? [];
             const travelLabel = suggested ? target.travelLabel : undefined;
             const pinned = pinnedStations.has(d.to);
+            const departGuarded = d.canFly && shouldGuardDepartureForSuggestions(target, d.to, ship);
+            const departArmed = armedDepart === d.to;
             return (
               <tr
                 key={d.to}
@@ -2830,13 +2872,28 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
                       <button
                         onClick={(event) => {
                           event.stopPropagation();
+                          if (departGuarded && !departArmed) {
+                            setArmedDepart(d.to);
+                            onPulseSuggestions();
+                            if (departGuardTimer.current != null) window.clearTimeout(departGuardTimer.current);
+                            departGuardTimer.current = window.setTimeout(() => {
+                              setArmedDepart(current => current === d.to ? null : current);
+                              departGuardTimer.current = null;
+                            }, DEPART_SUGGESTION_GUARD_MS);
+                            return;
+                          }
+                          if (departGuardTimer.current != null) {
+                            window.clearTimeout(departGuardTimer.current);
+                            departGuardTimer.current = null;
+                          }
+                          setArmedDepart(null);
                           travel(ship.id, d.to);
                         }}
                         disabled={!d.canFly}
-                        className={`btn-action ${suggested && d.canFly ? "btn-suggested" : ""}`}
-                        title={d.canFly ? "" : "Insufficient fuel for this trip"}
+                        className={`btn-action ${suggested && d.canFly ? "btn-suggested" : ""} ${departArmed ? "depart-armed" : ""}`}
+                        title={d.canFly ? departArmed ? "Click again to depart with suggested actions still pending" : "" : "Insufficient fuel for this trip"}
                       >
-                        <span className="btn-label">Depart</span>
+                        <span className="btn-label">{departArmed ? "Confirm" : "Depart"}</span>
                       </button>
                     </ActionCell>
                   </td>
