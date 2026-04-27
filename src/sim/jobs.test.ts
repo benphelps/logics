@@ -137,19 +137,20 @@ describe("jobs: caps + expiry", () => {
     expect(w.jobs[job.id]).toBeUndefined();
   });
 
-  it("expiring an accepted high-tier job charges the player penalty", () => {
+  it("expiring an accepted high-tier job charges the ship penalty", () => {
     const w = createWorld();
     const ship = w.traders[w.player!.shipIds[0]];
+    ship.funds = 100_000;
     w.markets.haven.stock.grain = 0;
     generateJobs(w);
     const job = Object.values(w.jobs).find(j => j.tier === "high")!;
     expect(job).toBeDefined();
     acceptJob(w, job.id, ship.id);
-    const fundsBefore = w.player!.funds;
+    const fundsBefore = ship.funds;
     w.tick = job.expiresAt;
     const events = expireJobs(w);
     expect(events.find(e => e.jobId === job.id)?.penalty).toBe(job.penalty);
-    expect(w.player!.funds).toBe(fundsBefore - job.penalty);
+    expect(ship.funds).toBe(fundsBefore - job.penalty);
   });
 
   it("expiring a low-tier accepted job applies no penalty", () => {
@@ -162,10 +163,10 @@ describe("jobs: caps + expiry", () => {
     expect(job).toBeDefined();
     expect(job.penalty).toBe(0);
     acceptJob(w, job.id, ship.id);
-    const fundsBefore = w.player!.funds;
+    const fundsBefore = ship.funds;
     w.tick = job.expiresAt;
     expireJobs(w);
-    expect(w.player!.funds).toBe(fundsBefore);
+    expect(ship.funds).toBe(fundsBefore);
   });
 });
 
@@ -173,43 +174,44 @@ describe("jobs: accept / abandon / completion", () => {
   it("acceptJob marks acceptedBy + abandonJob clears it (with penalty for medium+)", () => {
     const w = createWorld();
     const ship = w.traders[w.player!.shipIds[0]];
+    ship.funds = 100_000;
     w.markets.haven.stock.grain = 0;
     generateJobs(w);
     const job = Object.values(w.jobs).find(j => j.tier === "high")!;
     expect(acceptJob(w, job.id, ship.id).ok).toBe(true);
     expect(w.jobs[job.id].acceptedBy).toBe(ship.id);
-    const fundsBefore = w.player!.funds;
+    const fundsBefore = ship.funds;
     abandonJob(w, job.id);
     expect(w.jobs[job.id]).toBeUndefined();
-    expect(w.player!.funds).toBe(fundsBefore - job.penalty);
+    expect(ship.funds).toBe(fundsBefore - job.penalty);
   });
 
   it("abandoning an unaccepted job is free", () => {
     const w = createWorld();
+    const ship = w.traders[w.player!.shipIds[0]];
     w.markets.haven.stock.grain = 0;
     generateJobs(w);
     const job = Object.values(w.jobs)[0];
-    const fundsBefore = w.player!.funds;
+    const fundsBefore = ship.funds;
     abandonJob(w, job.id);
-    expect(w.player!.funds).toBe(fundsBefore);
+    expect(ship.funds).toBe(fundsBefore);
   });
 
-  it("creditJobOnDelivery pays out reward when the delivered qty meets the contract", () => {
+  it("creditJobOnDelivery pays out reward to the ship when the delivered qty meets the contract", () => {
     const w = createWorld();
     const ship = w.traders[w.player!.shipIds[0]];
-    // Hand-craft a job at ship's current location so the credit logic fires
     const jobId = "j-test";
     w.jobs[jobId] = {
       id: jobId, kind: "shortage", tier: "medium", good: "grain", qty: 5,
       destination: ship.location, reward: 1000, penalty: 250, postedTick: 0,
       expiresAt: 999, acceptedBy: ship.id, delivered: 0,
     };
-    const fundsBefore = w.player!.funds;
+    const fundsBefore = ship.funds;
     const events = creditJobOnDelivery(w, ship.id, ship.location, "grain", 5);
     expect(events).toHaveLength(1);
     expect(events[0].partial).toBe(false);
     expect(events[0].reward).toBe(1000);
-    expect(w.player!.funds).toBe(fundsBefore + 1000);
+    expect(ship.funds).toBe(fundsBefore + 1000);
     expect(w.jobs[jobId]).toBeUndefined();
   });
 
@@ -222,21 +224,20 @@ describe("jobs: accept / abandon / completion", () => {
       destination: ship.location, reward: 500, penalty: 0, postedTick: 0,
       expiresAt: 999, acceptedBy: ship.id, delivered: 0,
     };
-    const fundsBefore = w.player!.funds;
+    const fundsBefore = ship.funds;
     let evs = creditJobOnDelivery(w, ship.id, ship.location, "grain", 4);
     expect(evs[0].partial).toBe(true);
     expect(evs[0].delivered).toBe(4);
-    expect(w.player!.funds).toBe(fundsBefore);
+    expect(ship.funds).toBe(fundsBefore);
 
     evs = creditJobOnDelivery(w, ship.id, ship.location, "grain", 6);
     expect(evs[0].partial).toBe(false);
-    expect(w.player!.funds).toBe(fundsBefore + 500);
+    expect(ship.funds).toBe(fundsBefore + 500);
   });
 
   it("sellAtLocation triggers job credit + reward on full delivery", () => {
     const w = createWorld();
     const ship = w.traders[w.player!.shipIds[0]];
-    // Buy grain elsewhere first… simpler: hand-load cargo + post a job at this loc.
     ship.cargo = [{ good: "grain", qty: 8, source: "verdant", unitPrice: 5, purchasedAt: 0 }];
     w.markets[ship.location].stock.grain = 0;
     const jobId = "j-test";
@@ -245,13 +246,14 @@ describe("jobs: accept / abandon / completion", () => {
       destination: ship.location, reward: 800, penalty: 200, postedTick: 0,
       expiresAt: 999, acceptedBy: ship.id, delivered: 0,
     };
-    const fundsBefore = w.player!.funds;
+    const fundsBefore = ship.funds;
     const r = sellAtLocation(w, ship, "grain");
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.jobCompletions?.[0].reward).toBe(800);
     }
-    expect(w.player!.funds).toBe(fundsBefore + 800);
+    // Ship gets sale revenue + reward bonus.
+    expect(ship.funds).toBeGreaterThan(fundsBefore + 800);
   });
 });
 

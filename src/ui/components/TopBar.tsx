@@ -27,9 +27,12 @@ export function TopBar() {
 
       <div className="topbar-stats mono">
         <Stat label="Tick" value={tick.toLocaleString()} />
-        {world.player && (
-          <Stat label="Bank" value={`Ç${Math.round(world.player.funds).toLocaleString()}`} />
-        )}
+        {world.player && (() => {
+          const fleet = world.player.shipIds.reduce(
+            (s, id) => s + (world.traders[id]?.funds ?? 0), 0,
+          );
+          return <Stat label="Fleet" value={`Ç${Math.round(fleet).toLocaleString()}`} />;
+        })()}
       </div>
 
       <div className="topbar-controls">

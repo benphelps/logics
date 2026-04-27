@@ -61,7 +61,8 @@ export type CrewActionResult = { ok: true } | { ok: false; reason: string };
 
 // Hire from a posted offer. The offer must be at the ship's current station
 // (you can only sign someone on while you're docked together). On success
-// the offer is consumed from world.hires.
+// the offer is consumed from world.hires. Cost is charged to the ship's
+// own wallet — each ship is financially independent.
 export function hireCrew(world: World, ship: Trader, hireId: HireId): CrewActionResult {
   if (ship.state !== "idle") return { ok: false, reason: "Can only hire while docked." };
   if (!world.player) return { ok: false, reason: "No player." };
@@ -69,11 +70,11 @@ export function hireCrew(world: World, ship: Trader, hireId: HireId): CrewAction
   const offer = world.hires[hireId];
   if (!offer) return { ok: false, reason: "Offer no longer available." };
   if (offer.location !== ship.location) return { ok: false, reason: "That offer is at a different station." };
-  if (world.player.funds < offer.hireCost) {
-    return { ok: false, reason: `Need Ç${offer.hireCost.toLocaleString()}, have Ç${Math.round(world.player.funds).toLocaleString()}.` };
+  if (ship.funds < offer.hireCost) {
+    return { ok: false, reason: `Need Ç${offer.hireCost.toLocaleString()}, ship has Ç${Math.round(ship.funds).toLocaleString()}.` };
   }
 
-  world.player.funds -= offer.hireCost;
+  ship.funds -= offer.hireCost;
   ship.crew = ship.crew ?? {};
   ship.crew[offer.role] = snapshotFromHire(offer);
   takeHire(world, hireId);            // consume the offer

@@ -236,7 +236,20 @@ function LocalJobsCallout({ ship, world, loc, target, hintText }: {
   const local = listLocalJobs(world, loc.id);
   const seen = new Set(local.map(j => j.id));
   const remoteRescues = listAvailableRescueJobs(world).filter(j => !seen.has(j.id));
-  const jobs = [...local, ...remoteRescues].sort(localJobSort);
+  // Remote shortage contracts the player can act on right now because their
+  // cargo matches — keeps the suggestion engine's "accept this remote contract"
+  // hint actionable in this list (otherwise the highlighted Accept button has
+  // nowhere to render).
+  const cargoGoods = new Set(ship.cargo.map(l => l.good));
+  const remoteActionable = Object.values(world.jobs).filter(j =>
+    j.acceptedBy == null
+    && j.kind === "shortage"
+    && j.destination !== loc.id
+    && cargoGoods.has(j.good)
+    && !seen.has(j.id)
+  );
+  for (const j of remoteActionable) seen.add(j.id);
+  const jobs = [...local, ...remoteRescues, ...remoteActionable].sort(localJobSort);
 
   return (
     <section className="bridge-card local-jobs-card">
@@ -615,7 +628,7 @@ function MarketTableBody({ ship, world, loc, target, hintText }: {
             const cargoQty = matchingLot?.qty ?? 0;
             const isFuel = ship.fuelTypes.some(f => f.good === gid);
             const isBuyTarget = target.buyGood === gid;
-            const isSellTarget = target.sellCargo === true && isCargo;
+            const isSellTarget = target.sellGood === gid && isCargo;
             const rowClass = (isBuyTarget || isSellTarget) ? "row-suggested" : isCargo ? "row-mine" : "";
 
             return (
@@ -639,6 +652,7 @@ function MarketTableBody({ ship, world, loc, target, hintText }: {
                     suggestedBuy={isBuyTarget}
                     suggestedSell={isSellTarget}
                     hintText={hintText}
+                    recommendedBuyQty={isBuyTarget ? target.buyQty : undefined}
                     onBuy={(qty) => buy(ship.id, gid, qty)}
                     onSell={(qty) => sell(ship.id, gid, qty)}
                   />
@@ -656,10 +670,11 @@ function MarketTableBody({ ship, world, loc, target, hintText }: {
 }
 
 function BuySellControls({
-  ship, world, goodId, stock, price, cargoQty, suggestedBuy, suggestedSell, hintText, onBuy, onSell,
+  ship, world, goodId, stock, price, cargoQty, suggestedBuy, suggestedSell, hintText, recommendedBuyQty, onBuy, onSell,
 }: {
   ship: Trader; world: World; goodId: string; stock: number; price: number; cargoQty: number;
   suggestedBuy: boolean; suggestedSell: boolean; hintText: string;
+  recommendedBuyQty?: number;
   onBuy: (qty: number) => void; onSell: (qty: number) => void;
 }) {
   const good = world.goods[goodId];
@@ -681,6 +696,16 @@ function BuySellControls({
 
   const sellTitle = !isCargoMatch ? `No ${goodId} in cargo` : "";
 
+  // When the row is suggested-buy and the engine has provided a specific qty
+  // (typically reduced to leave room for accepted-contract goods at the same
+  // destination), the button buys THAT qty instead of bay-max. Player can
+  // still override with +10 or buy-max if they want everything.
+  const suggestedQty = suggestedBuy && recommendedBuyQty != null && recommendedBuyQty > 0
+    ? Math.min(recommendedBuyQty, maxBuy)
+    : null;
+  const buyClickQty = suggestedQty ?? maxBuy;
+  const buyLabel = suggestedQty != null ? "Buy" : "Buy max";
+
   return (
     <div className="buy-sell">
       <button
@@ -694,12 +719,12 @@ function BuySellControls({
       <ActionCell suggested={suggestedBuy} hintText={hintText}>
         <button
           className={`btn-action ${suggestedBuy ? "btn-suggested" : "primary"}`}
-          onClick={() => onBuy(maxBuy)}
+          onClick={() => onBuy(buyClickQty)}
           disabled={!canBuyMax}
           title={canBuyMax ? "" : buyTitle}
         >
-          <span className="btn-label">Buy max</span>
-          <span className="btn-count">{maxBuy}</span>
+          <span className="btn-label">{buyLabel}</span>
+          <span className="btn-count">{buyClickQty}</span>
         </button>
       </ActionCell>
       <ActionCell suggested={suggestedSell} hintText={hintText}>
@@ -1043,7 +1068,6 @@ function ActiveContractsTab({ ship, world, jobs }: { ship: Trader; world: World;
 // expiry countdown; rows are sorted tier asc / cost asc by listHiresAt.
 function HireOffersTab({ ship, world }: { ship: Trader; world: World }) {
   const hire = useStore((s) => s.hireCrew);
-  const player = world.player;
   const offers = listHiresAt(world, ship.location);
   const docked = ship.state === "idle";
 
@@ -1076,7 +1100,7 @@ function HireOffersTab({ ship, world }: { ship: Trader; world: World }) {
           const ticksLeft = Math.max(0, h.expiresAt - world.tick);
           const expiringSoon = ticksLeft <= 15;
           const mods = modifiersText(h.modifiers);
-          const canAfford = (player?.funds ?? 0) >= h.hireCost;
+          const canAfford = ship.funds >= h.hireCost;
           return (
             <tr key={h.id} className={`job-row tier-${tierClass(h.tier)}`}>
               <td><span className={`tier-badge tier-${tierClass(h.tier)}`}>T{h.tier}</span></td>

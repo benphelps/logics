@@ -7,12 +7,12 @@ export interface PlayerSeedConfig {
 }
 
 export const DEFAULT_PLAYER_SEED: PlayerSeedConfig = {
-  startingFunds: 50_000,
+  startingFunds: 55_000,                  // initial ship wallet; each ship is financially independent
   startingLocation: "haven",
   startingShipName: "Voyager",
 };
 
-export function makeStartingShip(name: string, location: string): Trader {
+export function makeStartingShip(name: string, location: string, funds: number): Trader {
   return {
     id: "p_" + name.toLowerCase().replace(/[^a-z0-9]+/g, "_"),
     name,
@@ -21,7 +21,7 @@ export function makeStartingShip(name: string, location: string): Trader {
     fuelCapacity: 60,
     fuelTypes: [{ good: "plasma", perDistance: 1.0 }],
     currentFuel: { good: "plasma", qty: 60 },
-    funds: 5_000,
+    funds,
     location,
     state: "idle",
     cargo: [],
@@ -36,9 +36,12 @@ export function makePlayer(seed: PlayerSeedConfig = DEFAULT_PLAYER_SEED): {
   player: Player;
   ship: Trader;
 } {
-  const ship = makeStartingShip(seed.startingShipName, seed.startingLocation);
+  const ship = makeStartingShip(seed.startingShipName, seed.startingLocation, seed.startingFunds);
+  // player.funds remains in the type for back-compat / future personal-bank
+  // features, but no sim flow reads or writes it now — each ship pays its own
+  // way. Keep at 0 to make that explicit.
   const player: Player = {
-    funds: seed.startingFunds,
+    funds: 0,
     shipIds: [ship.id],
   };
   return { player, ship };

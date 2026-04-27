@@ -66,6 +66,10 @@ function tryRefuel(world: World, trader: Trader, events: TraderEvent[]): void {
   events.push({ trader: trader.id, kind: "refuel", good: choice.good, qty: buyQty, unitPrice: price });
 }
 
+function isPlayerShip(world: World, trader: Trader): boolean {
+  return world.player?.shipIds.includes(trader.id) ?? false;
+}
+
 function inTransitArrivalsByDestGood(world: World): Map<string, number> {
   const acc = new Map<string, number>();
   for (const t of Object.values(world.traders)) {
@@ -102,12 +106,34 @@ export function listTradeOptions(
   // info. Routes that match an accepted job get the per-unit reward credited
   // on top of the trade profit, so the auto-pilot prefers them when picking
   // the next move (and follows through on contracts it has signed up for).
+  //
+  // For player ships in manual mode (where the engine runs as a hint) and
+  // auto+navigator (where the navigator auto-accepts on arrival), also fold
+  // in unaccepted shortage contracts at the destination. This makes the
+  // engine actively chase contract-aligned trades instead of stumbling onto
+  // them — and turns the navigator into a real value-add.
+  const willRealizeUnaccepted =
+    isPlayerShip(world, trader) &&
+    (trader.pilot === "manual" || (trader.pilot === "auto" && hasCrew(trader, "navigator")));
   const jobBonusMap = new Map<string, { perUnit: number; remaining: number }>();
   for (const j of Object.values(world.jobs)) {
-    if (j.acceptedBy !== trader.id) continue;
-    const remaining = j.qty - j.delivered;
-    if (remaining <= 0) continue;
-    jobBonusMap.set(`${j.destination}|${j.good}`, { perUnit: j.reward / j.qty, remaining });
+    if (j.acceptedBy === trader.id) {
+      const remaining = j.qty - j.delivered;
+      if (remaining <= 0) continue;
+      // Accepted contracts: include penalty-avoided in the bonus. The player
+      // owes that money if the contract expires unfilled, so completing it
+      // is worth reward + penalty, not just reward. Steers the engine to
+      // follow through on commitments instead of getting distracted.
+      const perUnit = (j.reward + j.penalty) / j.qty;
+      jobBonusMap.set(`${j.destination}|${j.good}`, { perUnit, remaining });
+    } else if (j.acceptedBy == null && j.kind === "shortage" && willRealizeUnaccepted) {
+      // Don't clobber an accepted-bonus entry (acceptedBy === trader.id wins).
+      // Unaccepted: just reward — no commitment cost yet.
+      const key = `${j.destination}|${j.good}`;
+      if (!jobBonusMap.has(key)) {
+        jobBonusMap.set(key, { perUnit: j.reward / j.qty, remaining: j.qty });
+      }
+    }
   }
 
   // Cargo space available for new buys = capacity - existing lot mass.
@@ -116,19 +142,54 @@ export function listTradeOptions(
   const usedMass = trader.cargo.reduce((s, l) => s + l.qty * world.goods[l.good].weight, 0);
   const freeMass = Math.max(0, trader.capacity - usedMass);
 
+  // Pre-compute reserved cargo mass for accepted contracts, indexed by
+  // destination. When evaluating a route to D, the player's primary buy
+  // shouldn't gobble cargo that's needed for contract goods bound for D
+  // and available right here. Otherwise the engine recommends "max bay"
+  // and crowds out the contract goods the player came here for.
+  const reservedMassByDest = new Map<LocationId, Map<GoodId, number>>();
+  for (const j of Object.values(world.jobs)) {
+    if (j.acceptedBy !== trader.id) continue;
+    const remaining = j.qty - j.delivered;
+    if (remaining <= 0) continue;
+    const goodObj = world.goods[j.good]; if (!goodObj) continue;
+    const stockHere = srcMarket.stock[j.good] ?? 0;
+    const reserveQty = Math.min(remaining, Math.floor(stockHere));
+    if (reserveQty < 1) continue;
+    const reserveMass = reserveQty * goodObj.weight;
+    let inner = reservedMassByDest.get(j.destination);
+    if (!inner) { inner = new Map(); reservedMassByDest.set(j.destination, inner); }
+    inner.set(j.good, reserveMass);
+  }
+
   for (const goodId of Object.keys(world.goods) as GoodId[]) {
     const good = world.goods[goodId];
     const buyPrice = srcMarket.prices[goodId];
     const srcStock = srcMarket.stock[goodId] ?? 0;
-    const maxByCargo = freeMass / good.weight;
-    const maxByStock = srcStock * drawFraction;
-    const maxByFunds = buyPrice > 0 ? trader.funds / buyPrice : 0;
-    const maxQty = Math.floor(Math.min(maxByCargo, maxByStock, maxByFunds));
-    if (maxQty <= 0) continue;
 
     const perDist = effectivePerDistance(trader, ft.perDistance);
     for (const dstId of Object.keys(world.locations) as LocationId[]) {
       if (dstId === here) continue;
+
+      // Reserve cargo for accepted contracts at this destination whose good
+      // isn't this primary good. The reservation only counts what's actually
+      // available at the source — no point reserving for goods you can't buy.
+      let reservedMass = 0;
+      const innerReserve = reservedMassByDest.get(dstId);
+      if (innerReserve) {
+        for (const [reservedGood, mass] of innerReserve) {
+          if (reservedGood === goodId) continue;
+          reservedMass += mass;
+        }
+      }
+      const usableMass = Math.max(0, freeMass - reservedMass);
+
+      const maxByCargo = usableMass / good.weight;
+      const maxByStock = srcStock * drawFraction;
+      const maxByFunds = buyPrice > 0 ? trader.funds / buyPrice : 0;
+      const maxQty = Math.floor(Math.min(maxByCargo, maxByStock, maxByFunds));
+      if (maxQty <= 0) continue;
+
       const dist = distance(world, here, dstId);
       const fuelNeeded = dist * perDist;
       if (fuelNeeded > effectiveFuel) continue;
@@ -371,32 +432,77 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
 
   const here = trader.location;
   const srcMarket = world.markets[here];
-  srcMarket.stock[choice.good] = (srcMarket.stock[choice.good] ?? 0) - choice.qty;
-  trader.funds -= choice.qty * choice.buyPrice;
-  trader.cargo = [{
-    good: choice.good,
-    qty: choice.qty,
-    source: here,
-    unitPrice: choice.buyPrice,
-    purchasedAt: world.tick,
-  }];
-  trader.currentFuel = { good: trader.currentFuel!.good, qty: trader.currentFuel!.qty - choice.fuelNeeded };
-  events.push({
-    trader: trader.id,
-    kind: "buy",
-    good: choice.good,
-    qty: choice.qty,
-    unitPrice: choice.buyPrice,
-    from: here,
-  });
 
+  // Player-only multi-good loadout: before the primary buy, pre-load goods
+  // for any accepted contract bound for the same destination. Solves the
+  // case where the engine picks a high-margin generic trade and would
+  // otherwise abandon a parallel accepted contract that could have ridden
+  // along in the same trip. Contract goods load FIRST (high-tier first),
+  // primary fills the remaining bay.
+  const isPlayer = isPlayerShip(world, trader);
+  const tierRank = { high: 0, medium: 1, low: 2 } as const;
+  const contractLoads: { good: GoodId; qty: number; price: number }[] = [];
+  let preloadMass = 0;
+  let fundsLeft = trader.funds;
+  if (isPlayer) {
+    const accs = Object.values(world.jobs)
+      .filter(j => j.acceptedBy === trader.id && j.destination === choice.to && j.good !== choice.good)
+      .sort((a, b) => tierRank[a.tier] - tierRank[b.tier]);
+    for (const c of accs) {
+      const remaining = c.qty - c.delivered;
+      if (remaining <= 0) continue;
+      const g = world.goods[c.good];
+      if (!g) continue;
+      const stock = srcMarket.stock[c.good] ?? 0;
+      const price = srcMarket.prices[c.good] ?? 0;
+      const roomMass = trader.capacity - preloadMass;
+      const maxByRoom = Math.floor(roomMass / g.weight);
+      const maxByFunds = price > 0 ? Math.floor(fundsLeft / price) : 0;
+      const buyQty = Math.max(0, Math.min(remaining, Math.floor(stock), maxByRoom, maxByFunds));
+      if (buyQty < 1) continue;
+      contractLoads.push({ good: c.good, qty: buyQty, price });
+      preloadMass += buyQty * g.weight;
+      fundsLeft -= buyQty * price;
+    }
+  }
+
+  // Recompute primary qty against the bay + funds remaining after preloads.
+  const primaryWeight = world.goods[choice.good].weight;
+  const primaryMaxByRoom = Math.floor((trader.capacity - preloadMass) / primaryWeight);
+  const primaryMaxByFunds = choice.buyPrice > 0 ? Math.floor(fundsLeft / choice.buyPrice) : 0;
+  const primaryQty = Math.max(0, Math.min(choice.qty, primaryMaxByRoom, primaryMaxByFunds));
+
+  // If preloads ate every byte of cargo and primary can't ship, still depart
+  // with just the contracts (commitments win). If neither, abort to idle.
+  if (primaryQty < 1 && contractLoads.length === 0) {
+    events.push({ trader: trader.id, kind: "idle" });
+    return;
+  }
+
+  trader.cargo = [];
+  for (const l of contractLoads) {
+    srcMarket.stock[l.good] = (srcMarket.stock[l.good] ?? 0) - l.qty;
+    trader.funds -= l.qty * l.price;
+    trader.cargo.push({ good: l.good, qty: l.qty, source: here, unitPrice: l.price, purchasedAt: world.tick });
+    events.push({ trader: trader.id, kind: "buy", good: l.good, qty: l.qty, unitPrice: l.price, from: here });
+  }
+  if (primaryQty > 0) {
+    srcMarket.stock[choice.good] = (srcMarket.stock[choice.good] ?? 0) - primaryQty;
+    trader.funds -= primaryQty * choice.buyPrice;
+    trader.cargo.push({ good: choice.good, qty: primaryQty, source: here, unitPrice: choice.buyPrice, purchasedAt: world.tick });
+    events.push({ trader: trader.id, kind: "buy", good: choice.good, qty: primaryQty, unitPrice: choice.buyPrice, from: here });
+  }
+
+  trader.currentFuel = { good: trader.currentFuel!.good, qty: trader.currentFuel!.qty - choice.fuelNeeded };
   trader.destination = choice.to;
   trader.state = "transit";
   trader.ticksRemaining = choice.travelTicks;
   events.push({ trader: trader.id, kind: "depart", from: here, to: choice.to });
 
-  const key = `${choice.to}|${choice.good}`;
-  inflight.set(key, (inflight.get(key) ?? 0) + choice.qty);
+  if (primaryQty > 0) {
+    const key = `${choice.to}|${choice.good}`;
+    inflight.set(key, (inflight.get(key) ?? 0) + primaryQty);
+  }
 }
 
 export type ExecuteResult =
@@ -608,16 +714,15 @@ export function travelTo(world: World, trader: Trader, dst: LocationId): Execute
 }
 
 // Pay off accumulated maintenance debt. Player-only — debt only accrues for
-// player ships missing a mechanic. Returns the amount paid.
+// player ships missing a mechanic. Charged to the ship's own wallet.
 export function repairShip(world: World, trader: Trader): { ok: true; paid: number } | { ok: false; reason: string } {
   if (trader.state !== "idle") return { ok: false, reason: "Can only repair while docked." };
   const debt = trader.maintenanceDebt ?? 0;
   if (debt <= 0) return { ok: false, reason: "Ship is in good repair — nothing to fix." };
-  if (!world.player) return { ok: false, reason: "No player." };
-  if (world.player.funds < debt) {
-    return { ok: false, reason: `Need Ç${Math.round(debt).toLocaleString()} to repair, have Ç${Math.round(world.player.funds).toLocaleString()}.` };
+  if (trader.funds < debt) {
+    return { ok: false, reason: `Need Ç${Math.round(debt).toLocaleString()} to repair, ship has Ç${Math.round(trader.funds).toLocaleString()}.` };
   }
-  world.player.funds -= debt;
+  trader.funds -= debt;
   trader.maintenanceDebt = 0;
   pushNote(world, trader, `Repaired ship — Ç${Math.round(debt).toLocaleString()} paid`, "good");
   return { ok: true, paid: debt };

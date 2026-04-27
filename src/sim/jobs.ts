@@ -163,16 +163,16 @@ export interface JobExpiryEvent {
   penalty: number;
 }
 
-// Remove jobs past their deadline. If the job was accepted, charge the penalty
-// against the player's bank — that's how high-tier jobs hurt to fail.
+// Remove jobs past their deadline. If the job was accepted, charge the
+// penalty against the accepting ship's wallet — high-tier jobs really hurt.
 export function expireJobs(world: World): JobExpiryEvent[] {
   const events: JobExpiryEvent[] = [];
   for (const job of Object.values(world.jobs)) {
     if (world.tick < job.expiresAt) continue;
     const acceptingShip = job.acceptedBy ? world.traders[job.acceptedBy] : null;
     const penalty = acceptingShip ? job.penalty : 0;
-    if (acceptingShip && world.player && job.penalty > 0) {
-      world.player.funds -= job.penalty;
+    if (acceptingShip && job.penalty > 0) {
+      acceptingShip.funds = Math.max(0, acceptingShip.funds - job.penalty);
     }
     if (acceptingShip) pushJobExpired(world, acceptingShip, job, penalty);
     events.push({ jobId: job.id, tier: job.tier, acceptedBy: job.acceptedBy, penalty });
@@ -204,8 +204,8 @@ export function abandonJob(world: World, jobId: JobId): JobActionResult {
   if (!job) return { ok: false, reason: "Job not found." };
   const acceptingShip = job.acceptedBy ? world.traders[job.acceptedBy] : null;
   const penalty = acceptingShip && job.penalty > 0 ? job.penalty : 0;
-  if (acceptingShip && world.player && penalty > 0) {
-    world.player.funds -= penalty;
+  if (acceptingShip && penalty > 0) {
+    acceptingShip.funds = Math.max(0, acceptingShip.funds - penalty);
   }
   if (acceptingShip) pushJobAbandoned(world, acceptingShip, job, penalty);
   delete world.jobs[job.id];
@@ -252,7 +252,7 @@ export function creditJobOnDelivery(
     job.delivered += credit;
     remaining -= credit;
     if (job.delivered >= job.qty) {
-      if (world.player) world.player.funds += job.reward;
+      if (ship) ship.funds += job.reward;
       const ev = { jobId: job.id, tier: job.tier, reward: job.reward, partial: false, delivered: job.delivered };
       if (ship) pushJobCompleted(world, ship, ev, job);
       events.push(ev);

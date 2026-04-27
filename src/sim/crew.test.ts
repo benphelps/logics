@@ -37,15 +37,15 @@ function postTestHire(w: World, location: string, role: CrewRole, opts: {
 describe("crew: hire / fire / modifiers", () => {
   it("hireCrew consumes the offer, deducts cost, sets crew slot, recomputes stats", () => {
     const w = createWorld();
-    w.player!.funds = 1_000_000;
     const ship = getPlayerShip(w);
+    ship.funds = 1_000_000;
     recomputeShipStats(ship);
     const baseFuel = ship.fuelCapacity;
-    const fundsBefore = w.player!.funds;
+    const fundsBefore = ship.funds;
     const offer = postTestHire(w, ship.location, "navigator", { hireCost: 240_000, modifiers: { fuelCapacityBonus: 8 } });
     expect(hireCrew(w, ship, offer.id).ok).toBe(true);
     expect(ship.crew?.navigator?.id).toBe(offer.id);
-    expect(w.player!.funds).toBe(fundsBefore - 240_000);
+    expect(ship.funds).toBe(fundsBefore - 240_000);
     expect(ship.fuelCapacity).toBe(baseFuel + 8);
     expect(w.hires[offer.id]).toBeUndefined();        // offer consumed
   });
@@ -53,7 +53,7 @@ describe("crew: hire / fire / modifiers", () => {
   it("hireCrew rejects when can't afford", () => {
     const w = createWorld();
     const ship = getPlayerShip(w);
-    w.player!.funds = 100;
+    ship.funds = 100;
     const offer = postTestHire(w, ship.location, "captain", { hireCost: 25_000 });
     expect(hireCrew(w, ship, offer.id).ok).toBe(false);
     expect(ship.crew?.captain).toBeUndefined();
@@ -71,7 +71,7 @@ describe("crew: hire / fire / modifiers", () => {
   it("hireCrew rejects an offer at a different station", () => {
     const w = createWorld();
     const ship = getPlayerShip(w);
-    w.player!.funds = 100_000;
+    ship.funds = 100_000;
     const offer = postTestHire(w, "verdant", "captain", { hireCost: 25_000 });
     expect(ship.location).not.toBe("verdant");
     const r = hireCrew(w, ship, offer.id);
@@ -81,8 +81,8 @@ describe("crew: hire / fire / modifiers", () => {
 
   it("fireCrew clears slot and reverts stats", () => {
     const w = createWorld();
-    w.player!.funds = 1_000_000;
     const ship = getPlayerShip(w);
+    ship.funds = 1_000_000;
     const baseCargo = ship.capacity;
     const offer = postTestHire(w, ship.location, "mechanic", { hireCost: 60_000, modifiers: { cargoCapacityBonus: 4 } });
     expect(hireCrew(w, ship, offer.id).ok).toBe(true);
@@ -95,7 +95,7 @@ describe("crew: hire / fire / modifiers", () => {
   it("hiring a replacement in the same role swaps cleanly", () => {
     const w = createWorld();
     const ship = getPlayerShip(w);
-    w.player!.funds = 1_000_000;
+    ship.funds = 1_000_000;
     const t1 = postTestHire(w, ship.location, "captain", { hireCost: 25_000 });
     const t2 = postTestHire(w, ship.location, "captain", { hireCost: 75_000, tier: 2, modifiers: { speedBonus: 1 } });
     expect(hireCrew(w, ship, t1.id).ok).toBe(true);
@@ -111,17 +111,17 @@ describe("crew: auto-pilot gating", () => {
     const w = createWorld();
     const ship = getPlayerShip(w);
     ship.pilot = "auto";
-    const fundsBefore = w.player!.funds;
+    const fundsBefore = ship.funds;
     tickN(w, 50);
     const traded = ship.log.some(e => e.kind === "buy" || e.kind === "sell");
     expect(traded).toBe(false);
-    expect(w.player!.funds).toBeLessThanOrEqual(fundsBefore);
+    expect(ship.funds).toBeLessThanOrEqual(fundsBefore);
   });
 
   it("auto-pilot WITH captain trades, but does NOT auto-accept contracts (no navigator)", () => {
     const w = createWorld();
     const ship = getPlayerShip(w);
-    w.player!.funds = 1_000_000;
+    ship.funds = 1_000_000;
     const cap = postTestHire(w, ship.location, "captain", { hireCost: 25_000 });
     expect(hireCrew(w, ship, cap.id).ok).toBe(true);
     ship.pilot = "auto";
@@ -135,7 +135,7 @@ describe("crew: auto-pilot gating", () => {
   it("auto-pilot WITH captain + navigator accepts contracts on arrival", () => {
     const w = createWorld();
     const ship = getPlayerShip(w);
-    w.player!.funds = 5_000_000;
+    ship.funds = 5_000_000;
     const cap = postTestHire(w, ship.location, "captain", { hireCost: 25_000 });
     const nav = postTestHire(w, ship.location, "navigator", { hireCost: 240_000 });
     expect(hireCrew(w, ship, cap.id).ok).toBe(true);
@@ -151,7 +151,7 @@ describe("crew: maintenance debt + repair", () => {
   it("debt accumulates without a mechanic", () => {
     const w = createWorld();
     const ship = getPlayerShip(w);
-    w.player!.funds = 1_000_000;
+    ship.funds = 1_000_000;
     const cap = postTestHire(w, ship.location, "captain");
     hireCrew(w, ship, cap.id);
     ship.pilot = "auto";
@@ -162,7 +162,7 @@ describe("crew: maintenance debt + repair", () => {
   it("debt does NOT accumulate with a mechanic", () => {
     const w = createWorld();
     const ship = getPlayerShip(w);
-    w.player!.funds = 1_000_000;
+    ship.funds = 1_000_000;
     const mech = postTestHire(w, ship.location, "mechanic");
     hireCrew(w, ship, mech.id);
     tickN(w, 50);
@@ -178,15 +178,16 @@ describe("crew: maintenance debt + repair", () => {
     if (!r.ok) expect(r.reason).toContain("repair");
   });
 
-  it("repairShip pays debt from player funds and clears it", () => {
+  it("repairShip pays debt from ship funds and clears it", () => {
     const w = createWorld();
     const ship = getPlayerShip(w);
+    ship.funds = 50_000;
     ship.maintenanceDebt = 1000;
-    const fundsBefore = w.player!.funds;
+    const fundsBefore = ship.funds;
     const r = repairShip(w, ship);
     expect(r.ok).toBe(true);
     expect(ship.maintenanceDebt).toBe(0);
-    expect(w.player!.funds).toBe(fundsBefore - 1000);
+    expect(ship.funds).toBe(fundsBefore - 1000);
   });
 
   it("repairShip refuses when no debt", () => {
@@ -200,7 +201,7 @@ describe("crew: pricing + wages", () => {
   it("totalCrewWage sums all hired wages", () => {
     const w = createWorld();
     const ship = getPlayerShip(w);
-    w.player!.funds = 500_000;
+    ship.funds = 500_000;
     const cap = postTestHire(w, ship.location, "captain", { wagePerTick: 4 });
     const mech = postTestHire(w, ship.location, "mechanic", { wagePerTick: 3 });
     hireCrew(w, ship, cap.id);

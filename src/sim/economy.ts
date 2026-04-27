@@ -36,19 +36,19 @@ export function chargeOperationalCosts(world: World): void {
 
     if (isPlayerShip(world, trader)) {
       // Player ships: route maintenance through the mechanic gating, charge
-      // crew wages on top.
+      // crew wages on top — all from the ship's own wallet.
       const wages = totalCrewWage(trader);
       const mods = combinedModifiers(trader.crew);
       const discount = mods.maintenanceDiscount ?? 0;
       const effectiveMaint = cost * (1 - discount);
       if (hasCrew(trader, "mechanic")) {
-        // Mechanic auto-pays maintenance from the player wallet (alongside wages).
+        // Mechanic auto-pays maintenance (alongside wages).
         const total = effectiveMaint + wages;
-        if (world.player) world.player.funds = Math.max(0, world.player.funds - total);
+        trader.funds = Math.max(0, trader.funds - total);
       } else {
         // No mechanic — accumulate as visible debt; wages still charged.
         trader.maintenanceDebt = (trader.maintenanceDebt ?? 0) + effectiveMaint;
-        if (wages > 0 && world.player) world.player.funds = Math.max(0, world.player.funds - wages);
+        if (wages > 0) trader.funds = Math.max(0, trader.funds - wages);
       }
       continue;
     }

@@ -1,5 +1,5 @@
 import type { GoodId, JobId, LocationId, Trader, World } from "./types";
-import { reachableNeighbors } from "./geometry";
+import { distance, reachableNeighbors } from "./geometry";
 import { priceFor } from "./pricing";
 import { activeFuelType, listSpeculativeOptions, listTradeOptions, selectRefuelType } from "./traders";
 import { listLocalJobs } from "./jobs";
@@ -82,14 +82,16 @@ export function getGuidedHint(world: World, ship: Trader): GuidedHint {
       },
     });
   }
-  // Boost cargo-loaded candidates if they fulfill a job
+  // Boost cargo-loaded candidates if they fulfill a job. Accepted contracts
+  // factor in the penalty-avoided so commitment carries weight (see
+  // listTradeOptions for the same logic on buy_for_route).
   for (const c of cargoSell) {
     if (c.hint.kind === "travel_to_sell") {
       const job = jobByKey.get(`${c.hint.dst}|${c.hint.good}`);
       if (job) {
         const remaining = job.qty - job.delivered;
         const credited = Math.min(c.hint.qty, remaining);
-        const bonus = credited * (job.reward / job.qty);
+        const bonus = credited * ((job.reward + job.penalty) / job.qty);
         c.value += bonus;
         c.hint.expectedNet += bonus;
         c.hint.gainOverHere += bonus;
@@ -100,7 +102,7 @@ export function getGuidedHint(world: World, ship: Trader): GuidedHint {
       if (job) {
         const remaining = job.qty - job.delivered;
         const credited = Math.min(c.hint.qty, remaining);
-        const bonus = credited * (job.reward / job.qty);
+        const bonus = credited * ((job.reward + job.penalty) / job.qty);
         c.value += bonus;
         c.hint.revenue += bonus;
         c.hint.jobId = job.id;
@@ -129,6 +131,22 @@ export function getGuidedHint(world: World, ship: Trader): GuidedHint {
   }
 
   candidates.sort((a, b) => b.value - a.value);
+
+  // Honor-commitments override: if the player is standing on an accepted
+  // contract's destination with cargo to fulfill it, suggest selling here
+  // before anything else. The engine would otherwise pivot to a bigger
+  // contract elsewhere — true higher EV but a worse UX (the local one can
+  // close in one click for zero travel cost). Closing local commitments
+  // first is almost never wrong.
+  const localContractSell = candidates.find(c =>
+    c.hint.kind === "sell_here"
+    && c.hint.jobId != null
+    && c.value > 0
+  );
+  if (localContractSell) {
+    candidates.splice(candidates.indexOf(localContractSell), 1);
+    candidates.unshift(localContractSell);
+  }
   const top = candidates[0];
 
   // Pre-emptive refuel: if the player follows the top suggestion blindly and
@@ -280,6 +298,52 @@ function localJobAcceptCandidates(world: World, ship: Trader): { value: number; 
       });
     }
   }
+
+  // Remote-Case-A: for any unaccepted shortage contract elsewhere, if we're
+  // carrying the requested good and can reach the destination, suggest
+  // accepting + flying out to deliver. Naturally rewards "speculative buy
+  // here, hold for a contract" play.
+  if (ft && fuel) {
+    const here = ship.location;
+    const fuelPriceHere = hereMarket.prices[fuel.good] ?? 0;
+    const perDist = effectivePerDistance(ship, ft.perDistance);
+    for (const job of Object.values(world.jobs)) {
+      if (job.acceptedBy != null) continue;
+      if (job.kind !== "shortage") continue;
+      if (job.destination === here) continue;            // local — already handled above
+      const onHand = ship.cargo.filter(l => l.good === job.good).reduce((s, l) => s + l.qty, 0);
+      if (onHand <= 0) continue;
+      const dist = distance(world, here, job.destination);
+      const fuelNeeded = dist * perDist;
+      if (fuelNeeded > fuel.qty) continue;
+      const dstMarket = world.markets[job.destination];
+      const dstPrice = dstMarket.prices[job.good] ?? 0;
+      const sellNet = onHand * dstPrice * (1 - SALES_TAX_RATE);
+      const lots = ship.cargo.filter(l => l.good === job.good);
+      const totalCost = lots.reduce((s, l) => s + l.qty * l.unitPrice, 0);
+      const fuelCost = fuelNeeded * fuelPriceHere;
+      const travelTicks = Math.max(1, Math.ceil(dist / ship.speed));
+      const tripMaint = travelTicks * ship.capacity * MAINTENANCE_PER_CAPACITY;
+      const dockingFee = ship.capacity * DOCKING_FEE_PER_CAPACITY;
+      const credit = Math.min(onHand, job.qty);
+      const bonus = credit * (job.reward / job.qty);
+      const value = sellNet + bonus - totalCost - fuelCost - tripMaint - dockingFee;
+      if (value <= 0) continue;
+      const dstName = world.locations[job.destination]?.name ?? job.destination;
+      const goodName = world.goods[job.good]?.name ?? job.good;
+      out.push({
+        value,
+        hint: {
+          kind: "accept_job",
+          jobId: job.id,
+          reason: `Accept and head to ${dstName} — your ${onHand.toFixed(0)} ${goodName} delivers a Ç${Math.round(bonus).toLocaleString()} contract bonus on top of Ç${Math.round(sellNet - totalCost).toLocaleString()} sell P&L.`,
+          expectedNet: value,
+          ticks: travelTicks + 1,
+        },
+      });
+    }
+  }
+
   return out;
 }
 
@@ -293,6 +357,19 @@ function cargoLoadedCandidates(world: World, ship: Trader): { value: number; hin
   const fuel = ship.currentFuel;
   const hereMarket = world.markets[ship.location];
   const out: { value: number; hint: GuidedHint }[] = [];
+
+  // Pre-index unaccepted shortage contracts by (destination|good) → bonus.
+  // The suggestion engine assumes the player will accept on arrival (or has
+  // a navigator), so any matching destination earns the bonus when scoring.
+  const unacceptedBonus = new Map<string, { perUnit: number; remaining: number; jobId: string }>();
+  for (const j of Object.values(world.jobs)) {
+    if (j.acceptedBy != null || j.kind !== "shortage") continue;
+    unacceptedBonus.set(`${j.destination}|${j.good}`, {
+      perUnit: j.reward / j.qty,
+      remaining: j.qty,
+      jobId: j.id,
+    });
+  }
 
   // Aggregate per-good across lots
   const byGood = new Map<string, { totalQty: number; totalCost: number }>();
@@ -334,7 +411,17 @@ function cargoLoadedCandidates(world: World, ship: Trader): { value: number; hin
       const travelTicks = Math.max(1, Math.ceil(dist / ship.speed));
       const tripMaint = travelTicks * ship.capacity * MAINTENANCE_PER_CAPACITY;
       const dockingFee = ship.capacity * DOCKING_FEE_PER_CAPACITY;
-      const netRevenue = agg.totalQty * dstNet - fuelCost - tripMaint - dockingFee;
+      let netRevenue = agg.totalQty * dstNet - fuelCost - tripMaint - dockingFee;
+      // Fold in unaccepted contract bonus if there's a matching shortage at
+      // this destination — encourages "hold for contract" behavior over
+      // marginal local sells.
+      const bonus = unacceptedBonus.get(`${to}|${goodId}`);
+      let jobId: string | undefined;
+      if (bonus) {
+        const credited = Math.min(agg.totalQty, bonus.remaining);
+        netRevenue += credited * bonus.perUnit;
+        jobId = bonus.jobId;
+      }
       const travelPnL = netRevenue - agg.totalCost;
       out.push({
         value: travelPnL,
@@ -346,6 +433,7 @@ function cargoLoadedCandidates(world: World, ship: Trader): { value: number; hin
           expectedNet: netRevenue,
           gainOverHere: netRevenue - hereRevenue,
           ticks: travelTicks,
+          jobId,
         },
       });
     }
@@ -364,8 +452,10 @@ export function describeHint(hint: GuidedHint, world: World): string {
     }
     case "travel_to_sell": {
       const dst = world.locations[hint.dst]?.name ?? hint.dst;
-      const jobNote = hint.jobId ? " (contract delivery)" : "";
-      return `Travel to ${dst} to sell your ${hint.qty.toFixed(0)} ${goodName(hint.good)}${jobNote} — expected net Ç${Math.round(hint.expectedNet).toLocaleString()} (Ç${Math.round(hint.gainOverHere).toLocaleString()} better than selling here).`;
+      if (hint.jobId) {
+        return `Travel to ${dst} to deliver your ${hint.qty.toFixed(0)} ${goodName(hint.good)} for the contract — expected net Ç${Math.round(hint.expectedNet).toLocaleString()}.`;
+      }
+      return `Travel to ${dst} to sell your ${hint.qty.toFixed(0)} ${goodName(hint.good)} — expected net Ç${Math.round(hint.expectedNet).toLocaleString()} (Ç${Math.round(hint.gainOverHere).toLocaleString()} better than selling here).`;
     }
     case "sell_here": {
       const jobNote = hint.jobId ? " (fulfills a contract)" : "";
@@ -388,7 +478,8 @@ export function describeHint(hint: GuidedHint, world: World): string {
 // markers used by the UI to highlight elements
 export interface HintTarget {
   buyGood?: GoodId;
-  sellCargo?: boolean;
+  buyQty?: number;             // engine's recommended buy qty — leaves room for contract goods
+  sellGood?: GoodId;
   travelTo?: LocationId;
   refuel?: boolean;
   critical?: boolean;
@@ -398,11 +489,11 @@ export interface HintTarget {
 export function hintTarget(hint: GuidedHint): HintTarget {
   switch (hint.kind) {
     case "buy_for_route":
-      return { buyGood: hint.good };
+      return { buyGood: hint.good, buyQty: hint.qty };
     case "travel_to_sell":
       return { travelTo: hint.dst };
     case "sell_here":
-      return { sellCargo: true };
+      return { sellGood: hint.good };
     case "refuel":
       return { refuel: true, critical: hint.critical };
     case "speculate":

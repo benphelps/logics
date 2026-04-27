@@ -7,12 +7,12 @@ describe("player layer v1", () => {
   it("createWorld() defaults include a player with a manual ship", () => {
     const w = createWorld();
     expect(w.player).not.toBeNull();
-    expect(w.player!.funds).toBe(50_000);
     expect(w.player!.shipIds.length).toBe(1);
     const ship = w.traders[w.player!.shipIds[0]];
     expect(ship).toBeDefined();
     expect(ship.pilot).toBe("manual");
     expect(ship.location).toBe("haven");
+    expect(ship.funds).toBe(55_000);          // ship-funded model: ship holds the wallet
   });
 
   it("createWorld({ player: null }) produces a no-player world", () => {
