@@ -22,9 +22,9 @@ describe("trader-driven convergence", () => {
     tickN(w, 500);
     const endFunds = Object.values(w.traders).reduce((s, t) => s + t.funds, 0);
     const cargoValue = Object.values(w.traders).reduce((s, t) => {
-      if (!t.cargo) return s;
-      const anyPrice = w.goods[t.cargo.good].basePrice;
-      return s + t.cargo.qty * anyPrice;
+      let v = 0;
+      for (const lot of t.cargo) v += lot.qty * w.goods[lot.good].basePrice;
+      return s + v;
     }, 0);
     expect(endFunds + cargoValue).toBeGreaterThan(startFunds);
   });

@@ -36,7 +36,7 @@ export function getGuidedHint(world: World, ship: Trader): GuidedHint {
     }
   }
 
-  if (ship.cargo) {
+  if (ship.cargo.length > 0) {
     return cargoLoadedHint(world, ship);
   }
 
@@ -69,55 +69,62 @@ export function getGuidedHint(world: World, ship: Trader): GuidedHint {
 }
 
 function cargoLoadedHint(world: World, ship: Trader): GuidedHint {
-  const cargo = ship.cargo!;
-  const good = world.goods[cargo.good];
+  // For multi-lot cargo: evaluate every (lot, action) pair and pick the
+  // single highest-value action across the whole inventory. The UI will
+  // highlight whichever cargo lot's row gets the action.
   const ft = activeFuelType(ship);
   const fuel = ship.currentFuel;
-
   const hereMarket = world.markets[ship.location];
-  const hereGross = hereMarket.prices[cargo.good];
-  const hereNet = hereGross * (1 - SALES_TAX_RATE);
-  const hereRevenue = cargo.qty * hereNet;
 
-  let bestTravel: { dst: LocationId; net: number; ticks: number } | null = null;
+  let best: GuidedHint | null = null;
+  let bestValue = -Infinity;
 
-  if (ft && fuel) {
+  for (const lot of ship.cargo) {
+    const good = world.goods[lot.good];
+    const hereGross = hereMarket.prices[lot.good];
+    const hereNet = hereGross * (1 - SALES_TAX_RATE);
+    const hereRevenue = lot.qty * hereNet;
+
+    // Selling here is always an option.
+    if (hereRevenue > bestValue) {
+      best = { kind: "sell_here", good: lot.good, qty: lot.qty, revenue: hereRevenue };
+      bestValue = hereRevenue;
+    }
+
+    if (!ft || !fuel) continue;
+
     for (const { to, dist } of reachableNeighbors(world, ship.location)) {
       const fuelNeeded = dist * ft.perDistance;
       if (fuelNeeded > fuel.qty) continue;
       const dstMarket = world.markets[to];
       const dstLoc = world.locations[to];
-      const dstTarget = dstLoc.targetStock[cargo.good] ?? 0;
-      const dstStockNow = dstMarket.stock[cargo.good] ?? 0;
-      const dstStockAfter = dstStockNow; // we ignore inflight-from-others here for simplicity
+      const dstTarget = dstLoc.targetStock[lot.good] ?? 0;
+      const dstStockNow = dstMarket.stock[lot.good] ?? 0;
       const dstGross = dstTarget > 0
-        ? priceFor(good.basePrice, dstStockAfter, dstTarget)
-        : dstMarket.prices[cargo.good];
+        ? priceFor(good.basePrice, dstStockNow, dstTarget)
+        : dstMarket.prices[lot.good];
       const dstNet = dstGross * (1 - SALES_TAX_RATE);
       const fuelCost = fuelNeeded * (hereMarket.prices[fuel.good] ?? 0);
       const travelTicks = Math.max(1, Math.ceil(dist / ship.speed));
       const tripMaint = travelTicks * ship.capacity * MAINTENANCE_PER_CAPACITY;
       const dockingFee = ship.capacity * DOCKING_FEE_PER_CAPACITY;
-      const netRevenue = cargo.qty * dstNet - fuelCost - tripMaint - dockingFee;
-      if (!bestTravel || netRevenue > bestTravel.net) {
-        bestTravel = { dst: to, net: netRevenue, ticks: travelTicks };
+      const netRevenue = lot.qty * dstNet - fuelCost - tripMaint - dockingFee;
+      if (netRevenue > bestValue) {
+        best = {
+          kind: "travel_to_sell",
+          dst: to,
+          good: lot.good,
+          qty: lot.qty,
+          expectedNet: netRevenue,
+          gainOverHere: netRevenue - hereRevenue,
+          ticks: travelTicks,
+        };
+        bestValue = netRevenue;
       }
     }
   }
 
-  if (bestTravel && bestTravel.net > hereRevenue + ship.capacity * 0.5) {
-    return {
-      kind: "travel_to_sell",
-      dst: bestTravel.dst,
-      good: cargo.good,
-      qty: cargo.qty,
-      expectedNet: bestTravel.net,
-      gainOverHere: bestTravel.net - hereRevenue,
-      ticks: bestTravel.ticks,
-    };
-  }
-
-  return { kind: "sell_here", good: cargo.good, qty: cargo.qty, revenue: hereRevenue };
+  return best ?? { kind: "wait", reason: "No valuable action available with current cargo." };
 }
 
 export function describeHint(hint: GuidedHint, world: World): string {

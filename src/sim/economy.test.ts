@@ -51,7 +51,7 @@ describe("Tier 1 stability", () => {
     t.funds = 0;
     t.location = "saffron";
     t.state = "idle";
-    t.cargo = null;
+    t.cargo = [];
     t.currentFuel = { good: t.fuelTypes[0].good, qty: 0 };
     tickN(w, 200);
     expect(t.funds).toBeGreaterThanOrEqual(0);

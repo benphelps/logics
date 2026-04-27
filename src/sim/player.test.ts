@@ -66,7 +66,7 @@ describe("player layer v1", () => {
     expect(result.ok).toBe(true);
     expect(ship.state).toBe("transit");
     expect(ship.destination).toBe(choice.to);
-    expect(ship.cargo).toMatchObject({ good: choice.good, qty: choice.qty });
+    expect(ship.cargo[0]).toMatchObject({ good: choice.good, qty: choice.qty });
     expect(ship.ticksRemaining).toBe(choice.travelTicks);
   });
 
@@ -91,17 +91,20 @@ describe("player primitives — manual buy / sell / refuel / travel", () => {
     const stockBefore = w.markets.haven.stock.protein;
     const r = buyAtLocation(w, ship, "protein", 10);
     expect(r.ok).toBe(true);
-    expect(ship.cargo).toMatchObject({ good: "protein", qty: 10, source: "haven" });
-    expect(ship.cargo!.unitPrice).toBeGreaterThan(0);
+    expect(ship.cargo).toHaveLength(1);
+    expect(ship.cargo[0]).toMatchObject({ good: "protein", qty: 10, source: "haven" });
+    expect(ship.cargo[0].unitPrice).toBeGreaterThan(0);
     expect(ship.funds).toBeLessThan(fundsBefore);
     expect(w.markets.haven.stock.protein).toBe(stockBefore - 10);
   });
 
-  it("buyAtLocation refuses mismatched cargo", () => {
+  it("buyAtLocation now ALLOWS multi-good cargo (each good in its own lot)", () => {
     const w = createWorld();
     const ship = w.traders[w.player!.shipIds[0]];
     expect(buyAtLocation(w, ship, "protein", 5).ok).toBe(true);
-    expect(buyAtLocation(w, ship, "fiber", 5).ok).toBe(false);
+    expect(buyAtLocation(w, ship, "fiber", 5).ok).toBe(true);
+    expect(ship.cargo).toHaveLength(2);
+    expect(ship.cargo.map(l => l.good).sort()).toEqual(["fiber", "protein"]);
   });
 
   it("buyAtLocation refuses cargo over capacity", () => {
@@ -110,15 +113,26 @@ describe("player primitives — manual buy / sell / refuel / travel", () => {
     expect(buyAtLocation(w, ship, "protein", 999).ok).toBe(false);
   });
 
-  it("sellAtLocation pays the trader after tax", () => {
+  it("sellAtLocation pays the trader after tax + removes the lot when emptied", () => {
     const w = createWorld();
     const ship = w.traders[w.player!.shipIds[0]];
     buyAtLocation(w, ship, "protein", 10);
     const fundsBefore = ship.funds;
-    const r = sellAtLocation(w, ship);
+    const r = sellAtLocation(w, ship, "protein");
     expect(r.ok).toBe(true);
-    expect(ship.cargo).toBeNull();
+    expect(ship.cargo).toEqual([]);
     expect(ship.funds).toBeGreaterThan(fundsBefore);
+  });
+
+  it("sellAtLocation can target one lot while keeping others", () => {
+    const w = createWorld();
+    const ship = w.traders[w.player!.shipIds[0]];
+    buyAtLocation(w, ship, "protein", 5);
+    buyAtLocation(w, ship, "fiber", 5);
+    expect(ship.cargo).toHaveLength(2);
+    sellAtLocation(w, ship, "protein");
+    expect(ship.cargo).toHaveLength(1);
+    expect(ship.cargo[0].good).toBe("fiber");
   });
 
   it("refuelManual fills the tank when fuel is available", () => {
@@ -165,7 +179,8 @@ describe("player primitives — manual buy / sell / refuel / travel", () => {
     while (ship.state === "transit") tickN(w, 1);
 
     expect(ship.location).toBe("ironhold");
-    expect(ship.cargo).toMatchObject({ good: "protein", qty: 30 });
+    expect(ship.cargo).toHaveLength(1);
+    expect(ship.cargo[0]).toMatchObject({ good: "protein", qty: 30 });
     // Funds should only have decreased (docking fee + maintenance). No auto-sale.
     expect(ship.funds).toBeLessThan(fundsBeforeTravel);
   });
@@ -175,7 +190,7 @@ describe("player primitives — manual buy / sell / refuel / travel", () => {
     const npc = Object.values(w.traders).find(t => t.pilot === "npc");
     expect(npc).toBeDefined();
     if (!npc) return;
-    npc.cargo = { good: "grain", qty: 10, source: "verdant", unitPrice: 5, purchasedAt: 0 };
+    npc.cargo = [{ good: "grain", qty: 10, source: "verdant", unitPrice: 5, purchasedAt: 0 }];
     npc.location = "verdant";
     npc.state = "transit";
     npc.destination = "haven";
@@ -184,7 +199,7 @@ describe("player primitives — manual buy / sell / refuel / travel", () => {
     const havenGrainBefore = w.markets.haven.stock.grain;
     tickN(w, 1);
 
-    expect(npc.cargo).toBeNull();
+    expect(npc.cargo).toEqual([]);
     expect(npc.location).toBe("haven");
     expect(w.markets.haven.stock.grain).toBeGreaterThan(havenGrainBefore);
   });

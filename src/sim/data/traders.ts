@@ -36,7 +36,7 @@ function mk(
     funds: 10_000,
     location,
     state: "idle",
-    cargo: null,
+    cargo: [],
     destination: null,
     ticksRemaining: 0,
     pilot: "npc",

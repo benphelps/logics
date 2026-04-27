@@ -17,7 +17,7 @@ function fmtMarkets(w: World): string {
 
 function fmtTraders(w: World): string {
   return Object.values(w.traders).map(t => {
-    const cargo = t.cargo ? `${t.cargo.good}x${t.cargo.qty}` : "—";
+    const cargo = t.cargo.length === 0 ? "—" : t.cargo.map(l => `${l.good}x${l.qty}`).join("+");
     const dest = t.destination ?? "—";
     return `  ${t.name.padEnd(15)} @${t.location.padEnd(11)} ${t.state.padEnd(7)} ⮕ ${dest.padEnd(11)} cargo=${cargo.padEnd(14)} funds=${t.funds.toFixed(0)}`;
   }).join("\n");

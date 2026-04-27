@@ -82,7 +82,7 @@ export interface Trader {
   funds: number;
   location: LocationId;
   state: TraderState;
-  cargo: CargoLot | null;
+  cargo: CargoLot[];                // empty array = no cargo. Each lot is one good; per-good lots merge with weighted avg.
   destination: LocationId | null;
   ticksRemaining: number;
   pilot: PilotMode;

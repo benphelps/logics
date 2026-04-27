@@ -73,9 +73,10 @@ function tryRefuel(world: World, trader: Trader, events: TraderEvent[]): void {
 function inTransitArrivalsByDestGood(world: World): Map<string, number> {
   const acc = new Map<string, number>();
   for (const t of Object.values(world.traders)) {
-    if (t.state === "transit" && t.destination && t.cargo) {
-      const key = `${t.destination}|${t.cargo.good}`;
-      acc.set(key, (acc.get(key) ?? 0) + t.cargo.qty);
+    if (t.state !== "transit" || !t.destination) continue;
+    for (const lot of t.cargo) {
+      const key = `${t.destination}|${lot.good}`;
+      acc.set(key, (acc.get(key) ?? 0) + lot.qty);
     }
   }
   return acc;
@@ -187,15 +188,17 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
     // Manual player ships do NOT auto-sell on arrival — cargo stays loaded
     // until the player clicks Sell. The hint engine highlights the Sell
     // button on arrival so the next-step CTA is obvious.
-    if (trader.cargo && trader.pilot !== "manual") {
+    if (trader.cargo.length > 0 && trader.pilot !== "manual") {
       const dstMarket = world.markets[dst];
-      const { good, qty } = trader.cargo;
-      const unitPrice = dstMarket.prices[good];
-      dstMarket.stock[good] = (dstMarket.stock[good] ?? 0) + qty;
-      const netUnitPrice = unitPrice * (1 - SALES_TAX_RATE);
-      trader.funds += qty * netUnitPrice;
-      trader.cargo = null;
-      events.push({ trader: trader.id, kind: "sell", good, qty, unitPrice: netUnitPrice, to: dst });
+      for (const lot of trader.cargo) {
+        const { good, qty } = lot;
+        const unitPrice = dstMarket.prices[good];
+        dstMarket.stock[good] = (dstMarket.stock[good] ?? 0) + qty;
+        const netUnitPrice = unitPrice * (1 - SALES_TAX_RATE);
+        trader.funds += qty * netUnitPrice;
+        events.push({ trader: trader.id, kind: "sell", good, qty, unitPrice: netUnitPrice, to: dst });
+      }
+      trader.cargo = [];
     }
     return;
   }
@@ -217,13 +220,13 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
   const srcMarket = world.markets[here];
   srcMarket.stock[choice.good] = (srcMarket.stock[choice.good] ?? 0) - choice.qty;
   trader.funds -= choice.qty * choice.buyPrice;
-  trader.cargo = {
+  trader.cargo = [{
     good: choice.good,
     qty: choice.qty,
     source: here,
     unitPrice: choice.buyPrice,
     purchasedAt: world.tick,
-  };
+  }];
   trader.currentFuel = { good: trader.currentFuel!.good, qty: trader.currentFuel!.qty - choice.fuelNeeded };
   events.push({
     trader: trader.id,
@@ -249,7 +252,6 @@ export type ExecuteResult =
 
 export function executeTrade(world: World, trader: Trader, choice: TradeOption): ExecuteResult {
   if (trader.state !== "idle") return { ok: false, reason: "Ship is in transit." };
-  if (trader.cargo) return { ok: false, reason: "Ship already has cargo loaded." };
 
   const here = trader.location;
   const srcMarket = world.markets[here];
@@ -262,17 +264,18 @@ export function executeTrade(world: World, trader: Trader, choice: TradeOption):
   const stockHere = srcMarket.stock[choice.good] ?? 0;
   if (stockHere < choice.qty) return { ok: false, reason: `Source has only ${stockHere.toFixed(0)} of ${choice.good}.` };
 
+  const goodWeight = world.goods[choice.good].weight;
+  const currentMass = trader.cargo.reduce((s, l) => s + l.qty * world.goods[l.good].weight, 0);
+  const addMass = choice.qty * goodWeight;
+  if (currentMass + addMass > trader.capacity + 0.001) {
+    return { ok: false, reason: "Not enough cargo space." };
+  }
+
   const events: TraderEvent[] = [];
 
   srcMarket.stock[choice.good] = stockHere - choice.qty;
   trader.funds -= choice.qty * choice.buyPrice;
-  trader.cargo = {
-    good: choice.good,
-    qty: choice.qty,
-    source: here,
-    unitPrice: choice.buyPrice,
-    purchasedAt: world.tick,
-  };
+  addOrMergeCargoLot(trader, choice.good, choice.qty, here, choice.buyPrice, world.tick);
   trader.currentFuel = { good: fuel.good, qty: fuel.qty - choice.fuelNeeded };
   events.push({
     trader: trader.id,
@@ -291,6 +294,29 @@ export function executeTrade(world: World, trader: Trader, choice: TradeOption):
   return { ok: true, events };
 }
 
+function addOrMergeCargoLot(
+  trader: Trader,
+  goodId: GoodId,
+  qty: number,
+  source: string,
+  unitPrice: number,
+  tick: number,
+): void {
+  const existing = trader.cargo.find(l => l.good === goodId);
+  if (existing) {
+    // Weighted-average cost basis on incremental adds; source updates to
+    // most recent purchase; purchasedAt stays as the original first purchase.
+    const oldQty = existing.qty;
+    const oldCost = oldQty * existing.unitPrice;
+    const newQty = oldQty + qty;
+    existing.qty = newQty;
+    existing.unitPrice = (oldCost + qty * unitPrice) / newQty;
+    existing.source = source;
+  } else {
+    trader.cargo.push({ good: goodId, qty, source, unitPrice, purchasedAt: tick });
+  }
+}
+
 export function buyAtLocation(world: World, trader: Trader, goodId: GoodId, qty: number): ExecuteResult {
   if (trader.state !== "idle") return { ok: false, reason: "Ship is in transit." };
   if (qty <= 0) return { ok: false, reason: "Quantity must be positive." };
@@ -302,14 +328,11 @@ export function buyAtLocation(world: World, trader: Trader, goodId: GoodId, qty:
   const stock = market.stock[goodId] ?? 0;
   if (stock < qty) return { ok: false, reason: `Only ${stock.toFixed(0)} ${goodId} in stock here.` };
 
-  if (trader.cargo && trader.cargo.good !== goodId) {
-    return { ok: false, reason: `Already carrying ${trader.cargo.good}; sell or unload first.` };
-  }
-
-  const currentMass = trader.cargo ? trader.cargo.qty * world.goods[trader.cargo.good].weight : 0;
+  // Sum of all existing lots' mass — multi-lot cargo means many goods may share the bay.
+  const currentMass = trader.cargo.reduce((s, l) => s + l.qty * world.goods[l.good].weight, 0);
   const addMass = qty * good.weight;
   if (currentMass + addMass > trader.capacity + 0.001) {
-    const room = (trader.capacity - currentMass) / good.weight;
+    const room = Math.max(0, (trader.capacity - currentMass) / good.weight);
     return { ok: false, reason: `Not enough cargo space. Max additional: ${Math.floor(room)} ${goodId}.` };
   }
 
@@ -319,30 +342,7 @@ export function buyAtLocation(world: World, trader: Trader, goodId: GoodId, qty:
 
   market.stock[goodId] = stock - qty;
   trader.funds -= cost;
-  if (trader.cargo) {
-    // Weighted-average cost basis on incremental adds. Source updates to the
-    // most recent purchase; purchasedAt stays as the original first purchase
-    // so age represents how long the player has been holding *any* of it.
-    const oldQty = trader.cargo.qty;
-    const oldCost = oldQty * trader.cargo.unitPrice;
-    const newQty = oldQty + qty;
-    const newUnit = (oldCost + cost) / newQty;
-    trader.cargo = {
-      good: goodId,
-      qty: newQty,
-      source: trader.location,
-      unitPrice: newUnit,
-      purchasedAt: trader.cargo.purchasedAt,
-    };
-  } else {
-    trader.cargo = {
-      good: goodId,
-      qty,
-      source: trader.location,
-      unitPrice: price,
-      purchasedAt: world.tick,
-    };
-  }
+  addOrMergeCargoLot(trader, goodId, qty, trader.location, price, world.tick);
 
   return {
     ok: true,
@@ -350,27 +350,28 @@ export function buyAtLocation(world: World, trader: Trader, goodId: GoodId, qty:
   };
 }
 
-export function sellAtLocation(world: World, trader: Trader, qty?: number): ExecuteResult {
+export function sellAtLocation(world: World, trader: Trader, goodId: GoodId, qty?: number): ExecuteResult {
   if (trader.state !== "idle") return { ok: false, reason: "Ship is in transit." };
-  if (!trader.cargo) return { ok: false, reason: "No cargo to sell." };
+  const lotIdx = trader.cargo.findIndex(l => l.good === goodId);
+  if (lotIdx < 0) return { ok: false, reason: `No ${goodId} in cargo.` };
+  const lot = trader.cargo[lotIdx];
 
-  const sellQty = qty ?? trader.cargo.qty;
+  const sellQty = qty ?? lot.qty;
   if (sellQty <= 0) return { ok: false, reason: "Quantity must be positive." };
-  if (sellQty > trader.cargo.qty + 0.001) return { ok: false, reason: `Only have ${trader.cargo.qty} units.` };
+  if (sellQty > lot.qty + 0.001) return { ok: false, reason: `Only have ${lot.qty} units of ${goodId}.` };
 
   const market = world.markets[trader.location];
-  const goodId = trader.cargo.good;
   const grossPrice = market.prices[goodId];
   const netPrice = grossPrice * (1 - SALES_TAX_RATE);
   const revenue = sellQty * netPrice;
 
   market.stock[goodId] = (market.stock[goodId] ?? 0) + sellQty;
   trader.funds += revenue;
-  const remaining = trader.cargo.qty - sellQty;
+  const remaining = lot.qty - sellQty;
   if (remaining > 0.001) {
-    trader.cargo = { ...trader.cargo, qty: remaining };
+    lot.qty = remaining;
   } else {
-    trader.cargo = null;
+    trader.cargo.splice(lotIdx, 1);
   }
 
   return {

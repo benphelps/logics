@@ -66,7 +66,7 @@ export function generateTraders(opts: TraderGenOptions): Record<string, Trader> 
       funds: rangeInt(rng, 8000, 14000),
       location: startLoc,
       state: "idle",
-      cargo: null,
+      cargo: [],
       destination: null,
       ticksRemaining: 0,
       pilot: "npc",

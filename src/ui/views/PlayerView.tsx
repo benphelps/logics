@@ -4,7 +4,8 @@ import { useStore } from "../store";
 import { reachableNeighbors } from "../../sim/geometry";
 import { describeHint, getGuidedHint, hintTarget, type HintTarget } from "../../sim/suggestions";
 import { SALES_TAX_RATE } from "../../sim/economy";
-import type { LocationDef, Trader, World } from "../../sim/types";
+import { cargoMass as cargoMassFn, findCargoLot } from "../../sim/cargo";
+import type { CargoLot, LocationDef, Trader, World } from "../../sim/types";
 import "./PlayerView.css";
 
 export function PlayerView() {
@@ -82,9 +83,15 @@ function ShipPanel({ ship, world }: { ship: Trader; world: World }) {
       </header>
 
       <div className="ship-status mono">
-        <span><span className="dim">cargo:</span> {ship.cargo
-          ? <span className="good">{world.goods[ship.cargo.good]?.name ?? ship.cargo.good} × {ship.cargo.qty.toFixed(0)}</span>
-          : <span className="faint">empty</span>}</span>
+        <span><span className="dim">cargo:</span> {(() => {
+          const mass = cargoMassFn(ship, world);
+          if (ship.cargo.length === 0) return <span className="faint">empty</span>;
+          if (ship.cargo.length === 1) {
+            const lot = ship.cargo[0];
+            return <span className="good">{world.goods[lot.good]?.name ?? lot.good} × {lot.qty.toFixed(0)} ({mass.toFixed(0)}/{ship.capacity})</span>;
+          }
+          return <span className="good">{ship.cargo.length} lots ({mass.toFixed(0)}/{ship.capacity})</span>;
+        })()}</span>
         <span className="dim">·</span>
         <span><span className="dim">fuel:</span> <span className={fuelTone}>{fuel ? (world.goods[fuel.good]?.name ?? fuel.good) : "—"} {fuel?.qty.toFixed(0)}/{ship.fuelCapacity}</span></span>
         <span className="dim">·</span>
@@ -167,17 +174,16 @@ function ActionCell({ suggested, hintText, critical, children }: {
 }
 
 function Inventory({ ship, world }: { ship: Trader; world: World }) {
-  const cargo = ship.cargo;
-  const cargoMass = cargo ? cargo.qty * world.goods[cargo.good].weight : 0;
-  const capacityPct = (cargoMass / ship.capacity) * 100;
+  const mass = cargoMassFn(ship, world);
+  const capacityPct = (mass / ship.capacity) * 100;
 
   return (
     <div className="inventory">
       <div className="inventory-header">
-        <h4>Inventory</h4>
+        <h4>Inventory <span className="dim">— {ship.cargo.length} lot{ship.cargo.length === 1 ? "" : "s"}</span></h4>
         <div className="capacity-gauge mono">
           <span className="dim">cargo bay </span>
-          <span>{cargoMass.toFixed(0)}/{ship.capacity}</span>
+          <span>{mass.toFixed(0)}/{ship.capacity}</span>
           <span className="capacity-bar">
             <span
               className="capacity-fill"
@@ -187,9 +193,11 @@ function Inventory({ ship, world }: { ship: Trader; world: World }) {
         </div>
       </div>
       <div className="inventory-grid">
-        {cargo
-          ? <CargoCard cargo={cargo} ship={ship} world={world} />
-          : <EmptyCargoCard capacity={ship.capacity} />}
+        {ship.cargo.length === 0
+          ? <EmptyCargoCard capacity={ship.capacity} />
+          : ship.cargo.map((lot) => (
+              <CargoCard key={lot.good} cargo={lot} ship={ship} world={world} />
+            ))}
       </div>
     </div>
   );
@@ -206,7 +214,7 @@ function EmptyCargoCard({ capacity }: { capacity: number }) {
   );
 }
 
-function CargoCard({ cargo, ship, world }: { cargo: NonNullable<Trader["cargo"]>; ship: Trader; world: World }) {
+function CargoCard({ cargo, ship, world }: { cargo: CargoLot; ship: Trader; world: World }) {
   const good = world.goods[cargo.good];
   const sourceName = world.locations[cargo.source]?.name ?? cargo.source;
   const ageTicks = world.tick - cargo.purchasedAt;
@@ -321,10 +329,14 @@ function TransitView({ ship, world }: { ship: Trader; world: World }) {
           <div className="transit-label dim">Arrives in</div>
           <div className="transit-name mono">{ship.ticksRemaining}t</div>
         </div>
-        {ship.cargo && (
+        {ship.cargo.length > 0 && (
           <div>
             <div className="transit-label dim">Carrying</div>
-            <div className="transit-name">{world.goods[ship.cargo.good]?.name ?? ship.cargo.good} <span className="mono">× {ship.cargo.qty.toFixed(0)}</span></div>
+            <div className="transit-name">
+              {ship.cargo.length === 1
+                ? <>{world.goods[ship.cargo[0].good]?.name ?? ship.cargo[0].good} <span className="mono">× {ship.cargo[0].qty.toFixed(0)}</span></>
+                : <>{ship.cargo.length} lots, <span className="mono">{cargoMassFn(ship, world).toFixed(0)} mass</span></>}
+            </div>
           </div>
         )}
       </div>
@@ -397,8 +409,9 @@ function MarketSection({ ship, world, loc, target, hintText }: {
             const stock = market.stock[gid] ?? 0;
             const price = market.prices[gid] ?? 0;
             const netSell = price * (1 - 0.15);
-            const isCargo = ship.cargo?.good === gid;
-            const cargoQty = isCargo ? ship.cargo!.qty : 0;
+            const matchingLot = findCargoLot(ship, gid);
+            const isCargo = matchingLot != null;
+            const cargoQty = matchingLot?.qty ?? 0;
             const isFuel = ship.fuelTypes.some(f => f.good === gid);
             const isBuyTarget = target.buyGood === gid;
             const isSellTarget = target.sellCargo === true && isCargo;
@@ -426,7 +439,7 @@ function MarketSection({ ship, world, loc, target, hintText }: {
                     suggestedSell={isSellTarget}
                     hintText={hintText}
                     onBuy={(qty) => buy(ship.id, gid, qty)}
-                    onSell={(qty) => sell(ship.id, qty)}
+                    onSell={(qty) => sell(ship.id, gid, qty)}
                   />
                 </td>
               </tr>
@@ -449,27 +462,23 @@ function BuySellControls({
   onBuy: (qty: number) => void; onSell: (qty: number) => void;
 }) {
   const good = world.goods[goodId];
-  const cargoMass = ship.cargo ? ship.cargo.qty * world.goods[ship.cargo.good].weight : 0;
-  const roomMass = ship.capacity - cargoMass;
+  const totalMass = cargoMassFn(ship, world);
+  const roomMass = ship.capacity - totalMass;
   const maxByRoom = Math.floor(roomMass / good.weight);
   const maxByFunds = price > 0 ? Math.floor(ship.funds / price) : 0;
   const maxBuy = Math.max(0, Math.min(maxByRoom, maxByFunds, Math.floor(stock)));
-  const wrongCargo = ship.cargo != null && ship.cargo.good !== goodId;
-  const isCargoMatch = ship.cargo?.good === goodId;
+  const isCargoMatch = findCargoLot(ship, goodId) != null;
 
   const canBuy10 = maxBuy >= 10;
   const canBuyMax = maxBuy >= 1;
   const canSell = isCargoMatch && cargoQty >= 1;
 
   let buyTitle = "";
-  if (wrongCargo) buyTitle = `Carrying ${ship.cargo!.good} — sell or unload first`;
-  else if (stock < 1) buyTitle = "Out of stock here";
+  if (stock < 1) buyTitle = "Out of stock here";
   else if (maxByRoom < 1) buyTitle = "Cargo bay full";
   else if (maxByFunds < 1) buyTitle = "Insufficient funds";
 
-  const sellTitle = !isCargoMatch
-    ? (ship.cargo ? `Carrying ${ship.cargo.good}, not ${goodId}` : "No matching cargo")
-    : "";
+  const sellTitle = !isCargoMatch ? `No ${goodId} in cargo` : "";
 
   return (
     <div className="buy-sell">

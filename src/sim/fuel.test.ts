@@ -16,7 +16,7 @@ function singleTraderWorld(overrides: Partial<Trader>): World {
     funds: 5000,
     location: "haven",
     state: "idle",
-    cargo: null,
+    cargo: [],
     destination: null,
     ticksRemaining: 0,
     pilot: "npc",

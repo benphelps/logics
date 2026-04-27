@@ -24,7 +24,7 @@ export function makeStartingShip(name: string, location: string): Trader {
     funds: 5_000,
     location,
     state: "idle",
-    cargo: null,
+    cargo: [],
     destination: null,
     ticksRemaining: 0,
     pilot: "manual",

@@ -29,7 +29,7 @@ interface UiState {
   setPilot: (traderId: TraderId, pilot: "manual" | "auto") => void;
   clearError: () => void;
   buy: (traderId: TraderId, good: GoodId, qty: number) => void;
-  sell: (traderId: TraderId, qty?: number) => void;
+  sell: (traderId: TraderId, good: GoodId, qty?: number) => void;
   refuel: (traderId: TraderId, qty?: number) => void;
   travel: (traderId: TraderId, dst: LocationId) => void;
 }
@@ -82,10 +82,10 @@ export const useStore = create<UiState>((set, get) => ({
     const r = buyAtLocation(w, t, good, qty);
     set({ lastError: r.ok ? null : r.reason, tickEpoch: get().tickEpoch + 1 });
   },
-  sell: (traderId, qty) => {
+  sell: (traderId, good, qty) => {
     const w = get().world;
     const t = w.traders[traderId]; if (!t) return;
-    const r = sellAtLocation(w, t, qty);
+    const r = sellAtLocation(w, t, good, qty);
     set({ lastError: r.ok ? null : r.reason, tickEpoch: get().tickEpoch + 1 });
   },
   refuel: (traderId, qty) => {
