@@ -742,68 +742,73 @@
   flex-shrink: 0;
 }
 
-.cargo-rows {
-  list-style: none;
-  margin: 4px -10px 0;     /* negative margin breaks out of the card padding so
-                              rows can be flush full-width with their own pad */
-  padding: 0;
+.cargo-table {
+  width: calc(100% + 20px);
+  margin: 4px -10px 0;       /* negative margins break out of card padding for full-width rows */
+  border-collapse: collapse;
   font-size: 12px;
+  table-layout: fixed;
 }
 
-.cargo-rows .cargo-row {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 6px 14px;
-  line-height: 1.4;
-  cursor: help;
+.cargo-col-pnl { width: 150px; }
+
+.cargo-table th {
+  text-align: left;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 4px 14px;
   border-bottom: 1px solid var(--border);
 }
 
-.cargo-rows .cargo-row:last-child {
+.cargo-table th.numeric {
+  text-align: right;
+}
+
+.cargo-table td {
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+  vertical-align: middle;
+  height: 30px;
+}
+
+.cargo-table tbody tr:last-child td {
   border-bottom: none;
 }
 
-.cargo-rows .cargo-row:hover {
+.cargo-table tbody tr.cargo-row {
+  cursor: help;
+}
+
+.cargo-table tbody tr.cargo-row:hover td {
   background: var(--bg-3);
+}
+
+.cargo-table td.numeric {
+  text-align: right;
 }
 
 .cargo-row-name {
   color: var(--text);
   font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .cargo-row-lots {
   font-size: 10px;
 }
 
-.cargo-row-qty {
-  font-size: 12px;
-  flex-shrink: 0;
-}
-
-.cargo-row-spacer {
-  flex: 1;
-}
-
-.cargo-row-pnl {
-  font-size: 12px;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
 .cargo-row-pnl.good { color: var(--good); font-weight: 600; }
 .cargo-row-pnl.bad  { color: var(--bad);  font-weight: 600; }
 
 .cargo-row-empty {
-  text-align: center;
-  font-size: 12px;
-  padding: 14px 0;
+  text-align: center !important;
+  padding: 14px 0 !important;
   font-style: italic;
   color: var(--text-faint);
+  height: auto !important;
 }
 
 /* ---- suggestions ---- */

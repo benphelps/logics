@@ -132,8 +132,8 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function HoverTooltip({ content, children }: { content: ReactNode; children: ReactNode }) {
-  const ref = useRef<HTMLSpanElement>(null);
+function useHoverTooltip<T extends HTMLElement>(content: ReactNode) {
+  const ref = useRef<T>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
 
   const show = () => {
@@ -149,21 +149,18 @@ function HoverTooltip({ content, children }: { content: ReactNode; children: Rea
   };
   const hide = () => setPos(null);
 
-  return (
-    <span className="hover-tooltip-host" ref={ref} onMouseEnter={show} onMouseLeave={hide}>
-      {children}
-      {pos && createPortal(
-        <span
-          className="cargo-tooltip"
-          role="tooltip"
-          style={{ left: `${pos.left}px`, top: `${pos.top}px` }}
-        >
-          {content}
-        </span>,
-        document.body,
-      )}
-    </span>
+  const portal = pos && createPortal(
+    <span
+      className="cargo-tooltip"
+      role="tooltip"
+      style={{ left: `${pos.left}px`, top: `${pos.top}px` }}
+    >
+      {content}
+    </span>,
+    document.body,
   );
+
+  return { ref, handlers: { onMouseEnter: show, onMouseLeave: hide }, portal };
 }
 
 function TransitView({ ship, world }: { ship: Trader; world: World }) {
@@ -509,13 +506,27 @@ function CargoBridgeCard({ ship, world, loc, target, hintText, critical }: {
             </ActionCell>
           )}
       </header>
-      <ul className="cargo-rows">
-        {groups.length === 0 ? (
-          <li className="cargo-row-empty dim">Cargo bay empty</li>
-        ) : (
-          groups.map((g) => <CargoRow key={g.good} group={g} ship={ship} world={world} />)
-        )}
-      </ul>
+      <table className="cargo-table">
+        <colgroup>
+          <col />
+          <col className="col-num" />
+          <col className="cargo-col-pnl" />
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Good</th>
+            <th className="numeric">Qty</th>
+            <th className="numeric">P&amp;L <span className="dim">(here)</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {groups.length === 0 ? (
+            <tr><td colSpan={3} className="cargo-row-empty">Cargo bay empty</td></tr>
+          ) : (
+            groups.map((g) => <CargoRow key={g.good} group={g} ship={ship} world={world} />)
+          )}
+        </tbody>
+      </table>
     </section>
   );
 }
@@ -572,22 +583,23 @@ function CargoRow({ group, ship, world }: { group: CargoGroup; ship: Trader; wor
     </>
   );
 
+  const tip = useHoverTooltip<HTMLTableRowElement>(tooltip);
+
   return (
-    <HoverTooltip content={tooltip}>
-      <li className="cargo-row">
-        <span className="cargo-row-name">
-          {good.name}
+    <>
+      <tr className="cargo-row" ref={tip.ref} {...tip.handlers}>
+        <td>
+          <span className="cargo-row-name">{good.name}</span>
           {group.lots.length > 1 && <span className="cargo-row-lots dim mono"> ({group.lots.length}L)</span>}
-        </span>
-        <span className="cargo-row-qty mono dim">× {group.totalQty.toFixed(0)}</span>
-        <span className="cargo-row-spacer" />
-        <span className={`cargo-row-pnl mono ${pnlTone}`}>
+        </td>
+        <td className="numeric mono">{group.totalQty.toFixed(0)}</td>
+        <td className={`numeric mono cargo-row-pnl ${pnlTone}`}>
           {pnl >= 0 ? "+" : ""}Ç{Math.round(pnl).toLocaleString()}
           <span className="dim"> ({pnl >= 0 ? "+" : ""}{pnlPct.toFixed(0)}%)</span>
-        </span>
-        <span className="cargo-here-hint">here</span>
-      </li>
-    </HoverTooltip>
+        </td>
+      </tr>
+      {tip.portal}
+    </>
   );
 }
 
