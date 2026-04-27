@@ -36,25 +36,39 @@ export function getGuidedHint(world: World, ship: Trader): GuidedHint {
     }
   }
 
-  if (ship.cargo.length > 0) {
-    return cargoLoadedHint(world, ship);
-  }
+  // Consider both buy-here-and-travel options AND (if cargo is loaded) sell
+  // and travel-to-sell options. Pick the single highest-value action across
+  // all of them. This makes the engine "hedging-aware" — when the player has
+  // partial cargo, the engine can suggest topping off with a different good
+  // if that's the best move, instead of being stuck on the existing cargo.
 
-  // Empty cargo: best buy-and-travel. Player isn't subject to MAX_DRAW_FRACTION
-  // (that's an NPC fairness rule); their suggestions can use full stock so the
-  // qty matches what the "Buy max" button would actually buy.
-  const opts = listTradeOptions(world, ship, undefined, ship.pilot === "manual" ? 1.0 : undefined);
-  const top = opts[0];
-  if (top) {
-    return {
-      kind: "buy_for_route",
-      good: top.good,
-      qty: top.qty,
-      dst: top.to,
-      netProfit: top.totalProfit,
-      ticks: top.travelTicks + 1,
-      profitPerTick: top.profitPerTick,
-    };
+  // Player isn't subject to MAX_DRAW_FRACTION (NPC fairness rule).
+  const drawFraction = ship.pilot === "manual" ? 1.0 : undefined;
+  const buyOptions = listTradeOptions(world, ship, undefined, drawFraction);
+  const cargoSell = ship.cargo.length > 0 ? cargoLoadedCandidates(world, ship) : [];
+
+  type Candidate = { value: number; hint: GuidedHint };
+  const candidates: Candidate[] = [];
+
+  for (const o of buyOptions) {
+    candidates.push({
+      value: o.totalProfit,
+      hint: {
+        kind: "buy_for_route",
+        good: o.good,
+        qty: o.qty,
+        dst: o.to,
+        netProfit: o.totalProfit,
+        ticks: o.travelTicks + 1,
+        profitPerTick: o.profitPerTick,
+      },
+    });
+  }
+  candidates.push(...cargoSell);
+
+  if (candidates.length > 0) {
+    candidates.sort((a, b) => b.value - a.value);
+    return candidates[0].hint;
   }
 
   // Low fuel + nothing to do → suggest topping off opportunistically
@@ -68,28 +82,38 @@ export function getGuidedHint(world: World, ship: Trader): GuidedHint {
   return { kind: "wait", reason: "No profitable trades from here right now. Wait for prices to shift, or move on speculation." };
 }
 
-function cargoLoadedHint(world: World, ship: Trader): GuidedHint {
-  // For multi-lot cargo: evaluate every (lot, action) pair and pick the
-  // single highest-value action across the whole inventory. The UI will
-  // highlight whichever cargo lot's row gets the action.
+// Returns scored candidates for actions involving the loaded cargo (sell here
+// or travel-to-sell). One entry per (good × destination), aggregated across
+// per-good lots since selling N units of good X uses FIFO across all lots.
+// The "value" is realized P&L (revenue - cost basis) so it compares apples-
+// to-apples with buy_for_route's totalProfit.
+function cargoLoadedCandidates(world: World, ship: Trader): { value: number; hint: GuidedHint }[] {
   const ft = activeFuelType(ship);
   const fuel = ship.currentFuel;
   const hereMarket = world.markets[ship.location];
+  const out: { value: number; hint: GuidedHint }[] = [];
 
-  let best: GuidedHint | null = null;
-  let bestValue = -Infinity;
-
+  // Aggregate per-good across lots
+  const byGood = new Map<string, { totalQty: number; totalCost: number }>();
   for (const lot of ship.cargo) {
-    const good = world.goods[lot.good];
-    const hereGross = hereMarket.prices[lot.good];
-    const hereNet = hereGross * (1 - SALES_TAX_RATE);
-    const hereRevenue = lot.qty * hereNet;
+    const g = byGood.get(lot.good) ?? { totalQty: 0, totalCost: 0 };
+    g.totalQty += lot.qty;
+    g.totalCost += lot.qty * lot.unitPrice;
+    byGood.set(lot.good, g);
+  }
 
-    // Selling here is always an option.
-    if (hereRevenue > bestValue) {
-      best = { kind: "sell_here", good: lot.good, qty: lot.qty, revenue: hereRevenue };
-      bestValue = hereRevenue;
-    }
+  for (const [goodId, agg] of byGood) {
+    const good = world.goods[goodId];
+    if (!good) continue;
+    const hereGross = hereMarket.prices[goodId];
+    const hereNet = hereGross * (1 - SALES_TAX_RATE);
+    const hereRevenue = agg.totalQty * hereNet;
+    const sellHerePnL = hereRevenue - agg.totalCost;
+
+    out.push({
+      value: sellHerePnL,
+      hint: { kind: "sell_here", good: goodId, qty: agg.totalQty, revenue: hereRevenue },
+    });
 
     if (!ft || !fuel) continue;
 
@@ -98,33 +122,34 @@ function cargoLoadedHint(world: World, ship: Trader): GuidedHint {
       if (fuelNeeded > fuel.qty) continue;
       const dstMarket = world.markets[to];
       const dstLoc = world.locations[to];
-      const dstTarget = dstLoc.targetStock[lot.good] ?? 0;
-      const dstStockNow = dstMarket.stock[lot.good] ?? 0;
+      const dstTarget = dstLoc.targetStock[goodId] ?? 0;
+      const dstStockNow = dstMarket.stock[goodId] ?? 0;
       const dstGross = dstTarget > 0
         ? priceFor(good.basePrice, dstStockNow, dstTarget)
-        : dstMarket.prices[lot.good];
+        : dstMarket.prices[goodId];
       const dstNet = dstGross * (1 - SALES_TAX_RATE);
       const fuelCost = fuelNeeded * (hereMarket.prices[fuel.good] ?? 0);
       const travelTicks = Math.max(1, Math.ceil(dist / ship.speed));
       const tripMaint = travelTicks * ship.capacity * MAINTENANCE_PER_CAPACITY;
       const dockingFee = ship.capacity * DOCKING_FEE_PER_CAPACITY;
-      const netRevenue = lot.qty * dstNet - fuelCost - tripMaint - dockingFee;
-      if (netRevenue > bestValue) {
-        best = {
+      const netRevenue = agg.totalQty * dstNet - fuelCost - tripMaint - dockingFee;
+      const travelPnL = netRevenue - agg.totalCost;
+      out.push({
+        value: travelPnL,
+        hint: {
           kind: "travel_to_sell",
           dst: to,
-          good: lot.good,
-          qty: lot.qty,
+          good: goodId,
+          qty: agg.totalQty,
           expectedNet: netRevenue,
           gainOverHere: netRevenue - hereRevenue,
           ticks: travelTicks,
-        };
-        bestValue = netRevenue;
-      }
+        },
+      });
     }
   }
 
-  return best ?? { kind: "wait", reason: "No valuable action available with current cargo." };
+  return out;
 }
 
 export function describeHint(hint: GuidedHint, world: World): string {

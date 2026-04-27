@@ -97,11 +97,17 @@ export function listTradeOptions(
   const localFuelPrice = srcMarket.prices[fuel.good];
   const options: TradeOption[] = [];
 
+  // Cargo space available for new buys = capacity - existing lot mass.
+  // Lets the suggestion engine recommend "hedge" buys when the player has
+  // partial cargo — without this, every buy was sized to full empty bay.
+  const usedMass = trader.cargo.reduce((s, l) => s + l.qty * world.goods[l.good].weight, 0);
+  const freeMass = Math.max(0, trader.capacity - usedMass);
+
   for (const goodId of Object.keys(world.goods) as GoodId[]) {
     const good = world.goods[goodId];
     const buyPrice = srcMarket.prices[goodId];
     const srcStock = srcMarket.stock[goodId] ?? 0;
-    const maxByCargo = trader.capacity / good.weight;
+    const maxByCargo = freeMass / good.weight;
     const maxByStock = srcStock * drawFraction;
     const maxByFunds = buyPrice > 0 ? trader.funds / buyPrice : 0;
     const maxQty = Math.floor(Math.min(maxByCargo, maxByStock, maxByFunds));
@@ -275,7 +281,7 @@ export function executeTrade(world: World, trader: Trader, choice: TradeOption):
 
   srcMarket.stock[choice.good] = stockHere - choice.qty;
   trader.funds -= choice.qty * choice.buyPrice;
-  addOrMergeCargoLot(trader, choice.good, choice.qty, here, choice.buyPrice, world.tick);
+  addCargoLot(trader, choice.good, choice.qty, here, choice.buyPrice, world.tick);
   trader.currentFuel = { good: fuel.good, qty: fuel.qty - choice.fuelNeeded };
   events.push({
     trader: trader.id,
@@ -294,7 +300,7 @@ export function executeTrade(world: World, trader: Trader, choice: TradeOption):
   return { ok: true, events };
 }
 
-function addOrMergeCargoLot(
+function addCargoLot(
   trader: Trader,
   goodId: GoodId,
   qty: number,
@@ -302,19 +308,10 @@ function addOrMergeCargoLot(
   unitPrice: number,
   tick: number,
 ): void {
-  const existing = trader.cargo.find(l => l.good === goodId);
-  if (existing) {
-    // Weighted-average cost basis on incremental adds; source updates to
-    // most recent purchase; purchasedAt stays as the original first purchase.
-    const oldQty = existing.qty;
-    const oldCost = oldQty * existing.unitPrice;
-    const newQty = oldQty + qty;
-    existing.qty = newQty;
-    existing.unitPrice = (oldCost + qty * unitPrice) / newQty;
-    existing.source = source;
-  } else {
-    trader.cargo.push({ good: goodId, qty, source, unitPrice, purchasedAt: tick });
-  }
+  // Always push a new lot — never merge. Each purchase keeps its own
+  // source/price/age so the player can attribute later sales to specific
+  // origins, hedge across lots, and see real cost-basis distribution.
+  trader.cargo.push({ good: goodId, qty, source, unitPrice, purchasedAt: tick });
 }
 
 export function buyAtLocation(world: World, trader: Trader, goodId: GoodId, qty: number): ExecuteResult {
@@ -342,7 +339,7 @@ export function buyAtLocation(world: World, trader: Trader, goodId: GoodId, qty:
 
   market.stock[goodId] = stock - qty;
   trader.funds -= cost;
-  addOrMergeCargoLot(trader, goodId, qty, trader.location, price, world.tick);
+  addCargoLot(trader, goodId, qty, trader.location, price, world.tick);
 
   return {
     ok: true,
@@ -352,13 +349,22 @@ export function buyAtLocation(world: World, trader: Trader, goodId: GoodId, qty:
 
 export function sellAtLocation(world: World, trader: Trader, goodId: GoodId, qty?: number): ExecuteResult {
   if (trader.state !== "idle") return { ok: false, reason: "Ship is in transit." };
-  const lotIdx = trader.cargo.findIndex(l => l.good === goodId);
-  if (lotIdx < 0) return { ok: false, reason: `No ${goodId} in cargo.` };
-  const lot = trader.cargo[lotIdx];
 
-  const sellQty = qty ?? lot.qty;
+  // Match all lots of this good (could be many — purchases are per-lot now).
+  // Sort oldest-first (FIFO) so per-lot cost basis attribution is conventional.
+  const matching = trader.cargo
+    .map((lot, idx) => ({ lot, idx }))
+    .filter(x => x.lot.good === goodId)
+    .sort((a, b) => a.lot.purchasedAt - b.lot.purchasedAt);
+
+  if (matching.length === 0) return { ok: false, reason: `No ${goodId} in cargo.` };
+
+  const totalAvailable = matching.reduce((s, x) => s + x.lot.qty, 0);
+  const sellQty = qty ?? totalAvailable;
   if (sellQty <= 0) return { ok: false, reason: "Quantity must be positive." };
-  if (sellQty > lot.qty + 0.001) return { ok: false, reason: `Only have ${lot.qty} units of ${goodId}.` };
+  if (sellQty > totalAvailable + 0.001) {
+    return { ok: false, reason: `Only have ${totalAvailable} units of ${goodId}.` };
+  }
 
   const market = world.markets[trader.location];
   const grossPrice = market.prices[goodId];
@@ -367,12 +373,19 @@ export function sellAtLocation(world: World, trader: Trader, goodId: GoodId, qty
 
   market.stock[goodId] = (market.stock[goodId] ?? 0) + sellQty;
   trader.funds += revenue;
-  const remaining = lot.qty - sellQty;
-  if (remaining > 0.001) {
-    lot.qty = remaining;
-  } else {
-    trader.cargo.splice(lotIdx, 1);
+
+  // Drain matching lots FIFO until sellQty is satisfied. Remove emptied lots.
+  let remaining = sellQty;
+  const toRemove: number[] = [];
+  for (const { lot, idx } of matching) {
+    if (remaining <= 0.001) break;
+    const take = Math.min(lot.qty, remaining);
+    lot.qty -= take;
+    remaining -= take;
+    if (lot.qty <= 0.001) toRemove.push(idx);
   }
+  // Remove emptied lots in reverse order so indices stay valid.
+  toRemove.sort((a, b) => b - a).forEach(i => trader.cargo.splice(i, 1));
 
   return {
     ok: true,

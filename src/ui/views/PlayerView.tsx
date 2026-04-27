@@ -4,8 +4,8 @@ import { useStore } from "../store";
 import { reachableNeighbors } from "../../sim/geometry";
 import { describeHint, getGuidedHint, hintTarget, type HintTarget } from "../../sim/suggestions";
 import { SALES_TAX_RATE } from "../../sim/economy";
-import { cargoMass as cargoMassFn, findCargoLot } from "../../sim/cargo";
-import type { CargoLot, LocationDef, Trader, World } from "../../sim/types";
+import { cargoMass as cargoMassFn, findCargoLot, groupCargoByGood, type CargoGroup } from "../../sim/cargo";
+import type { LocationDef, Trader, World } from "../../sim/types";
 import "./PlayerView.css";
 
 export function PlayerView() {
@@ -176,11 +176,15 @@ function ActionCell({ suggested, hintText, critical, children }: {
 function Inventory({ ship, world }: { ship: Trader; world: World }) {
   const mass = cargoMassFn(ship, world);
   const capacityPct = (mass / ship.capacity) * 100;
+  const groups = groupCargoByGood(ship);
+  const lotsTotal = ship.cargo.length;
 
   return (
     <div className="inventory">
       <div className="inventory-header">
-        <h4>Inventory <span className="dim">— {ship.cargo.length} lot{ship.cargo.length === 1 ? "" : "s"}</span></h4>
+        <h4>
+          Inventory <span className="dim">— {groups.length} good{groups.length === 1 ? "" : "s"}{lotsTotal !== groups.length && `, ${lotsTotal} lots`}</span>
+        </h4>
         <div className="capacity-gauge mono">
           <span className="dim">cargo bay </span>
           <span>{mass.toFixed(0)}/{ship.capacity}</span>
@@ -193,10 +197,10 @@ function Inventory({ ship, world }: { ship: Trader; world: World }) {
         </div>
       </div>
       <div className="inventory-grid">
-        {ship.cargo.length === 0
+        {groups.length === 0
           ? <EmptyCargoCard capacity={ship.capacity} />
-          : ship.cargo.map((lot) => (
-              <CargoCard key={lot.good} cargo={lot} ship={ship} world={world} />
+          : groups.map((g) => (
+              <CargoGroupCard key={g.good} group={g} ship={ship} world={world} />
             ))}
       </div>
     </div>
@@ -214,38 +218,57 @@ function EmptyCargoCard({ capacity }: { capacity: number }) {
   );
 }
 
-function CargoCard({ cargo, ship, world }: { cargo: CargoLot; ship: Trader; world: World }) {
-  const good = world.goods[cargo.good];
-  const sourceName = world.locations[cargo.source]?.name ?? cargo.source;
-  const ageTicks = world.tick - cargo.purchasedAt;
-  const costBasis = cargo.qty * cargo.unitPrice;
+function CargoGroupCard({ group, ship, world }: { group: CargoGroup; ship: Trader; world: World }) {
+  const good = world.goods[group.good];
+  const ageTicks = world.tick - group.oldestPurchasedAt;
 
-  // Estimated profit / loss if sold at the CURRENT location, after tax.
+  // Sell-here P&L based on weighted-average cost basis (sums across all lots).
   const hereMarket = world.markets[ship.location];
-  const herePrice = hereMarket.prices[cargo.good] ?? 0;
+  const herePrice = hereMarket.prices[group.good] ?? 0;
   const hereNetUnit = herePrice * (1 - SALES_TAX_RATE);
-  const hereNetRevenue = cargo.qty * hereNetUnit;
-  const pnl = hereNetRevenue - costBasis;
-  const pnlPct = costBasis > 0 ? (pnl / costBasis) * 100 : 0;
+  const hereNetRevenue = group.totalQty * hereNetUnit;
+  const pnl = hereNetRevenue - group.totalCost;
+  const pnlPct = group.totalCost > 0 ? (pnl / group.totalCost) * 100 : 0;
   const pnlTone = pnl > 0 ? "good" : pnl < 0 ? "bad" : "dim";
 
-  const mass = cargo.qty * good.weight;
+  const mass = group.totalQty * good.weight;
   const massPct = (mass / ship.capacity) * 100;
 
   const tooltip = (
     <>
       <div className="cargo-tooltip-header">
         <span className="cargo-tooltip-name">{good.name}</span>
-        <span className="cargo-tooltip-qty mono">{cargo.qty.toFixed(0)} units</span>
+        <span className="cargo-tooltip-qty mono">{group.totalQty.toFixed(0)} units · {group.lots.length} lot{group.lots.length === 1 ? "" : "s"}</span>
       </div>
+
       <dl className="cargo-tooltip-stats">
-        <Stat label="from"        value={sourceName} />
-        <Stat label="paid"        value={`Ç${cargo.unitPrice.toFixed(2)}/u`} />
-        <Stat label="cost basis"  value={`Ç${Math.round(costBasis).toLocaleString()}`} />
-        <Stat label="age"         value={`${ageTicks}t`} />
-        <Stat label="mass"        value={`${mass.toFixed(0)} (${massPct.toFixed(0)}%)`} />
-        <Stat label="weight/u"    value={`${good.weight}`} />
+        <Stat label="weighted avg" value={`Ç${group.weightedAvgPrice.toFixed(2)}/u`} />
+        <Stat label="cost basis"   value={`Ç${Math.round(group.totalCost).toLocaleString()}`} />
+        <Stat label="oldest age"   value={`${ageTicks}t`} />
+        <Stat label="mass"         value={`${mass.toFixed(0)} (${massPct.toFixed(0)}%)`} />
       </dl>
+
+      {group.lots.length > 1 && (
+        <div className="cargo-tooltip-lots">
+          <div className="cargo-tooltip-lots-label dim">Lots (FIFO sell order):</div>
+          <table className="cargo-lots-table mono">
+            <thead>
+              <tr><th>qty</th><th>@ paid</th><th>from</th><th>age</th></tr>
+            </thead>
+            <tbody>
+              {[...group.lots].sort((a, b) => a.purchasedAt - b.purchasedAt).map((lot, i) => (
+                <tr key={i}>
+                  <td>{lot.qty.toFixed(0)}</td>
+                  <td>Ç{lot.unitPrice.toFixed(2)}</td>
+                  <td>{world.locations[lot.source]?.name?.split(" ")[0] ?? lot.source}</td>
+                  <td>{world.tick - lot.purchasedAt}t</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       <div className="cargo-tooltip-pnl">
         <span className="dim">at Ç{herePrice.toFixed(1)} ({(SALES_TAX_RATE * 100).toFixed(0)}% tax) → </span>
         <span className="mono">Ç{Math.round(hereNetRevenue).toLocaleString()} net</span>
@@ -259,7 +282,10 @@ function CargoCard({ cargo, ship, world }: { cargo: CargoLot; ship: Trader; worl
         <div className="cargo-card-title">
           <span className="cargo-card-good">{good.name}</span>
           <span className="cargo-card-times dim mono">×</span>
-          <span className="cargo-card-qty mono">{cargo.qty.toFixed(0)}</span>
+          <span className="cargo-card-qty mono">{group.totalQty.toFixed(0)}</span>
+          {group.lots.length > 1 && (
+            <span className="cargo-card-lots dim mono">{group.lots.length}L</span>
+          )}
         </div>
         <div className="cargo-card-pnl mono">
           <span className={pnlTone}>
