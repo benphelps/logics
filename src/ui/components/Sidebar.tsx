@@ -2,10 +2,9 @@ import { useStore, type Tab } from "../store";
 import "./Sidebar.css";
 
 const TABS: { id: Tab; label: string; hint?: string }[] = [
+  { id: "player",    label: "My Fleet" },
   { id: "markets",   label: "Markets" },
-  { id: "ships",     label: "Ships" },
-  { id: "locations", label: "Locations" },
-  { id: "player",    label: "Player", hint: "stub" },
+  { id: "locations", label: "Atlas" },
 ];
 
 export function Sidebar() {

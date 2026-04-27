@@ -17,8 +17,6 @@ export function TopBar() {
   useStore((s) => s.tickEpoch);
 
   const tick = world.tick;
-  const traders = Object.values(world.traders);
-  const totalFunds = traders.reduce((sum, t) => sum + t.funds, 0);
 
   return (
     <header className="topbar">
@@ -28,11 +26,9 @@ export function TopBar() {
       </div>
 
       <div className="topbar-stats mono">
-        <Stat label="Tick"    value={tick.toLocaleString()} />
-        <Stat label="Ships"   value={traders.length.toString()} />
-        <Stat label="Fleet"   value={`Ç${Math.round(totalFunds).toLocaleString()}`} />
+        <Stat label="Tick" value={tick.toLocaleString()} />
         {world.player && (
-          <Stat label="Bank"  value={`Ç${Math.round(world.player.funds).toLocaleString()}`} />
+          <Stat label="Bank" value={`Ç${Math.round(world.player.funds).toLocaleString()}`} />
         )}
       </div>
 

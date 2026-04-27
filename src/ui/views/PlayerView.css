@@ -1,7 +1,7 @@
 .player-view {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
 .player-error {
@@ -11,38 +11,6 @@
   padding: 8px 12px;
   font-size: 12px;
   cursor: pointer;
-}
-
-.player-summary {
-  display: flex;
-  gap: 24px;
-  background: var(--bg-1);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 12px 16px;
-}
-
-.player-stat {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.player-stat-label {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.player-stat-value {
-  font-size: 18px;
-  color: var(--text);
-}
-
-.player-ships {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
 }
 
 .ship-panel {
@@ -61,8 +29,9 @@
 
 .ship-header h3 {
   margin: 0;
-  font-size: 14px;
+  font-size: 15px;
   color: var(--text);
+  font-weight: 600;
 }
 
 .ship-meta {
@@ -83,29 +52,220 @@
   font-size: 12px;
   padding: 8px 0;
   border-bottom: 1px solid var(--border);
-  margin-bottom: 10px;
+  margin-bottom: 14px;
 }
 
-.ship-transit-note {
-  font-size: 12px;
-  padding: 8px 12px;
+/* ---- in transit ---- */
+
+.transit-view {
+  padding-top: 4px;
+}
+
+.transit-banner {
+  display: flex;
+  gap: 32px;
   background: var(--bg-2);
+  padding: 16px 20px;
+  border-radius: 3px;
+  align-items: center;
+}
+
+.transit-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 2px;
+}
+
+.transit-name {
+  font-size: 16px;
+  color: var(--text);
+}
+
+/* ---- docked ---- */
+
+.docked-view {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.loc-overview {
+  background: var(--bg-2);
+  padding: 10px 14px;
   border-radius: 3px;
 }
 
-.suggestions {
+.loc-overview-title {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
-.suggestions-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  font-size: 11px;
+.loc-name {
+  font-size: 14px;
+  color: var(--text);
+  font-weight: 600;
+  margin-right: 6px;
+}
+
+.loc-tag {
+  font-size: 9px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  background: var(--bg-3);
+  color: var(--text-dim);
+  padding: 2px 6px;
+  border-radius: 2px;
+}
+
+.loc-overview-meta {
+  margin-top: 4px;
+  font-size: 11px;
+}
+
+.docked-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.market-panel,
+.side-panel {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 10px 12px;
+}
+
+.market-panel h4,
+.side-panel h4,
+.suggestions h4 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.market-table,
+.travel-table,
+.suggestions-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.market-table th,
+.travel-table th,
+.suggestions-table th {
+  text-align: left;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.market-table td,
+.travel-table td,
+.suggestions-table td {
+  padding: 5px 6px;
+  border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+
+.market-table th.numeric,
+.market-table td.numeric,
+.travel-table th.numeric,
+.travel-table td.numeric,
+.suggestions-table th.numeric,
+.suggestions-table td.numeric {
+  text-align: right;
+}
+
+.market-table tbody tr:hover,
+.travel-table tbody tr:hover,
+.suggestions-table tbody tr:hover {
+  background: var(--bg-3);
+}
+
+.market-table .row-mine {
+  background: var(--good-bg);
+}
+
+.market-table .row-mine:hover {
+  background: var(--good-bg);
+}
+
+.market-footnote {
+  font-size: 10px;
+  margin-top: 6px;
+}
+
+.buy-sell {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.buy-sell button {
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
+/* ---- side panels: fuel + travel ---- */
+
+.side-panels {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fuel-status {
+  font-size: 12px;
+  margin-bottom: 8px;
+  padding: 4px 8px;
+  background: var(--bg-3);
+  border-radius: 2px;
+}
+
+.fuel-list {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  font-size: 12px;
+}
+
+.fuel-list li {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 0;
+}
+
+.fuel-btn {
+  width: 100%;
+  font-size: 12px;
+  padding: 5px;
+}
+
+.travel-table button {
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
+/* ---- suggestions ---- */
+
+.suggestions {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 10px 12px;
 }
 
 .suggestions-empty {
@@ -115,46 +275,7 @@
   border-radius: 3px;
 }
 
-.suggestions-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-  background: var(--bg-2);
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.suggestions-table th,
-.suggestions-table td {
-  padding: 5px 8px;
-  border-bottom: 1px solid var(--border);
-  text-align: left;
-}
-
-.suggestions-table thead th {
-  background: var(--bg-3);
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.suggestions-table th.numeric,
-.suggestions-table td.numeric {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.suggestions-table tbody tr:hover {
-  background: var(--bg-3);
-}
-
 .suggestions-table button {
   font-size: 11px;
-  padding: 3px 8px;
-}
-
-.suggestions-footnote {
-  font-size: 10px;
+  padding: 2px 8px;
 }

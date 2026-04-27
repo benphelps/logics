@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createWorld } from "./world";
 import { tickN } from "./tick";
-import { executeTrade, listTradeOptions } from "./traders";
+import { buyAtLocation, executeTrade, listTradeOptions, refuelManual, sellAtLocation, travelTo } from "./traders";
 
 describe("player layer v1", () => {
   it("createWorld() defaults include a player with a manual ship", () => {
@@ -80,5 +80,72 @@ describe("player layer v1", () => {
     if (opts.length === 0) return;
     const result = executeTrade(w, ship, opts[0]);
     expect(result.ok).toBe(false);
+  });
+});
+
+describe("player primitives — manual buy / sell / refuel / travel", () => {
+  it("buyAtLocation loads cargo, deducts funds and stock", () => {
+    const w = createWorld();
+    const ship = w.traders[w.player!.shipIds[0]];
+    const fundsBefore = ship.funds;
+    const stockBefore = w.markets.haven.stock.protein;
+    const r = buyAtLocation(w, ship, "protein", 10);
+    expect(r.ok).toBe(true);
+    expect(ship.cargo).toEqual({ good: "protein", qty: 10 });
+    expect(ship.funds).toBeLessThan(fundsBefore);
+    expect(w.markets.haven.stock.protein).toBe(stockBefore - 10);
+  });
+
+  it("buyAtLocation refuses mismatched cargo", () => {
+    const w = createWorld();
+    const ship = w.traders[w.player!.shipIds[0]];
+    expect(buyAtLocation(w, ship, "protein", 5).ok).toBe(true);
+    expect(buyAtLocation(w, ship, "fiber", 5).ok).toBe(false);
+  });
+
+  it("buyAtLocation refuses cargo over capacity", () => {
+    const w = createWorld();
+    const ship = w.traders[w.player!.shipIds[0]];
+    expect(buyAtLocation(w, ship, "protein", 999).ok).toBe(false);
+  });
+
+  it("sellAtLocation pays the trader after tax", () => {
+    const w = createWorld();
+    const ship = w.traders[w.player!.shipIds[0]];
+    buyAtLocation(w, ship, "protein", 10);
+    const fundsBefore = ship.funds;
+    const r = sellAtLocation(w, ship);
+    expect(r.ok).toBe(true);
+    expect(ship.cargo).toBeNull();
+    expect(ship.funds).toBeGreaterThan(fundsBefore);
+  });
+
+  it("refuelManual fills the tank when fuel is available", () => {
+    const w = createWorld();
+    const ship = w.traders[w.player!.shipIds[0]];
+    ship.currentFuel = { good: "plasma", qty: 5 };
+    w.markets.haven.stock.plasma = 100;
+    const r = refuelManual(w, ship);
+    expect(r.ok).toBe(true);
+    expect(ship.currentFuel!.qty).toBe(ship.fuelCapacity);
+  });
+
+  it("travelTo deducts fuel, sets destination + transit", () => {
+    const w = createWorld();
+    const ship = w.traders[w.player!.shipIds[0]];
+    const fuelBefore = ship.currentFuel!.qty;
+    const r = travelTo(w, ship, "verdant");
+    expect(r.ok).toBe(true);
+    expect(ship.state).toBe("transit");
+    expect(ship.destination).toBe("verdant");
+    expect(ship.currentFuel!.qty).toBeLessThan(fuelBefore);
+  });
+
+  it("travelTo refuses when fuel is insufficient", () => {
+    const w = createWorld();
+    const ship = w.traders[w.player!.shipIds[0]];
+    ship.currentFuel = { good: "plasma", qty: 1 };
+    const r = travelTo(w, ship, "saffron");
+    expect(r.ok).toBe(false);
   });
 });
