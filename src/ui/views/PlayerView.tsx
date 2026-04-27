@@ -1,6 +1,7 @@
 import { useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { IconType } from "react-icons";
+import { MdPushPin } from "react-icons/md";
 import {
   GiAstronautHelmet,
   GiAutoRepair,
@@ -9,7 +10,6 @@ import {
   GiFactory,
   GiFuelTank,
   GiPathDistance,
-  GiPin,
   GiRadarSweep,
   GiShipWheel,
   GiSpeedometer,
@@ -854,8 +854,8 @@ function StationTravelSummary({ loc, inTransit, selected, pinned, onHover, onCle
       <div className="bridge-card-title">
         <span className="bridge-card-eyebrow station-eyebrow">{inTransit ? "Approaching" : "Station"}</span>
         <span className="station-name station-name-with-pin">
-          {pinned && <GiPin className="ui-icon row-pin-icon" aria-hidden="true" focusable="false" />}
           <span>{loc.name}</span>
+          {pinned && <MdPushPin className="ui-icon row-pin-icon" aria-hidden="true" focusable="false" />}
         </span>
       </div>
     </div>
@@ -1544,8 +1544,8 @@ function MarketTableBody({ ship, world, loc, target, hintText, cueText, selected
               >
                 <td>
                   <span className="row-title-with-pin">
-                    {pinned && <GiPin className="ui-icon row-pin-icon" aria-hidden="true" focusable="false" />}
                     <span className="good-name">{world.goods[gid].name}</span>
+                    {pinned && <MdPushPin className="ui-icon row-pin-icon" aria-hidden="true" focusable="false" />}
                   </span>
                   {isCargo && <span className="row-meta-pill">holding {cargoQty.toFixed(0)}</span>}
                   {isFuel && <span className="row-meta-pill muted">fuel</span>}
@@ -2469,8 +2469,8 @@ function CargoRow({ group, ship, world, refLocId, inTransit, suggested, hintText
     >
       <td>
         <span className="row-title-with-pin">
-          {pinned && <GiPin className="ui-icon row-pin-icon" aria-hidden="true" focusable="false" />}
           <span className="cargo-row-name">{good.name}</span>
+          {pinned && <MdPushPin className="ui-icon row-pin-icon" aria-hidden="true" focusable="false" />}
         </span>
         {group.lots.length > 1 && <span className="row-meta-pill cargo-row-lots">{group.lots.length} lots</span>}
       </td>
@@ -2823,8 +2823,8 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
                 <td>
                   <div className="travel-dest-cell">
                     <span className="row-title-with-pin travel-dest-title">
-                      {pinned && <GiPin className="ui-icon row-pin-icon" aria-hidden="true" focusable="false" />}
                       <span className="travel-dest-name">{d.name}</span>
+                      {pinned && <MdPushPin className="ui-icon row-pin-icon" aria-hidden="true" focusable="false" />}
                     </span>
                     {(travelLabel || destinationJobs.length > 0) && (
                       <span className="travel-contract-line">

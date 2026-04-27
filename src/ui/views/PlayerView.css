@@ -269,9 +269,9 @@
 
 .row-pin-icon {
   flex: 0 0 auto;
-  color: #9dd7ff;
-  font-size: 12px;
-  opacity: 0.82;
+  color: var(--text-dim);
+  font-size: 13px;
+  opacity: 0.86;
 }
 
 .station-tags {
