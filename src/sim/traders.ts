@@ -5,8 +5,8 @@ import { chargeDockingFee, DOCKING_FEE_PER_CAPACITY, MAINTENANCE_PER_CAPACITY, S
 
 export const MIN_PROFIT_PER_TICK = 0.05;
 export const MAX_DRAW_FRACTION = 0.5;
-export const REFUEL_THRESHOLD = 0.4;
-export const STRANDING_RESERVE = 0.2;
+export const REFUEL_THRESHOLD = 0.6;          // refuel earlier — was 0.4
+export const STRANDING_RESERVE = 0.3;         // require 30% reserve at arrival — was 0.2
 export const INFLIGHT_WEIGHT = 1.0;
 
 export interface TraderEvent {
