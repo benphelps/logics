@@ -118,19 +118,21 @@ A `Trader` holds:
 
 When idle, a trader:
 
-1. **Refuels** if tank is below `REFUEL_THRESHOLD = 0.4` of capacity. Picks the highest-preference fuel that has stock locally. Switching fuels dumps the remaining incompatible fuel.
+1. **Refuels** if tank is below `REFUEL_THRESHOLD = 0.6` of capacity. Picks the highest-preference fuel that has stock locally. Switching fuels dumps the remaining incompatible fuel.
 2. **Evaluates trade options** — for every (good, destination) pair from current location:
-   - Filter by cargo capacity (`capacity / weight`)
-   - Filter by source stock (won't drain more than `MAX_DRAW_FRACTION = 0.5` of available)
+   - Filter by cargo capacity (`capacity / weight`); player ships also reserve space for accepted-contract goods at the destination available at this source
+   - Filter by source stock (won't drain more than `MAX_DRAW_FRACTION = 0.5` of available; 1.0 for manual-piloted player ships)
    - Filter by funds (can't buy what it can't pay for)
-   - Filter by fuel availability for the trip
-   - Filter by anti-stranding rule: only commits if either (a) destination has fuel for this ship's preferred type at refuel-threshold-or-better, or (b) ship will land with at least `STRANDING_RESERVE = 0.2` of capacity left
-   - Compute `profitPerUnit = sellPrice - buyPrice - (fuelCost / qty)` where fuel cost is imputed at the *local* fuel price
+   - Filter by fuel availability for the trip (uses `effectivePerDistance` so crew range modifiers apply)
+   - Filter by anti-stranding rule: only commits if either (a) destination has fuel for this ship's preferred type at refuel-threshold-or-better, or (b) ship will land with at least `STRANDING_RESERVE = 0.3` of capacity left
+   - Compute `profitPerUnit = sellPrice - buyPrice - (fuelCost / qty)` where fuel cost is imputed at the *local* fuel price; sell price is *net* (after `SALES_TAX_RATE = 0.15`)
+   - Subtract `tripMaintenance` and `tripDockingFee` from the per-trip total
+   - For player ships only: fold in accepted-contract `(reward + penalty) / qty` bonus on matching `(destination, good)` routes; for player ships in manual or auto + navigator, also fold in unaccepted shortage rewards
    - Compute `profitPerTick = totalProfit / (travelTicks + 1)`
-   - Skip if `profitPerTick < MIN_PROFIT_PER_TICK = 0.5`
-3. **Picks the best option** by `profitPerTick`, buys the cargo, deducts fuel up front, departs.
+   - Skip if `profitPerTick < MIN_PROFIT_PER_TICK = 0.05`
+3. **Picks the best option** by `profitPerTick`, buys the cargo (player auto-pilot may pre-load contract goods first), deducts fuel up front, departs.
 
-If no option qualifies, emit `idle` (or `stuck` if fuel is too low to reach any neighbor — distinguishable for the future work board).
+If no option qualifies, fall back to `listSpeculativeOptions` — empty trips to a via station that opens up a profitable trade. If neither fires, emit `idle` (or `stuck` if fuel is too low to reach any neighbor).
 
 In transit: countdown ticks, on arrival sell cargo at destination's listed price. The buy/sell cycle is what redistributes goods and pulls prices toward equilibrium.
 
@@ -145,6 +147,111 @@ In transit: countdown ticks, on arrival sell cargo at destination's listed price
 Verified across starter / 10 / 50 / 100 generated locations and durations 200 / 500 / 2000 / 5000 ticks: **zero stuck traders, active trade, shortage rates 7-9 units/tick/loc**.
 
 NPC fleet wealth still grows over very long runs because typical trades have positive markup (sales create slightly more money than purchases destroy). The 15% tax + docking fee dramatically slows this — fleet wealth roughly doubles every ~2000 ticks rather than growing 10× — but does not fully close the loop. Real loop closure (Tier 3) requires location treasuries that pay traders for sales out of a finite pool replenished by abstract local revenue. Deferred until needed; for now the slow growth is bounded enough that a play session won't see meaningful inflation.
+
+## Player layer
+
+Everything above is the NPC-driven economy. The player layer sits on top: a single player owns one or more ships, accepts contracts, hires crew, and either drives ships manually via the suggestion engine or hands them to the auto-pilot.
+
+### Ship-funded model
+
+Each ship is financially independent. **All player-side flows touch `trader.funds` on the relevant ship**, not a global bank:
+
+- Hiring crew → `ship.funds -= hireCost`
+- Repair → `ship.funds -= maintenanceDebt`
+- Maintenance + crew wages each tick → drained from `ship.funds`
+- Contract reward on delivery → `ship.funds += reward`
+- Contract penalty on expire/abandon → `ship.funds -= penalty`
+
+`world.player.funds` exists in the type but no sim flow reads or writes it (kept as a slot for a future personal-stash / inter-ship transfer feature). The starter ship spawns with **Ç55,000** at Haven Station.
+
+### Crew
+
+Three roles today (`captain`, `navigator`, `mechanic`). Mercenary is reserved for future combat work. NPC ships have no crew model — they operate with implicit captains. Crew is a player-only system.
+
+`CrewMember { id, role, name, tier, hireCost, wagePerTick, modifiers }` — a snapshot from a hire offer, copied onto `ship.crew` when hired. `CrewModifiers` scaffolds eight stat-touching fields:
+
+| Modifier | Wired |
+|---|---|
+| `cargoCapacityBonus`, `fuelCapacityBonus`, `speedBonus` | Yes — `recomputeShipStats` folds into effective stats |
+| `rangeEfficiency` | Yes — read at every fuel calc via `effectivePerDistance` |
+| `maintenanceDiscount` | Yes — applied in `chargeOperationalCosts` |
+| `buyDiscount`, `sellPremium`, `contractRewardBonus` | Defined but not yet wired at trade/contract time |
+
+Each ship has an effective `capacity` / `speed` / `fuelCapacity` plus an immutable `baseCapacity` / `baseSpeed` / `baseFuelCapacity`. `recomputeShipStats(ship)` runs after any hire/fire and idempotently rebuilds the effective stats from base + crew modifier sum.
+
+#### Dynamic hire pool
+
+Crew aren't a static roster — `world.hires: Record<HireId, Hire>` is a per-station pool that `generateHires(world)` populates each tick (deterministic per-`(loc, tick)` `mulberry32`, scaled by population × techLevel) and `expireHires(world)` clears past deadline. Capped at `HIRE_MAX_PER_STATION = 6`. Tier rolled by station tech (low-tech ≈ 85% T1, mid opens T2, high opens T3). Modifier values are deliberately small (caps: +2-6 cargo, +3-8 fuel, 3-10% percentages, 0-2 mods per hire). Cost = `(roleBaseline + Σ MOD_COST_WEIGHT × value) × tierMult`.
+
+Role baselines (T1, no mods):
+- Captain `Ç25,000` + `Ç4/t` wage
+- Mechanic `Ç40,000` + `Ç3/t` wage
+- Navigator `Ç140,000` + `Ç10/t` wage
+
+Tuned so each role becomes affordable on roughly this timeline: captain within ~10 manual trades; mechanic shortly after (before the maintenance-debt grounding bites); navigator after a stretch of auto-trading has built up funds.
+
+### Maintenance debt + repair
+
+Player ships without a mechanic accumulate unpaid maintenance into `trader.maintenanceDebt`. Once `debt >= MAINTENANCE_DEBT_TRAVEL_BLOCK = 8000`, `travelTo` refuses with a "repair ship before travel" error — the ship is grounded until cleared. `repairShip(world, ship)` charges `ship.funds -= debt` and resets the counter. With a mechanic, maintenance is auto-paid each tick (with the mechanic's `maintenanceDiscount` applied) and no debt accrues.
+
+### Auto-pilot behavior, by crew composition
+
+Player ships have `pilot: "manual" | "auto"`. NPCs always run the same auto-pilot; the player's auto behavior is gated by crew.
+
+| Crew | Auto-pilot does | Doesn't do |
+|---|---|---|
+| **(none)** | Nothing — silent idle. The Auto button is disabled with a "Hire a captain to engage auto-pilot" tooltip. | Anything. |
+| **Captain** | Refuels when below threshold. Picks the best `buy_for_route` from `listTradeOptions` and departs. Falls back to speculative empty trips when no local trade is profitable. Auto-sells everything on arrival (NPC parity). Maintenance accrues as debt. | Accept contracts. Pre-load anything alongside the primary buy. Pay maintenance automatically. |
+| **Captain + Mechanic** | All captain behavior. Maintenance + wages auto-paid each tick (with the mechanic's discount). No debt. | Accept contracts. |
+| **Captain + Navigator** | All captain behavior. **Auto-accepts** any unaccepted local shortage contracts on arrival whose good matches the cargo about to be sold (free credit). **Pre-loads contract goods** before the primary buy when a buy_for_route's destination matches an accepted contract for a different good — high-tier first, primary fills the remaining bay. Trade scoring **folds in** unaccepted shortage bonuses for any reachable contract destination (the navigator will follow through on arrival). Trade scoring **folds in** accepted-contract `(reward + penalty)/qty` bonus, so the engine treats abandoned contracts as real cost. | Auto-pay maintenance. |
+| **Full crew (cap + nav + mech)** | All of the above. Fully autonomous. | — |
+
+Refuel logic, anti-stranding reserve, speculative travel, multi-good loadout, and contract-aware route scoring all live in `traders.ts` regardless of crew — the captain "unlocks" them by enabling auto-pilot at all; the navigator/mechanic add the contract-acceptance and maintenance branches on top.
+
+### Job board (contracts + rescues)
+
+`world.jobs: Record<JobId, Job>` is a per-tick generated pool of work the player can opt into. Two kinds:
+
+- **Shortage contracts** (`kind: "shortage"`): a station with stock-below-target on a consumed good posts a "deliver N of X" contract. **Location-gated** — only visible in the UI from that station (you have to physically dock to learn the local needs).
+- **Rescue calls** (`kind: "rescue"`): an NPC trader stranded with no fuel ≥ 1 tick gets a rescue contract posted at their station (fuel + good + qty matching their tank). **Broadcast** — visible from any station.
+
+Tier scales with severity (shortage: stock/target ratio; rescue: `stuckTicks` since stranding) and drives:
+
+- **Reward**: `qty × basePrice × REWARD_MULT_BY_TIER` (low 1.6×, medium 2.5×, high 4.0×)
+- **Penalty**: `reward × PENALTY_FRACTION_BY_TIER` (low 0, medium 25%, high 100% — "can't ignore")
+- **Expiry**: `EXPIRY_TICKS_BY_TIER` (low 120t, medium 60t, high 30t)
+
+`generateJobs(world)` runs each tick and posts new contracts up to `MAX_OPEN_JOBS = 24`. `expireJobs(world)` drops past-deadline entries; if the contract was accepted, the penalty is charged to the accepting ship's wallet. Acceptance, abandonment, and delivery flow through `acceptJob` / `abandonJob` / `creditJobOnDelivery` — all gated to player ships, all updating `ship.funds` and emitting log entries.
+
+Inside `sellAtLocation`, every successful sell calls `creditJobOnDelivery(world, ship, location, good, qty)` which scans accepted contracts at that location/good (sorted by tier) and credits delivered units, paying out the reward and clearing the contract when satisfied. That same path fires from the auto-pilot's arrive-time sell loop.
+
+### Suggestion engine (manual mode)
+
+`getGuidedHint(world, ship)` returns a single best-next-step `GuidedHint` for the player to follow when piloting manually. The engine doesn't drive auto-pilot — it advises a human. Hint kinds:
+
+- `buy_for_route` — buy good X here, fly to D, sell. Often paired with a contract bonus.
+- `travel_to_sell` — you have cargo, fly to D for a better sell or to fulfill a contract there.
+- `sell_here` — drop cargo at this station (may close a contract).
+- `accept_job` — accept a contract first; the next-step hint will then guide the route.
+- `refuel` — fuel low, top off (critical-flagged when below 15%).
+- `speculate` — empty cargo, no profitable local trade — fly empty to a via station that opens up a trade.
+- `wait` — nothing useful to do this tick.
+
+Candidates are scored by expected value (revenue – cost basis – fuel – maintenance – docking, plus contract bonuses where realizable) and the top hint wins. A few overrides shape the choice:
+
+- **Honor commitments**: if the player is at an accepted contract's destination with matching cargo and the sell-here value is positive, that `sell_here` is force-promoted to top.
+- **Contract bonus folding for unaccepted shortages**: only counted when the player can actually realize them (manual mode, or auto + navigator).
+- **Accepted-contract bonus uses `(reward + penalty)/qty`**: penalty-avoided is real cost, so the engine commits to fulfilling what the player committed to.
+- **Cargo reservation**: when picking `buy_for_route`, the engine reserves cargo space for any accepted-contract good at the same destination available at the source. The recommended `qty` shrinks accordingly so the player can also load the contract good.
+- **Pre-emptive refuel**: if the top hint would land critically low at a station without fuel, `refuel` overrides.
+
+UI elements get a `HintTarget` describing what to highlight (specific buy/sell good, travel destination, accept-job row). The Suggested Buy button uses `target.buyQty` so clicking buys the engine's recommended amount, leaving room for the contract good — not bay-max.
+
+### Per-ship action log
+
+Every Trader has a capped `log: ShipLogEntry[]` (cap = 60 entries) of formatted action history: buy/sell/depart/arrive/refuel/stuck plus job-flavor entries (`job_accepted` / `job_completed` / `job_expired` / `job_abandoned`). Sim functions push entries directly — `executeTrade` / `buyAtLocation` / `sellAtLocation` / `refuelManual` / `travelTo` push their own emitted events; `stepTraders` funnels NPC + auto-pilot events at the end of the tick; `acceptJob` / `abandonJob` / `expireJobs` / `creditJobOnDelivery` push job-flavor entries with reward / penalty info baked in.
+
+Display is reverse-chronological under the bridge: tick · kind · message. Tone (`good` / `bad` / `warn` / `info`) drives row color.
 
 ## Goods catalog
 

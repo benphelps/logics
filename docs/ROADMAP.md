@@ -28,6 +28,16 @@ Listed in commit order. Each was scoped tight, landed with tests, and updated th
 | Death-spiral fix | Idle maintenance → 0; trip-aware profit math (subtracts trip maintenance from net). Fleets stay healthy across 200/500/1000/2000 ticks at all scales — zero stuck traders observed. |
 | Anticipation fix | Anticipated arrival price now only counts *other* traders' in-flight cargo, not own. Trader actually receives the listed price at arrival; price drop from own delivery only affects future traders. Restored active trade across all scales. |
 | Tier 2 sinks | Docking fee (5/cap per arrival) + sales tax (15%) bound NPC fleet wealth growth without re-triggering death spiral. Verified to 5000 ticks at all scales. Loop not strictly closed; Tier 3 (treasuries) handles that when needed. |
+| Player ship + bridge UI | Single player-owned ship at Haven. Manual pilot via UI bridge: 2×2 station/ship/cargo/travel cards, market + local-contracts split, action log card, in-transit progress bar with quick-travel. Suggestion engine drives ✦ markers + row highlights. |
+| Speculative travel | When no profitable local trade exists, NPCs + auto-pilot can fly empty to a nearby station that opens up a profitable trade. K=6 nearest cap. |
+| Job board | `world.jobs` pool generated each tick. Two kinds: location-gated **shortage contracts** (visible only at the destination), broadcast **rescue calls** (NPCs stranded ≥ 1 tick). Tier scales with severity → `(reward, penalty, expiry)` triples. Reward credited on delivery via `creditJobOnDelivery` inside `sellAtLocation` and the auto-pilot's arrive-sell. Penalty charged on expiry/abandon. |
+| Per-ship action log | Capped `Trader.log` of formatted entries (buy/sell/depart/arrive/refuel/stuck + job lifecycle). Surfaced as a card under the bridge. |
+| Crew system + dynamic hire pool | Three roles (captain / navigator / mechanic). `world.hires` per-station pool with deterministic per-(loc, tick) generation, expiry, station-tech tier roll. Modifiers: cargo / fuel / speed / range wired today; buy / sell / contract % scaffolded. `recomputeShipStats` folds modifiers onto effective stats; `effectivePerDistance` for range. Each role gates a slice of auto-pilot behavior — see SIM.md auto-pilot table. |
+| Maintenance debt + Repair Ship | Player ships without a mechanic accumulate unpaid maintenance. Past `MAINTENANCE_DEBT_TRAVEL_BLOCK = 8000` the ship can't depart until repaired. With a mechanic, auto-paid (with discount). |
+| Ship-funded wallets | Each ship is financially independent: hire / repair / wages / maintenance / contract reward+penalty all touch `ship.funds`, not a global player bank. Initial ship spawns with Ç55,000. `world.player.funds` retired (kept in type at 0 for future personal-stash). |
+| Contract-aware engine | `listTradeOptions` folds in unaccepted-shortage bonuses for player ships that can realize them (manual or auto+nav). Accepted-contract bonus uses `(reward + penalty)/qty` so commitment carries weight. `cargoLoadedCandidates` does the same for travel-to-sell. New remote-Case-A: when carrying a contract good, surface "Accept and head to X" as a candidate. Honor-commitments override force-promotes at-destination contract sells. Sell hint targets a specific good (not all cargo). |
+| Auto-pilot multi-good loadout | `stepTrader` pre-loads accepted-contract goods (high-tier first) before the primary buy when a buy_for_route's destination matches an accepted contract for a different good. One trip, multiple contracts fulfilled. |
+| Cargo reservation in `listTradeOptions` | When sizing the primary buy, the engine reserves cargo for accepted-contract goods at the same destination available at this source. Recommended `hint.qty` shrinks; the suggested Buy button uses it (not bay-max), leaving room for the contract good. |
 
 ---
 
@@ -175,5 +185,14 @@ Most balance levers are exported constants. Search for them:
 | `traders.ts` | `REFUEL_THRESHOLD` | Tank fraction below which refuel triggers |
 | `traders.ts` | `STRANDING_RESERVE` | Minimum fuel reserve to not get stuck after arrival |
 | `traders.ts` | `INFLIGHT_WEIGHT` | How much in-flight cargo from other traders counts in arrival-price anticipation (1.0 = full) |
+| `traders.ts` | `SPECULATIVE_NEAREST_K` | Cap on candidate via-points considered per speculative-travel call (currently 6) |
+| `crew.ts` | `MAINTENANCE_DEBT_TRAVEL_BLOCK` | Maintenance debt at which a ship without a mechanic is grounded (currently 8000) |
+| `hires.ts` | `HIRE_MAX_PER_STATION` | Cap on concurrent posted hire offers per station (currently 6) |
+| `hires.ts` | `HIRE_BASE_POST_CHANCE` | Per-station per-tick chance of posting a new offer (scaled by population × techLevel) |
+| `hires.ts` | `BASE_HIRE_BY_ROLE` / `BASE_WAGE_BY_ROLE` | Tier-1 baseline pricing for each role |
+| `hires.ts` | `MOD_RANGE` / `MOD_COST_WEIGHT` | Modifier roll envelope and pricing per modifier |
+| `jobs.ts` | `MAX_OPEN_JOBS` | Cap on concurrent open contracts world-wide (currently 24) |
+| `jobs.ts` | `REWARD_MULT_BY_TIER` / `PENALTY_FRACTION_BY_TIER` / `EXPIRY_TICKS_BY_TIER` | Per-tier reward × base-price scaling, penalty as fraction of reward, contract deadline window |
+| `jobs.ts` | `SHORTAGE_HIGH_FRACTION` / `SHORTAGE_MED_FRACTION` / `SHORTAGE_LOW_FRACTION` | Stock/target thresholds that classify shortage tier |
 
 Tuning workflow: change a constant → `npm test` (ensure invariants hold) → `npm run sim 500` (eyeball the steady state).
