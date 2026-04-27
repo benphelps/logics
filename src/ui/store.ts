@@ -1,8 +1,10 @@
 import { create } from "zustand";
-import type { World, LocationId, GoodId, TraderId } from "../sim/types";
+import type { CrewRole, World, LocationId, GoodId, JobId, TraderId } from "../sim/types";
 import { createWorld } from "../sim/world";
 import { tickWorld } from "../sim/tick";
-import { buyAtLocation, executeTrade, refuelManual, sellAtLocation, travelTo, type TradeOption } from "../sim/traders";
+import { buyAtLocation, executeTrade, refuelManual, repairShip, sellAtLocation, travelTo, type TradeOption } from "../sim/traders";
+import { abandonJob, acceptJob } from "../sim/jobs";
+import { fireCrew, hireCrew } from "../sim/crew";
 
 export type Tab = "player" | "markets" | "locations";
 export type Speed = 0 | 1 | 4 | 16;
@@ -33,6 +35,11 @@ interface UiState {
   sell: (traderId: TraderId, good: GoodId, qty?: number) => void;
   refuel: (traderId: TraderId, qty?: number) => void;
   travel: (traderId: TraderId, dst: LocationId) => void;
+  acceptJob: (jobId: JobId, traderId: TraderId) => void;
+  abandonJob: (jobId: JobId) => void;
+  hireCrew: (traderId: TraderId, candidateId: string) => void;
+  fireCrew: (traderId: TraderId, role: CrewRole) => void;
+  repairShip: (traderId: TraderId) => void;
 }
 
 export const useStore = create<UiState>((set, get) => ({
@@ -104,6 +111,34 @@ export const useStore = create<UiState>((set, get) => ({
     const w = get().world;
     const t = w.traders[traderId]; if (!t) return;
     const r = travelTo(w, t, dst);
+    set({ lastError: r.ok ? null : r.reason, tickEpoch: get().tickEpoch + 1 });
+  },
+  acceptJob: (jobId, traderId) => {
+    const w = get().world;
+    const r = acceptJob(w, jobId, traderId);
+    set({ lastError: r.ok ? null : r.reason, tickEpoch: get().tickEpoch + 1 });
+  },
+  abandonJob: (jobId) => {
+    const w = get().world;
+    const r = abandonJob(w, jobId);
+    set({ lastError: r.ok ? null : r.reason, tickEpoch: get().tickEpoch + 1 });
+  },
+  hireCrew: (traderId, candidateId) => {
+    const w = get().world;
+    const t = w.traders[traderId]; if (!t) return;
+    const r = hireCrew(w, t, candidateId);
+    set({ lastError: r.ok ? null : r.reason, tickEpoch: get().tickEpoch + 1 });
+  },
+  fireCrew: (traderId, role) => {
+    const w = get().world;
+    const t = w.traders[traderId]; if (!t) return;
+    const r = fireCrew(t, role);
+    set({ lastError: r.ok ? null : r.reason, tickEpoch: get().tickEpoch + 1 });
+  },
+  repairShip: (traderId) => {
+    const w = get().world;
+    const t = w.traders[traderId]; if (!t) return;
+    const r = repairShip(w, t);
     set({ lastError: r.ok ? null : r.reason, tickEpoch: get().tickEpoch + 1 });
   },
 }));

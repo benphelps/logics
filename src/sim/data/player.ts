@@ -28,6 +28,7 @@ export function makeStartingShip(name: string, location: string): Trader {
     destination: null,
     ticksRemaining: 0,
     pilot: "manual",
+    log: [],
   };
 }
 

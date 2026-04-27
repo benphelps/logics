@@ -1,12 +1,18 @@
-import type { GoodId, LocationDef, MarketState, World } from "./types";
+import type { GoodId, Hire, HireId, Job, LocationDef, MarketState, World } from "./types";
 import { recomputePrices } from "./pricing";
 import { stepTraders, type TraderEvent } from "./traders";
 import { chargeMaintenance, productionScale } from "./economy";
+import { expireJobs, generateJobs, type JobExpiryEvent } from "./jobs";
+import { expireHires, generateHires } from "./hires";
 
 export interface TickReport {
   tick: number;
   shortages: { location: string; good: GoodId; missing: number }[];
   traderEvents: TraderEvent[];
+  jobsPosted: Job[];
+  jobsExpired: JobExpiryEvent[];
+  hiresPosted: Hire[];
+  hiresExpired: HireId[];
 }
 
 function produce(loc: LocationDef, market: MarketState): void {
@@ -65,8 +71,16 @@ export function tickWorld(world: World): TickReport {
 
   chargeMaintenance(world);
 
+  // Job board housekeeping. Expire first (so the board has room), then post.
+  const jobsExpired = expireJobs(world);
+  const jobsPosted = generateJobs(world);
+
+  // Crew hire offers — same expire-then-post pattern.
+  const hiresExpired = expireHires(world);
+  const hiresPosted = generateHires(world);
+
   world.tick += 1;
-  return { tick: world.tick, shortages, traderEvents };
+  return { tick: world.tick, shortages, traderEvents, jobsPosted, jobsExpired, hiresPosted, hiresExpired };
 }
 
 export function tickN(world: World, n: number): TickReport[] {

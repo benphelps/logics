@@ -70,6 +70,7 @@ export function generateTraders(opts: TraderGenOptions): Record<string, Trader> 
       destination: null,
       ticksRemaining: 0,
       pilot: "npc",
+      log: [],
     };
   }
 

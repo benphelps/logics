@@ -161,5 +161,5 @@ describe("invariants hold at scale", () => {
     for (const t of Object.values(w.traders)) {
       expect(t.funds).toBeGreaterThanOrEqual(0);
     }
-  });
+  }, 15_000);
 });

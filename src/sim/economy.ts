@@ -1,4 +1,5 @@
 import type { Trader, World } from "./types";
+import { combinedModifiers, hasCrew, totalCrewWage } from "./crew";
 
 export const MAINTENANCE_PER_CAPACITY = 0.5;
 export const MAINTENANCE_IDLE_FACTOR = 0;
@@ -14,15 +15,46 @@ export function productionScale(stock: number, target: number): number {
   return 1 - (stock - target) / (target * (STOCKPILE_CAP_MULT - 1));
 }
 
+function isPlayerShip(world: World, ship: Trader): boolean {
+  return world.player?.shipIds.includes(ship.id) ?? false;
+}
+
+function maintenanceCost(trader: Trader): number {
+  let cost = trader.capacity * CREW_WAGES_PER_CAPACITY;
+  if (trader.state === "transit") {
+    cost += trader.capacity * MAINTENANCE_PER_CAPACITY;
+  } else {
+    cost += trader.capacity * MAINTENANCE_PER_CAPACITY * MAINTENANCE_IDLE_FACTOR;
+  }
+  return cost;
+}
+
 export function chargeOperationalCosts(world: World): void {
   for (const trader of Object.values(world.traders)) {
-    if (trader.funds <= 0) continue;
-    let cost = trader.capacity * CREW_WAGES_PER_CAPACITY;
-    if (trader.state === "transit") {
-      cost += trader.capacity * MAINTENANCE_PER_CAPACITY;
-    } else {
-      cost += trader.capacity * MAINTENANCE_PER_CAPACITY * MAINTENANCE_IDLE_FACTOR;
+    const cost = maintenanceCost(trader);
+    if (cost <= 0) continue;
+
+    if (isPlayerShip(world, trader)) {
+      // Player ships: route maintenance through the mechanic gating, charge
+      // crew wages on top.
+      const wages = totalCrewWage(trader);
+      const mods = combinedModifiers(trader.crew);
+      const discount = mods.maintenanceDiscount ?? 0;
+      const effectiveMaint = cost * (1 - discount);
+      if (hasCrew(trader, "mechanic")) {
+        // Mechanic auto-pays maintenance from the player wallet (alongside wages).
+        const total = effectiveMaint + wages;
+        if (world.player) world.player.funds = Math.max(0, world.player.funds - total);
+      } else {
+        // No mechanic — accumulate as visible debt; wages still charged.
+        trader.maintenanceDebt = (trader.maintenanceDebt ?? 0) + effectiveMaint;
+        if (wages > 0 && world.player) world.player.funds = Math.max(0, world.player.funds - wages);
+      }
+      continue;
     }
+
+    // NPC ships: legacy behavior — pay from their own funds, no debt path.
+    if (trader.funds <= 0) continue;
     trader.funds = Math.max(0, trader.funds - cost);
   }
 }

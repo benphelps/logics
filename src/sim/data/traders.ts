@@ -40,5 +40,6 @@ function mk(
     destination: null,
     ticksRemaining: 0,
     pilot: "npc",
+    log: [],
   };
 }

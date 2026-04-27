@@ -51,5 +51,5 @@ export function createWorld(opts?: {
     markets[loc.id] = { stock, prices };
   }
 
-  return { tick: 0, goods, locations, markets, lanes, traders, player };
+  return { tick: 0, goods, locations, markets, lanes, traders, player, jobs: {}, nextJobId: 1, hires: {}, nextHireId: 1 };
 }

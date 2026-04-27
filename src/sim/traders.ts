@@ -1,7 +1,10 @@
-import type { FuelType, GoodId, LocationId, Trader, World } from "./types";
+import type { FuelType, GoodId, LocationId, Trader, TraderEvent, World } from "./types";
 import { distance, nearestDistance } from "./geometry";
 import { priceFor } from "./pricing";
 import { chargeDockingFee, DOCKING_FEE_PER_CAPACITY, MAINTENANCE_PER_CAPACITY, SALES_TAX_RATE } from "./economy";
+import { acceptJob, creditJobOnDelivery, type JobCompletionEvent } from "./jobs";
+import { pushNote, pushTraderEvent } from "./log";
+import { effectivePerDistance, hasCrew, MAINTENANCE_DEBT_TRAVEL_BLOCK } from "./crew";
 
 export const MIN_PROFIT_PER_TICK = 0.05;
 export const MAX_DRAW_FRACTION = 0.5;
@@ -9,15 +12,8 @@ export const REFUEL_THRESHOLD = 0.6;          // refuel earlier — was 0.4
 export const STRANDING_RESERVE = 0.3;         // require 30% reserve at arrival — was 0.2
 export const INFLIGHT_WEIGHT = 1.0;
 
-export interface TraderEvent {
-  trader: string;
-  kind: "buy" | "sell" | "depart" | "arrive" | "idle" | "refuel" | "stuck";
-  good?: GoodId;
-  qty?: number;
-  unitPrice?: number;
-  from?: LocationId;
-  to?: LocationId;
-}
+// Re-exported for back-compat with consumers that imported it from here.
+export type { TraderEvent };
 
 export interface TradeOption {
   good: GoodId;
@@ -102,6 +98,18 @@ export function listTradeOptions(
   const effectiveFuel = isHypothetical ? trader.fuelCapacity : fuel.qty;
   const options: TradeOption[] = [];
 
+  // Pre-index this trader's accepted contracts by (destination|good) → bonus
+  // info. Routes that match an accepted job get the per-unit reward credited
+  // on top of the trade profit, so the auto-pilot prefers them when picking
+  // the next move (and follows through on contracts it has signed up for).
+  const jobBonusMap = new Map<string, { perUnit: number; remaining: number }>();
+  for (const j of Object.values(world.jobs)) {
+    if (j.acceptedBy !== trader.id) continue;
+    const remaining = j.qty - j.delivered;
+    if (remaining <= 0) continue;
+    jobBonusMap.set(`${j.destination}|${j.good}`, { perUnit: j.reward / j.qty, remaining });
+  }
+
   // Cargo space available for new buys = capacity - existing lot mass.
   // Lets the suggestion engine recommend "hedge" buys when the player has
   // partial cargo — without this, every buy was sized to full empty bay.
@@ -118,10 +126,11 @@ export function listTradeOptions(
     const maxQty = Math.floor(Math.min(maxByCargo, maxByStock, maxByFunds));
     if (maxQty <= 0) continue;
 
+    const perDist = effectivePerDistance(trader, ft.perDistance);
     for (const dstId of Object.keys(world.locations) as LocationId[]) {
       if (dstId === here) continue;
       const dist = distance(world, here, dstId);
-      const fuelNeeded = dist * ft.perDistance;
+      const fuelNeeded = dist * perDist;
       if (fuelNeeded > effectiveFuel) continue;
 
       const dstMarket = world.markets[dstId];
@@ -148,7 +157,10 @@ export function listTradeOptions(
       const travelTicks = Math.max(1, Math.ceil(dist / trader.speed));
       const tripMaintenance = travelTicks * trader.capacity * MAINTENANCE_PER_CAPACITY;
       const tripDockingFee = trader.capacity * DOCKING_FEE_PER_CAPACITY;
-      const totalProfit = grossProfitPerUnit * maxQty - tripMaintenance - tripDockingFee;
+      let totalProfit = grossProfitPerUnit * maxQty - tripMaintenance - tripDockingFee;
+      // Layer in any matching contract bonus for this trader.
+      const jobMatch = jobBonusMap.get(`${dstId}|${goodId}`);
+      if (jobMatch) totalProfit += Math.min(maxQty, jobMatch.remaining) * jobMatch.perUnit;
       if (totalProfit <= 0) continue;
       const profitPerTick = totalProfit / (travelTicks + 1);
       if (profitPerTick < MIN_PROFIT_PER_TICK) continue;
@@ -216,8 +228,9 @@ export function listSpeculativeOptions(
     .sort((a, b) => a.dist - b.dist)
     .slice(0, SPECULATIVE_NEAREST_K);
 
+  const perDist = effectivePerDistance(trader, ft.perDistance);
   for (const { id: viaId, dist } of candidates) {
-    const emptyFuelNeeded = dist * ft.perDistance;
+    const emptyFuelNeeded = dist * perDist;
     if (emptyFuelNeeded > fuel.qty) continue;
 
     // Need fuel at via (so we can refuel + continue) OR enough remaining
@@ -261,12 +274,12 @@ export function listSpeculativeOptions(
   return out;
 }
 
-function isStuck(world: World, trader: Trader): boolean {
+export function isStuck(world: World, trader: Trader): boolean {
   const ft = activeFuelType(trader);
   if (!ft || !trader.currentFuel || trader.currentFuel.qty <= 0) return true;
   const minDist = nearestDistance(world, trader.location);
   if (minDist === 0) return false;
-  return trader.currentFuel.qty < minDist * ft.perDistance;
+  return trader.currentFuel.qty < minDist * effectivePerDistance(trader, ft.perDistance);
 }
 
 function stepTrader(world: World, trader: Trader, events: TraderEvent[], inflight: Map<string, number>): void {
@@ -285,6 +298,20 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
     // until the player clicks Sell. The hint engine highlights the Sell
     // button on arrival so the next-step CTA is obvious.
     if (trader.cargo.length > 0 && trader.pilot !== "manual") {
+      // Auto-accept matching local contracts on arrival — but only if the
+      // ship has a navigator on the crew. Without one, contracts must be
+      // accepted manually by the player.
+      if (trader.pilot === "auto" && hasCrew(trader, "navigator")) {
+        const cargoGoods = new Set(trader.cargo.map(l => l.good));
+        for (const job of Object.values(world.jobs)) {
+          if (job.acceptedBy != null) continue;
+          if (job.kind !== "shortage") continue;
+          if (job.destination !== dst) continue;
+          if (!cargoGoods.has(job.good)) continue;
+          acceptJob(world, job.id, trader.id);
+        }
+      }
+
       const dstMarket = world.markets[dst];
       for (const lot of trader.cargo) {
         const { good, qty } = lot;
@@ -293,6 +320,10 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
         const netUnitPrice = unitPrice * (1 - SALES_TAX_RATE);
         trader.funds += qty * netUnitPrice;
         events.push({ trader: trader.id, kind: "sell", good, qty, unitPrice: netUnitPrice, to: dst });
+        // Credit any matching accepted contracts (player ships only — the
+        // creditJobOnDelivery helper bails for non-player ids). Pays out the
+        // contract reward + emits a job_completed log entry.
+        creditJobOnDelivery(world, trader.id, dst, good, qty);
       }
       trader.cargo = [];
     }
@@ -300,6 +331,15 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
   }
 
   if (trader.pilot === "manual") {
+    events.push({ trader: trader.id, kind: "idle" });
+    return;
+  }
+
+  // Player ships in auto mode require a captain on the crew. Without one
+  // they sit idle just like manual ships — the player must hire to unlock
+  // autonomous trading. NPCs (pilot === "npc") never have crew; their auto
+  // behavior is implicit.
+  if (trader.pilot === "auto" && !hasCrew(trader, "captain")) {
     events.push({ trader: trader.id, kind: "idle" });
     return;
   }
@@ -360,7 +400,7 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
 }
 
 export type ExecuteResult =
-  | { ok: true; events: TraderEvent[] }
+  | { ok: true; events: TraderEvent[]; jobCompletions?: JobCompletionEvent[] }
   | { ok: false; reason: string };
 
 export function executeTrade(world: World, trader: Trader, choice: TradeOption): ExecuteResult {
@@ -404,6 +444,7 @@ export function executeTrade(world: World, trader: Trader, choice: TradeOption):
   trader.ticksRemaining = choice.travelTicks;
   events.push({ trader: trader.id, kind: "depart", from: here, to: choice.to });
 
+  for (const ev of events) pushTraderEvent(world, trader, ev);
   return { ok: true, events };
 }
 
@@ -448,10 +489,9 @@ export function buyAtLocation(world: World, trader: Trader, goodId: GoodId, qty:
   trader.funds -= cost;
   addCargoLot(trader, goodId, qty, trader.location, price, world.tick);
 
-  return {
-    ok: true,
-    events: [{ trader: trader.id, kind: "buy", good: goodId, qty, unitPrice: price, from: trader.location }],
-  };
+  const events: TraderEvent[] = [{ trader: trader.id, kind: "buy", good: goodId, qty, unitPrice: price, from: trader.location }];
+  for (const ev of events) pushTraderEvent(world, trader, ev);
+  return { ok: true, events };
 }
 
 export function sellAtLocation(world: World, trader: Trader, goodId: GoodId, qty?: number): ExecuteResult {
@@ -494,10 +534,13 @@ export function sellAtLocation(world: World, trader: Trader, goodId: GoodId, qty
   // Remove emptied lots in reverse order so indices stay valid.
   toRemove.sort((a, b) => b - a).forEach(i => trader.cargo.splice(i, 1));
 
-  return {
-    ok: true,
-    events: [{ trader: trader.id, kind: "sell", good: goodId, qty: sellQty, unitPrice: netPrice, to: trader.location }],
-  };
+  const jobCompletions = creditJobOnDelivery(world, trader.id, trader.location, goodId, sellQty);
+
+  const events: TraderEvent[] = [{ trader: trader.id, kind: "sell", good: goodId, qty: sellQty, unitPrice: netPrice, to: trader.location }];
+  for (const ev of events) pushTraderEvent(world, trader, ev);
+  // Job completion entries are pushed inside creditJobOnDelivery while it
+  // still has the live job object — nothing to do here.
+  return { ok: true, events, jobCompletions };
 }
 
 export function refuelManual(world: World, trader: Trader, qty?: number): ExecuteResult {
@@ -526,10 +569,9 @@ export function refuelManual(world: World, trader: Trader, qty?: number): Execut
   trader.funds -= buyQty * price;
   trader.currentFuel = { good: ft.good, qty: currentQty + buyQty };
 
-  return {
-    ok: true,
-    events: [{ trader: trader.id, kind: "refuel", good: ft.good, qty: buyQty, unitPrice: price }],
-  };
+  const events: TraderEvent[] = [{ trader: trader.id, kind: "refuel", good: ft.good, qty: buyQty, unitPrice: price }];
+  for (const ev of events) pushTraderEvent(world, trader, ev);
+  return { ok: true, events };
 }
 
 export function travelTo(world: World, trader: Trader, dst: LocationId): ExecuteResult {
@@ -537,12 +579,18 @@ export function travelTo(world: World, trader: Trader, dst: LocationId): Execute
   if (dst === trader.location) return { ok: false, reason: "Already at destination." };
   if (!world.locations[dst]) return { ok: false, reason: "Unknown destination." };
 
+  // Maintenance debt over the threshold grounds the ship until it's repaired.
+  // Player-side gating only — NPCs don't carry debt.
+  if ((trader.maintenanceDebt ?? 0) >= MAINTENANCE_DEBT_TRAVEL_BLOCK) {
+    return { ok: false, reason: `Maintenance debt Ç${Math.round(trader.maintenanceDebt!).toLocaleString()} too high — repair ship before travel.` };
+  }
+
   const ft = activeFuelType(trader);
   const fuel = trader.currentFuel;
   if (!ft || !fuel) return { ok: false, reason: "No compatible fuel in tank." };
 
   const dist = distance(world, trader.location, dst);
-  const fuelNeeded = dist * ft.perDistance;
+  const fuelNeeded = dist * effectivePerDistance(trader, ft.perDistance);
   if (fuel.qty < fuelNeeded - 0.001) {
     return { ok: false, reason: `Need ${fuelNeeded.toFixed(1)} fuel, have ${fuel.qty.toFixed(1)}.` };
   }
@@ -554,10 +602,25 @@ export function travelTo(world: World, trader: Trader, dst: LocationId): Execute
   trader.state = "transit";
   trader.ticksRemaining = travelTicks;
 
-  return {
-    ok: true,
-    events: [{ trader: trader.id, kind: "depart", from: trader.location, to: dst }],
-  };
+  const events: TraderEvent[] = [{ trader: trader.id, kind: "depart", from: trader.location, to: dst }];
+  for (const ev of events) pushTraderEvent(world, trader, ev);
+  return { ok: true, events };
+}
+
+// Pay off accumulated maintenance debt. Player-only — debt only accrues for
+// player ships missing a mechanic. Returns the amount paid.
+export function repairShip(world: World, trader: Trader): { ok: true; paid: number } | { ok: false; reason: string } {
+  if (trader.state !== "idle") return { ok: false, reason: "Can only repair while docked." };
+  const debt = trader.maintenanceDebt ?? 0;
+  if (debt <= 0) return { ok: false, reason: "Ship is in good repair — nothing to fix." };
+  if (!world.player) return { ok: false, reason: "No player." };
+  if (world.player.funds < debt) {
+    return { ok: false, reason: `Need Ç${Math.round(debt).toLocaleString()} to repair, have Ç${Math.round(world.player.funds).toLocaleString()}.` };
+  }
+  world.player.funds -= debt;
+  trader.maintenanceDebt = 0;
+  pushNote(world, trader, `Repaired ship — Ç${Math.round(debt).toLocaleString()} paid`, "good");
+  return { ok: true, paid: debt };
 }
 
 export function stepTraders(world: World): TraderEvent[] {
@@ -565,6 +628,19 @@ export function stepTraders(world: World): TraderEvent[] {
   const inflight = inTransitArrivalsByDestGood(world);
   for (const trader of Object.values(world.traders)) {
     stepTrader(world, trader, events, inflight);
+  }
+  // Update stranded counters once per tick. Drives rescue-job tier escalation:
+  // the longer a trader has been stuck, the more urgent (and lucrative) the
+  // rescue contract becomes.
+  for (const trader of Object.values(world.traders)) {
+    if (trader.state !== "idle") { trader.stuckTicks = 0; continue; }
+    trader.stuckTicks = isStuck(world, trader) ? (trader.stuckTicks ?? 0) + 1 : 0;
+  }
+  // Funnel each event into the originating ship's log so NPC + auto-pilot
+  // history is captured with the same shape as manual-action events.
+  for (const ev of events) {
+    const ship = world.traders[ev.trader];
+    if (ship) pushTraderEvent(world, ship, ev);
   }
   return events;
 }

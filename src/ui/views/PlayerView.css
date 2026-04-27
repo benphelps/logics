@@ -31,15 +31,31 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   grid-template-rows: auto auto;
-  gap: 6px;
-  margin-bottom: 12px;
+  gap: 14px;
+}
+
+/* Visual sugar — a small "docking clamp" sits in the gap between each pair of
+   cards, vertically centered on the row. Drawn from the LEFT card's pseudo-
+   element so we only need one source per row. */
+.bridge > .bridge-card:nth-child(odd)::after {
+  content: "";
+  position: absolute;
+  right: -14px;                 /* sits exactly in the 14px gap, no overlap */
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 10px;
+  background: var(--bg-3);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  pointer-events: none;
 }
 
 .bridge-card {
   background: var(--bg-2);
   border: 1px solid var(--border);
   border-radius: 3px;
-  padding: 6px 10px;
+  padding: 8px 12px;
   position: relative;
 }
 
@@ -47,7 +63,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   margin-bottom: 8px;
   min-height: 24px;          /* matches button height — keeps header consistent
                                 across cards with vs without buttons */
@@ -62,27 +78,16 @@
 }
 
 .bridge-card-eyebrow {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.10em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   flex-shrink: 0;
 }
 
 .bridge-card-meta {
-  font-size: 11px;
+  font-size: 12px;
   white-space: nowrap;
-}
-
-/* Left/right colored accent — station/travel = blue, ship/fuel = green */
-.station-card,
-.travel-card {
-  border-left: 2px solid var(--accent-dim);
-}
-
-.ship-card,
-.fuel-card {
-  border-right: 2px solid #6b8e6b;
 }
 
 .station-eyebrow {
@@ -96,7 +101,7 @@
 /* station card */
 
 .station-name {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text);
   white-space: nowrap;
@@ -106,32 +111,32 @@
 }
 
 .station-tags {
-  display: flex;
+  display: inline-flex;
   flex-wrap: wrap;
-  gap: 3px;
-  margin-bottom: 4px;
+  gap: 4px;
+  align-items: center;
 }
 
 .station-flows {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 
 .station-flow {
-  font-size: 11px;
+  font-size: 12px;
   display: flex;
-  gap: 6px;
+  gap: 8px;
   align-items: baseline;
-  line-height: 1.3;
+  line-height: 1.4;
 }
 
 .flow-label {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.05em;
   flex-shrink: 0;
-  width: 18px;
+  width: 22px;
 }
 
 .flow-list {
@@ -142,18 +147,18 @@
 /* ship card */
 
 .ship-name {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text);
 }
 
 .ship-spec {
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .ship-vital-row {
   display: flex;
-  gap: 12px;
+  gap: 14px;
   margin-top: 0;
 }
 
@@ -163,14 +168,14 @@
 }
 
 .vital-label {
-  font-size: 9px;
+  font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  margin-bottom: 1px;
+  margin-bottom: 2px;
 }
 
 .vital-value {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
@@ -178,15 +183,15 @@
 }
 
 .vital-sub {
-  font-size: 10px;
-  margin-top: 1px;
+  font-size: 11px;
+  margin-top: 2px;
 }
 
 .vital-bar {
-  height: 3px;
+  height: 4px;
   background: var(--bg-3);
   border-radius: 2px;
-  margin-top: 3px;
+  margin-top: 4px;
   overflow: hidden;
 }
 
@@ -198,6 +203,268 @@
 
 .vital-bar-fill.bad  { background: var(--bad); }
 .vital-bar-fill.warn { background: var(--warn); }
+
+/* ---- ship card: crew strip + status strip ---- */
+
+.ship-crew-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+}
+
+.ship-crew-slot {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 2px 6px;
+  background: var(--bg-1);
+  border-radius: 2px;
+  min-width: 0;
+}
+
+.ship-crew-slot.vacant .ship-crew-name {
+  color: var(--text-faint);
+}
+
+.ship-crew-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.ship-crew-name {
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 80px;
+}
+
+.ship-crew-wage {
+  margin-left: auto;
+  font-size: 11px;
+}
+
+.ship-crew-manage {
+  width: auto !important;
+  padding: 0 10px;
+}
+
+.ship-status-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+  font-size: 11px;
+}
+
+.ship-status-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ship-status-action {
+  width: auto !important;
+  padding: 0 10px;
+  margin-left: 4px;
+}
+
+/* ---- bridge-card horizontal tabs (cargo / crew) ---- */
+
+.bridge-card-tabs {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0;
+  border-bottom: none;
+  flex: 1;
+  min-width: 0;
+}
+
+.bridge-tab {
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-dim);
+  padding: 4px 10px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  border-radius: 0;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.bridge-tab:hover:not(:disabled) {
+  color: var(--text);
+  background: transparent;
+}
+
+.bridge-tab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.bridge-tab-count {
+  font-size: 10px;
+  color: var(--text-faint);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.bridge-tab.active .bridge-tab-count {
+  color: var(--text-dim);
+}
+
+/* ---- crew table (inside Cargo card via tab) ---- */
+
+.crew-table {
+  width: calc(100% + 24px);
+  margin: 4px -12px 0;
+  border-collapse: collapse;
+  font-size: 12px;
+  table-layout: fixed;
+}
+
+.crew-table .col-action { width: 64px; }
+.crew-table .col-role { width: 70px; }
+.jobs-table .col-role { width: 76px; }
+
+.crew-table th {
+  text-align: left;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.crew-table th.numeric {
+  text-align: right;
+}
+
+.crew-table td {
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+  vertical-align: middle;
+  height: 28px;
+}
+
+.crew-table td.numeric {
+  text-align: right;
+}
+
+.crew-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.crew-role-row td {
+  padding: 6px 12px 4px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--border);
+}
+
+.crew-row:hover {
+  background: var(--bg-3);
+}
+
+.crew-row.row-suggested {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.crew-name {
+  font-weight: 500;
+}
+
+.crew-tier {
+  color: var(--warn);
+  font-size: 11px;
+}
+
+.crew-mods {
+  font-size: 11px;
+}
+
+.crew-table .btn-action {
+  width: auto;
+  min-width: 0;
+  justify-content: center;
+  padding: 0 10px;
+  height: 22px;
+  font-size: 11px;
+}
+
+/* ---- jobs / contracts table styling (used by LocalJobsCallout +
+   ActiveContractsTab + HireOffersTab) ---- */
+
+.jobs-table .col-tier { width: 56px; }
+.jobs-table .col-kind { width: 88px; }
+.jobs-table .col-dest { width: auto; }
+.jobs-table .col-progress { width: 56px; }
+
+.job-row.tier-high   td:first-child { box-shadow: inset 3px 0 0 #d04848; }
+.job-row.tier-medium td:first-child { box-shadow: inset 3px 0 0 #c8a23a; }
+.job-row.tier-low    td:first-child { box-shadow: inset 3px 0 0 #406070; }
+
+.job-row.job-row-active {
+  background: rgba(80, 160, 220, 0.04);
+}
+
+.tier-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.tier-badge.tier-high   { background: rgba(208, 72, 72, 0.18); color: #f08080; }
+.tier-badge.tier-medium { background: rgba(200, 162, 58, 0.18); color: #e6c270; }
+.tier-badge.tier-low    { background: rgba(120, 140, 160, 0.18); color: #98a8b8; }
+
+.job-kind { font-weight: 500; }
+
+.job-kind-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 2px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: rgba(160, 110, 200, 0.18);
+  color: #c5a8e0;
+}
+
+.job-sub  { font-size: 10px; margin-top: 2px; }
+.job-dest { font-weight: 500; }
+
+
+.crew-table td:last-child {
+  text-align: right;
+}
 
 /* fuel station — empty / unavailable visual state */
 
@@ -481,18 +748,34 @@
   gap: 14px;
 }
 
+.bridge-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.bridge-split > .bridge-card {
+  margin-top: 0;
+  height: 100%;
+}
+
+@media (max-width: 980px) {
+  .bridge-split { grid-template-columns: 1fr; }
+}
+
 .loc-tag {
-  font-size: 9px;
+  font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   background: var(--bg-3);
   color: var(--text-dim);
-  padding: 2px 6px;
+  padding: 2px 7px;
   border-radius: 2px;
 }
 
 .market-card {
-  margin-top: 6px;
+  margin-top: 0;
 }
 
 .bridge-card h4 {
@@ -506,7 +789,8 @@
 
 .market-table,
 .travel-table,
-.suggestions-table {
+.suggestions-table,
+.jobs-table {
   width: calc(100% + 20px);
   margin: 4px -10px 0;       /* flush full-width like cargo-table */
   border-collapse: collapse;
@@ -520,10 +804,13 @@
 .col-net-sell { width: 84px; }
 .col-action   { width: 296px; }
 .travel-table .col-action { width: 132px; }
+.jobs-table   .col-action { width: 80px; }
+.jobs-table   .col-num    { width: 54px; }
 
 .market-table th,
 .travel-table th,
-.suggestions-table th {
+.suggestions-table th,
+.jobs-table th {
   text-align: left;
   font-size: 10px;
   font-weight: 500;
@@ -532,16 +819,32 @@
   letter-spacing: 0.05em;
   padding: 4px 14px;
   border-bottom: 1px solid var(--border);
+  white-space: nowrap;
 }
 
 .market-table td,
 .travel-table td,
-.suggestions-table td {
+.suggestions-table td,
+.jobs-table td {
   padding: 4px 14px;
   border-bottom: 1px solid var(--border);
   font-variant-numeric: tabular-nums;
   vertical-align: middle;
   height: 30px;          /* lock row height — keeps table stable across state changes */
+}
+
+/* Jobs tables sit in narrower containers (half-width bridge split) — tighten
+   horizontal padding so all the numeric columns + Accept button fit. */
+.jobs-table th,
+.jobs-table td {
+  padding: 4px 8px;
+}
+
+/* Job rows can carry a sub-line (rescue target name, destination → for remote
+   broadcasts) — relax the locked row height so they don't clip. */
+.jobs-table td {
+  height: auto;
+  min-height: 30px;
 }
 
 .travel-table td {
@@ -552,7 +855,8 @@
 /* Last row of each card-embedded table loses bottom border so it doesn't
    double-up with the card border below */
 .bridge-card .market-table tbody tr:last-child td,
-.bridge-card .travel-table tbody tr:last-child td {
+.bridge-card .travel-table tbody tr:last-child td,
+.bridge-card .jobs-table tbody tr:last-child td {
   border-bottom: none;
 }
 
@@ -561,13 +865,16 @@
 .travel-table th.numeric,
 .travel-table td.numeric,
 .suggestions-table th.numeric,
-.suggestions-table td.numeric {
+.suggestions-table td.numeric,
+.jobs-table th.numeric,
+.jobs-table td.numeric {
   text-align: right;
 }
 
 .market-table tbody tr:hover,
 .travel-table tbody tr:hover,
-.suggestions-table tbody tr:hover {
+.suggestions-table tbody tr:hover,
+.jobs-table tbody tr:hover {
   background: var(--bg-3);
 }
 
@@ -660,6 +967,15 @@
 .btn-action.btn-narrow {
   width: 52px;
   justify-content: center;
+}
+
+/* Jobs tables use a single label-only Accept/Abandon button — tighter than
+   the bay's "Buy max 999" style so it fits the half-width split. */
+.jobs-table .btn-action {
+  width: 100%;
+  min-width: 0;
+  justify-content: center;
+  padding: 0 6px;
 }
 
 .btn-action.btn-fuel {
@@ -784,7 +1100,7 @@
 
 .cargo-bay-inline,
 .fuel-tank-inline {
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .btn-fuel-inline {
@@ -855,7 +1171,8 @@
 .cargo-row-pnl.good { color: var(--good); font-weight: 600; }
 .cargo-row-pnl.bad  { color: var(--bad);  font-weight: 600; }
 
-.cargo-row-empty {
+.cargo-row-empty,
+.jobs-row-empty {
   text-align: center !important;
   padding: 14px 0 !important;
   font-style: italic;
@@ -883,3 +1200,64 @@
   font-size: 11px;
   padding: 2px 8px;
 }
+
+/* ---- local jobs callout (above market) ---- */
+
+.local-jobs-card {
+  margin-top: 0;
+}
+
+/* ---- ship log ---- */
+
+.ship-log-empty {
+  margin: 0;
+  font-size: 12px;
+  padding: 6px 4px;
+}
+
+.ship-log-list {
+  list-style: none;
+  margin: 4px -12px 0;
+  padding: 0;
+  max-height: 280px;
+  overflow-y: auto;
+  font-size: 12px;
+}
+
+.ship-log-entry {
+  display: grid;
+  grid-template-columns: 44px 104px 1fr;
+  gap: 10px;
+  align-items: baseline;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ship-log-list .ship-log-entry:last-child {
+  border-bottom: none;
+}
+
+.ship-log-tick {
+  font-size: 11px;
+  text-align: right;
+}
+
+.ship-log-kind {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ship-log-msg {
+  min-width: 0;
+}
+
+.ship-log-entry.tone-good .ship-log-msg { color: var(--good); }
+.ship-log-entry.tone-bad  .ship-log-msg { color: var(--bad); }
+.ship-log-entry.tone-warn .ship-log-msg { color: var(--warn); }
+.ship-log-entry.tone-info .ship-log-msg { color: var(--accent); }

@@ -42,3 +42,22 @@
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
+
+.sidebar-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 9px;
+  background: var(--bg-3, #2a2a2a);
+  color: var(--text);
+}
+
+.sidebar-badge-active {
+  background: var(--accent);
+  color: var(--bg-0, #000);
+}

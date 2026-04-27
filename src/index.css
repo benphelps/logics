@@ -17,14 +17,54 @@
   --bad: #f87171;
   --bad-bg: rgba(248, 113, 113, 0.10);
 
+  --scroll-track: var(--bg-1);
+  --scroll-thumb: #2a3848;
+  --scroll-thumb-hover: var(--accent-dim);
+
   --mono: ui-monospace, SF Mono, Menlo, Consolas, "Liberation Mono", monospace;
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+
+  /* Tells the UA to render native form controls + scrollbars in dark mode. */
+  color-scheme: dark;
 
   font-family: var(--sans);
   font-size: 13px;
   line-height: 1.4;
   color: var(--text);
   background: var(--bg-0);
+}
+
+/* ---- scrollbars ---- */
+/* Firefox uses `scrollbar-width` + `scrollbar-color`. Chromium/Safari/Edge
+   use the `::-webkit-scrollbar` pseudo-elements. We declare both so every
+   scrollable surface in the app gets the same dark, accented treatment. */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) var(--scroll-track);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scroll-track);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border: 2px solid var(--scroll-track);     /* inset effect — thumb looks slimmer than the track */
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scroll-thumb-hover);
+}
+
+::-webkit-scrollbar-corner {
+  background: var(--scroll-track);
 }
 
 * {
