@@ -41,13 +41,8 @@ export function PlayerView() {
 }
 
 function ShipPanel({ ship, world }: { ship: Trader; world: World }) {
-  const setPilot = useStore((s) => s.setPilot);
-  const fuel = ship.currentFuel;
-  const fuelPct = fuel ? (fuel.qty / ship.fuelCapacity) * 100 : 0;
-  const fuelTone = fuelPct < 25 ? "bad" : fuelPct < 50 ? "warn" : "";
   const inTransit = ship.state === "transit";
   const loc = world.locations[ship.location];
-
   const hint = getGuidedHint(world, ship);
   const target = hintTarget(hint);
   const hintText = describeHint(hint, world);
@@ -55,49 +50,6 @@ function ShipPanel({ ship, world }: { ship: Trader; world: World }) {
 
   return (
     <article className="ship-panel">
-      <header className="ship-header">
-        <div>
-          <h3>
-            {ship.name}{" "}
-            <span className="faint mono">· {inTransit ? `→ ${world.locations[ship.destination!]?.name} (${ship.ticksRemaining}t)` : `at ${loc?.name}`}</span>
-          </h3>
-          <div className="ship-meta dim">
-            cap {ship.capacity} · speed {ship.speed} · uses {ship.fuelTypes.map(f => f.good).join(" / ")}
-          </div>
-        </div>
-        <div className="ship-pilot">
-          <button
-            className={ship.pilot === "manual" ? "primary" : ""}
-            onClick={() => setPilot(ship.id, "manual")}
-          >
-            Manual
-          </button>
-          <button
-            className={ship.pilot === "auto" ? "primary" : ""}
-            onClick={() => setPilot(ship.id, "auto")}
-            title="Auto-pilot (planned: hire crew, ship runs arbitrage on its own)"
-          >
-            Auto
-          </button>
-        </div>
-      </header>
-
-      <div className="ship-status mono">
-        <span><span className="dim">cargo:</span> {(() => {
-          const mass = cargoMassFn(ship, world);
-          if (ship.cargo.length === 0) return <span className="faint">empty</span>;
-          if (ship.cargo.length === 1) {
-            const lot = ship.cargo[0];
-            return <span className="good">{world.goods[lot.good]?.name ?? lot.good} × {lot.qty.toFixed(0)} ({mass.toFixed(0)}/{ship.capacity})</span>;
-          }
-          return <span className="good">{ship.cargo.length} lots ({mass.toFixed(0)}/{ship.capacity})</span>;
-        })()}</span>
-        <span className="dim">·</span>
-        <span><span className="dim">fuel:</span> <span className={fuelTone}>{fuel ? (world.goods[fuel.good]?.name ?? fuel.good) : "—"} {fuel?.qty.toFixed(0)}/{ship.fuelCapacity}</span></span>
-        <span className="dim">·</span>
-        <span><span className="dim">wallet:</span> Ç{Math.round(ship.funds).toLocaleString()}</span>
-      </div>
-
       {inTransit ? (
         <TransitView ship={ship} world={world} />
       ) : (
@@ -375,29 +327,124 @@ function DockedView({ ship, world, loc, target, hintText, critical }: {
 }) {
   return (
     <div className="docked-view">
-      <LocationOverview loc={loc} />
-      <div className="docked-grid">
-        <MarketSection ship={ship} world={world} loc={loc} target={target} hintText={hintText} />
-        <SidePanels ship={ship} world={world} loc={loc} target={target} hintText={hintText} critical={critical} />
+      <div className="bridge">
+        <StationCard loc={loc} world={world} />
+        <ShipCard ship={ship} world={world} />
+        <TravelOptions ship={ship} world={world} target={target} hintText={hintText} />
+        <FuelStation ship={ship} world={world} loc={loc} target={target} hintText={hintText} critical={critical} />
       </div>
+      <MarketSection ship={ship} world={world} loc={loc} target={target} hintText={hintText} />
     </div>
   );
 }
 
-function LocationOverview({ loc }: { loc: LocationDef }) {
+function StationCard({ loc, world }: { loc: LocationDef; world: World }) {
+  // imports = goods this loc consumes more than produces
+  const imports = loc.consumes
+    .filter(c => {
+      const p = loc.produces.find(x => x.good === c.good)?.ratePerTick ?? 0;
+      return p < c.ratePerTick;
+    })
+    .map(c => world.goods[c.good]?.name ?? c.good);
+
   return (
-    <div className="loc-overview">
-      <div className="loc-overview-title">
-        <span className="loc-name">{loc.name}</span>
+    <section className="bridge-card station-card">
+      <header className="bridge-card-head">
+        <span className="bridge-card-eyebrow station-eyebrow">▣ Station</span>
+      </header>
+      <div className="station-name">{loc.name}</div>
+      <div className="station-tags">
         {loc.traits.faction && <span className="loc-tag">{loc.traits.faction}</span>}
         {loc.traits.tags.map(t => (
           <span key={t} className="loc-tag">{t}</span>
         ))}
       </div>
-      <div className="loc-overview-meta dim mono">
-        tech {loc.traits.techLevel} · pop {loc.population.toLocaleString()}
-        {loc.primaryExports.length > 0 && <> · exports: {loc.primaryExports.join(", ")}</>}
+      <dl className="bridge-card-stats">
+        <Stat label="tech"   value={`L${loc.traits.techLevel}`} />
+        <Stat label="pop"    value={loc.population.toLocaleString()} />
+      </dl>
+      {loc.primaryExports.length > 0 && (
+        <div className="station-flow">
+          <div className="dim">Exports</div>
+          <div>{loc.primaryExports.map(g => world.goods[g]?.name ?? g).join(", ")}</div>
+        </div>
+      )}
+      {imports.length > 0 && (
+        <div className="station-flow">
+          <div className="dim">Imports</div>
+          <div>{imports.join(", ")}</div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ShipCard({ ship, world }: { ship: Trader; world: World }) {
+  const setPilot = useStore((s) => s.setPilot);
+  const fuel = ship.currentFuel;
+  const fuelPct = fuel ? (fuel.qty / ship.fuelCapacity) * 100 : 0;
+  const fuelTone = fuelPct < 25 ? "bad" : fuelPct < 50 ? "warn" : "";
+  const mass = cargoMassFn(ship, world);
+  const cargoPct = (mass / ship.capacity) * 100;
+
+  const cargoLabel = ship.cargo.length === 0
+    ? <span className="faint">empty</span>
+    : ship.cargo.length === 1
+      ? <span className="good">{world.goods[ship.cargo[0].good]?.name ?? ship.cargo[0].good} × {ship.cargo[0].qty.toFixed(0)}</span>
+      : <span className="good">{ship.cargo.length} lots</span>;
+
+  return (
+    <section className="bridge-card ship-card">
+      <header className="bridge-card-head">
+        <span className="bridge-card-eyebrow ship-eyebrow">⬢ Ship</span>
+        <div className="ship-pilot">
+          <button
+            className={ship.pilot === "manual" ? "primary" : ""}
+            onClick={() => setPilot(ship.id, "manual")}
+          >
+            Manual
+          </button>
+          <button
+            className={ship.pilot === "auto" ? "primary" : ""}
+            onClick={() => setPilot(ship.id, "auto")}
+            title="Auto-pilot (planned: hire crew, ship runs arbitrage on its own)"
+          >
+            Auto
+          </button>
+        </div>
+      </header>
+      <div className="ship-name">{ship.name}</div>
+      <div className="ship-spec dim">
+        cap {ship.capacity} · speed {ship.speed} · uses {ship.fuelTypes.map(f => world.goods[f.good]?.name ?? f.good).join(" / ")}
       </div>
+      <div className="ship-vital-row">
+        <Vital label="Cargo" value={cargoLabel} sub={`${mass.toFixed(0)}/${ship.capacity}`} pct={cargoPct} />
+        <Vital
+          label="Fuel"
+          value={<span className={fuelTone}>{fuel ? (world.goods[fuel.good]?.name ?? fuel.good) : "—"}</span>}
+          sub={fuel ? `${fuel.qty.toFixed(0)}/${ship.fuelCapacity}` : "—"}
+          pct={fuelPct}
+          tone={fuelTone}
+        />
+        <Vital label="Wallet" value={<span className="mono">Ç{Math.round(ship.funds).toLocaleString()}</span>} />
+      </div>
+    </section>
+  );
+}
+
+function Vital({ label, value, sub, pct, tone }: {
+  label: string; value: React.ReactNode; sub?: string; pct?: number; tone?: string;
+}) {
+  return (
+    <div className="vital">
+      <div className="vital-label dim">{label}</div>
+      <div className="vital-value">{value}</div>
+      {sub && <div className="vital-sub mono dim">{sub}</div>}
+      {pct != null && (
+        <div className="vital-bar">
+          <div className={`vital-bar-fill ${tone ?? ""}`} style={{ width: `${Math.min(100, pct)}%` }} />
+        </div>
+      )}
     </div>
   );
 }
@@ -542,17 +589,6 @@ function BuySellControls({
   );
 }
 
-function SidePanels({ ship, world, loc, target, hintText, critical }: {
-  ship: Trader; world: World; loc: LocationDef; target: HintTarget; hintText: string; critical: boolean;
-}) {
-  return (
-    <div className="side-panels">
-      <FuelStation ship={ship} world={world} loc={loc} target={target} hintText={hintText} critical={critical} />
-      <TravelOptions ship={ship} world={world} target={target} hintText={hintText} />
-    </div>
-  );
-}
-
 function FuelStation({ ship, world, loc, target, hintText, critical }: {
   ship: Trader; world: World; loc: LocationDef; target: HintTarget; hintText: string; critical: boolean;
 }) {
@@ -568,11 +604,13 @@ function FuelStation({ ship, world, loc, target, hintText, critical }: {
   const suggested = target.refuel === true;
 
   return (
-    <div className={`side-panel ${suggested ? "panel-suggested" : ""}`}>
-      <h4>Fuel Station</h4>
+    <section className={`bridge-card fuel-card ${suggested ? "panel-suggested" : ""}`}>
+      <header className="bridge-card-head">
+        <span className="bridge-card-eyebrow ship-eyebrow">⛽ Fuel Station</span>
+      </header>
       <div className="fuel-status mono">
         <span className="dim">tank:</span>{" "}
-        <span>{ship.currentFuel?.good ?? "—"}</span>{" "}
+        <span>{ship.currentFuel?.good ? (world.goods[ship.currentFuel.good]?.name ?? ship.currentFuel.good) : "—"}</span>{" "}
         <span>{ship.currentFuel?.qty.toFixed(0)}/{ship.fuelCapacity}</span>{" "}
         <span className="dim">({tankFraction.toFixed(0)}%)</span>
       </div>
@@ -599,7 +637,7 @@ function FuelStation({ ship, world, loc, target, hintText, critical }: {
           <span className="btn-label">{critical ? "Refuel now" : "Fill tank"}</span>
         </button>
       </ActionCell>
-    </div>
+    </section>
   );
 }
 
@@ -623,8 +661,10 @@ function TravelOptions({ ship, world, target, hintText }: {
     .sort((a, b) => a.dist - b.dist);
 
   return (
-    <div className="side-panel">
-      <h4>Travel</h4>
+    <section className="bridge-card travel-card">
+      <header className="bridge-card-head">
+        <span className="bridge-card-eyebrow station-eyebrow">⤴ Travel</span>
+      </header>
       <table className="travel-table">
         <colgroup>
           <col className="col-dest" />
@@ -668,6 +708,6 @@ function TravelOptions({ ship, world, target, hintText }: {
           })}
         </tbody>
       </table>
-    </div>
+    </section>
   );
 }
