@@ -721,6 +721,143 @@
   background: var(--ship-surface-raised);
 }
 
+.cargo-bridge-card .bridge-tab {
+  flex: 1 1 0;
+  justify-content: center;
+  min-width: 0;
+  padding: 5px 8px;
+}
+
+/* ---- upgrades table ---- */
+
+.upgrades-tab {
+  display: grid;
+  gap: 10px;
+}
+
+.upgrade-table {
+  width: 100%;
+  margin: 2px 0 0;
+  border-collapse: collapse;
+  font-size: 12px;
+  table-layout: fixed;
+}
+
+.upgrade-table .col-source { width: 72px; }
+.upgrade-table .col-action { width: 118px; }
+
+.upgrade-table th {
+  text-align: left;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.upgrade-table td {
+  height: 34px;
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+  vertical-align: middle;
+}
+
+.upgrade-table .icon-label {
+  max-width: 100%;
+}
+
+.upgrade-slots-table td:nth-child(2),
+.upgrade-slots-table td:nth-child(3),
+.upgrade-offers-table td:nth-child(2),
+.upgrade-offers-table td:nth-child(3) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upgrade-table th.numeric,
+.upgrade-table td.numeric {
+  text-align: right;
+}
+
+.upgrade-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.upgrade-slot-row:hover,
+.upgrade-offer-row:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.upgrade-name {
+  color: var(--text);
+  font-weight: 550;
+}
+
+.upgrade-stars {
+  color: var(--warn);
+  font-size: 10px;
+  letter-spacing: 0;
+}
+
+.upgrade-offer-title {
+  padding: 2px 8px 0;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.upgrade-source-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--text-dim);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.upgrade-source-pill.station {
+  border-color: rgba(79, 182, 255, 0.28);
+  background: rgba(79, 182, 255, 0.07);
+  color: #9dd7ff;
+}
+
+.upgrade-action {
+  width: 100%;
+  min-width: 0;
+  justify-content: center;
+  padding: 0 8px;
+}
+
+.upgrade-action .btn-label {
+  flex: 0 0 auto;
+  max-width: 100%;
+  overflow: hidden;
+  line-height: 1;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upgrade-row-empty {
+  height: auto !important;
+  padding: 14px 0 !important;
+  color: var(--text-faint);
+  font-style: italic;
+  text-align: center !important;
+}
+
 /* ---- crew table (inside Cargo card via tab) ---- */
 
 .crew-table {

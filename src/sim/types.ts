@@ -2,7 +2,7 @@ export type GoodId = string;
 export type LocationId = string;
 export type TraderId = string;
 
-export type GoodCategory = "food" | "raw" | "intermediate" | "luxury" | "fuel" | "advanced";
+export type GoodCategory = "food" | "raw" | "intermediate" | "luxury" | "fuel" | "advanced" | "upgrade";
 
 export interface Good {
   id: GoodId;
@@ -82,6 +82,8 @@ export interface CrewModifiers {
   cargoCapacityBonus?: number;        // +N flat cargo capacity
   fuelCapacityBonus?: number;         // +N flat fuel tank
   speedBonus?: number;                // +N flat ship speed
+  hullBonus?: number;                 // +N structural rating; future dangerous jobs read this
+  weaponPowerBonus?: number;          // +N weapon rating; future dangerous jobs read this
   rangeEfficiency?: number;           // 0.10 = 10% reduction in fuel-per-distance
   buyDiscount?: number;               // 0.05 = 5% off buy price (NOT YET WIRED)
   sellPremium?: number;               // 0.05 = 5% bonus on sell (NOT YET WIRED)
@@ -119,21 +121,30 @@ export interface Hire {
   expiresAt: number;
 }
 
+export type UpgradeSlot = "cargo" | "engine" | "fuel" | "hull" | "weapon";
+export type UpgradeTier = 1 | 2 | 3;
+export type ShipUpgradeSlots = Partial<Record<UpgradeSlot, GoodId>>;
+
 export interface Trader {
   id: TraderId;
   name: string;
 
-  // Effective stats (used by the sim — recomputed when crew changes).
+  // Effective stats (used by the sim — recomputed when crew/upgrades change).
   capacity: number;
   speed: number;
   fuelCapacity: number;
 
-  // Base stats (the ship's intrinsic numbers — never change from crew).
+  // Base stats (the ship's intrinsic numbers — never change from crew/upgrades).
   // Optional for back-compat with traders constructed inline by older tests;
   // recomputeShipStats falls back to current effective values if base is unset.
   baseCapacity?: number;
   baseSpeed?: number;
   baseFuelCapacity?: number;
+  baseHull?: number;
+  baseWeaponPower?: number;
+  hull?: number;
+  weaponPower?: number;
+  upgrades?: ShipUpgradeSlots;
 
   fuelTypes: FuelType[];
   currentFuel: { good: GoodId; qty: number } | null;

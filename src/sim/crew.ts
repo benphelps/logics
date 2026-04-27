@@ -1,5 +1,6 @@
 import type { CrewModifiers, CrewRole, HireId, ShipCrew, Trader, World } from "./types";
 import { snapshotFromHire, takeHire } from "./hires";
+import { combinedUpgradeModifiers } from "./upgrades";
 
 // Maintenance debt accrued for player ships without a mechanic. Once debt
 // crosses this threshold, the ship can't depart until repaired. Sized so
@@ -18,6 +19,8 @@ export function combinedModifiers(crew: ShipCrew | undefined): CrewModifiers {
     if (m.cargoCapacityBonus)    acc.cargoCapacityBonus    = (acc.cargoCapacityBonus ?? 0)    + m.cargoCapacityBonus;
     if (m.fuelCapacityBonus)     acc.fuelCapacityBonus     = (acc.fuelCapacityBonus ?? 0)     + m.fuelCapacityBonus;
     if (m.speedBonus)            acc.speedBonus            = (acc.speedBonus ?? 0)            + m.speedBonus;
+    if (m.hullBonus)             acc.hullBonus             = (acc.hullBonus ?? 0)             + m.hullBonus;
+    if (m.weaponPowerBonus)      acc.weaponPowerBonus      = (acc.weaponPowerBonus ?? 0)      + m.weaponPowerBonus;
     if (m.rangeEfficiency)       acc.rangeEfficiency       = (acc.rangeEfficiency ?? 0)       + m.rangeEfficiency;
     if (m.buyDiscount)           acc.buyDiscount           = (acc.buyDiscount ?? 0)           + m.buyDiscount;
     if (m.sellPremium)           acc.sellPremium           = (acc.sellPremium ?? 0)           + m.sellPremium;
@@ -27,18 +30,41 @@ export function combinedModifiers(crew: ShipCrew | undefined): CrewModifiers {
   return acc;
 }
 
-// Recompute the ship's effective stats from base stats + crew modifiers.
-// Idempotent — call after any hire/fire. Initializes base* on first call so
+export function combinedShipModifiers(ship: Trader): CrewModifiers {
+  const crew = combinedModifiers(ship.crew);
+  const upgrades = combinedUpgradeModifiers(ship.upgrades);
+  const acc: CrewModifiers = {};
+  for (const mods of [crew, upgrades]) {
+    if (mods.cargoCapacityBonus)  acc.cargoCapacityBonus  = (acc.cargoCapacityBonus ?? 0)  + mods.cargoCapacityBonus;
+    if (mods.fuelCapacityBonus)   acc.fuelCapacityBonus   = (acc.fuelCapacityBonus ?? 0)   + mods.fuelCapacityBonus;
+    if (mods.speedBonus)          acc.speedBonus          = (acc.speedBonus ?? 0)          + mods.speedBonus;
+    if (mods.hullBonus)           acc.hullBonus           = (acc.hullBonus ?? 0)           + mods.hullBonus;
+    if (mods.weaponPowerBonus)    acc.weaponPowerBonus    = (acc.weaponPowerBonus ?? 0)    + mods.weaponPowerBonus;
+    if (mods.rangeEfficiency)     acc.rangeEfficiency     = (acc.rangeEfficiency ?? 0)     + mods.rangeEfficiency;
+    if (mods.buyDiscount)         acc.buyDiscount         = (acc.buyDiscount ?? 0)         + mods.buyDiscount;
+    if (mods.sellPremium)         acc.sellPremium         = (acc.sellPremium ?? 0)         + mods.sellPremium;
+    if (mods.maintenanceDiscount) acc.maintenanceDiscount = (acc.maintenanceDiscount ?? 0) + mods.maintenanceDiscount;
+    if (mods.contractRewardBonus) acc.contractRewardBonus = (acc.contractRewardBonus ?? 0) + mods.contractRewardBonus;
+  }
+  return acc;
+}
+
+// Recompute the ship's effective stats from base stats + crew/upgrades.
+// Idempotent — call after any hire/fire/install. Initializes base* on first call so
 // existing fixtures (which don't set base*) lock in their starting values.
 export function recomputeShipStats(ship: Trader): void {
   if (ship.baseCapacity == null)     ship.baseCapacity = ship.capacity;
   if (ship.baseSpeed == null)        ship.baseSpeed = ship.speed;
   if (ship.baseFuelCapacity == null) ship.baseFuelCapacity = ship.fuelCapacity;
+  if (ship.baseHull == null)         ship.baseHull = ship.hull ?? 1;
+  if (ship.baseWeaponPower == null)  ship.baseWeaponPower = ship.weaponPower ?? 0;
 
-  const mods = combinedModifiers(ship.crew);
+  const mods = combinedShipModifiers(ship);
   ship.capacity     = ship.baseCapacity     + (mods.cargoCapacityBonus ?? 0);
   ship.fuelCapacity = ship.baseFuelCapacity + (mods.fuelCapacityBonus ?? 0);
   ship.speed        = ship.baseSpeed        + (mods.speedBonus ?? 0);
+  ship.hull         = ship.baseHull         + (mods.hullBonus ?? 0);
+  ship.weaponPower  = ship.baseWeaponPower  + (mods.weaponPowerBonus ?? 0);
 
   // Cap currentFuel at the new capacity (in case of fire-then-rehire).
   if (ship.currentFuel && ship.currentFuel.qty > ship.fuelCapacity) {
@@ -50,7 +76,7 @@ export function recomputeShipStats(ship: Trader): void {
 // 10%. Read from this helper rather than mutating fuelTypes so the ship's
 // declared fuel cost stays untouched.
 export function effectivePerDistance(ship: Trader, basePerDistance: number): number {
-  const mods = combinedModifiers(ship.crew);
+  const mods = combinedShipModifiers(ship);
   const eff = mods.rangeEfficiency ?? 0;
   return basePerDistance * Math.max(0.1, 1 - eff);
 }

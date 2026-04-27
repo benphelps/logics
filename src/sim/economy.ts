@@ -1,5 +1,5 @@
 import type { Trader, World } from "./types";
-import { combinedModifiers, hasCrew, totalCrewWage } from "./crew";
+import { combinedShipModifiers, hasCrew, totalCrewWage } from "./crew";
 
 export const MAINTENANCE_PER_CAPACITY = 0.5;
 export const MAINTENANCE_IDLE_FACTOR = 0;
@@ -38,7 +38,7 @@ export function chargeOperationalCosts(world: World): void {
       // Player ships: route maintenance through the mechanic gating, charge
       // crew wages on top — all from the ship's own wallet.
       const wages = totalCrewWage(trader);
-      const mods = combinedModifiers(trader.crew);
+      const mods = combinedShipModifiers(trader);
       const discount = mods.maintenanceDiscount ?? 0;
       const effectiveMaint = cost * (1 - discount);
       if (hasCrew(trader, "mechanic")) {

@@ -54,6 +54,7 @@ export function generateTraders(opts: TraderGenOptions): Record<string, Trader> 
     const capacity = rangeInt(rng, spec.capacityRange[0], spec.capacityRange[1]);
     const speed = rangeInt(rng, spec.speedRange[0], spec.speedRange[1]);
     const fuelCapacity = rangeInt(rng, spec.fuelCapRange[0], spec.fuelCapRange[1]);
+    const hull = Math.max(2, Math.round(capacity / 35));
     const fuelTypes = spec.fuel(rng);
     const fallback = fuelTypes[fuelTypes.length - 1].good as GoodId;
 
@@ -61,7 +62,16 @@ export function generateTraders(opts: TraderGenOptions): Record<string, Trader> 
     const startLoc = pick(rng, locationIds);
     traders[id] = {
       id, name, capacity, speed,
-      fuelCapacity, fuelTypes,
+      fuelCapacity,
+      baseCapacity: capacity,
+      baseSpeed: speed,
+      baseFuelCapacity: fuelCapacity,
+      baseHull: hull,
+      baseWeaponPower: 0,
+      hull,
+      weaponPower: 0,
+      upgrades: {},
+      fuelTypes,
       currentFuel: { good: fallback, qty: fuelCapacity },
       funds: rangeInt(rng, 8000, 14000),
       location: startLoc,

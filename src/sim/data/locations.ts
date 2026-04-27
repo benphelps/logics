@@ -31,6 +31,7 @@ export const LOCATIONS: Record<string, LocationDef> = {
     targetStock: {
       protein: 100, grain: 80, polymer: 40, fiber: 40, parts: 20, plasma: 30,
       medkits: 40, electronics: 20, weapons: 15, luxury_goods: 20,
+      upg_cargo_1: 1, upg_fuel_1: 1, upg_hull_1: 1,
     },
   },
 
@@ -66,6 +67,8 @@ export const LOCATIONS: Record<string, LocationDef> = {
     targetStock: {
       ore: 120, parts: 30, grain: 60, protein: 20, polymer: 30, plasma: 30, antimatter: 40,
       electronics: 30, weapons: 30, medkits: 10,
+      upg_engine_1: 1, upg_fuel_1: 1, upg_hull_1: 1, upg_weapon_1: 1,
+      upg_engine_2: 1, upg_hull_2: 1, upg_weapon_2: 1, upg_engine_3: 1,
     },
   },
 
@@ -97,6 +100,7 @@ export const LOCATIONS: Record<string, LocationDef> = {
     targetStock: {
       grain: 200, vatmeat: 50, polymer: 80, parts: 20, fiber: 20, plasma: 30,
       medkits: 50, electronics: 20, weapons: 10,
+      upg_cargo_1: 1, upg_fuel_1: 1,
     },
   },
 
@@ -130,6 +134,8 @@ export const LOCATIONS: Record<string, LocationDef> = {
     targetStock: {
       xenospice: 30, silk: 20, grain: 40, protein: 25, parts: 10, plasma: 20,
       luxury_goods: 30, medkits: 15, electronics: 15, weapons: 20,
+      upg_cargo_2: 1, upg_fuel_2: 1, upg_hull_2: 1, upg_weapon_2: 1,
+      upg_cargo_3: 1, upg_fuel_3: 1, upg_hull_3: 1, upg_weapon_3: 1,
     },
   },
 };

@@ -2,7 +2,17 @@ import { create } from "zustand";
 import type { CrewRole, World, LocationId, GoodId, JobId, TraderId } from "../sim/types";
 import { createWorld } from "../sim/world";
 import { tickWorld } from "../sim/tick";
-import { buyAtLocation, executeTrade, refuelManual, repairShip, sellAtLocation, travelTo, type TradeOption } from "../sim/traders";
+import {
+  buyAtLocation,
+  executeTrade,
+  installUpgradeFromCargo as installUpgradeFromCargoAction,
+  installUpgradeFromMarket as installUpgradeFromMarketAction,
+  refuelManual,
+  repairShip,
+  sellAtLocation,
+  travelTo,
+  type TradeOption,
+} from "../sim/traders";
 import { abandonJob, acceptJob } from "../sim/jobs";
 import { fireCrew, hireCrew } from "../sim/crew";
 
@@ -40,6 +50,8 @@ interface UiState {
   hireCrew: (traderId: TraderId, candidateId: string) => void;
   fireCrew: (traderId: TraderId, role: CrewRole) => void;
   repairShip: (traderId: TraderId) => void;
+  installUpgradeFromCargo: (traderId: TraderId, good: GoodId) => void;
+  installUpgradeFromMarket: (traderId: TraderId, good: GoodId) => void;
 }
 
 export const useStore = create<UiState>((set, get) => ({
@@ -139,6 +151,18 @@ export const useStore = create<UiState>((set, get) => ({
     const w = get().world;
     const t = w.traders[traderId]; if (!t) return;
     const r = repairShip(w, t);
+    set({ lastError: r.ok ? null : r.reason, tickEpoch: get().tickEpoch + 1 });
+  },
+  installUpgradeFromCargo: (traderId, good) => {
+    const w = get().world;
+    const t = w.traders[traderId]; if (!t) return;
+    const r = installUpgradeFromCargoAction(w, t, good);
+    set({ lastError: r.ok ? null : r.reason, tickEpoch: get().tickEpoch + 1 });
+  },
+  installUpgradeFromMarket: (traderId, good) => {
+    const w = get().world;
+    const t = w.traders[traderId]; if (!t) return;
+    const r = installUpgradeFromMarketAction(w, t, good);
     set({ lastError: r.ok ? null : r.reason, tickEpoch: get().tickEpoch + 1 });
   },
 }));

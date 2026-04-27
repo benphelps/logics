@@ -24,6 +24,8 @@ const MOD_RANGE: Record<keyof CrewModifiers, [number, number]> = {
   cargoCapacityBonus:  [2, 6],
   fuelCapacityBonus:   [3, 8],
   speedBonus:          [1, 1],            // speed is integer; only spawns at T3
+  hullBonus:           [1, 2],
+  weaponPowerBonus:    [1, 2],
   rangeEfficiency:     [0.03, 0.10],
   buyDiscount:         [0.02, 0.05],
   sellPremium:         [0.02, 0.05],
@@ -36,6 +38,8 @@ const MOD_COST_WEIGHT: Record<keyof CrewModifiers, number> = {
   cargoCapacityBonus:  4_000,
   fuelCapacityBonus:   3_500,
   speedBonus:          18_000,
+  hullBonus:           12_000,
+  weaponPowerBonus:    18_000,
   rangeEfficiency:     250_000,           // multiplied by fractional value
   buyDiscount:         400_000,
   sellPremium:         400_000,

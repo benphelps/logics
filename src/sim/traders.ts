@@ -1,10 +1,11 @@
-import type { FuelType, GoodId, JobId, LocationId, Trader, TraderEvent, World } from "./types";
+import type { CargoLot, FuelType, GoodId, JobId, LocationId, ShipUpgradeSlots, Trader, TraderEvent, World } from "./types";
 import { distance, nearestDistance } from "./geometry";
 import { priceFor } from "./pricing";
 import { chargeDockingFee, DOCKING_FEE_PER_CAPACITY, MAINTENANCE_PER_CAPACITY, SALES_TAX_RATE } from "./economy";
 import { acceptJob, creditJobOnDelivery, type JobCompletionEvent } from "./jobs";
 import { pushNote, pushTraderEvent } from "./log";
-import { effectivePerDistance, hasCrew, MAINTENANCE_DEBT_TRAVEL_BLOCK } from "./crew";
+import { effectivePerDistance, hasCrew, MAINTENANCE_DEBT_TRAVEL_BLOCK, recomputeShipStats } from "./crew";
+import { upgradeDef } from "./upgrades";
 
 export const MIN_PROFIT_PER_TICK = 0.05;
 export const MAX_DRAW_FRACTION = 0.5;
@@ -657,6 +658,178 @@ function addCargoLot(
   // source/price/age so the player can attribute later sales to specific
   // origins, hedge across lots, and see real cost-basis distribution.
   trader.cargo.push({ good: goodId, qty, source, unitPrice, purchasedAt: tick });
+}
+
+export type UpgradeInstallResult =
+  | { ok: true; installed: GoodId; replaced?: GoodId }
+  | { ok: false; reason: string };
+
+interface UpgradeInstallSnapshot {
+  cargo: CargoLot[];
+  upgrades?: ShipUpgradeSlots;
+  capacity: number;
+  speed: number;
+  fuelCapacity: number;
+  baseCapacity?: number;
+  baseSpeed?: number;
+  baseFuelCapacity?: number;
+  baseHull?: number;
+  baseWeaponPower?: number;
+  hull?: number;
+  weaponPower?: number;
+  currentFuel: Trader["currentFuel"];
+  funds: number;
+}
+
+function snapshotUpgradeInstall(trader: Trader): UpgradeInstallSnapshot {
+  return {
+    cargo: trader.cargo.map(l => ({ ...l })),
+    upgrades: trader.upgrades ? { ...trader.upgrades } : undefined,
+    capacity: trader.capacity,
+    speed: trader.speed,
+    fuelCapacity: trader.fuelCapacity,
+    baseCapacity: trader.baseCapacity,
+    baseSpeed: trader.baseSpeed,
+    baseFuelCapacity: trader.baseFuelCapacity,
+    baseHull: trader.baseHull,
+    baseWeaponPower: trader.baseWeaponPower,
+    hull: trader.hull,
+    weaponPower: trader.weaponPower,
+    currentFuel: trader.currentFuel ? { ...trader.currentFuel } : null,
+    funds: trader.funds,
+  };
+}
+
+function restoreUpgradeInstall(trader: Trader, snap: UpgradeInstallSnapshot): void {
+  trader.cargo = snap.cargo.map(l => ({ ...l }));
+  trader.upgrades = snap.upgrades ? { ...snap.upgrades } : undefined;
+  trader.capacity = snap.capacity;
+  trader.speed = snap.speed;
+  trader.fuelCapacity = snap.fuelCapacity;
+  trader.baseCapacity = snap.baseCapacity;
+  trader.baseSpeed = snap.baseSpeed;
+  trader.baseFuelCapacity = snap.baseFuelCapacity;
+  trader.baseHull = snap.baseHull;
+  trader.baseWeaponPower = snap.baseWeaponPower;
+  trader.hull = snap.hull;
+  trader.weaponPower = snap.weaponPower;
+  trader.currentFuel = snap.currentFuel ? { ...snap.currentFuel } : null;
+  trader.funds = snap.funds;
+}
+
+function cargoQty(trader: Trader, goodId: GoodId): number {
+  return trader.cargo
+    .filter(l => l.good === goodId)
+    .reduce((s, l) => s + l.qty, 0);
+}
+
+function removeCargoUnit(trader: Trader, goodId: GoodId): boolean {
+  if (cargoQty(trader, goodId) < 1 - 0.001) return false;
+  const matching = trader.cargo
+    .map((lot, idx) => ({ lot, idx }))
+    .filter(x => x.lot.good === goodId)
+    .sort((a, b) => a.lot.purchasedAt - b.lot.purchasedAt);
+
+  let remaining = 1;
+  const toRemove: number[] = [];
+  for (const { lot, idx } of matching) {
+    if (remaining <= 0.001) break;
+    const take = Math.min(lot.qty, remaining);
+    lot.qty -= take;
+    remaining -= take;
+    if (lot.qty <= 0.001) toRemove.push(idx);
+  }
+  toRemove.sort((a, b) => b - a).forEach(i => trader.cargo.splice(i, 1));
+  return remaining <= 0.001;
+}
+
+function currentCargoMass(trader: Trader, world: World): number {
+  return trader.cargo.reduce((s, l) => s + l.qty * (world.goods[l.good]?.weight ?? 0), 0);
+}
+
+function replacedUpgradeCargoPrice(world: World, trader: Trader, goodId: GoodId): number {
+  return world.markets[trader.location]?.prices[goodId] ?? world.goods[goodId]?.basePrice ?? 0;
+}
+
+function finalizeUpgradeInstall(
+  world: World,
+  trader: Trader,
+  goodId: GoodId,
+  previous: GoodId | undefined,
+): UpgradeInstallResult {
+  recomputeShipStats(trader);
+  const mass = currentCargoMass(trader, world);
+  if (mass > trader.capacity + 0.001) {
+    return {
+      ok: false,
+      reason: `Installing that module would leave ${mass.toFixed(0)} mass in a ${trader.capacity.toFixed(0)} cargo hold.`,
+    };
+  }
+
+  const def = upgradeDef(goodId)!;
+  pushNote(
+    world,
+    trader,
+    previous
+      ? `Installed ${def.name}; old module moved to cargo`
+      : `Installed ${def.name}`,
+    "good",
+  );
+  return { ok: true, installed: goodId, replaced: previous };
+}
+
+export function installUpgradeFromCargo(world: World, trader: Trader, goodId: GoodId): UpgradeInstallResult {
+  if (trader.state !== "idle") return { ok: false, reason: "Can only install upgrades while docked." };
+  const def = upgradeDef(goodId);
+  if (!def) return { ok: false, reason: "That cargo is not a ship upgrade." };
+  if (trader.upgrades?.[def.slot] === goodId) return { ok: false, reason: `${def.name} is already installed.` };
+  if (cargoQty(trader, goodId) < 1 - 0.001) return { ok: false, reason: `No ${def.name} in cargo.` };
+
+  const snap = snapshotUpgradeInstall(trader);
+  const previous = trader.upgrades?.[def.slot];
+
+  removeCargoUnit(trader, goodId);
+  trader.upgrades = { ...(trader.upgrades ?? {}), [def.slot]: goodId };
+  if (previous) {
+    addCargoLot(trader, previous, 1, trader.location, replacedUpgradeCargoPrice(world, trader, previous), world.tick);
+  }
+
+  const result = finalizeUpgradeInstall(world, trader, goodId, previous);
+  if (!result.ok) restoreUpgradeInstall(trader, snap);
+  return result;
+}
+
+export function installUpgradeFromMarket(world: World, trader: Trader, goodId: GoodId): UpgradeInstallResult {
+  if (trader.state !== "idle") return { ok: false, reason: "Can only install upgrades while docked." };
+  const def = upgradeDef(goodId);
+  if (!def) return { ok: false, reason: "That good is not a ship upgrade." };
+  if (trader.upgrades?.[def.slot] === goodId) return { ok: false, reason: `${def.name} is already installed.` };
+
+  const market = world.markets[trader.location];
+  const stock = market.stock[goodId] ?? 0;
+  if (stock < 1) return { ok: false, reason: `${def.name} is not in stock here.` };
+  const price = market.prices[goodId] ?? world.goods[goodId]?.basePrice ?? 0;
+  if (trader.funds < price - 0.001) {
+    return { ok: false, reason: `Need Ç${price.toFixed(0)}, have Ç${trader.funds.toFixed(0)}.` };
+  }
+
+  const snap = snapshotUpgradeInstall(trader);
+  const previous = trader.upgrades?.[def.slot];
+  const stockBefore = stock;
+
+  market.stock[goodId] = stock - 1;
+  trader.funds -= price;
+  trader.upgrades = { ...(trader.upgrades ?? {}), [def.slot]: goodId };
+  if (previous) {
+    addCargoLot(trader, previous, 1, trader.location, replacedUpgradeCargoPrice(world, trader, previous), world.tick);
+  }
+
+  const result = finalizeUpgradeInstall(world, trader, goodId, previous);
+  if (!result.ok) {
+    restoreUpgradeInstall(trader, snap);
+    market.stock[goodId] = stockBefore;
+  }
+  return result;
 }
 
 export function buyAtLocation(world: World, trader: Trader, goodId: GoodId, qty: number): ExecuteResult {

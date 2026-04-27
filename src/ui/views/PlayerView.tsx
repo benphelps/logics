@@ -26,8 +26,9 @@ import { hasCrew, totalCrewWage } from "../../sim/crew";
 import { MAINTENANCE_DEBT_TRAVEL_BLOCK } from "../../sim/crew";
 import { listHiresAt } from "../../sim/hires";
 import { selectRefuelType } from "../../sim/traders";
+import { UPGRADE_SLOTS, installedUpgrade, isUpgradeGood, upgradeDef, upgradeEffectText, upgradeStars } from "../../sim/upgrades";
 import type { CrewModifiers, CrewRole } from "../../sim/types";
-import type { Job, LocationDef, Trader, World } from "../../sim/types";
+import type { Job, LocationDef, Trader, UpgradeSlot, World } from "../../sim/types";
 import "./PlayerView.css";
 
 export function PlayerView() {
@@ -503,6 +504,7 @@ function ShipCard({ ship, world, hint, target, hintText, critical, inTransit }: 
   const debt = ship.maintenanceDebt ?? 0;
   const canRepair = debt > 0 && ship.state === "idle";
   const autoBlocked = !hasCrew(ship, "captain");
+  const installedCount = Object.keys(ship.upgrades ?? {}).length;
 
   return (
     <section className="bridge-card ship-card">
@@ -513,6 +515,9 @@ function ShipCard({ ship, world, hint, target, hintText, critical, inTransit }: 
           <div className="detail-row ship-detail-row">
             <DetailChip icon={GiCargoCrate} label="Capacity" value={ship.capacity.toLocaleString()} />
             <DetailChip icon={GiSpeedometer} label="Speed" value={ship.speed.toLocaleString()} />
+            <DetailChip icon={GiAutoRepair} label="Hull" value={(ship.hull ?? ship.baseHull ?? 1).toLocaleString()} />
+            <DetailChip icon={GiRadarSweep} label="Weapons" value={(ship.weaponPower ?? ship.baseWeaponPower ?? 0).toLocaleString()} />
+            <DetailChip icon={GiFactory} label="Slots" value={`${installedCount}/5`} />
           </div>
         </div>
         <div className="ship-pilot">
@@ -1035,10 +1040,11 @@ function BuySellControls({
 function CargoBridgeCard({ ship, world, loc, inTransit }: {
   ship: Trader; world: World; loc: LocationDef; inTransit: boolean;
 }) {
-  const [tab, setTab] = useState<"cargo" | "crew" | "active">("cargo");
+  const [tab, setTab] = useState<"cargo" | "upgrades" | "crew" | "active">("cargo");
   // Player ships only — accepted contracts attached to this ship.
   const activeJobs = Object.values(world.jobs).filter(j => j.acceptedBy === ship.id);
   const groups = groupCargoByGood(ship);
+  const installedCount = Object.keys(ship.upgrades ?? {}).length;
 
   return (
     <section className="bridge-card cargo-bridge-card">
@@ -1049,6 +1055,12 @@ function CargoBridgeCard({ ship, world, loc, inTransit }: {
             onClick={() => setTab("cargo")}
           >
             <IconLabel icon={GiCargoCrate}>Cargo</IconLabel> {ship.cargo.length > 0 && <span className="bridge-tab-count">{ship.cargo.length}</span>}
+          </button>
+          <button
+            className={`bridge-tab ${tab === "upgrades" ? "active" : ""}`}
+            onClick={() => setTab("upgrades")}
+          >
+            <IconLabel icon={GiAutoRepair}>Upgrades</IconLabel> <span className="bridge-tab-count">{installedCount}/5</span>
           </button>
           <button
             className={`bridge-tab ${tab === "crew" ? "active" : ""}`}
@@ -1065,9 +1077,195 @@ function CargoBridgeCard({ ship, world, loc, inTransit }: {
         </div>
       </header>
       {tab === "cargo" && <CargoTab ship={ship} world={world} loc={loc} groups={groups} inTransit={inTransit} />}
+      {tab === "upgrades" && <UpgradesTab ship={ship} world={world} />}
       {tab === "crew" && <CrewTab ship={ship} />}
       {tab === "active" && <ActiveContractsTab ship={ship} world={world} jobs={activeJobs} />}
     </section>
+  );
+}
+
+const UPGRADE_SLOT_RANK: Record<UpgradeSlot, number> = {
+  cargo: 0,
+  engine: 1,
+  fuel: 2,
+  hull: 3,
+  weapon: 4,
+};
+
+const UPGRADE_SLOT_ICONS: Record<UpgradeSlot, IconType> = {
+  cargo: GiCargoCrate,
+  engine: GiSpeedometer,
+  fuel: GiFuelTank,
+  hull: GiAutoRepair,
+  weapon: GiRadarSweep,
+};
+
+function compareUpgradeGoods(a: string, b: string): number {
+  const da = upgradeDef(a);
+  const db = upgradeDef(b);
+  if (!da || !db) return a.localeCompare(b);
+  return UPGRADE_SLOT_RANK[da.slot] - UPGRADE_SLOT_RANK[db.slot]
+    || da.tier - db.tier
+    || da.name.localeCompare(db.name);
+}
+
+function UpgradesTab({ ship, world }: { ship: Trader; world: World }) {
+  const installFromCargo = useStore((s) => s.installUpgradeFromCargo);
+  const installFromMarket = useStore((s) => s.installUpgradeFromMarket);
+  const docked = ship.state === "idle";
+  const market = docked ? world.markets[ship.location] : null;
+  const cargoUpgrades = groupCargoByGood(ship)
+    .filter(g => isUpgradeGood(g.good))
+    .sort((a, b) => compareUpgradeGoods(a.good, b.good));
+  const stationUpgradeIds = market
+    ? Object.keys(world.goods)
+      .filter(g => isUpgradeGood(g) && (market.stock[g] ?? 0) >= 1)
+      .sort(compareUpgradeGoods)
+    : [];
+  const hasOffers = cargoUpgrades.length > 0 || stationUpgradeIds.length > 0;
+
+  return (
+    <div className="upgrades-tab">
+      <table className="upgrade-table upgrade-slots-table">
+        <colgroup>
+          <col className="col-role" />
+          <col />
+          <col />
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Slot</th>
+            <th>Installed</th>
+            <th>Effect</th>
+          </tr>
+        </thead>
+        <tbody>
+          {UPGRADE_SLOTS.map(({ slot, label }) => {
+            const def = installedUpgrade(ship, slot);
+            const Icon = UPGRADE_SLOT_ICONS[slot];
+            return (
+              <tr key={slot} className="upgrade-slot-row">
+                <td className="dim"><IconLabel icon={Icon}>{label}</IconLabel></td>
+                <td>
+                  {def ? (
+                    <>
+                      <span className="upgrade-name">{def.name}</span>
+                      <span className="upgrade-stars mono"> {upgradeStars(def.tier)}</span>
+                    </>
+                  ) : (
+                    <span className="faint">open</span>
+                  )}
+                </td>
+                <td className="dim">{def ? upgradeEffectText(def) : "No modifier"}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+
+      <div className="upgrade-offer-title dim">Available modules</div>
+      <table className="upgrade-table upgrade-offers-table">
+        <colgroup>
+          <col className="col-source" />
+          <col />
+          <col className="col-role" />
+          <col className="col-num" />
+          <col className="col-action" />
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Source</th>
+            <th>Module</th>
+            <th>Slot</th>
+            <th className="numeric">Cost</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {!hasOffers ? (
+            <tr>
+              <td colSpan={5} className="upgrade-row-empty">
+                {docked ? "No upgrade modules in cargo or stocked at this station." : "Dock to browse station upgrades."}
+              </td>
+            </tr>
+          ) : (
+            <>
+              {cargoUpgrades.map((group) => {
+                const def = upgradeDef(group.good)!;
+                const Icon = UPGRADE_SLOT_ICONS[def.slot];
+                const alreadyInstalled = ship.upgrades?.[def.slot] === def.id;
+                const disabled = !docked || alreadyInstalled;
+                const title = !docked
+                  ? "Dock to install"
+                  : alreadyInstalled
+                    ? "Already installed"
+                    : `Install ${def.name} from cargo`;
+                return (
+                  <tr key={`cargo-${group.good}`} className="upgrade-offer-row">
+                    <td><span className="upgrade-source-pill">Cargo</span></td>
+                    <td>
+                      <span className="upgrade-name">{def.name}</span>
+                      <span className="upgrade-stars mono"> {upgradeStars(def.tier)}</span>
+                      <span className="dim"> · {upgradeEffectText(def)}</span>
+                    </td>
+                    <td className="dim"><IconLabel icon={Icon}>{UPGRADE_SLOTS.find(s => s.slot === def.slot)?.label ?? def.slot}</IconLabel></td>
+                    <td className="numeric mono dim">x{group.totalQty.toFixed(0)}</td>
+                    <td>
+                      <button
+                        className="btn-action upgrade-action"
+                        onClick={() => installFromCargo(ship.id, def.id)}
+                        disabled={disabled}
+                        title={title}
+                      >
+                        <span className="btn-label">Install</span>
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {stationUpgradeIds.map((goodId) => {
+                const def = upgradeDef(goodId)!;
+                const Icon = UPGRADE_SLOT_ICONS[def.slot];
+                const price = market?.prices[goodId] ?? world.goods[goodId]?.basePrice ?? 0;
+                const stock = market?.stock[goodId] ?? 0;
+                const alreadyInstalled = ship.upgrades?.[def.slot] === def.id;
+                const canAfford = ship.funds >= price;
+                const disabled = !docked || alreadyInstalled || !canAfford || stock < 1;
+                const title = !docked
+                  ? "Dock to install"
+                  : alreadyInstalled
+                    ? "Already installed"
+                    : !canAfford
+                      ? "Insufficient funds"
+                      : `Buy and install ${def.name}`;
+                return (
+                  <tr key={`station-${goodId}`} className="upgrade-offer-row">
+                    <td><span className="upgrade-source-pill station">Station</span></td>
+                    <td>
+                      <span className="upgrade-name">{def.name}</span>
+                      <span className="upgrade-stars mono"> {upgradeStars(def.tier)}</span>
+                      <span className="dim"> · {upgradeEffectText(def)}</span>
+                    </td>
+                    <td className="dim"><IconLabel icon={Icon}>{UPGRADE_SLOTS.find(s => s.slot === def.slot)?.label ?? def.slot}</IconLabel></td>
+                    <td className="numeric mono">Ç{Math.round(price).toLocaleString()}</td>
+                    <td>
+                      <button
+                        className="btn-action upgrade-action primary"
+                        onClick={() => installFromMarket(ship.id, def.id)}
+                        disabled={disabled}
+                        title={title}
+                      >
+                        <span className="btn-label">Buy + install</span>
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </>
+          )}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -1175,6 +1373,8 @@ const MOD_LABEL: Record<keyof CrewModifiers, (v: number) => string> = {
   cargoCapacityBonus:  (v) => `+${v} cargo`,
   fuelCapacityBonus:   (v) => `+${v} fuel`,
   speedBonus:          (v) => `+${v} speed`,
+  hullBonus:           (v) => `+${v} hull`,
+  weaponPowerBonus:    (v) => `+${v} weapons`,
   rangeEfficiency:     (v) => `−${(v * 100).toFixed(0)}% fuel/dist`,
   buyDiscount:         (v) => `−${(v * 100).toFixed(0)}% buy`,
   sellPremium:         (v) => `+${(v * 100).toFixed(0)}% sell`,
