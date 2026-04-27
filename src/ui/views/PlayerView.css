@@ -220,9 +220,13 @@
   letter-spacing: 0.05em;
   background: var(--bad-bg);
   color: var(--bad);
-  padding: 1px 6px;
+  padding: 0 8px;
   border-radius: 2px;
   border: 1px solid var(--bad);
+  height: 24px;            /* match .btn-action height so the header doesn't jump */
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .fuel-row-empty {
