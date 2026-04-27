@@ -217,7 +217,13 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
   const srcMarket = world.markets[here];
   srcMarket.stock[choice.good] = (srcMarket.stock[choice.good] ?? 0) - choice.qty;
   trader.funds -= choice.qty * choice.buyPrice;
-  trader.cargo = { good: choice.good, qty: choice.qty };
+  trader.cargo = {
+    good: choice.good,
+    qty: choice.qty,
+    source: here,
+    unitPrice: choice.buyPrice,
+    purchasedAt: world.tick,
+  };
   trader.currentFuel = { good: trader.currentFuel!.good, qty: trader.currentFuel!.qty - choice.fuelNeeded };
   events.push({
     trader: trader.id,
@@ -260,7 +266,13 @@ export function executeTrade(world: World, trader: Trader, choice: TradeOption):
 
   srcMarket.stock[choice.good] = stockHere - choice.qty;
   trader.funds -= choice.qty * choice.buyPrice;
-  trader.cargo = { good: choice.good, qty: choice.qty };
+  trader.cargo = {
+    good: choice.good,
+    qty: choice.qty,
+    source: here,
+    unitPrice: choice.buyPrice,
+    purchasedAt: world.tick,
+  };
   trader.currentFuel = { good: fuel.good, qty: fuel.qty - choice.fuelNeeded };
   events.push({
     trader: trader.id,
@@ -307,9 +319,30 @@ export function buyAtLocation(world: World, trader: Trader, goodId: GoodId, qty:
 
   market.stock[goodId] = stock - qty;
   trader.funds -= cost;
-  trader.cargo = trader.cargo
-    ? { good: goodId, qty: trader.cargo.qty + qty }
-    : { good: goodId, qty };
+  if (trader.cargo) {
+    // Weighted-average cost basis on incremental adds. Source updates to the
+    // most recent purchase; purchasedAt stays as the original first purchase
+    // so age represents how long the player has been holding *any* of it.
+    const oldQty = trader.cargo.qty;
+    const oldCost = oldQty * trader.cargo.unitPrice;
+    const newQty = oldQty + qty;
+    const newUnit = (oldCost + cost) / newQty;
+    trader.cargo = {
+      good: goodId,
+      qty: newQty,
+      source: trader.location,
+      unitPrice: newUnit,
+      purchasedAt: trader.cargo.purchasedAt,
+    };
+  } else {
+    trader.cargo = {
+      good: goodId,
+      qty,
+      source: trader.location,
+      unitPrice: price,
+      purchasedAt: world.tick,
+    };
+  }
 
   return {
     ok: true,
@@ -334,7 +367,11 @@ export function sellAtLocation(world: World, trader: Trader, qty?: number): Exec
   market.stock[goodId] = (market.stock[goodId] ?? 0) + sellQty;
   trader.funds += revenue;
   const remaining = trader.cargo.qty - sellQty;
-  trader.cargo = remaining > 0.001 ? { good: goodId, qty: remaining } : null;
+  if (remaining > 0.001) {
+    trader.cargo = { ...trader.cargo, qty: remaining };
+  } else {
+    trader.cargo = null;
+  }
 
   return {
     ok: true,

@@ -63,6 +63,14 @@ export interface FuelType {
   perDistance: number;
 }
 
+export interface CargoLot {
+  good: GoodId;
+  qty: number;
+  source: LocationId;       // where it was loaded (most recent for incremental adds)
+  unitPrice: number;        // weighted-average cost basis per unit
+  purchasedAt: number;      // tick of first purchase (oldest, for age calculations)
+}
+
 export interface Trader {
   id: TraderId;
   name: string;
@@ -74,7 +82,7 @@ export interface Trader {
   funds: number;
   location: LocationId;
   state: TraderState;
-  cargo: { good: GoodId; qty: number } | null;
+  cargo: CargoLot | null;
   destination: LocationId | null;
   ticksRemaining: number;
   pilot: PilotMode;

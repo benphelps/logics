@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useStore } from "../store";
 import { reachableNeighbors } from "../../sim/geometry";
 import { describeHint, getGuidedHint, hintTarget, type HintTarget } from "../../sim/suggestions";
+import { SALES_TAX_RATE } from "../../sim/economy";
 import type { LocationDef, Trader, World } from "../../sim/types";
 import "./PlayerView.css";
 
@@ -90,6 +91,8 @@ function ShipPanel({ ship, world }: { ship: Trader; world: World }) {
         <span><span className="dim">wallet:</span> Ç{Math.round(ship.funds).toLocaleString()}</span>
       </div>
 
+      <Inventory ship={ship} world={world} />
+
       {inTransit ? (
         <TransitView ship={ship} world={world} />
       ) : (
@@ -160,6 +163,110 @@ function ActionCell({ suggested, hintText, critical, children }: {
       {suggested && <SuggestedMarker tip={hintText} critical={critical} />}
       {children}
     </span>
+  );
+}
+
+function Inventory({ ship, world }: { ship: Trader; world: World }) {
+  const cargo = ship.cargo;
+  const cargoMass = cargo ? cargo.qty * world.goods[cargo.good].weight : 0;
+  const capacityPct = (cargoMass / ship.capacity) * 100;
+
+  return (
+    <div className="inventory">
+      <div className="inventory-header">
+        <h4>Inventory</h4>
+        <div className="capacity-gauge mono">
+          <span className="dim">cargo bay </span>
+          <span>{cargoMass.toFixed(0)}/{ship.capacity}</span>
+          <span className="capacity-bar">
+            <span
+              className="capacity-fill"
+              style={{ width: `${Math.min(100, capacityPct)}%` }}
+            />
+          </span>
+        </div>
+      </div>
+      <div className="inventory-grid">
+        {cargo
+          ? <CargoCard cargo={cargo} ship={ship} world={world} />
+          : <EmptyCargoCard capacity={ship.capacity} />}
+      </div>
+    </div>
+  );
+}
+
+function EmptyCargoCard({ capacity }: { capacity: number }) {
+  return (
+    <div className="cargo-card cargo-card-empty">
+      <div className="cargo-card-empty-text">
+        <div className="dim">Cargo bay empty</div>
+        <div className="faint mono">{capacity} units of capacity available</div>
+      </div>
+    </div>
+  );
+}
+
+function CargoCard({ cargo, ship, world }: { cargo: NonNullable<Trader["cargo"]>; ship: Trader; world: World }) {
+  const good = world.goods[cargo.good];
+  const sourceName = world.locations[cargo.source]?.name ?? cargo.source;
+  const ageTicks = world.tick - cargo.purchasedAt;
+  const costBasis = cargo.qty * cargo.unitPrice;
+
+  // Estimated profit / loss if sold at the CURRENT location, after tax.
+  const hereMarket = world.markets[ship.location];
+  const herePrice = hereMarket.prices[cargo.good] ?? 0;
+  const hereNetUnit = herePrice * (1 - SALES_TAX_RATE);
+  const hereNetRevenue = cargo.qty * hereNetUnit;
+  const pnl = hereNetRevenue - costBasis;
+  const pnlPct = costBasis > 0 ? (pnl / costBasis) * 100 : 0;
+  const pnlTone = pnl > 0 ? "good" : pnl < 0 ? "bad" : "dim";
+
+  const mass = cargo.qty * good.weight;
+  const massPct = (mass / ship.capacity) * 100;
+
+  return (
+    <article className="cargo-card">
+      <header className="cargo-card-header">
+        <div>
+          <h5>{good.name}</h5>
+          <div className="cargo-card-id dim mono">{cargo.good}</div>
+        </div>
+        <div className="cargo-card-qty mono">
+          <span className="cargo-qty-num">{cargo.qty.toFixed(0)}</span>
+          <span className="cargo-qty-unit dim">units</span>
+        </div>
+      </header>
+
+      <dl className="cargo-card-stats">
+        <Stat label="from"        value={sourceName} />
+        <Stat label="paid"        value={`Ç${cargo.unitPrice.toFixed(2)}/u`} />
+        <Stat label="cost basis" value={`Ç${Math.round(costBasis).toLocaleString()}`} />
+        <Stat label="age"         value={`${ageTicks}t`} />
+        <Stat label="mass"        value={`${mass.toFixed(0)} (${massPct.toFixed(0)}%)`} />
+        <Stat label="weight/u"   value={`${good.weight}`} />
+      </dl>
+
+      <div className="cargo-card-pnl">
+        <div className="dim">if sold here at Ç{herePrice.toFixed(1)} ({(SALES_TAX_RATE * 100).toFixed(0)}% tax):</div>
+        <div className="mono">
+          <span>Ç{Math.round(hereNetRevenue).toLocaleString()} net</span>
+          {" → "}
+          <span className={pnlTone}>
+            {pnl >= 0 ? "+" : ""}Ç{Math.round(pnl).toLocaleString()}
+            {" "}({pnl >= 0 ? "+" : ""}{pnlPct.toFixed(1)}%)
+          </span>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="cargo-stat">
+      <dt className="dim">{label}</dt>
+      <dd className="mono">{value}</dd>
+    </div>
   );
 }
 

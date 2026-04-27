@@ -66,7 +66,7 @@ describe("player layer v1", () => {
     expect(result.ok).toBe(true);
     expect(ship.state).toBe("transit");
     expect(ship.destination).toBe(choice.to);
-    expect(ship.cargo).toEqual({ good: choice.good, qty: choice.qty });
+    expect(ship.cargo).toMatchObject({ good: choice.good, qty: choice.qty });
     expect(ship.ticksRemaining).toBe(choice.travelTicks);
   });
 
@@ -91,7 +91,8 @@ describe("player primitives — manual buy / sell / refuel / travel", () => {
     const stockBefore = w.markets.haven.stock.protein;
     const r = buyAtLocation(w, ship, "protein", 10);
     expect(r.ok).toBe(true);
-    expect(ship.cargo).toEqual({ good: "protein", qty: 10 });
+    expect(ship.cargo).toMatchObject({ good: "protein", qty: 10, source: "haven" });
+    expect(ship.cargo!.unitPrice).toBeGreaterThan(0);
     expect(ship.funds).toBeLessThan(fundsBefore);
     expect(w.markets.haven.stock.protein).toBe(stockBefore - 10);
   });
@@ -164,7 +165,7 @@ describe("player primitives — manual buy / sell / refuel / travel", () => {
     while (ship.state === "transit") tickN(w, 1);
 
     expect(ship.location).toBe("ironhold");
-    expect(ship.cargo).toEqual({ good: "protein", qty: 30 });
+    expect(ship.cargo).toMatchObject({ good: "protein", qty: 30 });
     // Funds should only have decreased (docking fee + maintenance). No auto-sale.
     expect(ship.funds).toBeLessThan(fundsBeforeTravel);
   });
@@ -174,7 +175,7 @@ describe("player primitives — manual buy / sell / refuel / travel", () => {
     const npc = Object.values(w.traders).find(t => t.pilot === "npc");
     expect(npc).toBeDefined();
     if (!npc) return;
-    npc.cargo = { good: "grain", qty: 10 };
+    npc.cargo = { good: "grain", qty: 10, source: "verdant", unitPrice: 5, purchasedAt: 0 };
     npc.location = "verdant";
     npc.state = "transit";
     npc.destination = "haven";
