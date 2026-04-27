@@ -337,7 +337,7 @@ function MarketSection({ ship, world, loc, target, hintText }: {
           <col className="col-good" />
           <col className="col-num" />
           <col className="col-num" />
-          <col className="col-num" />
+          <col className="col-net-sell" />
           <col className="col-action" />
         </colgroup>
         <thead>

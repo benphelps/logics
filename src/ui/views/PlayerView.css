@@ -471,10 +471,11 @@
   table-layout: fixed;
 }
 
-.col-good   { width: auto; }
-.col-dest   { width: auto; }
-.col-num    { width: 64px; }
-.col-action { width: 296px; }
+.col-good     { width: auto; }
+.col-dest     { width: auto; }
+.col-num      { width: 64px; }
+.col-net-sell { width: 84px; }
+.col-action   { width: 296px; }
 .travel-table .col-action { width: 132px; }
 
 .market-table th,
