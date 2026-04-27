@@ -334,7 +334,6 @@ function MarketSection({ ship, world, loc, target, hintText }: {
       <header className="bridge-card-head">
         <div className="bridge-card-title">
           <span className="bridge-card-eyebrow station-eyebrow">Market</span>
-          <span className="dim mono">{loc.name} — {goodsOrdered.length} goods</span>
         </div>
       </header>
       <table className="market-table">
