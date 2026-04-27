@@ -26,6 +26,8 @@ Listed in commit order. Each was scoped tight, landed with tests, and updated th
 | Programmatic world generation | Mulberry32 PRNG, 5 location archetypes, 3 trader classes, archetype-aware radial placement; `npm run bench` for scale stress |
 | Trader anticipation logic | Anticipated arrival price using own + in-flight cargo prevents multi-trader convergence overshoot at scale |
 | Death-spiral fix | Idle maintenance → 0; trip-aware profit math (subtracts trip maintenance from net). Fleets stay healthy across 200/500/1000/2000 ticks at all scales — zero stuck traders observed. |
+| Anticipation fix | Anticipated arrival price now only counts *other* traders' in-flight cargo, not own. Trader actually receives the listed price at arrival; price drop from own delivery only affects future traders. Restored active trade across all scales. |
+| Tier 2 sinks | Docking fee (5/cap per arrival) + sales tax (15%) bound NPC fleet wealth growth without re-triggering death spiral. Verified to 5000 ticks at all scales. Loop not strictly closed; Tier 3 (treasuries) handles that when needed. |
 
 ---
 
@@ -33,10 +35,10 @@ Listed in commit order. Each was scoped tight, landed with tests, and updated th
 
 These are the natural next steps that stay in the sim layer and can ship before the player exists.
 
-### Tier 2 economic stability — docking fees + crew wages
-**Why deferred**: Tier 1 already keeps prices stable; Tier 2 is about closing the money loop more tightly. It only matters once player wealth enters the system.
-**Trigger to do**: when player money joins NPC money in the same pool, OR when scenario runs > 5000 ticks show NPC fund growth becoming a tuning headache.
-**Shape**: per-arrival docking fee (scales with port size), per-tick crew wages (scales with ship size beyond capacity). Tune all sinks together so NPC traders break even on average.
+### Tier 3 economic stability — location treasuries (closed money loop)
+**Why deferred**: Tier 1 (stockpile cap + maintenance) and Tier 2 (docking fee + sales tax) together keep NPC fleet growth slow enough that no play session sees inflation. But typical trades have positive markup, so NPC fleet wealth still grows — just much more slowly. The loop is not strictly closed.
+**Trigger to do**: when player wealth growth interacts with NPC growth in problematic ways (e.g., the player can't compete because NPCs have run away with the wealth), OR when very-long-running NPC-only sims hit price-clamps unexpectedly.
+**Shape**: each location has a `treasury` balance. When trader sells goods at a location, the treasury pays them (treasury -= sale_price × qty); if treasury empty, sale falls back to floor price or refused. When trader buys, money goes INTO the source location's treasury. Treasuries replenish from a per-tick "local revenue" proportional to population. Money becomes strictly conserved system-wide.
 
 ### Population-driven consumption
 Locations have `population` but it doesn't drive anything. Consumption rates are flat. Realistic: bigger pop = more grain consumed.
@@ -165,6 +167,8 @@ Most balance levers are exported constants. Search for them:
 | `pricing.ts` | `PRICE_FLOOR_MULT` / `PRICE_CEILING_MULT` | The unbreakable price band |
 | `economy.ts` | `MAINTENANCE_PER_CAPACITY` | Per-tick fund drain on traders during transit (currently 0.5) |
 | `economy.ts` | `MAINTENANCE_IDLE_FACTOR` | Multiplier for docked ships (currently 0 — parked is free) |
+| `economy.ts` | `DOCKING_FEE_PER_CAPACITY` | One-time fee on every arrival (currently 5) |
+| `economy.ts` | `SALES_TAX_RATE` | Fraction of every sale destroyed as port tax (currently 0.15) |
 | `economy.ts` | `STOCKPILE_CAP_MULT` | Production tapers to zero at this × target |
 | `traders.ts` | `MIN_PROFIT_PER_TICK` | Minimum margin a trader will accept after subtracting fuel + maintenance (currently 0.05) |
 | `traders.ts` | `MAX_DRAW_FRACTION` | Cap on how much of a market a single trader can drain in one trip |

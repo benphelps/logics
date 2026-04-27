@@ -136,11 +136,15 @@ In transit: countdown ticks, on arrival sell cargo at destination's listed price
 
 ### Stability invariants on traders
 
-- **Transit-only maintenance**: `capacity × MAINTENANCE_PER_CAPACITY = 0.5` per tick during transit, `× MAINTENANCE_IDLE_FACTOR = 0` when docked. A parked ship has zero operational cost. This was tightened from earlier values (1.5 transit, 0.4 idle) after observing a death-spiral: idle ships paid maintenance whether or not profitable trades existed, accumulating losses until they hit zero funds and got permanently stuck. With the current setup, ships that can't find a profitable trip simply sit and wait — no drain.
-- **Trip-aware profit math**: `evaluateOptions` subtracts `travelTicks × capacity × MAINTENANCE_PER_CAPACITY` from total profit before deciding. Trader only commits to a trip if the *net* (after both fuel and maintenance) clears `MIN_PROFIT_PER_TICK = 0.05`. This ensures traders never take loss-making trips just because the gross looked positive.
-- **Floor at zero funds**: a broke trader pays no maintenance and can't trade — frozen, emits `stuck` events. With the current constants this is rare; it remains as a safety net.
+- **Transit-only maintenance**: `capacity × MAINTENANCE_PER_CAPACITY = 0.5` per tick during transit, `× MAINTENANCE_IDLE_FACTOR = 0` when docked. A parked ship has zero operational cost. Maintenance is purely the cost of being in motion.
+- **Docking fee**: `capacity × DOCKING_FEE_PER_CAPACITY = 5` charged on every arrival. Scales with activity (more trips = more fees) so it's self-correlated with the money creation that happens on sales.
+- **Sales tax**: `SALES_TAX_RATE = 0.15` of every sale revenue is destroyed (treated as port tax). Trader receives 85% of the listed price.
+- **Trip-aware profit math**: `evaluateOptions` subtracts both trip-maintenance (`travelTicks × capacity × MAINTENANCE_PER_CAPACITY`) and the docking fee (`capacity × DOCKING_FEE_PER_CAPACITY`) from total profit before deciding. Sell price in the math uses the *net* (after-tax) value. Trader only commits if `profitPerTick > MIN_PROFIT_PER_TICK = 0.05`.
+- **Floor at zero funds**: a broke trader pays no maintenance and can't trade. With the current constants this is rare across 5000-tick runs at all scales.
 
-Verified across all scales (starter through 100 generated locations) and durations (200, 500, 1000, 2000 ticks): zero stuck traders. NPC fleet funds grow modestly but bounded; Tier 2 (docking fees + crew wages) will close the loop more tightly when player money joins the system.
+Verified across starter / 10 / 50 / 100 generated locations and durations 200 / 500 / 2000 / 5000 ticks: **zero stuck traders, active trade, shortage rates 7-9 units/tick/loc**.
+
+NPC fleet wealth still grows over very long runs because typical trades have positive markup (sales create slightly more money than purchases destroy). The 15% tax + docking fee dramatically slows this — fleet wealth roughly doubles every ~2000 ticks rather than growing 10× — but does not fully close the loop. Real loop closure (Tier 3) requires location treasuries that pay traders for sales out of a finite pool replenished by abstract local revenue. Deferred until needed; for now the slow growth is bounded enough that a play session won't see meaningful inflation.
 
 ## Goods catalog
 

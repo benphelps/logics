@@ -1,7 +1,7 @@
 import type { FuelType, GoodId, LocationId, Trader, World } from "./types";
 import { distance, nearestDistance } from "./geometry";
 import { priceFor } from "./pricing";
-import { MAINTENANCE_PER_CAPACITY } from "./economy";
+import { chargeDockingFee, DOCKING_FEE_PER_CAPACITY, MAINTENANCE_PER_CAPACITY, SALES_TAX_RATE } from "./economy";
 
 export const MIN_PROFIT_PER_TICK = 0.05;
 export const MAX_DRAW_FRACTION = 0.5;
@@ -119,16 +119,18 @@ function evaluateOptions(world: World, trader: Trader, inflight: Map<string, num
       const dstStockNow = dstMarket.stock[goodId] ?? 0;
       const inflightToDst = inflight.get(`${dstId}|${goodId}`) ?? 0;
       const dstStockAtArrival = dstStockNow + INFLIGHT_WEIGHT * inflightToDst;
-      const sellPrice = dstTarget > 0
+      const grossSellPrice = dstTarget > 0
         ? priceFor(world.goods[goodId].basePrice, dstStockAtArrival, dstTarget)
         : dstMarket.prices[goodId];
+      const sellPrice = grossSellPrice * (1 - SALES_TAX_RATE);
       const fuelCost = fuelNeeded * localFuelPrice;
       const grossProfitPerUnit = sellPrice - buyPrice - fuelCost / maxQty;
       if (grossProfitPerUnit <= 0) continue;
 
       const travelTicks = Math.max(1, Math.ceil(dist / trader.speed));
       const tripMaintenance = travelTicks * trader.capacity * MAINTENANCE_PER_CAPACITY;
-      const totalProfit = grossProfitPerUnit * maxQty - tripMaintenance;
+      const tripDockingFee = trader.capacity * DOCKING_FEE_PER_CAPACITY;
+      const totalProfit = grossProfitPerUnit * maxQty - tripMaintenance - tripDockingFee;
       if (totalProfit <= 0) continue;
       const profitPerTick = totalProfit / (travelTicks + 1);
       if (profitPerTick < MIN_PROFIT_PER_TICK) continue;
@@ -170,15 +172,17 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
     trader.destination = null;
     trader.state = "idle";
     events.push({ trader: trader.id, kind: "arrive", to: dst });
+    chargeDockingFee(trader);
 
     if (trader.cargo) {
       const dstMarket = world.markets[dst];
       const { good, qty } = trader.cargo;
       const unitPrice = dstMarket.prices[good];
       dstMarket.stock[good] = (dstMarket.stock[good] ?? 0) + qty;
-      trader.funds += qty * unitPrice;
+      const netUnitPrice = unitPrice * (1 - SALES_TAX_RATE);
+      trader.funds += qty * netUnitPrice;
       trader.cargo = null;
-      events.push({ trader: trader.id, kind: "sell", good, qty, unitPrice, to: dst });
+      events.push({ trader: trader.id, kind: "sell", good, qty, unitPrice: netUnitPrice, to: dst });
     }
     return;
   }
