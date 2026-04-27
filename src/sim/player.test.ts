@@ -148,4 +148,43 @@ describe("player primitives — manual buy / sell / refuel / travel", () => {
     const r = travelTo(w, ship, "saffron");
     expect(r.ok).toBe(false);
   });
+
+  it("manual ship does NOT auto-sell on arrival — cargo stays loaded", () => {
+    const w = createWorld();
+    const ship = w.traders[w.player!.shipIds[0]];
+    tickN(w, 30);
+
+    const buyOk = buyAtLocation(w, ship, "protein", 30).ok;
+    expect(buyOk).toBe(true);
+    const fundsBeforeTravel = ship.funds;
+
+    travelTo(w, ship, "ironhold");
+    expect(ship.state).toBe("transit");
+
+    while (ship.state === "transit") tickN(w, 1);
+
+    expect(ship.location).toBe("ironhold");
+    expect(ship.cargo).toEqual({ good: "protein", qty: 30 });
+    // Funds should only have decreased (docking fee + maintenance). No auto-sale.
+    expect(ship.funds).toBeLessThan(fundsBeforeTravel);
+  });
+
+  it("NPC ship continues to auto-sell on arrival (sim throughput unchanged)", () => {
+    const w = createWorld();
+    const npc = Object.values(w.traders).find(t => t.pilot === "npc");
+    expect(npc).toBeDefined();
+    if (!npc) return;
+    npc.cargo = { good: "grain", qty: 10 };
+    npc.location = "verdant";
+    npc.state = "transit";
+    npc.destination = "haven";
+    npc.ticksRemaining = 1;
+
+    const havenGrainBefore = w.markets.haven.stock.grain;
+    tickN(w, 1);
+
+    expect(npc.cargo).toBeNull();
+    expect(npc.location).toBe("haven");
+    expect(w.markets.haven.stock.grain).toBeGreaterThan(havenGrainBefore);
+  });
 });

@@ -40,8 +40,10 @@ export function getGuidedHint(world: World, ship: Trader): GuidedHint {
     return cargoLoadedHint(world, ship);
   }
 
-  // Empty cargo: best buy-and-travel
-  const opts = listTradeOptions(world, ship);
+  // Empty cargo: best buy-and-travel. Player isn't subject to MAX_DRAW_FRACTION
+  // (that's an NPC fairness rule); their suggestions can use full stock so the
+  // qty matches what the "Buy max" button would actually buy.
+  const opts = listTradeOptions(world, ship, undefined, ship.pilot === "manual" ? 1.0 : undefined);
   const top = opts[0];
   if (top) {
     return {

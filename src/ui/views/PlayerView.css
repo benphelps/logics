@@ -178,6 +178,8 @@
   padding: 5px 6px;
   border-bottom: 1px solid var(--border);
   font-variant-numeric: tabular-nums;
+  vertical-align: middle;
+  height: 32px;          /* lock row height — keeps table stable across state changes */
 }
 
 .market-table th.numeric,
@@ -298,12 +300,20 @@
 .buy-sell {
   display: flex;
   gap: 4px;
-  flex-wrap: wrap;
+  align-items: center;
+  min-height: 22px;       /* keeps text-only cells the same height as button cells */
+  white-space: nowrap;
 }
 
 .buy-sell button {
   font-size: 11px;
   padding: 2px 8px;
+  height: 22px;
+}
+
+.travel-table button {
+  height: 22px;
+  padding: 0 8px;
 }
 
 /* ---- side panels: fuel + travel ---- */

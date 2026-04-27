@@ -81,7 +81,12 @@ function inTransitArrivalsByDestGood(world: World): Map<string, number> {
   return acc;
 }
 
-export function listTradeOptions(world: World, trader: Trader, inflight?: Map<string, number>): TradeOption[] {
+export function listTradeOptions(
+  world: World,
+  trader: Trader,
+  inflight?: Map<string, number>,
+  drawFraction: number = MAX_DRAW_FRACTION,
+): TradeOption[] {
   const inflightMap = inflight ?? inTransitArrivalsByDestGood(world);
   const here = trader.location;
   const srcMarket = world.markets[here];
@@ -96,7 +101,7 @@ export function listTradeOptions(world: World, trader: Trader, inflight?: Map<st
     const buyPrice = srcMarket.prices[goodId];
     const srcStock = srcMarket.stock[goodId] ?? 0;
     const maxByCargo = trader.capacity / good.weight;
-    const maxByStock = srcStock * MAX_DRAW_FRACTION;
+    const maxByStock = srcStock * drawFraction;
     const maxByFunds = buyPrice > 0 ? trader.funds / buyPrice : 0;
     const maxQty = Math.floor(Math.min(maxByCargo, maxByStock, maxByFunds));
     if (maxQty <= 0) continue;
@@ -179,7 +184,10 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
     events.push({ trader: trader.id, kind: "arrive", to: dst });
     chargeDockingFee(trader);
 
-    if (trader.cargo) {
+    // Manual player ships do NOT auto-sell on arrival — cargo stays loaded
+    // until the player clicks Sell. The hint engine highlights the Sell
+    // button on arrival so the next-step CTA is obvious.
+    if (trader.cargo && trader.pilot !== "manual") {
       const dstMarket = world.markets[dst];
       const { good, qty } = trader.cargo;
       const unitPrice = dstMarket.prices[good];
