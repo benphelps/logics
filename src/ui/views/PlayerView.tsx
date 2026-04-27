@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { IconType } from "react-icons";
 import { MdPushPin } from "react-icons/md";
@@ -14,7 +14,6 @@ import {
   GiShipWheel,
   GiSpeedometer,
   GiTrade,
-  GiWallet,
 } from "react-icons/gi";
 import { useStore } from "../store";
 import { distance, reachableNeighbors } from "../../sim/geometry";
@@ -375,16 +374,6 @@ function contractCueText(_hint: GuidedHint, jobId: JobId, world: World, fallback
   return `Accept ${job.tier} ${goodName} contract to ${dst}.`;
 }
 
-function DetailChip({ icon: Icon, label, value }: { icon: IconType; label: string; value: ReactNode }) {
-  return (
-    <span className="detail-chip">
-      <Icon className="ui-icon" aria-hidden="true" focusable="false" />
-      <span className="detail-chip-label">{label}</span>
-      <span className="detail-chip-value">{value}</span>
-    </span>
-  );
-}
-
 type GoodInfoFocus = { kind: "good"; good: GoodId; source: "market" | "cargo" };
 type StationInfoFocus = { kind: "station"; loc: LocationId; source: "station" | "travel" };
 type InfoFocus = GoodInfoFocus | StationInfoFocus;
@@ -501,7 +490,21 @@ function DockedView({ ship, world, loc, guidedPlan, hint, target, hintText, cueT
   return (
     <div className={`docked-view ${pulseClass}`}>
       <div className="bridge">
-        <ShipCard ship={ship} world={world} guidedPlan={guidedPlan} target={target} hintText={hintText} cueText={cueText} critical={critical} inTransit={inTransit} />
+        <ShipCard
+          ship={ship}
+          world={world}
+          loc={loc}
+          guidedPlan={guidedPlan}
+          target={target}
+          hintText={hintText}
+          cueText={cueText}
+          critical={critical}
+          inTransit={inTransit}
+          selectedGood={activeFocus?.kind === "good" && activeFocus.source === "cargo" ? activeFocus.good : null}
+          pinnedGoods={pinnedCargoGoods}
+          onSelectGood={(good) => togglePinnedFocus({ kind: "good", good, source: "cargo" })}
+          onHoverGood={(good) => setHoveredFocus(good ? { kind: "good", good, source: "cargo" } : null)}
+        />
         {inTransit
           ? <TransitCard ship={ship} world={world} loc={loc} />
           : (
@@ -520,19 +523,6 @@ function DockedView({ ship, world, loc, guidedPlan, hint, target, hintText, cueT
               onPulseSuggestions={pulseSuggestionActions}
             />
           )}
-        <CargoBridgeCard
-          ship={ship}
-          world={world}
-          loc={loc}
-          inTransit={inTransit}
-          target={target}
-          hintText={hintText}
-          cueText={cueText}
-          selectedGood={activeFocus?.kind === "good" && activeFocus.source === "cargo" ? activeFocus.good : null}
-          pinnedGoods={pinnedCargoGoods}
-          onSelectGood={(good) => togglePinnedFocus({ kind: "good", good, source: "cargo" })}
-          onHoverGood={(good) => setHoveredFocus(good ? { kind: "good", good, source: "cargo" } : null)}
-        />
       </div>
       {inTransit
         ? <TransitMarketPlaceholder destName={loc.name} ticksRemaining={ship.ticksRemaining} />
@@ -910,7 +900,7 @@ function StationTradeHelperInfoContent({ loc, world }: { loc: LocationDef; world
       <header className="bridge-card-head">
         <div className="bridge-card-title">
           <span className="bridge-card-eyebrow station-eyebrow">Station info</span>
-          <span className="station-name">{loc.name}</span>
+          <span className="trade-helper-good">{loc.name}</span>
         </div>
         <span className={`station-kind-pill station-kind-${kind}`}>{stationKindLabel(kind)}</span>
       </header>
@@ -1017,18 +1007,30 @@ function StationTradeHelperInfoContent({ loc, world }: { loc: LocationDef; world
   );
 }
 
-function ShipCard({ ship, world, guidedPlan, target, hintText, cueText, critical, inTransit }: {
-  ship: Trader; world: World; guidedPlan: GuidedPlan; target: HintTarget; hintText: string; cueText: CueTextMap; critical: boolean; inTransit: boolean;
+function ShipCard({ ship, world, loc, guidedPlan, target, hintText, cueText, critical, inTransit, selectedGood, pinnedGoods, onSelectGood, onHoverGood }: {
+  ship: Trader;
+  world: World;
+  loc: LocationDef;
+  guidedPlan: GuidedPlan;
+  target: HintTarget;
+  hintText: string;
+  cueText: CueTextMap;
+  critical: boolean;
+  inTransit: boolean;
+  selectedGood: GoodId | null;
+  pinnedGoods: Set<GoodId>;
+  onSelectGood: (good: GoodId) => void;
+  onHoverGood: (good: GoodId | null) => void;
 }) {
   const setPilot = useStore((s) => s.setPilot);
   const repairShip = useStore((s) => s.repairShip);
   const mass = cargoMassFn(ship, world);
   const cargoPct = (mass / ship.capacity) * 100;
+  const groups = groupCargoByGood(ship);
 
   const debt = ship.maintenanceDebt ?? 0;
   const canRepair = debt > 0 && ship.state === "idle";
   const autoBlocked = !hasCrew(ship, "captain");
-  const installedCount = Object.keys(ship.upgrades ?? {}).length;
 
   return (
     <section className="bridge-card ship-card">
@@ -1036,13 +1038,6 @@ function ShipCard({ ship, world, guidedPlan, target, hintText, cueText, critical
         <div className="bridge-card-title">
           <span className="bridge-card-eyebrow ship-eyebrow">Ship</span>
           <span className="ship-name">{ship.name}</span>
-          <div className="detail-row ship-detail-row">
-            <DetailChip icon={GiCargoCrate} label="Capacity" value={ship.capacity.toLocaleString()} />
-            <DetailChip icon={GiSpeedometer} label="Speed" value={ship.speed.toLocaleString()} />
-            <DetailChip icon={GiAutoRepair} label="Hull" value={(ship.hull ?? ship.baseHull ?? 1).toLocaleString()} />
-            <DetailChip icon={GiRadarSweep} label="Weapons" value={(ship.weaponPower ?? ship.baseWeaponPower ?? 0).toLocaleString()} />
-            <DetailChip icon={GiFactory} label="Slots" value={`${installedCount}/5`} />
-          </div>
         </div>
         <div className="ship-pilot">
           <button
@@ -1061,43 +1056,119 @@ function ShipCard({ ship, world, guidedPlan, target, hintText, cueText, critical
           </button>
         </div>
       </header>
-      <div className="ship-system-grid">
-        <CargoSpacePanel used={mass} capacity={ship.capacity} pct={cargoPct} />
-        <WalletPanel funds={ship.funds} />
+      <div className="ship-status-tabs bridge-card-tabs">
+        <ShipFuelStatusEntry ship={ship} world={world} target={target} hintText={cueText.refuel ?? hintText} critical={critical} inTransit={inTransit} />
+        <ShipMaintenanceStatusEntry debt={debt} canRepair={canRepair} onRepair={() => repairShip(ship.id)} />
       </div>
-      <div className="ship-service-row">
-        <FuelPanel ship={ship} world={world} target={target} hintText={cueText.refuel ?? hintText} critical={critical} inTransit={inTransit} />
-        <MaintenancePanel debt={debt} canRepair={canRepair} onRepair={() => repairShip(ship.id)} />
-      </div>
+      <ShipCargoTabs
+        ship={ship}
+        world={world}
+        loc={loc}
+        groups={groups}
+        inTransit={inTransit}
+        target={target}
+        hintText={hintText}
+        cueText={cueText}
+        cargoUsed={mass}
+        cargoPct={cargoPct}
+        selectedGood={selectedGood}
+        pinnedGoods={pinnedGoods}
+        onSelectGood={onSelectGood}
+        onHoverGood={onHoverGood}
+      />
       {SHOW_DEV_SHIP_PLAN_PANEL && <ShipPlanPanel ship={ship} world={world} guidedPlan={guidedPlan} hintText={hintText} />}
     </section>
   );
 }
 
-function CargoSpacePanel({ used, capacity, pct }: { used: number; capacity: number; pct: number }) {
-  const tone = "";
+function meterTabStyle(pct: number): CSSProperties {
+  return { "--meter-pct": `${Math.max(0, Math.min(100, pct))}%` } as CSSProperties;
+}
+
+function ShipFuelStatusEntry({ ship, world, target, hintText, critical, inTransit }: {
+  ship: Trader; world: World; target: HintTarget; hintText: string; critical: boolean; inTransit: boolean;
+}) {
+  const refuel = useStore((s) => s.refuel);
+  const manualActions = ship.pilot !== "auto";
+  const fuel = ship.currentFuel;
+  const fuelQty = fuel?.qty ?? 0;
+  const fuelPct = ship.fuelCapacity > 0 ? (fuelQty / ship.fuelCapacity) * 100 : 0;
+  const tone = fuelPct < 25 ? "bad" : fuelPct < 50 ? "warn" : "";
+  const tankGood = fuel ? world.goods[fuel.good]?.name ?? fuel.good : "No fuel";
+  const tankLabel = tankGood.replace(/\s+(Fuel|Cell)$/u, "");
+  const refuelType = inTransit ? null : selectRefuelType(world, ship);
+  const market = refuelType ? world.markets[ship.location] : null;
+  const stationFuel = refuelType ? world.goods[refuelType.good]?.name ?? refuelType.good : null;
+  const stock = refuelType && market ? market.stock[refuelType.good] ?? 0 : 0;
+  const price = refuelType && market ? market.prices[refuelType.good] ?? 0 : 0;
+  const switching = refuelType != null && (!fuel || fuel.good !== refuelType.good);
+  const room = Math.max(0, ship.fuelCapacity - (switching ? 0 : fuelQty));
+  const affordable = price > 0 ? ship.funds / price : 0;
+  const fillable = refuelType ? Math.min(room, stock, affordable) : 0;
+  const suggested = target.refuel === true && !inTransit;
+  const canRefuel = !inTransit && manualActions && refuelType != null && fillable > 0.001;
+  const percentText = `${Math.round(fuelPct)}%`;
+  const status = inTransit
+    ? "Dock to refuel"
+    : refuelType
+      ? `Station: ${stationFuel} · ${stock.toFixed(0)} stock · Ç${Math.round(price)}/u`
+      : "No compatible fuel at station";
+  const disabledTitle = !manualActions
+    ? "Auto mode controls refueling"
+    : room <= 0.001
+      ? "Tank already full"
+      : stock <= 0.001
+        ? "No compatible fuel for sale here"
+        : "Not enough funds to refuel";
+  const actionTitle = canRefuel ? (critical ? "Refuel now" : switching ? "Switch fuel and fill" : "Fill tank") : disabledTitle;
 
   return (
-    <div className={`ship-system-panel ship-cargo-panel ${tone}`} title={`${pct.toFixed(0)}% cargo capacity used`}>
-      <div className="ship-system-top">
-        <span className="ship-system-label dim"><IconLabel icon={GiCargoCrate}>Cargo</IconLabel></span>
-      </div>
-      <div className="ship-system-meter">
-        <div className={`ship-system-meter-fill ${tone}`} style={{ width: `${Math.min(100, pct)}%` }} />
-        <span className="ship-system-meter-value">{used.toFixed(0)}/{capacity}</span>
-      </div>
-    </div>
+    <ActionCell suggested={suggested} hintText={hintText} critical={critical}>
+      <button
+        className={`bridge-tab ship-meter-tab ship-status-entry ship-fuel-entry ${tone} ${suggested ? "has-suggestion" : ""} ${critical ? "btn-suggested-critical" : suggested ? "btn-suggested" : ""}`}
+        style={meterTabStyle(fuelPct)}
+        onClick={() => refuel(ship.id)}
+        disabled={!canRefuel}
+        title={`${status} · ${actionTitle}`}
+      >
+        <span className="ship-meter-label">
+          <IconLabel icon={GiFuelTank}>{tankLabel}</IconLabel>
+        </span>
+        <span className="ship-meter-percent">{percentText}</span>
+      </button>
+    </ActionCell>
   );
 }
 
-function WalletPanel({ funds }: { funds: number }) {
+function ShipMaintenanceStatusEntry({ debt, canRepair, onRepair }: { debt: number; canRepair: boolean; onRepair: () => void }) {
+  const debtPct = Math.max(0, Math.min(100, (debt / MAINTENANCE_DEBT_TRAVEL_BLOCK) * 100));
+  const conditionPct = Math.max(0, 100 - debtPct);
+  const grounded = debt >= MAINTENANCE_DEBT_TRAVEL_BLOCK;
+  const tone = grounded ? "bad" : conditionPct <= 30 ? "warn" : "";
+  const hasDebt = debt > 0.001;
+  const percentText = `${Math.round(conditionPct)}%`;
+  const status = grounded
+    ? `Grounded · debt Ç${Math.round(debt).toLocaleString()}`
+    : hasDebt
+      ? `Maintenance debt Ç${Math.round(debt).toLocaleString()}`
+      : "Maintenance clear";
+  const clickable = hasDebt && canRepair;
+
   return (
-    <div className="ship-system-panel ship-wallet-panel">
-      <div className="ship-system-top">
-        <span className="ship-system-label dim"><IconLabel icon={GiWallet}>Wallet</IconLabel></span>
-      </div>
-      <div className="ship-wallet-pill mono">Ç{Math.round(funds).toLocaleString()}</div>
-    </div>
+    <ActionCell suggested={grounded} hintText="Repair maintenance before travel." critical>
+      <button
+        className={`bridge-tab ship-meter-tab ship-status-entry ship-maintenance-entry ${tone} ${grounded ? "has-suggestion btn-suggested-critical" : ""}`}
+        style={meterTabStyle(conditionPct)}
+        onClick={onRepair}
+        disabled={!clickable}
+        title={`${status}${hasDebt ? canRepair ? " · Repair ship" : " · Dock to repair" : ""}`}
+      >
+        <span className="ship-meter-label">
+          <IconLabel icon={GiAutoRepair}>Maintenance</IconLabel>
+        </span>
+        <span className="ship-meter-percent">{percentText}</span>
+      </button>
+    </ActionCell>
   );
 }
 
@@ -1278,115 +1349,6 @@ function buildHintShipPlan(ship: Trader, world: World, hint: GuidedHint, hintTex
         steps: [{ icon: GiRadarSweep, text: hintText }],
       };
   }
-}
-
-function FuelPanel({ ship, world, target, hintText, critical, inTransit }: {
-  ship: Trader; world: World; target: HintTarget; hintText: string; critical: boolean; inTransit: boolean;
-}) {
-  const refuel = useStore((s) => s.refuel);
-  const manualActions = ship.pilot !== "auto";
-  const fuel = ship.currentFuel;
-  const fuelQty = fuel?.qty ?? 0;
-  const fuelPct = ship.fuelCapacity > 0 ? (fuelQty / ship.fuelCapacity) * 100 : 0;
-  const tone = fuelPct < 25 ? "bad" : fuelPct < 50 ? "warn" : "";
-  const tankGood = fuel ? world.goods[fuel.good]?.name ?? fuel.good : "No fuel";
-  const refuelType = inTransit ? null : selectRefuelType(world, ship);
-  const market = refuelType ? world.markets[ship.location] : null;
-  const stationFuel = refuelType ? world.goods[refuelType.good]?.name ?? refuelType.good : null;
-  const stock = refuelType && market ? market.stock[refuelType.good] ?? 0 : 0;
-  const price = refuelType && market ? market.prices[refuelType.good] ?? 0 : 0;
-  const switching = refuelType != null && (!fuel || fuel.good !== refuelType.good);
-  const room = Math.max(0, ship.fuelCapacity - (switching ? 0 : fuelQty));
-  const affordable = price > 0 ? ship.funds / price : 0;
-  const fillable = refuelType ? Math.min(room, stock, affordable) : 0;
-  const suggested = target.refuel === true && !inTransit;
-  const canRefuel = !inTransit && refuelType != null && fillable > 0.001;
-
-  const status = inTransit
-    ? "Dock to refuel"
-    : refuelType
-      ? `Station: ${stationFuel} · ${stock.toFixed(0)} stock · Ç${Math.round(price)}/u`
-      : "No compatible fuel at station";
-
-  const disabledTitle = room <= 0.001
-    ? "Tank already full"
-    : stock <= 0.001
-      ? "No compatible fuel for sale here"
-      : "Not enough funds to refuel";
-
-  const action = inTransit
-    ? <span className="ship-fuel-badge">In transit</span>
-    : !manualActions
-      ? <span className="ship-fuel-badge">Auto</span>
-    : !refuelType
-      ? <span className="ship-fuel-badge bad">No fuel here</span>
-      : room <= 0.001
-        ? <span className="ship-fuel-badge">Full</span>
-        : (
-          <ActionCell suggested={suggested} hintText={hintText} critical={critical}>
-            <button
-              className={`btn-action ship-fuel-action ${critical ? "btn-suggested-critical" : suggested ? "btn-suggested" : "primary"}`}
-              onClick={() => refuel(ship.id)}
-              disabled={!canRefuel}
-              title={canRefuel ? "" : disabledTitle}
-            >
-              <span className="btn-label">{critical ? "Refuel" : switching ? "Switch fuel" : "Fill tank"}</span>
-            </button>
-          </ActionCell>
-        );
-
-  return (
-    <div className={`ship-system-panel ship-fuel-panel ${tone} ${suggested ? "suggested" : ""}`} title={status}>
-      <div className="ship-fuel-main">
-        <div className="ship-fuel-top">
-          <span className="ship-fuel-label dim"><IconLabel icon={GiFuelTank}>Fuel</IconLabel></span>
-        </div>
-        <div className="ship-system-meter ship-fuel-meter">
-          <div className={`ship-fuel-meter-fill ${tone}`} style={{ width: `${Math.min(100, fuelPct)}%` }} />
-          <span className="ship-system-meter-value">{fuelQty.toFixed(0)}/{ship.fuelCapacity} · {tankGood}</span>
-        </div>
-      </div>
-      <div className="ship-fuel-control">{action}</div>
-    </div>
-  );
-}
-
-function MaintenancePanel({ debt, canRepair, onRepair }: { debt: number; canRepair: boolean; onRepair: () => void }) {
-  const pct = Math.max(0, Math.min(100, (debt / MAINTENANCE_DEBT_TRAVEL_BLOCK) * 100));
-  const grounded = debt >= MAINTENANCE_DEBT_TRAVEL_BLOCK;
-  const tone = grounded ? "bad" : pct >= 70 ? "warn" : "";
-  const hasDebt = debt > 0.001;
-  const status = grounded
-    ? "Grounded"
-    : hasDebt
-      ? "Service debt"
-      : "No service debt";
-  const limitText = `limit Ç${MAINTENANCE_DEBT_TRAVEL_BLOCK.toLocaleString()}`;
-  const action = hasDebt ? (
-    <button
-      className={`btn-action maintenance-action ${grounded ? "btn-suggested-critical" : ""}`}
-      onClick={onRepair}
-      disabled={!canRepair}
-      title={canRepair ? "Pay accrued maintenance" : "Dock to repair"}
-    >
-      <span className="btn-label">Repair</span>
-    </button>
-  ) : <span className="ship-maintenance-badge">Clear</span>;
-
-  return (
-    <div className={`ship-system-panel ship-maintenance-panel ${tone}`} title={`${status} · ${limitText}`}>
-      <div className="ship-maintenance-main">
-        <div className="ship-maintenance-top">
-          <span className="ship-maintenance-label dim"><IconLabel icon={GiAutoRepair}>Maintenance</IconLabel></span>
-        </div>
-        <div className="ship-system-meter ship-maintenance-meter">
-          <div className={`ship-maintenance-meter-fill ${tone}`} style={{ width: `${pct}%` }} />
-          <span className="ship-system-meter-value">Ç{Math.round(debt).toLocaleString()} · {limitText}</span>
-        </div>
-      </div>
-      <div className="ship-maintenance-control">{action}</div>
-    </div>
-  );
 }
 
 function targetBuyGoods(target: HintTarget): GoodId[] {
@@ -1763,14 +1725,11 @@ function InfoAreaCard({ ship, world, loc, focus, pinnedFocuses, activePinnedKey,
   target: HintTarget;
   hint: GuidedHint;
 }) {
-  const displayFocus: InfoFocus = focus ?? { kind: "station", loc: loc.id, source: "station" };
-  const displayKey = infoFocusKey(displayFocus);
-  const stationLoc = displayFocus.kind === "station"
-    ? world.locations[displayFocus.loc] ?? loc
-    : loc;
+  const displayKey = focus ? infoFocusKey(focus) : "ship-info";
+  const stationLoc = focus?.kind === "station" ? world.locations[focus.loc] ?? loc : loc;
 
   return (
-    <section className={`bridge-card trade-helper-card info-area-card ${displayFocus.kind === "station" ? "station-info-helper" : ""}`}>
+    <section className={`bridge-card trade-helper-card info-area-card ${focus == null || focus.kind === "station" ? "station-info-helper" : ""}`}>
       {pinnedFocuses.length > 0 && (
         <div
           className="bridge-card-tabs info-area-tabs"
@@ -1809,12 +1768,83 @@ function InfoAreaCard({ ship, world, loc, focus, pinnedFocuses, activePinnedKey,
           })}
         </div>
       )}
-      {displayFocus.kind === "station" ? (
+      {focus == null ? (
+        <ShipInfoPanelContent ship={ship} world={world} />
+      ) : focus.kind === "station" ? (
         <StationTradeHelperInfoContent loc={stationLoc} world={world} />
       ) : (
-        <TradeGoodInfoContent ship={ship} world={world} loc={loc} focus={displayFocus} target={target} hint={hint} />
+        <TradeGoodInfoContent ship={ship} world={world} loc={loc} focus={focus} target={target} hint={hint} />
       )}
     </section>
+  );
+}
+
+function ShipInfoPanelContent({ ship, world }: { ship: Trader; world: World }) {
+  const cargoUsed = cargoMassFn(ship, world);
+  const installedCount = Object.keys(ship.upgrades ?? {}).length;
+  const crewCount = Object.keys(ship.crew ?? {}).length;
+  const fuelQty = ship.currentFuel?.qty ?? 0;
+  const fuelName = ship.currentFuel ? world.goods[ship.currentFuel.good]?.name ?? ship.currentFuel.good : "No fuel";
+  const debt = ship.maintenanceDebt ?? 0;
+  const maintenancePct = Math.max(0, 100 - Math.min(100, (debt / MAINTENANCE_DEBT_TRAVEL_BLOCK) * 100));
+  const locationName = ship.state === "transit"
+    ? world.locations[ship.destination!]?.name ?? ship.destination
+    : world.locations[ship.location]?.name ?? ship.location;
+  const wage = totalCrewWage(ship);
+
+  return (
+    <>
+      <header className="bridge-card-head">
+        <div className="bridge-card-title">
+          <span className="bridge-card-eyebrow station-eyebrow">Ship info</span>
+          <span className="trade-helper-good">{ship.name}</span>
+        </div>
+        <span className="station-kind-pill station-kind-frontier">{ship.pilot}</span>
+      </header>
+
+      <div className="trade-helper-meta station-info-tags">
+        <span>{ship.state}</span>
+        <span>{locationName}</span>
+        <span>{fuelName}</span>
+      </div>
+
+      <dl className="trade-helper-grid station-info-grid">
+        <Stat label="wallet" value={`Ç${Math.round(ship.funds).toLocaleString()}`} />
+        <Stat label="cargo" value={`${cargoUsed.toFixed(0)} / ${ship.capacity}`} />
+        <Stat label="fuel" value={`${fuelQty.toFixed(0)} / ${ship.fuelCapacity}`} />
+        <Stat label="maintenance" value={`${Math.round(maintenancePct)}%`} />
+        <Stat label="speed" value={ship.speed.toLocaleString()} />
+        <Stat label="hull" value={(ship.hull ?? ship.baseHull ?? 1).toLocaleString()} />
+      </dl>
+
+      <div className="trade-helper-section">
+        <div className="exchange-section-title">Systems</div>
+        <div className="trade-helper-line">
+          <span><IconLabel icon={GiFactory}>Upgrade slots</IconLabel></span>
+          <span className="mono">{installedCount} / 5</span>
+        </div>
+        <div className="trade-helper-line">
+          <span><IconLabel icon={GiAstronautHelmet}>Crew</IconLabel></span>
+          <span className="mono">{crewCount} / 3</span>
+        </div>
+        <div className="trade-helper-line">
+          <span><IconLabel icon={GiRadarSweep}>Weapons</IconLabel></span>
+          <span className="mono">{(ship.weaponPower ?? ship.baseWeaponPower ?? 0).toLocaleString()}</span>
+        </div>
+      </div>
+
+      <div className="trade-helper-section">
+        <div className="exchange-section-title">Upkeep</div>
+        <div className="trade-helper-line">
+          <span>Service debt</span>
+          <span className={`mono ${debt > 0 ? "warn" : ""}`}>Ç{Math.round(debt).toLocaleString()}</span>
+        </div>
+        <div className="trade-helper-line">
+          <span>Crew wages</span>
+          <span className="mono">Ç{Math.round(wage).toLocaleString()}/t</span>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -2092,52 +2122,55 @@ function TradeGoodInfoContent({ ship, world, loc, focus, target, hint }: {
   );
 }
 
-function CargoBridgeCard({ ship, world, loc, inTransit, target, hintText, cueText, selectedGood, pinnedGoods, onSelectGood, onHoverGood }: {
+function ShipCargoTabs({ ship, world, loc, groups, inTransit, target, hintText, cueText, cargoUsed, cargoPct, selectedGood, pinnedGoods, onSelectGood, onHoverGood }: {
   ship: Trader;
   world: World;
   loc: LocationDef;
+  groups: CargoGroup[];
   inTransit: boolean;
   target: HintTarget;
   hintText: string;
   cueText: CueTextMap;
+  cargoUsed: number;
+  cargoPct: number;
   selectedGood: GoodId | null;
   pinnedGoods: Set<GoodId>;
   onSelectGood: (good: GoodId) => void;
   onHoverGood: (good: GoodId | null) => void;
 }) {
   const [tab, setTab] = useState<"cargo" | "upgrades" | "crew">("cargo");
-  const groups = groupCargoByGood(ship);
   const installedCount = Object.keys(ship.upgrades ?? {}).length;
+  const crewCount = Object.keys(ship.crew ?? {}).length;
   const manualActions = ship.pilot !== "auto";
   const cargoSuggested = manualActions && targetSuggestsCargoAction(target);
   const cargoHintText = cueText.sections.cargo ?? hintText;
 
   return (
-    <section className="bridge-card cargo-bridge-card">
-      <header className="bridge-card-head">
-        <div className="bridge-card-tabs">
-          <button
-            className={`bridge-tab ${tab === "cargo" ? "active" : ""} ${cargoSuggested ? "has-suggestion" : ""}`}
-            onClick={() => setTab("cargo")}
-            title={cargoSuggested ? cargoHintText : undefined}
-          >
-            <IconLabel icon={GiCargoCrate}>Cargo</IconLabel> {ship.cargo.length > 0 && <span className="bridge-tab-count">{ship.cargo.length}</span>}
-            <TabSuggestionCue show={cargoSuggested} hintText={cargoHintText} />
-          </button>
-          <button
-            className={`bridge-tab ${tab === "upgrades" ? "active" : ""}`}
-            onClick={() => setTab("upgrades")}
-          >
-            <IconLabel icon={GiAutoRepair}>Upgrades</IconLabel> <span className="bridge-tab-count">{installedCount}/5</span>
-          </button>
-          <button
-            className={`bridge-tab ${tab === "crew" ? "active" : ""}`}
-            onClick={() => setTab("crew")}
-          >
-            <IconLabel icon={GiAstronautHelmet}>Crew</IconLabel> <span className="bridge-tab-count">{Object.keys(ship.crew ?? {}).length}/3</span>
-          </button>
-        </div>
-      </header>
+    <div className="ship-cargo-section">
+      <div className="bridge-card-tabs ship-cargo-tabs">
+        <button
+          className={`bridge-tab ship-meter-tab cargo-meter-tab ${tab === "cargo" ? "active" : ""} ${cargoSuggested ? "has-suggestion" : ""}`}
+          style={meterTabStyle(cargoPct)}
+          onClick={() => setTab("cargo")}
+          title={cargoSuggested ? cargoHintText : `${cargoPct.toFixed(0)}% cargo capacity used`}
+        >
+          <IconLabel icon={GiCargoCrate}>Cargo</IconLabel>
+          <span className="bridge-tab-count">{cargoUsed.toFixed(0)}/{ship.capacity}</span>
+          <TabSuggestionCue show={cargoSuggested} hintText={cargoHintText} />
+        </button>
+        <button
+          className={`bridge-tab ${tab === "upgrades" ? "active" : ""}`}
+          onClick={() => setTab("upgrades")}
+        >
+          <IconLabel icon={GiAutoRepair}>Upgrades</IconLabel> <span className="bridge-tab-count">{installedCount}/5</span>
+        </button>
+        <button
+          className={`bridge-tab ${tab === "crew" ? "active" : ""}`}
+          onClick={() => setTab("crew")}
+        >
+          <IconLabel icon={GiAstronautHelmet}>Crew</IconLabel> <span className="bridge-tab-count">{crewCount}/3</span>
+        </button>
+      </div>
       {tab === "cargo" && (
         <CargoTab
           ship={ship}
@@ -2156,7 +2189,7 @@ function CargoBridgeCard({ ship, world, loc, inTransit, target, hintText, cueTex
       )}
       {tab === "upgrades" && <ShipUpgradesTab ship={ship} />}
       {tab === "crew" && <CrewTab ship={ship} />}
-    </section>
+    </div>
   );
 }
 

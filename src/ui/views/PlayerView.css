@@ -10,6 +10,7 @@
   --ship-action-blue-line-hover: #74c4f2;
   --bridge-gap: 16px;
   --bridge-columns: minmax(280px, 1.15fr) minmax(250px, 0.95fr) minmax(360px, 1.35fr);
+  --bridge-top-title-height: 42px;
   display: flex;
   flex-direction: column;
   gap: var(--bridge-gap);
@@ -43,14 +44,15 @@
 }
 
 .ship-pilot button {
-  height: 26px;
+  min-height: 0;
   border: none;
   border-radius: 4px;
   background: transparent;
   color: var(--text-dim);
-  padding: 0 10px;
+  padding: 7px 10px;
   font-size: 11px;
   font-weight: 600;
+  line-height: 1.2;
 }
 
 .ship-pilot button:hover:not(:disabled) {
@@ -80,7 +82,7 @@
 .bridge {
   display: grid;
   grid-template-columns: var(--bridge-columns);
-  grid-template-rows: auto minmax(230px, auto);
+  grid-template-rows: auto;
   gap: var(--bridge-gap);
   align-items: stretch;
 }
@@ -98,16 +100,13 @@
 .bridge > .ship-card {
   grid-column: 1 / span 2;
   grid-row: 1;
-}
-
-.bridge > .cargo-bridge-card {
-  grid-column: 1 / span 2;
-  grid-row: 2;
+  display: flex;
+  flex-direction: column;
 }
 
 .bridge > .travel-card {
   grid-column: 3;
-  grid-row: 1 / span 2;
+  grid-row: 1;
 }
 
 .bridge-card-head {
@@ -141,56 +140,6 @@
   white-space: nowrap;
 }
 
-.detail-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  min-width: 0;
-}
-
-.detail-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  height: 20px;
-  padding: 0 7px;
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid var(--ship-line-soft);
-  border-radius: 999px;
-  color: var(--text-dim);
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.detail-chip .ui-icon {
-  font-size: 12px;
-  opacity: 0.55;
-}
-
-.detail-chip-label {
-  overflow: hidden;
-  color: var(--text-faint);
-  font-size: 8px;
-  font-weight: 650;
-  letter-spacing: 0.05em;
-  text-overflow: ellipsis;
-  text-transform: uppercase;
-}
-
-.detail-chip-value {
-  color: var(--text);
-  font-size: 10px;
-  font-weight: 650;
-}
-
-.station-detail-row {
-  justify-content: flex-end;
-  align-self: flex-start;
-  max-width: 150px;
-}
-
 .station-eyebrow {
   color: var(--accent);
 }
@@ -221,8 +170,10 @@
 
 .station-summary-compact {
   gap: 0;
-  margin-bottom: 10px;
-  padding-bottom: 10px;
+  min-height: var(--bridge-top-title-height);
+  margin-bottom: 9px;
+  padding-bottom: 0;
+  border-bottom: none;
 }
 
 .station-summary-interactive {
@@ -346,8 +297,160 @@
   color: var(--text);
 }
 
-.ship-detail-row {
-  margin-top: 2px;
+.ship-card > .bridge-card-head {
+  min-height: var(--bridge-top-title-height);
+  margin-bottom: 6px;
+}
+
+.travel-card > .bridge-card-head {
+  margin-bottom: 8px;
+  min-height: 0;
+}
+
+.ship-status-tabs {
+  flex: 0 0 auto;
+  width: 100%;
+  margin-top: 0;
+}
+
+.ship-cargo-section {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  min-height: auto;
+  margin-top: 10px;
+}
+
+.ship-cargo-tabs {
+  flex: 0 0 auto;
+  width: 100%;
+}
+
+.ship-status-tabs .ship-meter-tab {
+  min-height: 0;
+  padding: 4.6px 10px;
+}
+
+.ship-status-tabs .action-cell {
+  display: flex;
+  flex: 1 1 0;
+  align-self: stretch;
+  min-width: 0;
+}
+
+.ship-status-tabs .action-cell > .ship-status-entry {
+  width: 100%;
+}
+
+.ship-cargo-tabs .bridge-tab {
+  flex: 1 1 0;
+  justify-content: center;
+  min-width: 0;
+  min-height: 0;
+  padding: 7px 10px;
+}
+
+.ship-meter-tab {
+  position: relative;
+  overflow: hidden;
+}
+
+.ship-status-entry {
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.ship-status-entry:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.ship-meter-tab::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: 0;
+  width: var(--meter-pct, 0%);
+  background: rgba(79, 182, 255, 0.16);
+  transition: width 0.2s ease;
+}
+
+.ship-meter-tab.warn::before {
+  background: rgba(251, 191, 36, 0.18);
+}
+
+.ship-meter-tab.bad::before {
+  background: rgba(248, 113, 113, 0.20);
+}
+
+.ship-maintenance-entry::before {
+  background: rgba(151, 193, 151, 0.15);
+}
+
+.ship-maintenance-entry.warn::before {
+  background: rgba(251, 191, 36, 0.18);
+}
+
+.ship-maintenance-entry.bad::before {
+  background: rgba(248, 113, 113, 0.20);
+}
+
+.ship-meter-tab > * {
+  position: relative;
+  z-index: 1;
+}
+
+.ship-meter-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1;
+}
+
+.ship-meter-label .icon-label {
+  max-width: 100%;
+  line-height: 1;
+}
+
+.ship-meter-label .icon-label > span {
+  line-height: 1;
+}
+
+.ship-status-entry .ui-icon {
+  transform: translateY(-0.5px);
+}
+
+.ship-meter-percent {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-width: 38px;
+  height: 18px;
+  margin-left: 6px;
+  padding: 0 6px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 4px;
+  background: rgba(8, 11, 14, 0.34);
+  color: var(--text);
+  font: inherit;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
+.ship-status-entry:hover:not(:disabled) .ship-meter-percent {
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.30);
+}
+
+.ship-meter-badge {
+  cursor: default;
 }
 
 .icon-label {
@@ -783,16 +886,22 @@
   min-width: 0;
 }
 
+.ship-card > .bridge-card-tabs,
+.ship-card .ship-cargo-tabs {
+  flex: 0 0 auto;
+}
+
 .bridge-tab {
   appearance: none;
   background: transparent;
   border: none;
   color: var(--text-dim);
-  padding: 5px 10px;
+  padding: 7px 10px;
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  line-height: 1.2;
   cursor: pointer;
   border-radius: 4px;
   display: inline-flex;
@@ -878,13 +987,6 @@
 .bridge-card-tabs-static .bridge-tab.has-suggestion:hover {
   color: #f2fbff;
   background: rgba(79, 182, 255, 0.18);
-}
-
-.cargo-bridge-card .bridge-tab {
-  flex: 1 1 0;
-  justify-content: center;
-  min-width: 0;
-  padding: 5px 8px;
 }
 
 /* ---- upgrades table ---- */
@@ -1538,7 +1640,7 @@
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  margin: -2px 0 12px;
+  margin: 0 0 12px;
 }
 
 .info-area-tab {
@@ -1551,7 +1653,7 @@
 
 .info-area-tab-main,
 .info-area-tab-close {
-  height: 23px;
+  height: 27.2px;
   border: 0;
   background: transparent;
   box-shadow: none;
@@ -1681,6 +1783,11 @@
 
 .trade-helper-bar-fill.good { background: rgba(151, 193, 151, 0.48); }
 .trade-helper-bar-fill.warn { background: rgba(251, 191, 36, 0.48); }
+.trade-helper-bar-fill.bad { background: rgba(248, 113, 113, 0.48); }
+
+.ship-info-meter {
+  margin-top: 8px;
+}
 
 .trade-helper-grid {
   display: grid;
@@ -1714,7 +1821,7 @@
 .trade-helper-line span:last-child {
   min-width: 0;
   overflow: hidden;
-  color: var(--text);
+  color: var(--text-dim);
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1836,7 +1943,6 @@
   }
 
   .bridge > .ship-card,
-  .bridge > .cargo-bridge-card,
   .bridge > .travel-card {
     grid-column: 1;
     grid-row: auto;
