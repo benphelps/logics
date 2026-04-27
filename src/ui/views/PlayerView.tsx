@@ -631,7 +631,6 @@ function TravelOptions({ ship, world, target, hintText }: {
       <header className="bridge-card-head">
         <div className="bridge-card-title">
           <span className="bridge-card-eyebrow station-eyebrow">Travel</span>
-          <span className="dim mono">{dests.length} routes</span>
         </div>
       </header>
       <table className="travel-table">
