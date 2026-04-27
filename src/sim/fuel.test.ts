@@ -19,9 +19,10 @@ function singleTraderWorld(overrides: Partial<Trader>): World {
     cargo: null,
     destination: null,
     ticksRemaining: 0,
+    pilot: "npc",
     ...overrides,
   };
-  return createWorld({ traders: { t } });
+  return createWorld({ traders: { t }, player: null });
 }
 
 describe("fuel — single fuel type", () => {

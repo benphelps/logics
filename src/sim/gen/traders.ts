@@ -69,6 +69,7 @@ export function generateTraders(opts: TraderGenOptions): Record<string, Trader> 
       cargo: null,
       destination: null,
       ticksRemaining: 0,
+      pilot: "npc",
     };
   }
 

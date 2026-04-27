@@ -56,6 +56,7 @@ export interface MarketState {
 }
 
 export type TraderState = "idle" | "transit";
+export type PilotMode = "npc" | "manual" | "auto";
 
 export interface FuelType {
   good: GoodId;
@@ -76,6 +77,12 @@ export interface Trader {
   cargo: { good: GoodId; qty: number } | null;
   destination: LocationId | null;
   ticksRemaining: number;
+  pilot: PilotMode;
+}
+
+export interface Player {
+  funds: number;
+  shipIds: TraderId[];
 }
 
 export interface World {
@@ -85,4 +92,5 @@ export interface World {
   markets: Record<LocationId, MarketState>;
   lanes: LaneMap;
   traders: Record<TraderId, Trader>;
+  player: Player | null;
 }

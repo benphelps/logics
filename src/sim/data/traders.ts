@@ -39,5 +39,6 @@ function mk(
     cargo: null,
     destination: null,
     ticksRemaining: 0,
+    pilot: "npc",
   };
 }

@@ -31,6 +31,9 @@ export function TopBar() {
         <Stat label="Tick"    value={tick.toLocaleString()} />
         <Stat label="Ships"   value={traders.length.toString()} />
         <Stat label="Fleet"   value={`Ç${Math.round(totalFunds).toLocaleString()}`} />
+        {world.player && (
+          <Stat label="Bank"  value={`Ç${Math.round(world.player.funds).toLocaleString()}`} />
+        )}
       </div>
 
       <div className="topbar-controls">

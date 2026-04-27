@@ -19,7 +19,7 @@ export interface TraderEvent {
   to?: LocationId;
 }
 
-interface TradeOption {
+export interface TradeOption {
   good: GoodId;
   to: LocationId;
   qty: number;
@@ -81,14 +81,15 @@ function inTransitArrivalsByDestGood(world: World): Map<string, number> {
   return acc;
 }
 
-function evaluateOptions(world: World, trader: Trader, inflight: Map<string, number>): TradeOption | null {
+export function listTradeOptions(world: World, trader: Trader, inflight?: Map<string, number>): TradeOption[] {
+  const inflightMap = inflight ?? inTransitArrivalsByDestGood(world);
   const here = trader.location;
   const srcMarket = world.markets[here];
   const fuel = trader.currentFuel;
   const ft = activeFuelType(trader);
-  if (!fuel || !ft) return null;
+  if (!fuel || !ft) return [];
   const localFuelPrice = srcMarket.prices[fuel.good];
-  let best: TradeOption | null = null;
+  const options: TradeOption[] = [];
 
   for (const goodId of Object.keys(world.goods) as GoodId[]) {
     const good = world.goods[goodId];
@@ -117,7 +118,7 @@ function evaluateOptions(world: World, trader: Trader, inflight: Map<string, num
       const dst = world.locations[dstId];
       const dstTarget = dst.targetStock[goodId] ?? 0;
       const dstStockNow = dstMarket.stock[goodId] ?? 0;
-      const inflightToDst = inflight.get(`${dstId}|${goodId}`) ?? 0;
+      const inflightToDst = inflightMap.get(`${dstId}|${goodId}`) ?? 0;
       const dstStockAtArrival = dstStockNow + INFLIGHT_WEIGHT * inflightToDst;
       const grossSellPrice = dstTarget > 0
         ? priceFor(world.goods[goodId].basePrice, dstStockAtArrival, dstTarget)
@@ -135,23 +136,27 @@ function evaluateOptions(world: World, trader: Trader, inflight: Map<string, num
       const profitPerTick = totalProfit / (travelTicks + 1);
       if (profitPerTick < MIN_PROFIT_PER_TICK) continue;
 
-      if (!best || profitPerTick > best.profitPerTick) {
-        best = {
-          good: goodId,
-          to: dstId,
-          qty: maxQty,
-          buyPrice,
-          sellPrice,
-          travelTicks,
-          fuelNeeded,
-          totalProfit,
-          profitPerTick,
-        };
-      }
+      options.push({
+        good: goodId,
+        to: dstId,
+        qty: maxQty,
+        buyPrice,
+        sellPrice,
+        travelTicks,
+        fuelNeeded,
+        totalProfit,
+        profitPerTick,
+      });
     }
   }
 
-  return best;
+  options.sort((a, b) => b.profitPerTick - a.profitPerTick);
+  return options;
+}
+
+function evaluateOptions(world: World, trader: Trader, inflight: Map<string, number>): TradeOption | null {
+  const opts = listTradeOptions(world, trader, inflight);
+  return opts[0] ?? null;
 }
 
 function isStuck(world: World, trader: Trader): boolean {
@@ -187,6 +192,11 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
     return;
   }
 
+  if (trader.pilot === "manual") {
+    events.push({ trader: trader.id, kind: "idle" });
+    return;
+  }
+
   tryRefuel(world, trader, events);
 
   const choice = evaluateOptions(world, trader, inflight);
@@ -217,6 +227,48 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
 
   const key = `${choice.to}|${choice.good}`;
   inflight.set(key, (inflight.get(key) ?? 0) + choice.qty);
+}
+
+export type ExecuteResult =
+  | { ok: true; events: TraderEvent[] }
+  | { ok: false; reason: string };
+
+export function executeTrade(world: World, trader: Trader, choice: TradeOption): ExecuteResult {
+  if (trader.state !== "idle") return { ok: false, reason: "Ship is in transit." };
+  if (trader.cargo) return { ok: false, reason: "Ship already has cargo loaded." };
+
+  const here = trader.location;
+  const srcMarket = world.markets[here];
+  const fuel = trader.currentFuel;
+  const ft = activeFuelType(trader);
+  if (!fuel || !ft) return { ok: false, reason: "No compatible fuel in tank." };
+  if (fuel.qty < choice.fuelNeeded) return { ok: false, reason: "Not enough fuel for this trip." };
+  if (trader.funds < choice.qty * choice.buyPrice) return { ok: false, reason: "Not enough funds to buy this cargo." };
+
+  const stockHere = srcMarket.stock[choice.good] ?? 0;
+  if (stockHere < choice.qty) return { ok: false, reason: `Source has only ${stockHere.toFixed(0)} of ${choice.good}.` };
+
+  const events: TraderEvent[] = [];
+
+  srcMarket.stock[choice.good] = stockHere - choice.qty;
+  trader.funds -= choice.qty * choice.buyPrice;
+  trader.cargo = { good: choice.good, qty: choice.qty };
+  trader.currentFuel = { good: fuel.good, qty: fuel.qty - choice.fuelNeeded };
+  events.push({
+    trader: trader.id,
+    kind: "buy",
+    good: choice.good,
+    qty: choice.qty,
+    unitPrice: choice.buyPrice,
+    from: here,
+  });
+
+  trader.destination = choice.to;
+  trader.state = "transit";
+  trader.ticksRemaining = choice.travelTicks;
+  events.push({ trader: trader.id, kind: "depart", from: here, to: choice.to });
+
+  return { ok: true, events };
 }
 
 export function stepTraders(world: World): TraderEvent[] {
