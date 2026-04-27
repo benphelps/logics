@@ -20,6 +20,7 @@ interface UiState {
   setSpeed: (s: Speed) => void;
   togglePause: () => void;
   step: () => void;
+  stepN: (n: number) => void;
   reset: () => void;
   selectTab: (t: Tab) => void;
   selectLocation: (id: LocationId | null) => void;
@@ -49,6 +50,11 @@ export const useStore = create<UiState>((set, get) => ({
   step: () => {
     const w = get().world;
     tickWorld(w);
+    set({ tickEpoch: get().tickEpoch + 1 });
+  },
+  stepN: (n) => {
+    const w = get().world;
+    for (let i = 0; i < n; i++) tickWorld(w);
     set({ tickEpoch: get().tickEpoch + 1 });
   },
   reset: () => set({ world: createWorld(), tickEpoch: 0, speed: 0, lastError: null }),

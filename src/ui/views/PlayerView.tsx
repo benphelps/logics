@@ -1,7 +1,7 @@
 import { useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "../store";
-import { reachableNeighbors } from "../../sim/geometry";
+import { distance, reachableNeighbors } from "../../sim/geometry";
 import { describeHint, getGuidedHint, hintTarget, type HintTarget } from "../../sim/suggestions";
 import { SALES_TAX_RATE } from "../../sim/economy";
 import { cargoMass as cargoMassFn, findCargoLot, groupCargoByGood, type CargoGroup } from "../../sim/cargo";
@@ -186,33 +186,41 @@ function DockedView({ ship, world, loc, target, hintText, critical, inTransit }:
 }
 
 function TransitCard({ ship, world }: { ship: Trader; world: World }) {
+  const stepN = useStore((s) => s.stepN);
   const dst = world.locations[ship.destination!];
-  // Total trip ticks ≈ unknown after the fact, but progress can be derived
-  // from current ticksRemaining if we kept the original. For now show the
-  // remaining countdown and the cargo summary line.
-  const cargoMass = cargoMassFn(ship, world);
+  // Recover total trip ticks from origin/destination distance — same math the
+  // sim used on departure (ship.location is still the ORIGIN until arrival).
+  const tripDist = distance(world, ship.location, ship.destination!);
+  const totalTicks = Math.max(1, Math.ceil(tripDist / ship.speed));
+  const elapsed = totalTicks - ship.ticksRemaining;
+  const pct = Math.max(0, Math.min(100, (elapsed / totalTicks) * 100));
+
   return (
-    <section className="bridge-card travel-card transit-card">
+    <section className="bridge-card travel-card">
       <header className="bridge-card-head">
         <div className="bridge-card-title">
           <span className="bridge-card-eyebrow station-eyebrow">Travel</span>
-          <span className="dim mono">in transit</span>
+          <span className="dim mono">→ {dst?.name ?? ship.destination}</span>
         </div>
+        <button
+          className="btn-action btn-fuel-inline"
+          onClick={() => stepN(ship.ticksRemaining)}
+          title={`Advance ${ship.ticksRemaining} ticks until arrival`}
+        >
+          <span className="btn-label">Quick Travel</span>
+        </button>
       </header>
-      <div className="transit-route">
-        <div className="transit-route-row">
-          <span className="dim">to</span>
-          <span className="transit-route-name">{dst?.name ?? ship.destination}</span>
+      <div className="transit-progress">
+        <div className="transit-progress-meta mono">
+          <span className="dim">tick</span>
+          <span>{elapsed} / {totalTicks}</span>
+          <span className="transit-progress-spacer" />
+          <span className="dim">remaining</span>
+          <span>{ship.ticksRemaining}t</span>
         </div>
-        <div className="transit-route-row">
-          <span className="dim">arrives in</span>
-          <span className="mono transit-route-eta">{ship.ticksRemaining}t</span>
+        <div className="vital-bar transit-progress-bar">
+          <div className="vital-bar-fill" style={{ width: `${pct}%` }} />
         </div>
-        {cargoMass > 0 && (
-          <div className="transit-route-row dim mono">
-            carrying {cargoMass.toFixed(0)} units of cargo
-          </div>
-        )}
       </div>
     </section>
   );

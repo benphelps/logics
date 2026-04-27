@@ -237,19 +237,8 @@
 
 /* ---- in-transit variants ---- */
 
-.station-card-incoming {
-  border-style: dashed;
-  background: var(--bg-1);
-}
-
-.station-card-incoming .station-name {
-  color: var(--text-dim);
-  font-style: italic;
-}
-
-.station-card-incoming .station-eyebrow {
-  color: var(--warn);
-}
+/* In transit: only the eyebrow text changes ("Approaching" vs "Station"),
+   no heavy visual treatment. The bridge stays as-is. */
 
 .fuel-badge-transit {
   background: rgba(79, 182, 255, 0.10) !important;
@@ -257,30 +246,26 @@
   border-color: var(--accent-dim) !important;
 }
 
-.transit-card .transit-route {
+.transit-progress {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   padding: 8px 4px;
-  font-size: 13px;
 }
 
-.transit-route-row {
+.transit-progress-meta {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: 4px;
+  font-size: 11px;
 }
 
-.transit-route-name {
-  color: var(--text);
-  font-weight: 600;
-  font-size: 14px;
+.transit-progress-spacer {
+  flex: 1;
 }
 
-.transit-route-eta {
-  color: var(--accent);
-  font-weight: 600;
-  font-size: 14px;
+.transit-progress-bar {
+  height: 6px;             /* slightly taller than vital-bars (3px) since it's the focal element */
 }
 
 .transit-placeholder-body {
