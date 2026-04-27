@@ -350,7 +350,7 @@ function StationCard({ loc, world }: { loc: LocationDef; world: World }) {
   return (
     <section className="bridge-card station-card">
       <header className="bridge-card-head">
-        <span className="bridge-card-eyebrow station-eyebrow">▣ Station</span>
+        <span className="bridge-card-eyebrow station-eyebrow">Station</span>
       </header>
       <div className="station-name">{loc.name}</div>
       <div className="station-tags">
@@ -396,7 +396,7 @@ function ShipCard({ ship, world }: { ship: Trader; world: World }) {
   return (
     <section className="bridge-card ship-card">
       <header className="bridge-card-head">
-        <span className="bridge-card-eyebrow ship-eyebrow">⬢ Ship</span>
+        <span className="bridge-card-eyebrow ship-eyebrow">Ship</span>
         <div className="ship-pilot">
           <button
             className={ship.pilot === "manual" ? "primary" : ""}
@@ -602,21 +602,23 @@ function FuelStation({ ship, world, loc, target, hintText, critical }: {
   }));
   const tankFraction = ship.currentFuel ? (ship.currentFuel.qty / ship.fuelCapacity) * 100 : 0;
   const suggested = target.refuel === true;
+  const anyFuelAvailable = types.some(t => t.stock > 0);
 
   return (
-    <section className={`bridge-card fuel-card ${suggested ? "panel-suggested" : ""}`}>
+    <section className={`bridge-card fuel-card ${suggested ? "panel-suggested" : ""} ${!anyFuelAvailable ? "fuel-card-empty" : ""}`}>
       <header className="bridge-card-head">
-        <span className="bridge-card-eyebrow ship-eyebrow">⛽ Fuel Station</span>
+        <span className="bridge-card-eyebrow ship-eyebrow">Fuel Station</span>
+        {!anyFuelAvailable && <span className="fuel-badge-empty">No fuel here</span>}
       </header>
       <div className="fuel-status mono">
-        <span className="dim">tank:</span>{" "}
+        <span className="dim">tank </span>
         <span>{ship.currentFuel?.good ? (world.goods[ship.currentFuel.good]?.name ?? ship.currentFuel.good) : "—"}</span>{" "}
         <span>{ship.currentFuel?.qty.toFixed(0)}/{ship.fuelCapacity}</span>{" "}
         <span className="dim">({tankFraction.toFixed(0)}%)</span>
       </div>
       <ul className="fuel-list">
         {types.map((t) => (
-          <li key={t.good}>
+          <li key={t.good} className={t.stock > 0 ? "" : "fuel-row-empty"}>
             <div>
               <span>{world.goods[t.good]?.name ?? t.good}</span>
               <span className="faint"> · {t.perDistance.toFixed(1)}/dist</span>
@@ -624,7 +626,7 @@ function FuelStation({ ship, world, loc, target, hintText, critical }: {
             <div className="mono">
               {t.stock > 0
                 ? <span>{t.stock.toFixed(0)} @ Ç{t.price.toFixed(1)}</span>
-                : <span className="faint">unavailable</span>}
+                : <span className="faint">—</span>}
             </div>
           </li>
         ))}
@@ -632,7 +634,9 @@ function FuelStation({ ship, world, loc, target, hintText, critical }: {
       <ActionCell suggested={suggested} hintText={hintText} critical={critical}>
         <button
           onClick={() => refuel(ship.id)}
+          disabled={!anyFuelAvailable}
           className={`btn-action btn-fuel ${critical ? "btn-suggested-critical" : suggested ? "btn-suggested" : "primary"}`}
+          title={anyFuelAvailable ? "" : "No compatible fuel for sale at this station"}
         >
           <span className="btn-label">{critical ? "Refuel now" : "Fill tank"}</span>
         </button>
@@ -663,7 +667,7 @@ function TravelOptions({ ship, world, target, hintText }: {
   return (
     <section className="bridge-card travel-card">
       <header className="bridge-card-head">
-        <span className="bridge-card-eyebrow station-eyebrow">⤴ Travel</span>
+        <span className="bridge-card-eyebrow station-eyebrow">Travel</span>
       </header>
       <table className="travel-table">
         <colgroup>
