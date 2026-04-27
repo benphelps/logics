@@ -62,8 +62,6 @@ function ShipPanel({ ship, world }: { ship: Trader; world: World }) {
           critical={isCriticalHint}
         />
       )}
-
-      <Inventory ship={ship} world={world} />
     </article>
   );
 }
@@ -122,132 +120,6 @@ function ActionCell({ suggested, hintText, critical, children }: {
       {suggested && <SuggestedMarker tip={hintText} critical={critical} />}
       {children}
     </span>
-  );
-}
-
-function Inventory({ ship, world }: { ship: Trader; world: World }) {
-  const mass = cargoMassFn(ship, world);
-  const capacityPct = (mass / ship.capacity) * 100;
-  const groups = groupCargoByGood(ship);
-  const lotsTotal = ship.cargo.length;
-
-  return (
-    <div className="inventory">
-      <div className="inventory-header">
-        <h4>
-          Inventory <span className="dim">— {groups.length} good{groups.length === 1 ? "" : "s"}{lotsTotal !== groups.length && `, ${lotsTotal} lots`}</span>
-        </h4>
-        <div className="capacity-gauge mono">
-          <span className="dim">cargo bay </span>
-          <span>{mass.toFixed(0)}/{ship.capacity}</span>
-          <span className="capacity-bar">
-            <span
-              className="capacity-fill"
-              style={{ width: `${Math.min(100, capacityPct)}%` }}
-            />
-          </span>
-        </div>
-      </div>
-      <div className="inventory-grid">
-        {groups.length === 0
-          ? <EmptyCargoCard capacity={ship.capacity} />
-          : groups.map((g) => (
-              <CargoGroupCard key={g.good} group={g} ship={ship} world={world} />
-            ))}
-      </div>
-    </div>
-  );
-}
-
-function EmptyCargoCard({ capacity }: { capacity: number }) {
-  return (
-    <div className="cargo-card cargo-card-empty">
-      <div className="cargo-card-empty-text">
-        <div className="dim">Cargo bay empty</div>
-        <div className="faint mono">{capacity} units of capacity available</div>
-      </div>
-    </div>
-  );
-}
-
-function CargoGroupCard({ group, ship, world }: { group: CargoGroup; ship: Trader; world: World }) {
-  const good = world.goods[group.good];
-  const ageTicks = world.tick - group.oldestPurchasedAt;
-
-  // Sell-here P&L based on weighted-average cost basis (sums across all lots).
-  const hereMarket = world.markets[ship.location];
-  const herePrice = hereMarket.prices[group.good] ?? 0;
-  const hereNetUnit = herePrice * (1 - SALES_TAX_RATE);
-  const hereNetRevenue = group.totalQty * hereNetUnit;
-  const pnl = hereNetRevenue - group.totalCost;
-  const pnlPct = group.totalCost > 0 ? (pnl / group.totalCost) * 100 : 0;
-  const pnlTone = pnl > 0 ? "good" : pnl < 0 ? "bad" : "dim";
-
-  const mass = group.totalQty * good.weight;
-  const massPct = (mass / ship.capacity) * 100;
-
-  const tooltip = (
-    <>
-      <div className="cargo-tooltip-header">
-        <span className="cargo-tooltip-name">{good.name}</span>
-        <span className="cargo-tooltip-qty mono">{group.totalQty.toFixed(0)} units · {group.lots.length} lot{group.lots.length === 1 ? "" : "s"}</span>
-      </div>
-
-      <dl className="cargo-tooltip-stats">
-        <Stat label="weighted avg" value={`Ç${group.weightedAvgPrice.toFixed(2)}/u`} />
-        <Stat label="cost basis"   value={`Ç${Math.round(group.totalCost).toLocaleString()}`} />
-        <Stat label="oldest age"   value={`${ageTicks}t`} />
-        <Stat label="mass"         value={`${mass.toFixed(0)} (${massPct.toFixed(0)}%)`} />
-      </dl>
-
-      {group.lots.length > 1 && (
-        <div className="cargo-tooltip-lots">
-          <div className="cargo-tooltip-lots-label dim">Lots (FIFO sell order):</div>
-          <table className="cargo-lots-table mono">
-            <thead>
-              <tr><th>qty</th><th>@ paid</th><th>from</th><th>age</th></tr>
-            </thead>
-            <tbody>
-              {[...group.lots].sort((a, b) => a.purchasedAt - b.purchasedAt).map((lot, i) => (
-                <tr key={i}>
-                  <td>{lot.qty.toFixed(0)}</td>
-                  <td>Ç{lot.unitPrice.toFixed(2)}</td>
-                  <td>{world.locations[lot.source]?.name?.split(" ")[0] ?? lot.source}</td>
-                  <td>{world.tick - lot.purchasedAt}t</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      <div className="cargo-tooltip-pnl">
-        <span className="dim">at Ç{herePrice.toFixed(1)} ({(SALES_TAX_RATE * 100).toFixed(0)}% tax) → </span>
-        <span className="mono">Ç{Math.round(hereNetRevenue).toLocaleString()} net</span>
-      </div>
-    </>
-  );
-
-  return (
-    <HoverTooltip content={tooltip}>
-      <article className="cargo-card">
-        <div className="cargo-card-title">
-          <span className="cargo-card-good">{good.name}</span>
-          <span className="cargo-card-times dim mono">×</span>
-          <span className="cargo-card-qty mono">{group.totalQty.toFixed(0)}</span>
-          {group.lots.length > 1 && (
-            <span className="cargo-card-lots dim mono">{group.lots.length}L</span>
-          )}
-        </div>
-        <div className="cargo-card-pnl mono">
-          <span className={pnlTone}>
-            {pnl >= 0 ? "+" : ""}Ç{Math.round(pnl).toLocaleString()}
-            <span className="dim"> ({pnl >= 0 ? "+" : ""}{pnlPct.toFixed(0)}%)</span>
-          </span>
-          <span className="cargo-here-hint">here</span>
-        </div>
-      </article>
-    </HoverTooltip>
   );
 }
 
@@ -331,7 +203,7 @@ function DockedView({ ship, world, loc, target, hintText, critical }: {
         <StationCard loc={loc} world={world} />
         <ShipCard ship={ship} world={world} />
         <TravelOptions ship={ship} world={world} target={target} hintText={hintText} />
-        <FuelStation ship={ship} world={world} loc={loc} target={target} hintText={hintText} critical={critical} />
+        <CargoBridgeCard ship={ship} world={world} loc={loc} target={target} hintText={hintText} critical={critical} />
       </div>
       <MarketSection ship={ship} world={world} loc={loc} target={target} hintText={hintText} />
     </div>
@@ -592,12 +464,12 @@ function BuySellControls({
   );
 }
 
-function FuelStation({ ship, world, loc, target, hintText, critical }: {
+function CargoBridgeCard({ ship, world, loc, target, hintText, critical }: {
   ship: Trader; world: World; loc: LocationDef; target: HintTarget; hintText: string; critical: boolean;
 }) {
   const refuel = useStore((s) => s.refuel);
   const market = world.markets[loc.id];
-  const types = ship.fuelTypes.map(ft => ({
+  const fuelTypes = ship.fuelTypes.map(ft => ({
     good: ft.good,
     perDistance: ft.perDistance,
     stock: market.stock[ft.good] ?? 0,
@@ -605,19 +477,23 @@ function FuelStation({ ship, world, loc, target, hintText, critical }: {
   }));
   const tankFraction = ship.currentFuel ? (ship.currentFuel.qty / ship.fuelCapacity) * 100 : 0;
   const suggested = target.refuel === true;
-  const anyFuelAvailable = types.some(t => t.stock > 0);
-
+  const anyFuelAvailable = fuelTypes.some(t => t.stock > 0);
   const tankFuelName = ship.currentFuel?.good ? (world.goods[ship.currentFuel.good]?.name ?? ship.currentFuel.good) : "—";
+  const cargoMass = cargoMassFn(ship, world);
+  const groups = groupCargoByGood(ship);
 
   return (
-    <section className={`bridge-card fuel-card ${suggested ? "panel-suggested" : ""} ${!anyFuelAvailable ? "fuel-card-empty" : ""}`}>
+    <section className={`bridge-card cargo-bridge-card ${suggested ? "panel-suggested" : ""}`}>
       <header className="bridge-card-head">
         <div className="bridge-card-title">
-          <span className="bridge-card-eyebrow ship-eyebrow">Fuel</span>
+          <span className="bridge-card-eyebrow ship-eyebrow">Cargo</span>
+          <span className="cargo-bay-inline mono">
+            <span className="dim">bay </span>{cargoMass.toFixed(0)}/{ship.capacity}
+          </span>
           <span className="fuel-tank-inline mono">
+            <span className="dim">· </span>
             <span>{tankFuelName}</span>{" "}
             <span className={tankFraction < 25 ? "bad" : tankFraction < 50 ? "warn" : ""}>{ship.currentFuel?.qty.toFixed(0)}/{ship.fuelCapacity}</span>
-            <span className="dim"> ({tankFraction.toFixed(0)}%)</span>
           </span>
         </div>
         {!anyFuelAvailable
@@ -628,24 +504,90 @@ function FuelStation({ ship, world, loc, target, hintText, critical }: {
                 onClick={() => refuel(ship.id)}
                 className={`btn-action btn-fuel-inline ${critical ? "btn-suggested-critical" : suggested ? "btn-suggested" : "primary"}`}
               >
-                <span className="btn-label">{critical ? "Refuel now" : "Fill tank"}</span>
+                <span className="btn-label">{critical ? "Refuel" : "Fill tank"}</span>
               </button>
             </ActionCell>
           )}
       </header>
-      <ul className="fuel-list">
-        {types.map((t) => (
-          <li key={t.good} className={t.stock > 0 ? "" : "fuel-row-empty"}>
-            <span><span>{world.goods[t.good]?.name ?? t.good}</span><span className="faint"> · {t.perDistance.toFixed(1)}/d</span></span>
-            <span className="mono">
-              {t.stock > 0
-                ? <span>{t.stock.toFixed(0)} @ Ç{t.price.toFixed(1)}</span>
-                : <span className="faint">—</span>}
-            </span>
-          </li>
-        ))}
+      <ul className="cargo-rows">
+        {groups.length === 0 ? (
+          <li className="cargo-row-empty dim">Cargo bay empty</li>
+        ) : (
+          groups.map((g) => <CargoRow key={g.good} group={g} ship={ship} world={world} />)
+        )}
       </ul>
     </section>
+  );
+}
+
+function CargoRow({ group, ship, world }: { group: CargoGroup; ship: Trader; world: World }) {
+  const good = world.goods[group.good];
+  const ageTicks = world.tick - group.oldestPurchasedAt;
+  const hereMarket = world.markets[ship.location];
+  const herePrice = hereMarket.prices[group.good] ?? 0;
+  const hereNetUnit = herePrice * (1 - SALES_TAX_RATE);
+  const hereNetRevenue = group.totalQty * hereNetUnit;
+  const pnl = hereNetRevenue - group.totalCost;
+  const pnlPct = group.totalCost > 0 ? (pnl / group.totalCost) * 100 : 0;
+  const pnlTone = pnl > 0 ? "good" : pnl < 0 ? "bad" : "dim";
+  const mass = group.totalQty * good.weight;
+  const massPct = (mass / ship.capacity) * 100;
+
+  const tooltip = (
+    <>
+      <div className="cargo-tooltip-header">
+        <span className="cargo-tooltip-name">{good.name}</span>
+        <span className="cargo-tooltip-qty mono">{group.totalQty.toFixed(0)} units · {group.lots.length} lot{group.lots.length === 1 ? "" : "s"}</span>
+      </div>
+      <dl className="cargo-tooltip-stats">
+        <Stat label="weighted avg" value={`Ç${group.weightedAvgPrice.toFixed(2)}/u`} />
+        <Stat label="cost basis"   value={`Ç${Math.round(group.totalCost).toLocaleString()}`} />
+        <Stat label="oldest age"   value={`${ageTicks}t`} />
+        <Stat label="mass"         value={`${mass.toFixed(0)} (${massPct.toFixed(0)}%)`} />
+      </dl>
+      {group.lots.length > 1 && (
+        <div className="cargo-tooltip-lots">
+          <div className="cargo-tooltip-lots-label dim">Lots (FIFO sell order):</div>
+          <table className="cargo-lots-table mono">
+            <thead>
+              <tr><th>qty</th><th>@ paid</th><th>from</th><th>age</th></tr>
+            </thead>
+            <tbody>
+              {[...group.lots].sort((a, b) => a.purchasedAt - b.purchasedAt).map((lot, i) => (
+                <tr key={i}>
+                  <td>{lot.qty.toFixed(0)}</td>
+                  <td>Ç{lot.unitPrice.toFixed(2)}</td>
+                  <td>{world.locations[lot.source]?.name?.split(" ")[0] ?? lot.source}</td>
+                  <td>{world.tick - lot.purchasedAt}t</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div className="cargo-tooltip-pnl">
+        <span className="dim">at Ç{herePrice.toFixed(1)} ({(SALES_TAX_RATE * 100).toFixed(0)}% tax) → </span>
+        <span className="mono">Ç{Math.round(hereNetRevenue).toLocaleString()} net</span>
+      </div>
+    </>
+  );
+
+  return (
+    <HoverTooltip content={tooltip}>
+      <li className="cargo-row">
+        <span className="cargo-row-name">
+          {good.name}
+          {group.lots.length > 1 && <span className="cargo-row-lots dim mono"> ({group.lots.length}L)</span>}
+        </span>
+        <span className="cargo-row-qty mono dim">× {group.totalQty.toFixed(0)}</span>
+        <span className="cargo-row-spacer" />
+        <span className={`cargo-row-pnl mono ${pnlTone}`}>
+          {pnl >= 0 ? "+" : ""}Ç{Math.round(pnl).toLocaleString()}
+          <span className="dim"> ({pnl >= 0 ? "+" : ""}{pnlPct.toFixed(0)}%)</span>
+        </span>
+        <span className="cargo-here-hint">here</span>
+      </li>
+    </HoverTooltip>
   );
 }
 

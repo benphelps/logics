@@ -229,100 +229,10 @@
   opacity: 0.5;
 }
 
-/* ---- inventory / cargo card ---- */
-
-.inventory {
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px dashed var(--border);
-}
-
-.inventory-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 6px;
-}
-
-.inventory-header h4 {
-  margin: 0;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-dim);
-  font-weight: 500;
-}
-
-.capacity-gauge {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 11px;
-}
-
-.capacity-bar {
-  display: inline-block;
-  width: 80px;
-  height: 6px;
-  background: var(--bg-3);
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.capacity-fill {
-  display: block;
-  height: 100%;
-  background: var(--accent);
-  transition: width 0.2s ease;
-}
-
-.inventory-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 8px;
-}
+/* ---- cargo lot tooltip styles (used inside the cargo bridge card) ---- */
 
 .hover-tooltip-host {
   display: block;
-}
-
-.cargo-card {
-  background: var(--bg-2);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 8px 10px;
-  cursor: help;
-  transition: border-color 0.12s ease, background 0.12s ease;
-}
-
-.cargo-card:hover {
-  border-color: var(--border-strong);
-  background: var(--bg-3);
-}
-
-.cargo-card.cargo-card-empty {
-  border-style: dashed;
-  background: transparent;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 56px;
-  cursor: default;
-}
-
-.cargo-card.cargo-card-empty:hover {
-  background: transparent;
-  border-color: var(--border);
-}
-
-.cargo-card-empty-text {
-  text-align: center;
-  font-size: 11px;
-}
-
-.cargo-card-empty-text div + div {
-  margin-top: 2px;
-  font-size: 10px;
 }
 
 .cargo-card-title {
@@ -818,8 +728,9 @@
   color: var(--bad);
 }
 
-/* ---- fuel station card body ---- */
+/* ---- cargo bridge card (combined cargo + fuel) ---- */
 
+.cargo-bay-inline,
 .fuel-tank-inline {
   font-size: 11px;
 }
@@ -831,18 +742,66 @@
   flex-shrink: 0;
 }
 
-.fuel-list {
+.cargo-rows {
   list-style: none;
   margin: 0;
   padding: 0;
   font-size: 11px;
 }
 
-.fuel-list li {
+.cargo-rows .cargo-row {
   display: flex;
-  justify-content: space-between;
-  padding: 2px 0;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 0;
   line-height: 1.3;
+  cursor: help;
+  border-bottom: 1px solid var(--border);
+}
+
+.cargo-rows .cargo-row:last-child {
+  border-bottom: none;
+}
+
+.cargo-rows .cargo-row:hover {
+  background: var(--bg-3);
+}
+
+.cargo-row-name {
+  color: var(--text);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cargo-row-lots {
+  font-size: 9px;
+}
+
+.cargo-row-qty {
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.cargo-row-spacer {
+  flex: 1;
+}
+
+.cargo-row-pnl {
+  font-size: 11px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.cargo-row-pnl.good { color: var(--good); font-weight: 600; }
+.cargo-row-pnl.bad  { color: var(--bad);  font-weight: 600; }
+
+.cargo-row-empty {
+  text-align: center;
+  font-size: 11px;
+  padding: 12px 0;
+  font-style: italic;
 }
 
 /* ---- suggestions ---- */
