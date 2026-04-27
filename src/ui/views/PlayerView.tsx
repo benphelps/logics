@@ -1,5 +1,21 @@
 import { useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import type { IconType } from "react-icons";
+import {
+  GiAstronautHelmet,
+  GiAutoRepair,
+  GiCargoCrate,
+  GiContract,
+  GiFactory,
+  GiFuelTank,
+  GiHabitatDome,
+  GiPathDistance,
+  GiRadarSweep,
+  GiShipWheel,
+  GiSpeedometer,
+  GiTrade,
+  GiWallet,
+} from "react-icons/gi";
 import { useStore } from "../store";
 import { distance, reachableNeighbors } from "../../sim/geometry";
 import { describeHint, getGuidedHint, hintTarget, type HintTarget } from "../../sim/suggestions";
@@ -9,6 +25,7 @@ import { listAvailableRescueJobs, listLocalJobs } from "../../sim/jobs";
 import { hasCrew, totalCrewWage } from "../../sim/crew";
 import { MAINTENANCE_DEBT_TRAVEL_BLOCK } from "../../sim/crew";
 import { listHiresAt } from "../../sim/hires";
+import { selectRefuelType } from "../../sim/traders";
 import type { CrewModifiers, CrewRole } from "../../sim/types";
 import type { Job, LocationDef, Trader, World } from "../../sim/types";
 import "./PlayerView.css";
@@ -130,6 +147,36 @@ function ActionCell({ suggested, hintText, critical, children }: {
   );
 }
 
+function IconLabel({ icon: Icon, children }: { icon: IconType; children: ReactNode }) {
+  return (
+    <span className="icon-label">
+      <Icon className="ui-icon" aria-hidden="true" focusable="false" />
+      <span>{children}</span>
+    </span>
+  );
+}
+
+function DetailChip({ icon: Icon, label, value }: { icon: IconType; label: string; value: ReactNode }) {
+  return (
+    <span className="detail-chip">
+      <Icon className="ui-icon" aria-hidden="true" focusable="false" />
+      <span className="detail-chip-label">{label}</span>
+      <span className="detail-chip-value">{value}</span>
+    </span>
+  );
+}
+
+function SingleTabHeader({ label, count, icon }: { label: string; count?: number; icon?: IconType }) {
+  return (
+    <div className="bridge-card-tabs bridge-card-tabs-static">
+      <span className="bridge-tab active">
+        {icon ? <IconLabel icon={icon}>{label}</IconLabel> : label}
+        {count != null && <span className="bridge-tab-count">{count}</span>}
+      </span>
+    </div>
+  );
+}
+
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="cargo-stat">
@@ -176,9 +223,9 @@ function DockedView({ ship, world, loc, target, hintText, critical, inTransit }:
   return (
     <div className="docked-view">
       <div className="bridge">
-        <ShipCard ship={ship} world={world} />
+        <ShipCard ship={ship} world={world} target={target} hintText={hintText} critical={critical} inTransit={inTransit} />
         <StationCard loc={loc} world={world} inTransit={inTransit} />
-        <CargoBridgeCard ship={ship} world={world} loc={loc} target={target} hintText={hintText} critical={critical} inTransit={inTransit} />
+        <CargoBridgeCard ship={ship} world={world} loc={loc} inTransit={inTransit} />
         {inTransit
           ? <TransitCard ship={ship} world={world} />
           : <TravelOptions ship={ship} world={world} target={target} hintText={hintText} />}
@@ -254,52 +301,25 @@ function LocalJobsCallout({ ship, world, loc, target, hintText }: {
   return (
     <section className="bridge-card local-jobs-card">
       <header className="bridge-card-head">
-        <div className="bridge-card-title">
-          <span className="bridge-card-eyebrow station-eyebrow">Contracts</span>
-        </div>
-        <span className="dim mono">{jobs.length} open</span>
+        <SingleTabHeader label="Contracts" count={jobs.length} icon={GiContract} />
       </header>
-      <table className="jobs-table">
-        <colgroup>
-          <col className="col-tier" />
-          <col className="col-good" />
-          <col className="col-num" />
-          <col className="col-num" />
-          <col className="col-num" />
-          <col className="col-num" />
-          <col className="col-num" />
-          <col className="col-action" />
-        </colgroup>
-        <thead>
-          <tr>
-            <th>Tier</th>
-            <th>Good</th>
-            <th className="numeric">Qty</th>
-            <th className="numeric">On hand</th>
-            <th className="numeric">Reward</th>
-            <th className="numeric">Penalty</th>
-            <th className="numeric">Expires</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {jobs.length === 0 ? (
-            <tr><td colSpan={8} className="jobs-row-empty">No open contracts here and no distress calls active.</td></tr>
-          ) : (
-            jobs.map((j) => (
-              <LocalJobRow
-                key={j.id}
-                job={j}
-                world={world}
-                ship={ship}
-                suggested={target.acceptJobId === j.id}
-                hintText={hintText}
-                onAccept={() => acceptJob(j.id, ship.id)}
-              />
-            ))
-          )}
-        </tbody>
-      </table>
+      {jobs.length === 0 ? (
+        <div className="contract-empty">No open contracts here and no distress calls active.</div>
+      ) : (
+        <div className="contract-list">
+          {jobs.map((j) => (
+            <LocalJobRow
+              key={j.id}
+              job={j}
+              world={world}
+              ship={ship}
+              suggested={target.acceptJobId === j.id}
+              hintText={hintText}
+              onAccept={() => acceptJob(j.id, ship.id)}
+            />
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -318,41 +338,53 @@ function LocalJobRow({ job, world, ship, suggested, hintText, onAccept }: {
   const expiringSoon = ticksLeft <= 10;
   const onHand = ship.cargo.filter(l => l.good === job.good).reduce((s, l) => s + l.qty, 0);
   const onHandTone = onHand >= job.qty ? "good" : onHand > 0 ? "warn" : "faint";
+  const dst = world.locations[job.destination]?.name ?? job.destination;
+  const remote = job.destination !== ship.location;
   return (
-    <tr className={`job-row tier-${job.tier} ${suggested ? "row-suggested" : ""}`}>
-      <td><span className={`tier-badge tier-${job.tier}`}>{job.tier.toUpperCase()}</span></td>
-      <td>
-        <span className="good-name">{good}</span>
-        {job.kind === "rescue" && (
-          <span className="job-kind-tag" title={job.rescueTarget ? `Rescue ${world.traders[job.rescueTarget]?.name ?? job.rescueTarget}` : "Rescue contract"}>
-            rescue
-          </span>
-        )}
-        {job.destination !== ship.location && (
-          <div className="job-sub dim mono">→ {world.locations[job.destination]?.name ?? job.destination}</div>
-        )}
-      </td>
-      <td className="numeric mono">{job.qty}</td>
-      <td className={`numeric mono ${onHandTone}`}>{onHand > 0 ? onHand.toFixed(0) : "—"}</td>
-      <td className="numeric mono good">Ç{job.reward.toLocaleString()}</td>
-      <td className="numeric mono">
-        {job.penalty > 0 ? <span className="bad">−Ç{job.penalty.toLocaleString()}</span> : <span className="faint">none</span>}
-      </td>
-      <td className={`numeric mono ${expiringSoon ? "warn" : "dim"}`}>{ticksLeft}t</td>
-      <td>
+    <article className={`contract-card contract-tier-${job.tier} ${suggested ? "contract-suggested" : ""}`}>
+      <div className="contract-main">
+        <div className="contract-title-row">
+          <span className={`tier-badge tier-${job.tier}`}>{job.tier.toUpperCase()}</span>
+          <span className="contract-good">{good}</span>
+          {job.kind === "rescue" && (
+            <span className="job-kind-tag" title={job.rescueTarget ? `Rescue ${world.traders[job.rescueTarget]?.name ?? job.rescueTarget}` : "Rescue contract"}>
+              rescue
+            </span>
+          )}
+        </div>
+        <div className="contract-route dim mono">
+          {remote ? `Deliver to ${dst}` : `Deliver here`}
+        </div>
+        <div className="contract-metrics">
+          <ContractMetric label="Qty" value={job.qty.toLocaleString()} />
+          <ContractMetric label="In hold" value={onHand > 0 ? onHand.toFixed(0) : "none"} tone={onHandTone} />
+          <ContractMetric label="Reward" value={`Ç${job.reward.toLocaleString()}`} tone="good" />
+          <ContractMetric label="Penalty" value={job.penalty > 0 ? `Ç${job.penalty.toLocaleString()}` : "none"} tone={job.penalty > 0 ? "bad" : "faint"} />
+          <ContractMetric label="Expires" value={`${ticksLeft}t`} tone={expiringSoon ? "warn" : "dim"} />
+        </div>
+      </div>
+      <div className="contract-actions">
         <ActionCell suggested={suggested} hintText={hintText}>
           <button className={`btn-action ${suggested ? "btn-suggested" : "primary"}`} onClick={onAccept}>
             <span className="btn-label">Accept</span>
           </button>
         </ActionCell>
-      </td>
-    </tr>
+      </div>
+    </article>
+  );
+}
+
+function ContractMetric({ label, value, tone }: { label: string; value: string; tone?: string }) {
+  return (
+    <span className="contract-metric">
+      <span className="contract-metric-label">{label}</span>
+      <span className={`contract-metric-value mono ${tone ?? ""}`}>{value}</span>
+    </span>
   );
 }
 
 function TransitCard({ ship, world }: { ship: Trader; world: World }) {
   const stepN = useStore((s) => s.stepN);
-  const dst = world.locations[ship.destination!];
   // Recover total trip ticks from origin/destination distance — same math the
   // sim used on departure (ship.location is still the ORIGIN until arrival).
   const tripDist = distance(world, ship.location, ship.destination!);
@@ -363,12 +395,9 @@ function TransitCard({ ship, world }: { ship: Trader; world: World }) {
   return (
     <section className="bridge-card travel-card">
       <header className="bridge-card-head">
-        <div className="bridge-card-title">
-          <span className="bridge-card-eyebrow station-eyebrow">Travel</span>
-          <span className="dim mono">→ {dst?.name ?? ship.destination}</span>
-        </div>
+        <SingleTabHeader label="Travel" icon={GiPathDistance} />
         <button
-          className="btn-action btn-fuel-inline"
+          className="btn-action btn-header-inline"
           onClick={() => stepN(ship.ticksRemaining)}
           title={`Advance ${ship.ticksRemaining} ticks until arrival`}
         >
@@ -414,6 +443,7 @@ function StationCard({ loc, world, inTransit }: { loc: LocationDef; world: World
       return p < c.ratePerTick;
     })
     .map(c => world.goods[c.good]?.name ?? c.good);
+  const population = loc.population >= 1000 ? `${(loc.population / 1000).toFixed(1)}k` : loc.population.toLocaleString();
 
   return (
     <section className={`bridge-card station-card ${inTransit ? "station-card-incoming" : ""}`}>
@@ -428,8 +458,9 @@ function StationCard({ loc, world, inTransit }: { loc: LocationDef; world: World
             ))}
           </div>
         </div>
-        <div className="bridge-card-meta mono dim">
-          L{loc.traits.techLevel} · {loc.population >= 1000 ? `${(loc.population/1000).toFixed(1)}k` : loc.population} pop
+        <div className="detail-row station-detail-row">
+          <DetailChip icon={GiFactory} label="Tech" value={`L${loc.traits.techLevel}`} />
+          <DetailChip icon={GiHabitatDome} label="Pop" value={population} />
         </div>
       </header>
       <div className="station-flows">
@@ -450,29 +481,15 @@ function StationCard({ loc, world, inTransit }: { loc: LocationDef; world: World
   );
 }
 
-function ShipCard({ ship, world }: { ship: Trader; world: World }) {
+function ShipCard({ ship, world, target, hintText, critical, inTransit }: {
+  ship: Trader; world: World; target: HintTarget; hintText: string; critical: boolean; inTransit: boolean;
+}) {
   const setPilot = useStore((s) => s.setPilot);
   const repairShip = useStore((s) => s.repairShip);
-  const fuel = ship.currentFuel;
-  const fuelPct = fuel ? (fuel.qty / ship.fuelCapacity) * 100 : 0;
-  const fuelTone = fuelPct < 25 ? "bad" : fuelPct < 50 ? "warn" : "";
   const mass = cargoMassFn(ship, world);
   const cargoPct = (mass / ship.capacity) * 100;
 
-  const cargoLabel = <span className="mono">{mass.toFixed(0)}/{ship.capacity}</span>;
-  const fuelLabel = fuel ? (
-    <span className={fuelTone}>
-      <span className="mono">{fuel.qty.toFixed(0)}/{ship.fuelCapacity}</span>
-      <span className="dim"> · {world.goods[fuel.good]?.name ?? fuel.good}</span>
-    </span>
-  ) : <span className="dim">—</span>;
-
-  const captain = ship.crew?.captain;
-  const navigator = ship.crew?.navigator;
-  const mechanic = ship.crew?.mechanic;
-  const wage = totalCrewWage(ship);
   const debt = ship.maintenanceDebt ?? 0;
-  const debtTone = debt >= MAINTENANCE_DEBT_TRAVEL_BLOCK ? "bad" : debt > 0 ? "warn" : "";
   const canRepair = debt > 0 && ship.state === "idle";
   const autoBlocked = !hasCrew(ship, "captain");
 
@@ -482,14 +499,17 @@ function ShipCard({ ship, world }: { ship: Trader; world: World }) {
         <div className="bridge-card-title">
           <span className="bridge-card-eyebrow ship-eyebrow">Ship</span>
           <span className="ship-name">{ship.name}</span>
-          <span className="ship-spec mono dim">cap {ship.capacity} · v{ship.speed}</span>
+          <div className="detail-row ship-detail-row">
+            <DetailChip icon={GiCargoCrate} label="Capacity" value={ship.capacity.toLocaleString()} />
+            <DetailChip icon={GiSpeedometer} label="Speed" value={ship.speed.toLocaleString()} />
+          </div>
         </div>
         <div className="ship-pilot">
           <button
             className={ship.pilot === "manual" ? "primary" : ""}
             onClick={() => setPilot(ship.id, "manual")}
           >
-            Manual
+            <IconLabel icon={GiShipWheel}>Manual</IconLabel>
           </button>
           <button
             className={ship.pilot === "auto" ? "primary" : ""}
@@ -497,70 +517,149 @@ function ShipCard({ ship, world }: { ship: Trader; world: World }) {
             disabled={autoBlocked}
             title={autoBlocked ? "Hire a captain to engage auto-pilot" : "Auto-pilot (captain handles trades; navigator unlocks contracts)"}
           >
-            Auto
+            <IconLabel icon={GiRadarSweep}>Auto</IconLabel>
           </button>
         </div>
       </header>
-      <div className="ship-vital-row">
-        <Vital label="cargo" value={cargoLabel} pct={cargoPct} />
-        <Vital label="fuel" value={fuelLabel} pct={fuelPct} tone={fuelTone} />
-        <Vital label="wallet" value={<span className="mono">Ç{Math.round(ship.funds).toLocaleString()}</span>} />
+      <div className="ship-system-grid">
+        <CargoSpacePanel used={mass} capacity={ship.capacity} pct={cargoPct} />
+        <WalletPanel funds={ship.funds} />
       </div>
-      <div className="ship-crew-strip">
-        <CrewSlot label="cap" member={captain} />
-        <CrewSlot label="nav" member={navigator} />
-        <CrewSlot label="mech" member={mechanic} />
-        <span className="ship-crew-wage mono dim">Ç{wage}/t wage</span>
-      </div>
-      {(debt > 0 || autoBlocked) && (
-        <div className="ship-status-strip">
-          {debt > 0 && (
-            <span className={`ship-status-item ${debtTone}`}>
-              maintenance debt <span className="mono">Ç{Math.round(debt).toLocaleString()}</span>
-              {debt >= MAINTENANCE_DEBT_TRAVEL_BLOCK && <span className="dim"> · ship grounded</span>}
-              <button
-                className="btn-action ship-status-action"
-                onClick={() => repairShip(ship.id)}
-                disabled={!canRepair}
-                title={canRepair ? "Pay accrued maintenance" : "Dock to repair"}
-              >
-                <span className="btn-label">Repair Ship</span>
-              </button>
-            </span>
-          )}
-          {autoBlocked && (
-            <span className="ship-status-item dim">
-              hire a captain to enable auto-pilot
-            </span>
-          )}
-        </div>
-      )}
+      <FuelPanel ship={ship} world={world} target={target} hintText={hintText} critical={critical} inTransit={inTransit} />
+      <MaintenancePanel debt={debt} canRepair={canRepair} onRepair={() => repairShip(ship.id)} />
     </section>
   );
 }
 
-function CrewSlot({ label, member }: { label: string; member?: { name: string; tier: number } }) {
+function CargoSpacePanel({ used, capacity, pct }: { used: number; capacity: number; pct: number }) {
+  const tone = "";
+
   return (
-    <span className={`ship-crew-slot ${member ? "filled" : "vacant"}`} title={member ? `${member.name} · tier ${member.tier}` : `${label}: vacant`}>
-      <span className="ship-crew-label dim">{label}</span>
-      <span className="ship-crew-name">{member ? member.name.split(" ").slice(-1)[0] : "—"}</span>
-    </span>
+    <div className={`ship-system-panel ship-cargo-panel ${tone}`} title={`${pct.toFixed(0)}% cargo capacity used`}>
+      <div className="ship-system-top">
+        <span className="ship-system-label dim"><IconLabel icon={GiCargoCrate}>Cargo</IconLabel></span>
+      </div>
+      <div className="ship-system-meter">
+        <div className={`ship-system-meter-fill ${tone}`} style={{ width: `${Math.min(100, pct)}%` }} />
+        <span className="ship-system-meter-value">{used.toFixed(0)}/{capacity}</span>
+      </div>
+    </div>
   );
 }
 
-function Vital({ label, value, sub, pct, tone }: {
-  label: string; value: React.ReactNode; sub?: string; pct?: number; tone?: string;
-}) {
+function WalletPanel({ funds }: { funds: number }) {
   return (
-    <div className="vital">
-      <div className="vital-label dim">{label}</div>
-      <div className="vital-value">{value}</div>
-      {sub && <div className="vital-sub mono dim">{sub}</div>}
-      {pct != null && (
-        <div className="vital-bar">
-          <div className={`vital-bar-fill ${tone ?? ""}`} style={{ width: `${Math.min(100, pct)}%` }} />
+    <div className="ship-system-panel ship-wallet-panel">
+      <div className="ship-system-top">
+        <span className="ship-system-label dim"><IconLabel icon={GiWallet}>Wallet</IconLabel></span>
+      </div>
+      <div className="ship-wallet-pill mono">Ç{Math.round(funds).toLocaleString()}</div>
+    </div>
+  );
+}
+
+function FuelPanel({ ship, world, target, hintText, critical, inTransit }: {
+  ship: Trader; world: World; target: HintTarget; hintText: string; critical: boolean; inTransit: boolean;
+}) {
+  const refuel = useStore((s) => s.refuel);
+  const fuel = ship.currentFuel;
+  const fuelQty = fuel?.qty ?? 0;
+  const fuelPct = ship.fuelCapacity > 0 ? (fuelQty / ship.fuelCapacity) * 100 : 0;
+  const tone = fuelPct < 25 ? "bad" : fuelPct < 50 ? "warn" : "";
+  const tankGood = fuel ? world.goods[fuel.good]?.name ?? fuel.good : "No fuel";
+  const refuelType = inTransit ? null : selectRefuelType(world, ship);
+  const market = refuelType ? world.markets[ship.location] : null;
+  const stationFuel = refuelType ? world.goods[refuelType.good]?.name ?? refuelType.good : null;
+  const stock = refuelType && market ? market.stock[refuelType.good] ?? 0 : 0;
+  const price = refuelType && market ? market.prices[refuelType.good] ?? 0 : 0;
+  const switching = refuelType != null && (!fuel || fuel.good !== refuelType.good);
+  const room = Math.max(0, ship.fuelCapacity - (switching ? 0 : fuelQty));
+  const affordable = price > 0 ? ship.funds / price : 0;
+  const fillable = refuelType ? Math.min(room, stock, affordable) : 0;
+  const suggested = target.refuel === true && !inTransit;
+  const canRefuel = !inTransit && refuelType != null && fillable > 0.001;
+
+  const status = inTransit
+    ? "Dock to refuel"
+    : refuelType
+      ? `Station: ${stationFuel} · ${stock.toFixed(0)} stock · Ç${Math.round(price)}/u`
+      : "No compatible fuel at station";
+
+  const disabledTitle = room <= 0.001
+    ? "Tank already full"
+    : stock <= 0.001
+      ? "No compatible fuel for sale here"
+      : "Not enough funds to refuel";
+
+  const action = inTransit
+    ? <span className="ship-fuel-badge">In transit</span>
+    : !refuelType
+      ? <span className="ship-fuel-badge bad">No fuel here</span>
+      : room <= 0.001
+        ? <span className="ship-fuel-badge">Full</span>
+        : (
+          <ActionCell suggested={suggested} hintText={hintText} critical={critical}>
+            <button
+              className={`btn-action ship-fuel-action ${critical ? "btn-suggested-critical" : suggested ? "btn-suggested" : "primary"}`}
+              onClick={() => refuel(ship.id)}
+              disabled={!canRefuel}
+              title={canRefuel ? "" : disabledTitle}
+            >
+              <span className="btn-label">{critical ? "Refuel" : switching ? "Switch fuel" : "Fill tank"}</span>
+            </button>
+          </ActionCell>
+        );
+
+  return (
+    <div className={`ship-system-panel ship-fuel-panel ${tone} ${suggested ? "suggested" : ""}`} title={status}>
+      <div className="ship-fuel-main">
+        <div className="ship-fuel-top">
+          <span className="ship-fuel-label dim"><IconLabel icon={GiFuelTank}>Fuel</IconLabel></span>
         </div>
-      )}
+        <div className="ship-system-meter ship-fuel-meter">
+          <div className={`ship-fuel-meter-fill ${tone}`} style={{ width: `${Math.min(100, fuelPct)}%` }} />
+          <span className="ship-system-meter-value">{fuelQty.toFixed(0)}/{ship.fuelCapacity} · {tankGood}</span>
+        </div>
+      </div>
+      <div className="ship-fuel-control">{action}</div>
+    </div>
+  );
+}
+
+function MaintenancePanel({ debt, canRepair, onRepair }: { debt: number; canRepair: boolean; onRepair: () => void }) {
+  const pct = Math.max(0, Math.min(100, (debt / MAINTENANCE_DEBT_TRAVEL_BLOCK) * 100));
+  const grounded = debt >= MAINTENANCE_DEBT_TRAVEL_BLOCK;
+  const tone = grounded ? "bad" : pct >= 70 ? "warn" : "";
+  const hasDebt = debt > 0.001;
+  const status = grounded
+    ? "Grounded"
+    : hasDebt
+      ? "Service debt"
+      : "No service debt";
+  const limitText = `limit Ç${MAINTENANCE_DEBT_TRAVEL_BLOCK.toLocaleString()}`;
+  const action = hasDebt ? (
+    <button
+      className={`btn-action maintenance-action ${grounded ? "btn-suggested-critical" : ""}`}
+      onClick={onRepair}
+      disabled={!canRepair}
+      title={canRepair ? "Pay accrued maintenance" : "Dock to repair"}
+    >
+      <span className="btn-label">Repair</span>
+    </button>
+  ) : <span className="ship-maintenance-badge">Clear</span>;
+
+  return (
+    <div className={`ship-system-panel ship-maintenance-panel ${tone}`} title={`${status} · ${limitText}`}>
+      <div className="ship-maintenance-main">
+        <div className="ship-maintenance-top">
+          <span className="ship-maintenance-label dim"><IconLabel icon={GiAutoRepair}>Maintenance</IconLabel></span>
+        </div>
+        <div className="ship-system-meter ship-maintenance-meter">
+          <div className={`ship-maintenance-meter-fill ${tone}`} style={{ width: `${pct}%` }} />
+          <span className="ship-system-meter-value">Ç{Math.round(debt).toLocaleString()} · {limitText}</span>
+        </div>
+      </div>
+      <div className="ship-maintenance-control">{action}</div>
     </div>
   );
 }
@@ -577,10 +676,10 @@ function MarketAndHireCard({ ship, world, loc, target, hintText }: {
       <header className="bridge-card-head">
         <div className="bridge-card-tabs">
           <button className={`bridge-tab ${tab === "market" ? "active" : ""}`} onClick={() => setTab("market")}>
-            Market
+            <IconLabel icon={GiTrade}>Market</IconLabel>
           </button>
           <button className={`bridge-tab ${tab === "offers" ? "active" : ""}`} onClick={() => setTab("offers")}>
-            Hire offers <span className="bridge-tab-count">{offers.length}</span>
+            <IconLabel icon={GiAstronautHelmet}>Hire offers</IconLabel> <span className="bridge-tab-count">{offers.length}</span>
           </button>
         </div>
       </header>
@@ -597,7 +696,9 @@ function MarketTableBody({ ship, world, loc, target, hintText }: {
   const buy = useStore((s) => s.buy);
   const sell = useStore((s) => s.sell);
   const market = world.markets[loc.id];
-  const goodsOrdered = Object.keys(world.goods);
+  const goodsOrdered = Object.keys(world.goods).filter((gid) =>
+    (market.stock[gid] ?? 0) > 0.001 || findCargoLot(ship, gid) != null
+  );
 
   return (
     <>
@@ -742,68 +843,37 @@ function BuySellControls({
   );
 }
 
-function CargoBridgeCard({ ship, world, loc, target, hintText, critical, inTransit }: {
-  ship: Trader; world: World; loc: LocationDef; target: HintTarget; hintText: string; critical: boolean; inTransit: boolean;
+function CargoBridgeCard({ ship, world, loc, inTransit }: {
+  ship: Trader; world: World; loc: LocationDef; inTransit: boolean;
 }) {
-  const refuel = useStore((s) => s.refuel);
   const [tab, setTab] = useState<"cargo" | "crew" | "active">("cargo");
   // Player ships only — accepted contracts attached to this ship.
   const activeJobs = Object.values(world.jobs).filter(j => j.acceptedBy === ship.id);
-  // When in transit, "loc" is the destination — use that market for the
-  // P&L preview so the player sees what their cargo will be worth on arrival.
-  // When docked, loc IS the current location, same as before.
-  const refMarket = world.markets[loc.id];
-  const fuelTypes = inTransit ? [] : ship.fuelTypes.map(ft => ({
-    good: ft.good,
-    perDistance: ft.perDistance,
-    stock: refMarket.stock[ft.good] ?? 0,
-    price: refMarket.prices[ft.good] ?? 0,
-  }));
-  const suggested = target.refuel === true && !inTransit;
-  const anyFuelAvailable = !inTransit && fuelTypes.some(t => t.stock > 0);
   const groups = groupCargoByGood(ship);
 
-  // The Fill tank / refuel CTA stays in the header regardless of which tab
-  // is active — fuel state is universal context, not cargo-specific.
-  const headerAction = inTransit
-    ? <span className="fuel-badge-empty fuel-badge-transit">In transit</span>
-    : !anyFuelAvailable
-      ? <span className="fuel-badge-empty">No fuel here</span>
-      : (
-        <ActionCell suggested={suggested} hintText={hintText} critical={critical}>
-          <button
-            onClick={() => refuel(ship.id)}
-            className={`btn-action btn-fuel-inline ${critical ? "btn-suggested-critical" : suggested ? "btn-suggested" : "primary"}`}
-          >
-            <span className="btn-label">{critical ? "Refuel" : "Fill tank"}</span>
-          </button>
-        </ActionCell>
-      );
-
   return (
-    <section className={`bridge-card cargo-bridge-card ${suggested ? "panel-suggested" : ""}`}>
+    <section className="bridge-card cargo-bridge-card">
       <header className="bridge-card-head">
         <div className="bridge-card-tabs">
           <button
             className={`bridge-tab ${tab === "cargo" ? "active" : ""}`}
             onClick={() => setTab("cargo")}
           >
-            Cargo {ship.cargo.length > 0 && <span className="bridge-tab-count">{ship.cargo.length}</span>}
+            <IconLabel icon={GiCargoCrate}>Cargo</IconLabel> {ship.cargo.length > 0 && <span className="bridge-tab-count">{ship.cargo.length}</span>}
           </button>
           <button
             className={`bridge-tab ${tab === "crew" ? "active" : ""}`}
             onClick={() => setTab("crew")}
           >
-            Crew <span className="bridge-tab-count">{Object.keys(ship.crew ?? {}).length}/3</span>
+            <IconLabel icon={GiAstronautHelmet}>Crew</IconLabel> <span className="bridge-tab-count">{Object.keys(ship.crew ?? {}).length}/3</span>
           </button>
           <button
             className={`bridge-tab ${tab === "active" ? "active" : ""}`}
             onClick={() => setTab("active")}
           >
-            Contracts {activeJobs.length > 0 && <span className="bridge-tab-count">{activeJobs.length}</span>}
+            <IconLabel icon={GiContract}>Contracts</IconLabel> {activeJobs.length > 0 && <span className="bridge-tab-count">{activeJobs.length}</span>}
           </button>
         </div>
-        {headerAction}
       </header>
       {tab === "cargo" && <CargoTab ship={ship} world={world} loc={loc} groups={groups} inTransit={inTransit} />}
       {tab === "crew" && <CrewTab ship={ship} />}
@@ -1006,47 +1076,42 @@ function ActiveContractsTab({ ship, world, jobs }: { ship: Trader; world: World;
     return tierRank[a.tier] - tierRank[b.tier] || a.expiresAt - b.expiresAt;
   });
   return (
-    <table className="jobs-table active-contracts-table">
-      <colgroup>
-        <col className="col-tier" />
-        <col className="col-good" />
-        <col className="col-progress" />
-        <col className="col-num" />
-        <col className="col-num" />
-        <col className="col-action" />
-      </colgroup>
-      <thead>
-        <tr>
-          <th>Tier</th>
-          <th>Good</th>
-          <th className="numeric">Done</th>
-          <th className="numeric">Reward</th>
-          <th className="numeric">Exp</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {sorted.length === 0 ? (
-          <tr><td colSpan={6} className="jobs-row-empty">No active contracts. Accept some from the Contracts panel or auto-accept on arrival (with a navigator).</td></tr>
-        ) : sorted.map((j) => {
+    <>
+      {sorted.length === 0 ? (
+        <div className="contract-empty">No active contracts.</div>
+      ) : (
+        <div className="contract-list active-contracts-list">
+          {sorted.map((j) => {
           const ticksLeft = Math.max(0, j.expiresAt - world.tick);
           const expiringSoon = ticksLeft <= 10;
           const dst = world.locations[j.destination]?.name ?? j.destination;
           const good = world.goods[j.good]?.name ?? j.good;
           const away = j.destination !== ship.location;
+          const pct = j.qty > 0 ? Math.max(0, Math.min(100, (j.delivered / j.qty) * 100)) : 0;
           return (
-            <tr key={j.id} className={`job-row tier-${j.tier} job-row-active`}>
-              <td><span className={`tier-badge tier-${j.tier}`}>{j.tier.toUpperCase()}</span></td>
-              <td>
-                <span className="good-name">{good}</span>
-                {j.kind === "rescue" && <span className="job-kind-tag">rescue</span>}
-                <span className="dim mono"> → {dst}</span>
-                {away && <span className="faint mono"> · away</span>}
-              </td>
-              <td className="numeric mono">{j.delivered.toFixed(0)}/{j.qty}</td>
-              <td className="numeric mono good">Ç{j.reward.toLocaleString()}</td>
-              <td className={`numeric mono ${expiringSoon ? "warn" : "dim"}`}>{ticksLeft}t</td>
-              <td>
+            <article key={j.id} className={`contract-card contract-tier-${j.tier} contract-active`}>
+              <div className="contract-main">
+                <div className="contract-title-row">
+                  <span className={`tier-badge tier-${j.tier}`}>{j.tier.toUpperCase()}</span>
+                  <span className="contract-good">{good}</span>
+                  {j.kind === "rescue" && <span className="job-kind-tag">rescue</span>}
+                </div>
+                <div className="contract-route dim mono">
+                  {away ? `Deliver to ${dst}` : `Deliver here`}
+                </div>
+                <div className="contract-progress">
+                  <div className="contract-progress-bar">
+                    <div className="contract-progress-fill" style={{ width: `${pct}%` }} />
+                  </div>
+                  <span className="mono dim">{j.delivered.toFixed(0)}/{j.qty}</span>
+                </div>
+                <div className="contract-metrics">
+                  <ContractMetric label="Reward" value={`Ç${j.reward.toLocaleString()}`} tone="good" />
+                  <ContractMetric label="Penalty" value={j.penalty > 0 ? `Ç${j.penalty.toLocaleString()}` : "none"} tone={j.penalty > 0 ? "bad" : "faint"} />
+                  <ContractMetric label="Expires" value={`${ticksLeft}t`} tone={expiringSoon ? "warn" : "dim"} />
+                </div>
+              </div>
+              <div className="contract-actions">
                 <button
                   className="btn-action"
                   onClick={() => abandonJob(j.id)}
@@ -1054,12 +1119,13 @@ function ActiveContractsTab({ ship, world, jobs }: { ship: Trader; world: World;
                 >
                   <span className="btn-label">Abandon</span>
                 </button>
-              </td>
-            </tr>
+              </div>
+            </article>
           );
         })}
-      </tbody>
-    </table>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -1161,9 +1227,7 @@ function TravelOptions({ ship, world, target, hintText }: {
   return (
     <section className="bridge-card travel-card">
       <header className="bridge-card-head">
-        <div className="bridge-card-title">
-          <span className="bridge-card-eyebrow station-eyebrow">Travel</span>
-        </div>
+        <SingleTabHeader label="Travel" icon={GiPathDistance} />
       </header>
       <table className="travel-table">
         <colgroup>
