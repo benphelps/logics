@@ -42,7 +42,12 @@ export function PlayerView() {
 
 function ShipPanel({ ship, world }: { ship: Trader; world: World }) {
   const inTransit = ship.state === "transit";
-  const loc = world.locations[ship.location];
+  // While in transit, the "station of interest" is the destination — that's
+  // where the cargo will sell, where the ship will dock, what the player
+  // is steering toward. Same bridge layout, different focal station.
+  const focusLoc = inTransit
+    ? world.locations[ship.destination!]
+    : world.locations[ship.location];
   const hint = getGuidedHint(world, ship);
   const target = hintTarget(hint);
   const hintText = describeHint(hint, world);
@@ -50,18 +55,15 @@ function ShipPanel({ ship, world }: { ship: Trader; world: World }) {
 
   return (
     <article className="ship-panel">
-      {inTransit ? (
-        <TransitView ship={ship} world={world} />
-      ) : (
-        <DockedView
-          ship={ship}
-          world={world}
-          loc={loc!}
-          target={target}
-          hintText={hintText}
-          critical={isCriticalHint}
-        />
-      )}
+      <DockedView
+        ship={ship}
+        world={world}
+        loc={focusLoc!}
+        target={target}
+        hintText={hintText}
+        critical={isCriticalHint}
+        inTransit={inTransit}
+      />
     </article>
   );
 }
@@ -163,51 +165,75 @@ function useHoverTooltip<T extends HTMLElement>(content: ReactNode) {
   return { ref, handlers: { onMouseEnter: show, onMouseLeave: hide }, portal };
 }
 
-function TransitView({ ship, world }: { ship: Trader; world: World }) {
-  const dst = world.locations[ship.destination!];
-  return (
-    <div className="transit-view">
-      <div className="transit-banner">
-        <div>
-          <div className="transit-label dim">In transit to</div>
-          <div className="transit-name">{dst?.name}</div>
-        </div>
-        <div>
-          <div className="transit-label dim">Arrives in</div>
-          <div className="transit-name mono">{ship.ticksRemaining}t</div>
-        </div>
-        {ship.cargo.length > 0 && (
-          <div>
-            <div className="transit-label dim">Carrying</div>
-            <div className="transit-name">
-              {ship.cargo.length === 1
-                ? <>{world.goods[ship.cargo[0].good]?.name ?? ship.cargo[0].good} <span className="mono">× {ship.cargo[0].qty.toFixed(0)}</span></>
-                : <>{ship.cargo.length} lots, <span className="mono">{cargoMassFn(ship, world).toFixed(0)} mass</span></>}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function DockedView({ ship, world, loc, target, hintText, critical }: {
-  ship: Trader; world: World; loc: LocationDef; target: HintTarget; hintText: string; critical: boolean;
+function DockedView({ ship, world, loc, target, hintText, critical, inTransit }: {
+  ship: Trader; world: World; loc: LocationDef; target: HintTarget; hintText: string; critical: boolean; inTransit: boolean;
 }) {
   return (
     <div className="docked-view">
       <div className="bridge">
-        <StationCard loc={loc} world={world} />
+        <StationCard loc={loc} world={world} inTransit={inTransit} />
         <ShipCard ship={ship} world={world} />
-        <TravelOptions ship={ship} world={world} target={target} hintText={hintText} />
-        <CargoBridgeCard ship={ship} world={world} loc={loc} target={target} hintText={hintText} critical={critical} />
+        {inTransit
+          ? <TransitCard ship={ship} world={world} />
+          : <TravelOptions ship={ship} world={world} target={target} hintText={hintText} />}
+        <CargoBridgeCard ship={ship} world={world} loc={loc} target={target} hintText={hintText} critical={critical} inTransit={inTransit} />
       </div>
-      <MarketSection ship={ship} world={world} loc={loc} target={target} hintText={hintText} />
+      {inTransit
+        ? <TransitMarketPlaceholder destName={loc.name} ticksRemaining={ship.ticksRemaining} />
+        : <MarketSection ship={ship} world={world} loc={loc} target={target} hintText={hintText} />}
     </div>
   );
 }
 
-function StationCard({ loc, world }: { loc: LocationDef; world: World }) {
+function TransitCard({ ship, world }: { ship: Trader; world: World }) {
+  const dst = world.locations[ship.destination!];
+  // Total trip ticks ≈ unknown after the fact, but progress can be derived
+  // from current ticksRemaining if we kept the original. For now show the
+  // remaining countdown and the cargo summary line.
+  const cargoMass = cargoMassFn(ship, world);
+  return (
+    <section className="bridge-card travel-card transit-card">
+      <header className="bridge-card-head">
+        <div className="bridge-card-title">
+          <span className="bridge-card-eyebrow station-eyebrow">Travel</span>
+          <span className="dim mono">in transit</span>
+        </div>
+      </header>
+      <div className="transit-route">
+        <div className="transit-route-row">
+          <span className="dim">to</span>
+          <span className="transit-route-name">{dst?.name ?? ship.destination}</span>
+        </div>
+        <div className="transit-route-row">
+          <span className="dim">arrives in</span>
+          <span className="mono transit-route-eta">{ship.ticksRemaining}t</span>
+        </div>
+        {cargoMass > 0 && (
+          <div className="transit-route-row dim mono">
+            carrying {cargoMass.toFixed(0)} units of cargo
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function TransitMarketPlaceholder({ destName, ticksRemaining }: { destName: string; ticksRemaining: number }) {
+  return (
+    <section className="bridge-card market-card transit-placeholder">
+      <header className="bridge-card-head">
+        <div className="bridge-card-title">
+          <span className="bridge-card-eyebrow station-eyebrow">Market</span>
+        </div>
+      </header>
+      <div className="transit-placeholder-body dim">
+        No market while in transit. Arriving at {destName} in {ticksRemaining} ticks.
+      </div>
+    </section>
+  );
+}
+
+function StationCard({ loc, world, inTransit }: { loc: LocationDef; world: World; inTransit?: boolean }) {
   // imports = goods this loc consumes more than produces
   const imports = loc.consumes
     .filter(c => {
@@ -217,10 +243,10 @@ function StationCard({ loc, world }: { loc: LocationDef; world: World }) {
     .map(c => world.goods[c.good]?.name ?? c.good);
 
   return (
-    <section className="bridge-card station-card">
+    <section className={`bridge-card station-card ${inTransit ? "station-card-incoming" : ""}`}>
       <header className="bridge-card-head">
         <div className="bridge-card-title">
-          <span className="bridge-card-eyebrow station-eyebrow">Station</span>
+          <span className="bridge-card-eyebrow station-eyebrow">{inTransit ? "Approaching" : "Station"}</span>
           <span className="station-name">{loc.name}</span>
         </div>
         <div className="bridge-card-meta mono dim">
@@ -465,20 +491,23 @@ function BuySellControls({
   );
 }
 
-function CargoBridgeCard({ ship, world, loc, target, hintText, critical }: {
-  ship: Trader; world: World; loc: LocationDef; target: HintTarget; hintText: string; critical: boolean;
+function CargoBridgeCard({ ship, world, loc, target, hintText, critical, inTransit }: {
+  ship: Trader; world: World; loc: LocationDef; target: HintTarget; hintText: string; critical: boolean; inTransit: boolean;
 }) {
   const refuel = useStore((s) => s.refuel);
-  const market = world.markets[loc.id];
-  const fuelTypes = ship.fuelTypes.map(ft => ({
+  // When in transit, "loc" is the destination — use that market for the
+  // P&L preview so the player sees what their cargo will be worth on arrival.
+  // When docked, loc IS the current location, same as before.
+  const refMarket = world.markets[loc.id];
+  const fuelTypes = inTransit ? [] : ship.fuelTypes.map(ft => ({
     good: ft.good,
     perDistance: ft.perDistance,
-    stock: market.stock[ft.good] ?? 0,
-    price: market.prices[ft.good] ?? 0,
+    stock: refMarket.stock[ft.good] ?? 0,
+    price: refMarket.prices[ft.good] ?? 0,
   }));
   const tankFraction = ship.currentFuel ? (ship.currentFuel.qty / ship.fuelCapacity) * 100 : 0;
-  const suggested = target.refuel === true;
-  const anyFuelAvailable = fuelTypes.some(t => t.stock > 0);
+  const suggested = target.refuel === true && !inTransit;
+  const anyFuelAvailable = !inTransit && fuelTypes.some(t => t.stock > 0);
   const tankFuelName = ship.currentFuel?.good ? (world.goods[ship.currentFuel.good]?.name ?? ship.currentFuel.good) : "—";
   const cargoMass = cargoMassFn(ship, world);
   const groups = groupCargoByGood(ship);
@@ -497,18 +526,20 @@ function CargoBridgeCard({ ship, world, loc, target, hintText, critical }: {
             <span className={tankFraction < 25 ? "bad" : tankFraction < 50 ? "warn" : ""}>{ship.currentFuel?.qty.toFixed(0)}/{ship.fuelCapacity}</span>
           </span>
         </div>
-        {!anyFuelAvailable
-          ? <span className="fuel-badge-empty">No fuel here</span>
-          : (
-            <ActionCell suggested={suggested} hintText={hintText} critical={critical}>
-              <button
-                onClick={() => refuel(ship.id)}
-                className={`btn-action btn-fuel-inline ${critical ? "btn-suggested-critical" : suggested ? "btn-suggested" : "primary"}`}
-              >
-                <span className="btn-label">{critical ? "Refuel" : "Fill tank"}</span>
-              </button>
-            </ActionCell>
-          )}
+        {inTransit
+          ? <span className="fuel-badge-empty fuel-badge-transit">In transit</span>
+          : !anyFuelAvailable
+            ? <span className="fuel-badge-empty">No fuel here</span>
+            : (
+              <ActionCell suggested={suggested} hintText={hintText} critical={critical}>
+                <button
+                  onClick={() => refuel(ship.id)}
+                  className={`btn-action btn-fuel-inline ${critical ? "btn-suggested-critical" : suggested ? "btn-suggested" : "primary"}`}
+                >
+                  <span className="btn-label">{critical ? "Refuel" : "Fill tank"}</span>
+                </button>
+              </ActionCell>
+            )}
       </header>
       <table className="cargo-table">
         <colgroup>
@@ -520,14 +551,14 @@ function CargoBridgeCard({ ship, world, loc, target, hintText, critical }: {
           <tr>
             <th>Good</th>
             <th className="numeric">Qty</th>
-            <th className="numeric">P&amp;L <span className="dim">(here)</span></th>
+            <th className="numeric">P&amp;L <span className="dim">({inTransit ? "on arrival" : "here"})</span></th>
           </tr>
         </thead>
         <tbody>
           {groups.length === 0 ? (
             <tr><td colSpan={3} className="cargo-row-empty">Cargo bay empty</td></tr>
           ) : (
-            groups.map((g) => <CargoRow key={g.good} group={g} ship={ship} world={world} />)
+            groups.map((g) => <CargoRow key={g.good} group={g} ship={ship} world={world} refLocId={loc.id} />)
           )}
         </tbody>
       </table>
@@ -535,10 +566,10 @@ function CargoBridgeCard({ ship, world, loc, target, hintText, critical }: {
   );
 }
 
-function CargoRow({ group, ship, world }: { group: CargoGroup; ship: Trader; world: World }) {
+function CargoRow({ group, ship, world, refLocId }: { group: CargoGroup; ship: Trader; world: World; refLocId: string }) {
   const good = world.goods[group.good];
   const ageTicks = world.tick - group.oldestPurchasedAt;
-  const hereMarket = world.markets[ship.location];
+  const hereMarket = world.markets[refLocId];
   const herePrice = hereMarket.prices[group.good] ?? 0;
   const hereNetUnit = herePrice * (1 - SALES_TAX_RATE);
   const hereNetRevenue = group.totalQty * hereNetUnit;

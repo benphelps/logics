@@ -235,6 +235,61 @@
   opacity: 0.5;
 }
 
+/* ---- in-transit variants ---- */
+
+.station-card-incoming {
+  border-style: dashed;
+  background: var(--bg-1);
+}
+
+.station-card-incoming .station-name {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.station-card-incoming .station-eyebrow {
+  color: var(--warn);
+}
+
+.fuel-badge-transit {
+  background: rgba(79, 182, 255, 0.10) !important;
+  color: var(--accent) !important;
+  border-color: var(--accent-dim) !important;
+}
+
+.transit-card .transit-route {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 4px;
+  font-size: 13px;
+}
+
+.transit-route-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.transit-route-name {
+  color: var(--text);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.transit-route-eta {
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.transit-placeholder-body {
+  padding: 24px 14px;
+  text-align: center;
+  font-style: italic;
+  font-size: 12px;
+}
+
 /* ---- cargo lot tooltip styles (used inside the cargo bridge card) ---- */
 
 .hover-tooltip-host {
