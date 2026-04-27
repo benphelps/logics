@@ -9,6 +9,7 @@ import {
   GiFactory,
   GiFuelTank,
   GiPathDistance,
+  GiPin,
   GiRadarSweep,
   GiShipWheel,
   GiSpeedometer,
@@ -382,7 +383,23 @@ function DetailChip({ icon: Icon, label, value }: { icon: IconType; label: strin
   );
 }
 
-type TradeHelperFocus = { good: GoodId; source: "market" | "cargo" };
+type GoodInfoFocus = { kind: "good"; good: GoodId; source: "market" | "cargo" };
+type StationInfoFocus = { kind: "station"; loc: LocationId; source: "station" | "travel" };
+type InfoFocus = GoodInfoFocus | StationInfoFocus;
+
+function infoFocusKey(focus: InfoFocus): string {
+  return focus.kind === "good"
+    ? `good:${focus.source}:${focus.good}`
+    : `station:${focus.loc}`;
+}
+
+function infoFocusLabel(focus: InfoFocus, world: World): string {
+  if (focus.kind === "good") {
+    const name = world.goods[focus.good]?.name ?? focus.good;
+    return focus.source === "cargo" ? `${name} cargo` : name;
+  }
+  return world.locations[focus.loc]?.name ?? focus.loc;
+}
 
 function TabSuggestionCue({ show, hintText }: { show?: boolean; hintText?: string }) {
   if (!show) return null;
@@ -423,8 +440,42 @@ function Stat({ label, value }: { label: string; value: string }) {
 function DockedView({ ship, world, loc, guidedPlan, hint, target, hintText, cueText, critical, inTransit }: {
   ship: Trader; world: World; loc: LocationDef; guidedPlan: GuidedPlan; hint: GuidedHint; target: HintTarget; hintText: string; cueText: CueTextMap; critical: boolean; inTransit: boolean;
 }) {
-  const [hoveredFocus, setHoveredFocus] = useState<TradeHelperFocus | null>(null);
-  const activeFocus = hoveredFocus;
+  const [hoveredFocus, setHoveredFocus] = useState<InfoFocus | null>(null);
+  const [pinnedFocuses, setPinnedFocuses] = useState<InfoFocus[]>([]);
+  const [activePinnedKey, setActivePinnedKey] = useState<string | null>(null);
+  const activePinned = activePinnedKey
+    ? pinnedFocuses.find(focus => infoFocusKey(focus) === activePinnedKey) ?? null
+    : null;
+  const activeFocus = hoveredFocus ?? activePinned;
+  const pinFocus = (focus: InfoFocus) => {
+    const key = infoFocusKey(focus);
+    setPinnedFocuses(prev => prev.some(item => infoFocusKey(item) === key) ? prev : [...prev, focus]);
+    setActivePinnedKey(key);
+  };
+  const closePinnedFocus = (key: string) => {
+    setPinnedFocuses(prev => prev.filter(item => infoFocusKey(item) !== key));
+    setActivePinnedKey(current => current === key ? null : current);
+  };
+  const togglePinnedFocus = (focus: InfoFocus) => {
+    const key = infoFocusKey(focus);
+    if (pinnedFocuses.some(item => infoFocusKey(item) === key)) {
+      closePinnedFocus(key);
+    } else {
+      pinFocus(focus);
+    }
+  };
+  const clearInfoFocus = () => {
+    setHoveredFocus(null);
+    setActivePinnedKey(null);
+  };
+  const pinnedMarketGoods = new Set<GoodId>();
+  const pinnedCargoGoods = new Set<GoodId>();
+  const pinnedStations = new Set<LocationId>();
+  for (const pinned of pinnedFocuses) {
+    if (pinned.kind === "station") pinnedStations.add(pinned.loc);
+    else if (pinned.source === "cargo") pinnedCargoGoods.add(pinned.good);
+    else pinnedMarketGoods.add(pinned.good);
+  }
 
   return (
     <div className="docked-view">
@@ -432,7 +483,21 @@ function DockedView({ ship, world, loc, guidedPlan, hint, target, hintText, cueT
         <ShipCard ship={ship} world={world} guidedPlan={guidedPlan} target={target} hintText={hintText} cueText={cueText} critical={critical} inTransit={inTransit} />
         {inTransit
           ? <TransitCard ship={ship} world={world} loc={loc} />
-          : <TravelOptions ship={ship} world={world} loc={loc} target={target} hintText={hintText} cueText={cueText} />}
+          : (
+            <TravelOptions
+              ship={ship}
+              world={world}
+              loc={loc}
+              target={target}
+              hintText={hintText}
+              cueText={cueText}
+              selectedStation={activeFocus?.kind === "station" ? activeFocus.loc : null}
+              pinnedStations={pinnedStations}
+              onSelectStation={(station) => togglePinnedFocus({ kind: "station", loc: station, source: "travel" })}
+              onHoverStation={(station) => setHoveredFocus(station ? { kind: "station", loc: station, source: "travel" } : null)}
+              onClearInfoFocus={clearInfoFocus}
+            />
+          )}
         <CargoBridgeCard
           ship={ship}
           world={world}
@@ -441,9 +506,10 @@ function DockedView({ ship, world, loc, guidedPlan, hint, target, hintText, cueT
           target={target}
           hintText={hintText}
           cueText={cueText}
-          selectedGood={activeFocus?.source === "cargo" ? activeFocus.good : null}
-          onSelectGood={() => undefined}
-          onHoverGood={(good) => setHoveredFocus(good ? { good, source: "cargo" } : null)}
+          selectedGood={activeFocus?.kind === "good" && activeFocus.source === "cargo" ? activeFocus.good : null}
+          pinnedGoods={pinnedCargoGoods}
+          onSelectGood={(good) => togglePinnedFocus({ kind: "good", good, source: "cargo" })}
+          onHoverGood={(good) => setHoveredFocus(good ? { kind: "good", good, source: "cargo" } : null)}
         />
       </div>
       {inTransit
@@ -457,11 +523,24 @@ function DockedView({ ship, world, loc, guidedPlan, hint, target, hintText, cueT
               target={target}
               hintText={hintText}
               cueText={cueText}
-              selectedGood={activeFocus?.source === "market" ? activeFocus.good : null}
-              onSelectGood={() => undefined}
-              onHoverGood={(good) => setHoveredFocus(good ? { good, source: "market" } : null)}
+              selectedGood={activeFocus?.kind === "good" && activeFocus.source === "market" ? activeFocus.good : null}
+              pinnedGoods={pinnedMarketGoods}
+              onSelectGood={(good) => togglePinnedFocus({ kind: "good", good, source: "market" })}
+              onHoverGood={(good) => setHoveredFocus(good ? { kind: "good", good, source: "market" } : null)}
             />
-            <TradeHelperCard ship={ship} world={world} loc={loc} focus={activeFocus} target={target} hint={hint} />
+            <InfoAreaCard
+              ship={ship}
+              world={world}
+              loc={loc}
+              focus={activeFocus}
+              pinnedFocuses={pinnedFocuses}
+              activePinnedKey={activePinnedKey}
+              onSelectPinned={setActivePinnedKey}
+              onClosePinned={closePinnedFocus}
+              onClearFocus={clearInfoFocus}
+              target={target}
+              hint={hint}
+            />
           </div>
         )}
       <ShipLogCard ship={ship} />
@@ -752,18 +831,38 @@ function goodsList(world: World, goods: GoodId[], max = 5): string {
   return shown.length > 0 ? `${shown.join(", ")}${more}` : "None listed";
 }
 
-function StationTravelSummary({ loc, inTransit }: { loc: LocationDef; inTransit?: boolean }) {
+function StationTravelSummary({ loc, inTransit, selected, pinned, onHover, onClear }: {
+  loc: LocationDef;
+  inTransit?: boolean;
+  selected?: boolean;
+  pinned?: boolean;
+  onHover?: (loc: LocationId | null) => void;
+  onClear?: () => void;
+}) {
+  const interactive = onHover != null;
   return (
-    <div className={`station-summary station-summary-compact ${inTransit ? "station-summary-incoming" : ""}`}>
+    <div
+      className={`station-summary station-summary-compact ${interactive ? "station-summary-interactive" : ""} ${selected ? "selected" : ""} ${inTransit ? "station-summary-incoming" : ""}`}
+      tabIndex={interactive ? 0 : undefined}
+      aria-selected={selected}
+      onMouseEnter={() => onHover?.(loc.id)}
+      onMouseLeave={() => onHover?.(null)}
+      onFocus={() => onHover?.(loc.id)}
+      onBlur={() => onHover?.(null)}
+      onClick={interactive ? onClear : undefined}
+    >
       <div className="bridge-card-title">
         <span className="bridge-card-eyebrow station-eyebrow">{inTransit ? "Approaching" : "Station"}</span>
-        <span className="station-name">{loc.name}</span>
+        <span className="station-name station-name-with-pin">
+          {pinned && <GiPin className="ui-icon row-pin-icon" aria-hidden="true" focusable="false" />}
+          <span>{loc.name}</span>
+        </span>
       </div>
     </div>
   );
 }
 
-function StationTradeHelperInfo({ loc, world }: { loc: LocationDef; world: World }) {
+function StationTradeHelperInfoContent({ loc, world }: { loc: LocationDef; world: World }) {
   const imports = stationImports(loc, world);
   const kind = stationKind(loc);
   const counts = stationCounts(world, loc.id);
@@ -785,7 +884,7 @@ function StationTradeHelperInfo({ loc, world }: { loc: LocationDef; world: World
     .slice(0, 5);
 
   return (
-    <section className="bridge-card trade-helper-card station-info-helper">
+    <>
       <header className="bridge-card-head">
         <div className="bridge-card-title">
           <span className="bridge-card-eyebrow station-eyebrow">Station info</span>
@@ -892,7 +991,7 @@ function StationTradeHelperInfo({ loc, world }: { loc: LocationDef; world: World
           </table>
         )}
       </div>
-    </section>
+    </>
   );
 }
 
@@ -1293,7 +1392,7 @@ function targetSuggestsCargoAction(target: HintTarget): boolean {
     .some(good => !isUpgradeGood(good));
 }
 
-function StationExchangeCard({ ship, world, loc, target, hintText, cueText, selectedGood, onSelectGood, onHoverGood }: {
+function StationExchangeCard({ ship, world, loc, target, hintText, cueText, selectedGood, pinnedGoods, onSelectGood, onHoverGood }: {
   ship: Trader;
   world: World;
   loc: LocationDef;
@@ -1301,6 +1400,7 @@ function StationExchangeCard({ ship, world, loc, target, hintText, cueText, sele
   hintText: string;
   cueText: CueTextMap;
   selectedGood: GoodId | null;
+  pinnedGoods: Set<GoodId>;
   onSelectGood: (good: GoodId) => void;
   onHoverGood: (good: GoodId | null) => void;
 }) {
@@ -1365,6 +1465,7 @@ function StationExchangeCard({ ship, world, loc, target, hintText, cueText, sele
           hintText={hintText}
           cueText={cueText}
           selectedGood={selectedGood}
+          pinnedGoods={pinnedGoods}
           onSelectGood={onSelectGood}
           onHoverGood={onHoverGood}
         />
@@ -1376,7 +1477,7 @@ function StationExchangeCard({ ship, world, loc, target, hintText, cueText, sele
   );
 }
 
-function MarketTableBody({ ship, world, loc, target, hintText, cueText, selectedGood, onSelectGood, onHoverGood }: {
+function MarketTableBody({ ship, world, loc, target, hintText, cueText, selectedGood, pinnedGoods, onSelectGood, onHoverGood }: {
   ship: Trader;
   world: World;
   loc: LocationDef;
@@ -1384,6 +1485,7 @@ function MarketTableBody({ ship, world, loc, target, hintText, cueText, selected
   hintText: string;
   cueText: CueTextMap;
   selectedGood: GoodId | null;
+  pinnedGoods: Set<GoodId>;
   onSelectGood: (good: GoodId) => void;
   onHoverGood: (good: GoodId | null) => void;
 }) {
@@ -1428,6 +1530,7 @@ function MarketTableBody({ ship, world, loc, target, hintText, cueText, selected
             const isFuel = ship.fuelTypes.some(f => f.good === gid);
             const suggestedBuyQty = target.buyGoods?.[gid] ?? (target.buyGood === gid ? target.buyQty : undefined);
             const isBuyTarget = suggestedBuyQty != null;
+            const pinned = pinnedGoods.has(gid);
             return (
               <tr
                 key={gid}
@@ -1440,7 +1543,10 @@ function MarketTableBody({ ship, world, loc, target, hintText, cueText, selected
                 onClick={() => onSelectGood(gid)}
               >
                 <td>
-                  <span className="good-name">{world.goods[gid].name}</span>
+                  <span className="row-title-with-pin">
+                    {pinned && <GiPin className="ui-icon row-pin-icon" aria-hidden="true" focusable="false" />}
+                    <span className="good-name">{world.goods[gid].name}</span>
+                  </span>
                   {isCargo && <span className="row-meta-pill">holding {cargoQty.toFixed(0)}</span>}
                   {isFuel && <span className="row-meta-pill muted">fuel</span>}
                   {isBuyTarget && buyOptionSet && <span className="suggestion-kind-tag">option</span>}
@@ -1520,7 +1626,10 @@ function BuyControls({
     <div className="buy-sell">
       <button
         className="btn-action btn-narrow"
-        onClick={() => onBuy(10)}
+        onClick={(event) => {
+          event.stopPropagation();
+          onBuy(10);
+        }}
         disabled={!canBuy10}
         title={canBuy10 ? "Buy 10" : (buyTitle || "Need room/funds/stock for at least 10")}
       >
@@ -1529,7 +1638,10 @@ function BuyControls({
       <ActionCell suggested={suggestedBuy} hintText={hintText} label={suggestionLabel}>
         <button
           className={`btn-action ${suggestedBuy ? "btn-suggested" : "primary"}`}
-          onClick={() => onBuy(buyClickQty)}
+          onClick={(event) => {
+            event.stopPropagation();
+            onBuy(buyClickQty);
+          }}
           disabled={!canBuyMax}
           title={canBuyMax ? "" : buyTitle}
         >
@@ -1615,27 +1727,89 @@ function bestCargoExitForGood(world: World, ship: Trader, from: LocationId, good
   return best;
 }
 
-function TradeHelperCard({ ship, world, loc, focus, target, hint }: {
-  ship: Trader; world: World; loc: LocationDef; focus: TradeHelperFocus | null; target: HintTarget; hint: GuidedHint;
+function InfoAreaCard({ ship, world, loc, focus, pinnedFocuses, activePinnedKey, onSelectPinned, onClosePinned, onClearFocus, target, hint }: {
+  ship: Trader;
+  world: World;
+  loc: LocationDef;
+  focus: InfoFocus | null;
+  pinnedFocuses: InfoFocus[];
+  activePinnedKey: string | null;
+  onSelectPinned: (key: string) => void;
+  onClosePinned: (key: string) => void;
+  onClearFocus: () => void;
+  target: HintTarget;
+  hint: GuidedHint;
+}) {
+  const displayFocus: InfoFocus = focus ?? { kind: "station", loc: loc.id, source: "station" };
+  const displayKey = infoFocusKey(displayFocus);
+  const stationLoc = displayFocus.kind === "station"
+    ? world.locations[displayFocus.loc] ?? loc
+    : loc;
+
+  return (
+    <section className={`bridge-card trade-helper-card info-area-card ${displayFocus.kind === "station" ? "station-info-helper" : ""}`}>
+      {pinnedFocuses.length > 0 && (
+        <div
+          className="bridge-card-tabs info-area-tabs"
+          aria-label="Pinned info"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) onClearFocus();
+          }}
+        >
+          {pinnedFocuses.map(pinned => {
+            const key = infoFocusKey(pinned);
+            const active = displayKey === key || (!focus && activePinnedKey === key);
+            return (
+              <div
+                key={key}
+                className={`bridge-tab info-area-tab ${active ? "active" : ""}`}
+                title={infoFocusLabel(pinned, world)}
+              >
+                <button
+                  className="info-area-tab-main"
+                  onClick={() => onSelectPinned(key)}
+                >
+                  <span>{infoFocusLabel(pinned, world)}</span>
+                </button>
+                <button
+                  className="info-area-tab-close"
+                  aria-label={`Close ${infoFocusLabel(pinned, world)}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onClosePinned(key);
+                  }}
+                >
+                  x
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {displayFocus.kind === "station" ? (
+        <StationTradeHelperInfoContent loc={stationLoc} world={world} />
+      ) : (
+        <TradeGoodInfoContent ship={ship} world={world} loc={loc} focus={displayFocus} target={target} hint={hint} />
+      )}
+    </section>
+  );
+}
+
+function TradeGoodInfoContent({ ship, world, loc, focus, target, hint }: {
+  ship: Trader; world: World; loc: LocationDef; focus: GoodInfoFocus; target: HintTarget; hint: GuidedHint;
 }) {
   const market = world.markets[loc.id];
   const cargoGroups = groupCargoByGood(ship);
-  const selectedFocus = focus && world.goods[focus.good] && !isUpgradeGood(focus.good) ? focus : null;
-  const fallbackFocus = selectedFocus;
-  const fallbackGood = fallbackFocus?.good ?? null;
-
-  if (!fallbackGood) {
-    return <StationTradeHelperInfo loc={loc} world={world} />;
-  }
-
+  const fallbackGood = focus.good;
   const good = world.goods[fallbackGood];
+  if (!good || isUpgradeGood(fallbackGood)) return <StationTradeHelperInfoContent loc={loc} world={world} />;
   const stock = market.stock[fallbackGood] ?? 0;
   const price = market.prices[fallbackGood] ?? good.basePrice;
   const targetStock = loc.targetStock[fallbackGood] ?? 0;
   const stockPct = targetStock > 0 ? Math.max(0, Math.min(100, (stock / targetStock) * 100)) : 0;
   const stockTone = targetStock > 0 && stock < targetStock * 0.35 ? "warn" : targetStock > 0 && stock > targetStock * 1.2 ? "good" : "";
   const cargo = cargoGroups.find(g => g.good === fallbackGood) ?? null;
-  const cargoFocused = fallbackFocus?.source === "cargo" && cargo != null;
+  const cargoFocused = focus.source === "cargo" && cargo != null;
   const ageTicks = cargo ? world.tick - cargo.oldestPurchasedAt : 0;
   const totalMass = cargoMassFn(ship, world);
   const roomMass = Math.max(0, ship.capacity - totalMass);
@@ -1709,7 +1883,7 @@ function TradeHelperCard({ ship, world, loc, focus, target, hint }: {
   const lotRows = cargo ? [...cargo.lots].sort((a, b) => a.purchasedAt - b.purchasedAt).slice(0, 4) : [];
 
   return (
-    <section className="bridge-card trade-helper-card">
+    <>
       <header className="bridge-card-head">
         <div className="bridge-card-title">
           <span className="bridge-card-eyebrow station-eyebrow">Trade helper</span>
@@ -1891,11 +2065,11 @@ function TradeHelperCard({ ship, world, loc, focus, target, hint }: {
           </div>
         )}
       </div>
-    </section>
+    </>
   );
 }
 
-function CargoBridgeCard({ ship, world, loc, inTransit, target, hintText, cueText, selectedGood, onSelectGood, onHoverGood }: {
+function CargoBridgeCard({ ship, world, loc, inTransit, target, hintText, cueText, selectedGood, pinnedGoods, onSelectGood, onHoverGood }: {
   ship: Trader;
   world: World;
   loc: LocationDef;
@@ -1904,6 +2078,7 @@ function CargoBridgeCard({ ship, world, loc, inTransit, target, hintText, cueTex
   hintText: string;
   cueText: CueTextMap;
   selectedGood: GoodId | null;
+  pinnedGoods: Set<GoodId>;
   onSelectGood: (good: GoodId) => void;
   onHoverGood: (good: GoodId | null) => void;
 }) {
@@ -1951,6 +2126,7 @@ function CargoBridgeCard({ ship, world, loc, inTransit, target, hintText, cueTex
           hintText={hintText}
           cueText={cueText}
           selectedGood={selectedGood}
+          pinnedGoods={pinnedGoods}
           onSelectGood={onSelectGood}
           onHoverGood={onHoverGood}
         />
@@ -2195,7 +2371,7 @@ function StationUpgradePurchaseTab({ ship, world, target, hintText, cueText }: {
   );
 }
 
-function CargoTab({ ship, world, loc, groups, inTransit, target, hintText, cueText, selectedGood, onSelectGood, onHoverGood }: {
+function CargoTab({ ship, world, loc, groups, inTransit, target, hintText, cueText, selectedGood, pinnedGoods, onSelectGood, onHoverGood }: {
   ship: Trader;
   world: World;
   loc: LocationDef;
@@ -2205,6 +2381,7 @@ function CargoTab({ ship, world, loc, groups, inTransit, target, hintText, cueTe
   hintText: string;
   cueText: CueTextMap;
   selectedGood: GoodId | null;
+  pinnedGoods: Set<GoodId>;
   onSelectGood: (good: GoodId) => void;
   onHoverGood: (good: GoodId | null) => void;
 }) {
@@ -2242,6 +2419,7 @@ function CargoTab({ ship, world, loc, groups, inTransit, target, hintText, cueTe
               suggested={target.sellGood === g.good || target.sellGoods?.includes(g.good) === true}
               hintText={cueText.sellGoods[g.good] ?? hintText}
               selected={selectedGood === g.good}
+              pinned={pinnedGoods.has(g.good)}
               showAction={manualActions}
               onSelect={() => onSelectGood(g.good)}
               onHover={(good) => onHoverGood(good)}
@@ -2254,7 +2432,7 @@ function CargoTab({ ship, world, loc, groups, inTransit, target, hintText, cueTe
   );
 }
 
-function CargoRow({ group, ship, world, refLocId, inTransit, suggested, hintText, selected, showAction, onSelect, onHover, onSell }: {
+function CargoRow({ group, ship, world, refLocId, inTransit, suggested, hintText, selected, pinned, showAction, onSelect, onHover, onSell }: {
   group: CargoGroup;
   ship: Trader;
   world: World;
@@ -2263,6 +2441,7 @@ function CargoRow({ group, ship, world, refLocId, inTransit, suggested, hintText
   suggested: boolean;
   hintText: string;
   selected: boolean;
+  pinned: boolean;
   showAction: boolean;
   onSelect: () => void;
   onHover: (good: GoodId | null) => void;
@@ -2289,7 +2468,10 @@ function CargoRow({ group, ship, world, refLocId, inTransit, suggested, hintText
       onClick={onSelect}
     >
       <td>
-        <span className="cargo-row-name">{good.name}</span>
+        <span className="row-title-with-pin">
+          {pinned && <GiPin className="ui-icon row-pin-icon" aria-hidden="true" focusable="false" />}
+          <span className="cargo-row-name">{good.name}</span>
+        </span>
         {group.lots.length > 1 && <span className="row-meta-pill cargo-row-lots">{group.lots.length} lots</span>}
       </td>
       <td className="numeric mono">{group.totalQty.toFixed(0)}</td>
@@ -2544,8 +2726,18 @@ function tierClass(tier: number): "high" | "medium" | "low" {
   return tier >= 3 ? "high" : tier === 2 ? "medium" : "low";
 }
 
-function TravelOptions({ ship, world, loc, target, hintText, cueText }: {
-  ship: Trader; world: World; loc: LocationDef; target: HintTarget; hintText: string; cueText: CueTextMap;
+function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedStation, pinnedStations, onSelectStation, onHoverStation, onClearInfoFocus }: {
+  ship: Trader;
+  world: World;
+  loc: LocationDef;
+  target: HintTarget;
+  hintText: string;
+  cueText: CueTextMap;
+  selectedStation: LocationId | null;
+  pinnedStations: Set<LocationId>;
+  onSelectStation: (station: LocationId) => void;
+  onHoverStation: (station: LocationId | null) => void;
+  onClearInfoFocus: () => void;
 }) {
   const travel = useStore((s) => s.travel);
   const manualActions = ship.pilot !== "auto";
@@ -2580,7 +2772,16 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText }: {
 
   return (
     <section className="bridge-card travel-card">
-      <StationTravelSummary loc={loc} />
+      <StationTravelSummary
+        loc={loc}
+        selected={selectedStation === loc.id}
+        pinned={pinnedStations.has(loc.id)}
+        onHover={onHoverStation}
+        onClear={() => {
+          if (pinnedStations.has(loc.id)) onSelectStation(loc.id);
+          else onClearInfoFocus();
+        }}
+      />
       <header className="bridge-card-head">
         <SingleTabHeader label="Travel" icon={GiPathDistance} suggested={travelSuggested} hintText={travelHintText} />
       </header>
@@ -2606,11 +2807,25 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText }: {
             const suggested = target.travelTo === d.to;
             const destinationJobs = activeJobsByDestination.get(d.to) ?? [];
             const travelLabel = suggested ? target.travelLabel : undefined;
+            const pinned = pinnedStations.has(d.to);
             return (
-              <tr key={d.to} className={destinationJobs.length > 0 ? "travel-has-contract" : ""}>
+              <tr
+                key={d.to}
+                className={destinationJobs.length > 0 ? "travel-has-contract" : ""}
+                aria-selected={selectedStation === d.to}
+                tabIndex={0}
+                onMouseEnter={() => onHoverStation(d.to)}
+                onMouseLeave={() => onHoverStation(null)}
+                onFocus={() => onHoverStation(d.to)}
+                onBlur={() => onHoverStation(null)}
+                onClick={() => onSelectStation(d.to)}
+              >
                 <td>
                   <div className="travel-dest-cell">
-                    <span className="travel-dest-name">{d.name}</span>
+                    <span className="row-title-with-pin travel-dest-title">
+                      {pinned && <GiPin className="ui-icon row-pin-icon" aria-hidden="true" focusable="false" />}
+                      <span className="travel-dest-name">{d.name}</span>
+                    </span>
                     {(travelLabel || destinationJobs.length > 0) && (
                       <span className="travel-contract-line">
                         {travelLabel && <span className="travel-contract-pill">{travelLabel}</span>}
@@ -2626,7 +2841,10 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText }: {
                   <td>
                     <ActionCell suggested={suggested && d.canFly} hintText={cueText.travel[d.to] ?? hintText}>
                       <button
-                        onClick={() => travel(ship.id, d.to)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          travel(ship.id, d.to);
+                        }}
                         disabled={!d.canFly}
                         className={`btn-action ${suggested && d.canFly ? "btn-suggested" : ""}`}
                         title={d.canFly ? "" : "Insufficient fuel for this trip"}
