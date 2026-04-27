@@ -701,6 +701,19 @@
   background: var(--ship-surface-raised);
 }
 
+.bridge-tab.has-suggestion {
+  color: #b9ddf2;
+  background: rgba(79, 182, 255, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(79, 182, 255, 0.34);
+}
+
+.bridge-tab.has-suggestion:hover:not(:disabled),
+.bridge-tab.has-suggestion.active {
+  color: var(--text);
+  background: rgba(79, 182, 255, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(79, 182, 255, 0.52);
+}
+
 .bridge-tab-count {
   font-size: 10px;
   color: var(--text-faint);
@@ -1438,6 +1451,257 @@
   height: 100%;
 }
 
+.exchange-card .bridge-card-tabs {
+  width: 100%;
+}
+
+.exchange-card .bridge-tab {
+  flex: 1 1 0;
+  justify-content: center;
+  min-width: 0;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.contracts-tab,
+.contract-section {
+  display: grid;
+  gap: 8px;
+}
+
+.contracts-tab {
+  gap: 14px;
+}
+
+.exchange-section-title {
+  padding: 2px 8px 0;
+  color: var(--text-faint);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.trade-helper-card {
+  min-height: 100%;
+}
+
+.trade-helper-good {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trade-helper-suggested {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid rgba(79, 182, 255, 0.35);
+  border-radius: 999px;
+  background: rgba(79, 182, 255, 0.08);
+  color: #9dd7ff;
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.trade-helper-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 160px;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.trade-helper-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: -2px;
+}
+
+.trade-helper-meta span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 7px;
+  border: 1px solid var(--ship-line-soft);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--text-dim);
+  font-size: 10px;
+  text-transform: capitalize;
+}
+
+.trade-helper-stock {
+  margin-top: 14px;
+}
+
+.trade-helper-stock-head,
+.trade-helper-line,
+.trade-helper-flow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.trade-helper-stock-head {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.trade-helper-bar {
+  height: 7px;
+  margin-top: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.065);
+}
+
+.trade-helper-bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: rgba(79, 182, 255, 0.36);
+}
+
+.trade-helper-bar-fill.good { background: rgba(151, 193, 151, 0.48); }
+.trade-helper-bar-fill.warn { background: rgba(251, 191, 36, 0.48); }
+
+.trade-helper-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px 14px;
+  margin: 14px 0 0;
+}
+
+.trade-helper-grid .cargo-stat {
+  min-width: 0;
+}
+
+.trade-helper-section {
+  display: grid;
+  gap: 7px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ship-line-soft);
+}
+
+.trade-helper-section .exchange-section-title {
+  padding: 0;
+}
+
+.trade-helper-line {
+  min-height: 22px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.trade-helper-line span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trade-helper-line.muted span:last-child {
+  color: var(--text-dim);
+}
+
+.trade-helper-line span.good { color: var(--good); }
+.trade-helper-line span.bad { color: var(--bad); }
+.trade-helper-line span.warn { color: var(--warn); }
+
+.trade-helper-note {
+  margin-top: -2px;
+  color: var(--text-faint);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.trade-helper-flow {
+  justify-content: flex-start;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.trade-helper-flow span,
+.trade-helper-contract {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 7px;
+  border: 1px solid var(--ship-line-soft);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.trade-helper-market-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 10.5px;
+}
+
+.trade-helper-market-table th {
+  padding: 0 6px 4px;
+  color: var(--text-faint);
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.trade-helper-market-table td {
+  min-width: 0;
+  overflow: hidden;
+  padding: 4px 6px;
+  border-top: 1px solid var(--ship-line-soft);
+  color: var(--text-dim);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trade-helper-market-table th:first-child,
+.trade-helper-market-table td:first-child {
+  width: 34%;
+  padding-left: 0;
+}
+
+.trade-helper-market-table th:last-child,
+.trade-helper-market-table td:last-child {
+  padding-right: 0;
+}
+
+.trade-helper-market-table td.good { color: var(--good); }
+.trade-helper-market-table td.bad { color: var(--bad); }
+
+.trade-helper-contracts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.trade-helper-contract {
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.trade-helper-contract.tier-high { border-color: rgba(208, 72, 72, 0.32); color: #f08080; }
+.trade-helper-contract.tier-medium { border-color: rgba(200, 162, 58, 0.32); color: #e6c270; }
+.trade-helper-contract.tier-low { border-color: rgba(120, 140, 160, 0.28); color: #98a8b8; }
+
 @media (max-width: 980px) {
   .bridge {
     grid-template-columns: 1fr;
@@ -1521,6 +1785,7 @@
 .col-num      { width: 64px; }
 .col-net-sell { width: 84px; }
 .col-action   { width: 296px; }
+.market-table .col-action { width: 176px; }
 .travel-table .col-action { width: 132px; }
 .jobs-table   .col-action { width: 80px; }
 .jobs-table   .col-num    { width: 54px; }
@@ -1660,6 +1925,11 @@
 
 .market-table .row-mine:hover {
   background: var(--good-bg);
+}
+
+.market-table .row-selected,
+.cargo-table .row-selected {
+  box-shadow: inset 2px 0 0 rgba(79, 182, 255, 0.75);
 }
 
 /* ---- guided-hint highlights ---- */
@@ -1932,6 +2202,7 @@
 }
 
 .cargo-col-pnl { width: 150px; }
+.cargo-col-action { width: 132px; }
 
 .cargo-table th {
   text-align: left;
@@ -1961,7 +2232,7 @@
 }
 
 .cargo-table tbody tr.cargo-row {
-  cursor: help;
+  cursor: pointer;
 }
 
 .cargo-table tbody tr.cargo-row:hover td {
@@ -1983,6 +2254,10 @@
 
 .cargo-row-pnl.good { color: var(--good); font-weight: 600; }
 .cargo-row-pnl.bad  { color: var(--bad);  font-weight: 600; }
+
+.cargo-sell-action {
+  width: 108px;
+}
 
 .cargo-row-empty,
 .jobs-row-empty {
