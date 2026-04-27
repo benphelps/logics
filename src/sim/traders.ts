@@ -7,7 +7,7 @@ export const MIN_PROFIT_PER_TICK = 0.05;
 export const MAX_DRAW_FRACTION = 0.5;
 export const REFUEL_THRESHOLD = 0.4;
 export const STRANDING_RESERVE = 0.2;
-export const INFLIGHT_WEIGHT = 0.3;
+export const INFLIGHT_WEIGHT = 1.0;
 
 export interface TraderEvent {
   trader: string;
@@ -118,9 +118,9 @@ function evaluateOptions(world: World, trader: Trader, inflight: Map<string, num
       const dstTarget = dst.targetStock[goodId] ?? 0;
       const dstStockNow = dstMarket.stock[goodId] ?? 0;
       const inflightToDst = inflight.get(`${dstId}|${goodId}`) ?? 0;
-      const dstStockAfter = dstStockNow + INFLIGHT_WEIGHT * inflightToDst + maxQty;
+      const dstStockAtArrival = dstStockNow + INFLIGHT_WEIGHT * inflightToDst;
       const sellPrice = dstTarget > 0
-        ? priceFor(world.goods[goodId].basePrice, dstStockAfter, dstTarget)
+        ? priceFor(world.goods[goodId].basePrice, dstStockAtArrival, dstTarget)
         : dstMarket.prices[goodId];
       const fuelCost = fuelNeeded * localFuelPrice;
       const grossProfitPerUnit = sellPrice - buyPrice - fuelCost / maxQty;

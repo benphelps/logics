@@ -235,15 +235,18 @@ const w = generateWorld({ seed: 42, locationCount: 50 });
 
 ## Scale: trader anticipation
 
-At scale (50+ locations, 75+ traders), naive trader logic causes simultaneous over-convergence: many traders see the same listed destination price and all decide to ship there in the same tick, oversupplying the market past its cap. The fix is in `evaluateOptions`:
+The trader's `evaluateOptions` uses the *anticipated arrival price* — the price they'd face when they arrive, given that other traders may already be heading to the same destination:
 
 ```
-sellPrice = priceFor(base, dstStock + inflightCargoToHere + ownCargo, target)
+dstStockAtArrival = currentStock + INFLIGHT_WEIGHT × (cargo from other in-transit traders)
+sellPrice         = priceFor(base, dstStockAtArrival, target)
 ```
 
-The trader anticipates the post-delivery arrival price including all *other* in-flight cargo bound for the same destination. `INFLIGHT_WEIGHT = 1.0` (full anticipation). `inTransitArrivalsByDestGood` is recomputed at the start of each trader step and updated as each trader commits, so within a tick traders also coordinate sequentially.
+`INFLIGHT_WEIGHT = 1.0`. The trader's *own* cargo is **not** subtracted — they actually receive the listed price at arrival; the price drop from their delivery is what the *next* trader would face. This was a subtle but important fix: counting own cargo made the trader treat themselves as if they were paying a future-trader's price, which killed perfectly profitable trades at small scale (a single ship dumping into an empty market saw a tiny anticipated price even though they'd really collect the high listed price).
 
-Effect: more conservative trades, fewer convergence overshoots, all 5 stability invariants hold at 200 locations. Trade-off: at small scale (4 locations), shortage relief is reduced from ~38% to ~15% because some marginal trades are now correctly skipped — they were previously taken at a loss.
+`inTransitArrivalsByDestGood` is recomputed at the start of each trader step and updated as each trader commits, so within a tick traders also coordinate sequentially without explicit messaging — if A commits to ship grain to D this tick, B evaluating after A sees A's cargo as in-flight.
+
+Effect: prevents extreme convergence at scale (multiple ships piling into one destination), without choking off legitimate small-scale arbitrage. Per-location-per-tick shortage stays around 11 across all scales.
 
 ## Benchmark
 
