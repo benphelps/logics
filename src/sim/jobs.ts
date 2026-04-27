@@ -3,7 +3,9 @@ import { pushJobAbandoned, pushJobAccepted, pushJobCompleted, pushJobExpired } f
 
 // --- tunables --------------------------------------------------------------
 
-export const MAX_OPEN_JOBS = 24;            // cap total board size (active + available)
+export const MAX_OPEN_JOBS = 24;            // minimum board size for small worlds
+export const OPEN_JOBS_PER_LOCATION = 1.5;  // board size scales with universe size
+export const RESCUE_JOB_RESERVE_FRACTION = 0.20;
 
 // Shortage tier from severity (stock / target)
 export const SHORTAGE_HIGH_FRACTION = 0.05;
@@ -33,6 +35,11 @@ export const SHORTAGE_QTY_MIN = 5;
 export const RESCUE_FUEL_FRACTION = 0.5;
 
 // --- helpers ---------------------------------------------------------------
+
+export function maxOpenJobs(world: World): number {
+  const stationCount = Object.keys(world.locations).length;
+  return Math.max(MAX_OPEN_JOBS, Math.ceil(stationCount * OPEN_JOBS_PER_LOCATION));
+}
 
 function makeJobId(world: World): JobId {
   const id = `j${world.nextJobId}`;
@@ -66,21 +73,94 @@ function isPlayerShip(world: World, traderId: TraderId | null | undefined): bool
   return world.player.shipIds.includes(traderId);
 }
 
+type ShortageCandidate = {
+  kind: "shortage";
+  location: LocationId;
+  good: GoodId;
+  tier: JobTier;
+  qty: number;
+  reward: number;
+  penalty: number;
+  severity: number;
+};
+
+type RescueCandidate = {
+  kind: "rescue";
+  location: LocationId;
+  good: GoodId;
+  tier: JobTier;
+  qty: number;
+  reward: number;
+  penalty: number;
+  rescueTarget: TraderId;
+  stuckTicks: number;
+};
+
+const tierOrder: Record<JobTier, number> = { high: 0, medium: 1, low: 2 };
+
+function sortShortageCandidates(candidates: ShortageCandidate[]): ShortageCandidate[] {
+  const byLocation = new Map<LocationId, ShortageCandidate[]>();
+  for (const candidate of candidates) {
+    const bucket = byLocation.get(candidate.location) ?? [];
+    bucket.push(candidate);
+    byLocation.set(candidate.location, bucket);
+  }
+
+  for (const bucket of byLocation.values()) {
+    bucket.sort((a, b) =>
+      tierOrder[a.tier] - tierOrder[b.tier]
+      || a.severity - b.severity
+      || a.good.localeCompare(b.good),
+    );
+  }
+
+  const locations = [...byLocation.entries()].sort((a, b) => {
+    const bestA = a[1][0];
+    const bestB = b[1][0];
+    return tierOrder[bestA.tier] - tierOrder[bestB.tier]
+      || bestA.severity - bestB.severity
+      || a[0].localeCompare(b[0]);
+  });
+
+  const sorted: ShortageCandidate[] = [];
+  let added = true;
+  while (added) {
+    added = false;
+    for (const [, bucket] of locations) {
+      const next = bucket.shift();
+      if (!next) continue;
+      sorted.push(next);
+      added = true;
+    }
+  }
+  return sorted;
+}
+
+function sortRescueCandidates(candidates: RescueCandidate[]): RescueCandidate[] {
+  return [...candidates].sort((a, b) =>
+    tierOrder[a.tier] - tierOrder[b.tier]
+    || b.stuckTicks - a.stuckTicks
+    || a.location.localeCompare(b.location),
+  );
+}
+
 // --- generation ------------------------------------------------------------
 
 export function generateJobs(world: World): Job[] {
   const openCount = Object.keys(world.jobs).length;
-  if (openCount >= MAX_OPEN_JOBS) return [];
+  const cap = maxOpenJobs(world);
+  if (openCount >= cap) return [];
   const posted: Job[] = [];
   const index = buildJobIndex(world);
   const totalOpen = () => openCount + posted.length;
 
-  // 1) Shortages — scan markets for stock far below target on consumed goods
+  const shortageCandidates: ShortageCandidate[] = [];
+  const rescueCandidates: RescueCandidate[] = [];
+
+  // 1) Shortages — scan markets for stock far below target on consumed goods.
   for (const loc of Object.values(world.locations)) {
-    if (totalOpen() >= MAX_OPEN_JOBS) break;
     const market = world.markets[loc.id];
     for (const consumed of loc.consumes) {
-      if (totalOpen() >= MAX_OPEN_JOBS) break;
       const target = loc.targetStock[consumed.good] ?? 0;
       if (target <= 0) continue;
       const stock = market.stock[consumed.good] ?? 0;
@@ -96,34 +176,27 @@ export function generateJobs(world: World): Job[] {
       if (!good) continue;
       const reward = Math.round(qty * good.basePrice * REWARD_MULT_BY_TIER[tier]);
       const penalty = Math.round(reward * PENALTY_FRACTION_BY_TIER[tier]);
-      const job: Job = {
-        id: makeJobId(world),
+      shortageCandidates.push({
         kind: "shortage",
-        tier,
+        location: loc.id,
         good: consumed.good,
+        tier,
         qty,
-        destination: loc.id,
         reward,
         penalty,
-        postedTick: world.tick,
-        expiresAt: world.tick + EXPIRY_TICKS_BY_TIER[tier],
-        acceptedBy: null,
-        delivered: 0,
-      };
-      world.jobs[job.id] = job;
-      index.add(`shortage|${loc.id}|${consumed.good}`);
-      posted.push(job);
+        severity: stock / target,
+      });
     }
   }
 
-  // 2) Rescues — NPC traders that have been stuck for at least one full tick
+  const rescueIndex = new Set(index);
   for (const trader of Object.values(world.traders)) {
-    if (totalOpen() >= MAX_OPEN_JOBS) break;
     if (isPlayerShip(world, trader.id)) continue;
     if ((trader.stuckTicks ?? 0) <= 0) continue;
     if (trader.fuelTypes.length === 0) continue;
     const fuelGood = trader.fuelTypes[0].good;
-    if (index.has(`rescue|${trader.location}|${fuelGood}`)) continue;
+    const key = `rescue|${trader.location}|${fuelGood}`;
+    if (rescueIndex.has(key)) continue;
 
     const tier = tierForRescue(trader.stuckTicks ?? 0);
     const qty = Math.max(SHORTAGE_QTY_MIN, Math.floor(trader.fuelCapacity * RESCUE_FUEL_FRACTION));
@@ -131,24 +204,83 @@ export function generateJobs(world: World): Job[] {
     if (!fuel) continue;
     const reward = Math.round(qty * fuel.basePrice * REWARD_MULT_BY_TIER[tier]);
     const penalty = Math.round(reward * PENALTY_FRACTION_BY_TIER[tier]);
+    rescueCandidates.push({
+      kind: "rescue",
+      location: trader.location,
+      good: fuelGood,
+      tier,
+      qty,
+      reward,
+      penalty,
+      rescueTarget: trader.id,
+      stuckTicks: trader.stuckTicks ?? 0,
+    });
+    rescueIndex.add(key);
+  }
+
+  const slots = cap - openCount;
+  const rescueReserve = Math.min(
+    rescueCandidates.length,
+    Math.ceil(cap * RESCUE_JOB_RESERVE_FRACTION),
+  );
+  const shortagePrimarySlots = Math.max(0, slots - rescueReserve);
+  const sortedShortages = sortShortageCandidates(shortageCandidates);
+  const sortedRescues = sortRescueCandidates(rescueCandidates);
+
+  const postShortage = (candidate: ShortageCandidate): void => {
+    const job: Job = {
+      id: makeJobId(world),
+      kind: "shortage",
+      tier: candidate.tier,
+      good: candidate.good,
+      qty: candidate.qty,
+      destination: candidate.location,
+      reward: candidate.reward,
+      penalty: candidate.penalty,
+      postedTick: world.tick,
+      expiresAt: world.tick + EXPIRY_TICKS_BY_TIER[candidate.tier],
+      acceptedBy: null,
+      delivered: 0,
+    };
+    world.jobs[job.id] = job;
+    index.add(`shortage|${candidate.location}|${candidate.good}`);
+    posted.push(job);
+  };
+
+  const postRescue = (candidate: RescueCandidate): void => {
     const job: Job = {
       id: makeJobId(world),
       kind: "rescue",
-      tier,
-      good: fuelGood,
-      qty,
-      destination: trader.location,
-      reward,
-      penalty,
+      tier: candidate.tier,
+      good: candidate.good,
+      qty: candidate.qty,
+      destination: candidate.location,
+      reward: candidate.reward,
+      penalty: candidate.penalty,
       postedTick: world.tick,
-      expiresAt: world.tick + EXPIRY_TICKS_BY_TIER[tier],
+      expiresAt: world.tick + EXPIRY_TICKS_BY_TIER[candidate.tier],
       acceptedBy: null,
       delivered: 0,
-      rescueTarget: trader.id,
+      rescueTarget: candidate.rescueTarget,
     };
     world.jobs[job.id] = job;
-    index.add(`rescue|${trader.location}|${fuelGood}`);
+    index.add(`rescue|${candidate.location}|${candidate.good}`);
     posted.push(job);
+  };
+
+  for (const candidate of sortedShortages.splice(0, shortagePrimarySlots)) {
+    if (totalOpen() >= cap) break;
+    postShortage(candidate);
+  }
+
+  for (const candidate of sortedRescues) {
+    if (totalOpen() >= cap) break;
+    postRescue(candidate);
+  }
+
+  for (const candidate of sortedShortages) {
+    if (totalOpen() >= cap) break;
+    postShortage(candidate);
   }
 
   return posted;

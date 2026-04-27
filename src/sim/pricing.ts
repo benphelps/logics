@@ -1,4 +1,4 @@
-import type { GoodId, LocationDef, MarketState, World } from "./types";
+import type { GoodId, LocationDef, LocationId, MarketState, World } from "./types";
 
 export const PRICE_ELASTICITY = 0.6;
 export const PRICE_FLOOR_MULT = 0.25;
@@ -19,10 +19,21 @@ export function priceFor(
   return basePrice * clamped;
 }
 
+export function marketQuote(world: World, locationId: LocationId, goodId: GoodId): number {
+  const good = world.goods[goodId];
+  if (!good) return 0;
+  if (good.category === "upgrade") return good.basePrice;
+  return world.markets[locationId]?.prices[goodId] ?? good.basePrice;
+}
+
 export function recomputePrices(world: World, loc: LocationDef, market: MarketState): void {
   for (const goodId of Object.keys(world.goods) as GoodId[]) {
-    const target = loc.targetStock[goodId] ?? 0;
     const base = world.goods[goodId].basePrice;
+    if (world.goods[goodId].category === "upgrade") {
+      market.prices[goodId] = base;
+      continue;
+    }
+    const target = loc.targetStock[goodId] ?? 0;
     if (target <= 0) {
       market.prices[goodId] = base;
     } else {

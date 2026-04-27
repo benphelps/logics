@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createWorld } from "./world";
 import { tickN } from "./tick";
-import { MAX_NO_OPPORTUNITY_TICKS, NPC_OPERATING_FLOAT } from "./traders";
+import { listTradeOptions, MAX_NO_OPPORTUNITY_TICKS, NPC_OPERATING_FLOAT } from "./traders";
 import type { LocationDef, Trader } from "./types";
 
 describe("trader-driven convergence", () => {
@@ -42,6 +42,29 @@ describe("trader-driven convergence", () => {
     tickN(noTrade, 200);
     tickN(trade, 200);
     expect(meanAbsDev(trade, "grain")).toBeLessThan(meanAbsDev(noTrade, "grain"));
+  });
+
+  it("does not route-plan upgrade modules as recurring commodity demand", () => {
+    const w = createWorld();
+    const ship = w.traders[w.player!.shipIds[0]];
+    ship.funds = 100_000;
+    ship.currentFuel = { good: "plasma", qty: ship.fuelCapacity };
+
+    for (const market of Object.values(w.markets)) {
+      for (const gid of Object.keys(w.goods)) {
+        market.stock[gid] = 0;
+        market.prices[gid] = w.goods[gid].basePrice;
+      }
+    }
+    w.markets.haven.stock.upg_fuel_1 = 1;
+    w.markets.verdant.stock.upg_fuel_1 = 0;
+    w.markets.verdant.prices.upg_fuel_1 = w.goods.upg_fuel_1.basePrice * 5;
+    w.markets.haven.stock.plasma = 100;
+    w.markets.verdant.stock.plasma = 100;
+
+    const options = listTradeOptions(w, ship, undefined, 1);
+
+    expect(options.some(o => o.good === "upg_fuel_1")).toBe(false);
   });
 
   it("repositions an autonomous trader after a short no-opportunity wait", () => {

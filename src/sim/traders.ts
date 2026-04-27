@@ -1,11 +1,11 @@
 import type { CargoLot, FuelType, GoodId, JobId, LocationId, ShipUpgradeSlots, Trader, TraderEvent, World } from "./types";
 import { reachableNeighbors, routeDistance } from "./geometry";
-import { priceFor } from "./pricing";
+import { marketQuote, priceFor } from "./pricing";
 import { chargeDockingFee, DOCKING_FEE_PER_CAPACITY, MAINTENANCE_PER_CAPACITY, SALES_TAX_RATE } from "./economy";
 import { acceptJob, creditJobOnDelivery, type JobCompletionEvent } from "./jobs";
 import { pushNote, pushTraderEvent } from "./log";
 import { effectivePerDistance, hasCrew, MAINTENANCE_DEBT_TRAVEL_BLOCK, recomputeShipStats } from "./crew";
-import { upgradeDef } from "./upgrades";
+import { isUpgradeGood, upgradeDef } from "./upgrades";
 
 export const MIN_PROFIT_PER_TICK = 0.05;
 export const MAX_DRAW_FRACTION = 0.5;
@@ -254,8 +254,9 @@ export function listTradeOptions(
   }
 
   for (const goodId of Object.keys(world.goods) as GoodId[]) {
+    if (isUpgradeGood(goodId)) continue;
     const good = world.goods[goodId];
-    const buyPrice = srcMarket.prices[goodId];
+    const buyPrice = marketQuote(world, here, goodId);
     const srcStock = srcMarket.stock[goodId] ?? 0;
 
     const perDist = effectivePerDistance(trader, ft.perDistance);
@@ -299,7 +300,7 @@ export function listTradeOptions(
       const dstStockAtArrival = dstStockNow + INFLIGHT_WEIGHT * inflightToDst;
       const grossSellPrice = dstTarget > 0
         ? priceFor(world.goods[goodId].basePrice, dstStockAtArrival, dstTarget)
-        : dstMarket.prices[goodId];
+        : marketQuote(world, dstId, goodId);
       const sellPrice = grossSellPrice * (1 - SALES_TAX_RATE);
       const fuelCost = fuelNeeded * localFuelPrice;
       const grossProfitPerUnit = sellPrice - buyPrice - fuelCost / maxQty;
@@ -464,10 +465,9 @@ export function isStuck(world: World, trader: Trader): boolean {
 
 function cargoExitValue(world: World, trader: Trader, dst: LocationId): number {
   if (trader.cargo.length === 0) return 0;
-  const market = world.markets[dst];
   let value = 0;
   for (const lot of trader.cargo) {
-    const sellNet = (market.prices[lot.good] ?? 0) * (1 - SALES_TAX_RATE);
+    const sellNet = marketQuote(world, dst, lot.good) * (1 - SALES_TAX_RATE);
     value += lot.qty * (sellNet - lot.unitPrice);
   }
   return value;
@@ -577,7 +577,7 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
       const dstMarket = world.markets[dst];
       for (const lot of trader.cargo) {
         const { good, qty } = lot;
-        const unitPrice = dstMarket.prices[good];
+        const unitPrice = marketQuote(world, dst, good);
         dstMarket.stock[good] = (dstMarket.stock[good] ?? 0) + qty;
         const netUnitPrice = unitPrice * (1 - SALES_TAX_RATE);
         trader.funds += qty * netUnitPrice;
@@ -672,7 +672,7 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
       const g = world.goods[c.good];
       if (!g) continue;
       const stock = srcMarket.stock[c.good] ?? 0;
-      const price = srcMarket.prices[c.good] ?? 0;
+      const price = marketQuote(world, here, c.good);
       const roomMass = trader.capacity - preloadMass;
       const maxByRoom = Math.floor(roomMass / g.weight);
       const maxByFunds = price > 0 ? Math.floor(fundsLeft / price) : 0;
@@ -881,7 +881,7 @@ function currentCargoMass(trader: Trader, world: World): number {
 }
 
 function replacedUpgradeCargoPrice(world: World, trader: Trader, goodId: GoodId): number {
-  return world.markets[trader.location]?.prices[goodId] ?? world.goods[goodId]?.basePrice ?? 0;
+  return marketQuote(world, trader.location, goodId);
 }
 
 function finalizeUpgradeInstall(
@@ -941,7 +941,7 @@ export function installUpgradeFromMarket(world: World, trader: Trader, goodId: G
   const market = world.markets[trader.location];
   const stock = market.stock[goodId] ?? 0;
   if (stock < 1) return { ok: false, reason: `${def.name} is not in stock here.` };
-  const price = market.prices[goodId] ?? world.goods[goodId]?.basePrice ?? 0;
+  const price = marketQuote(world, trader.location, goodId);
   if (trader.funds < price - 0.001) {
     return { ok: false, reason: `Need Ç${price.toFixed(0)}, have Ç${trader.funds.toFixed(0)}.` };
   }
@@ -984,7 +984,7 @@ export function buyAtLocation(world: World, trader: Trader, goodId: GoodId, qty:
     return { ok: false, reason: `Not enough cargo space. Max additional: ${Math.floor(room)} ${goodId}.` };
   }
 
-  const price = market.prices[goodId];
+  const price = marketQuote(world, trader.location, goodId);
   const cost = qty * price;
   if (trader.funds < cost - 0.001) return { ok: false, reason: `Need Ç${cost.toFixed(0)}, have Ç${trader.funds.toFixed(0)}.` };
 
@@ -1017,7 +1017,7 @@ export function sellAtLocation(world: World, trader: Trader, goodId: GoodId, qty
   }
 
   const market = world.markets[trader.location];
-  const grossPrice = market.prices[goodId];
+  const grossPrice = marketQuote(world, trader.location, goodId);
   const netPrice = grossPrice * (1 - SALES_TAX_RATE);
   const revenue = sellQty * netPrice;
 

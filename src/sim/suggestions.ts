@@ -1,8 +1,8 @@
 import type { GoodId, Job, JobId, LocationId, Trader, World } from "./types";
 import { reachableNeighbors, routeDistance } from "./geometry";
-import { priceFor } from "./pricing";
-import { activeFuelType, listSpeculativeOptions, listTradeOptions, maintenanceTravelBlockReason, selectRefuelType, type TradeOption } from "./traders";
-import { listAvailableRescueJobs, listLocalJobs } from "./jobs";
+import { marketQuote, priceFor } from "./pricing";
+import { activeFuelType, listSpeculativeOptions, listTradeOptions, maintenanceTravelBlockReason, refuelManual, selectRefuelType, sellAtLocation, type TradeOption } from "./traders";
+import { acceptJob, listAvailableRescueJobs, listLocalJobs } from "./jobs";
 import { effectivePerDistance, hasCrew } from "./crew";
 import { DOCKING_FEE_PER_CAPACITY, MAINTENANCE_PER_CAPACITY, SALES_TAX_RATE } from "./economy";
 
@@ -37,6 +37,11 @@ const JOB_TIER_PRIORITY = { high: 0, medium: 1, low: 2 } as const;
 
 type Candidate = { value: number; hint: GuidedHint };
 type GuidedHintMode = "advisory" | "actual";
+
+export interface GuidedPlan {
+  current: GuidedHint;
+  hints: GuidedHint[];
+}
 
 interface TravelFuelIntent {
   dst: LocationId;
@@ -265,6 +270,83 @@ export function getGuidedHint(
 
   // Fallback: no profitable trade and no refuel triggered
   return { kind: "wait", reason: "No profitable trades from here right now. Wait for prices to shift, or move on speculation." };
+}
+
+export function getGuidedPlan(
+  world: World,
+  ship: Trader,
+  options: { mode?: GuidedHintMode } = {},
+): GuidedPlan {
+  const current = getGuidedHint(world, ship, options);
+  const hints: GuidedHint[] = [current];
+  if (!canExpandPlanAfter(current)) return { current, hints };
+
+  const planWorld = structuredClone(world) as World;
+  let planShip = planWorld.traders[ship.id];
+  if (!planShip) return { current, hints };
+
+  let lastKey = planHintKey(current);
+  let next = current;
+  for (let i = 0; i < 5; i++) {
+    if (!applyPlanHint(planWorld, planShip, next)) break;
+    planShip = planWorld.traders[ship.id];
+    if (!planShip || planShip.state !== "idle") break;
+
+    next = getGuidedHint(planWorld, planShip, options);
+    const key = planHintKey(next);
+    if (next.kind === "wait" || key === lastKey) break;
+    hints.push(next);
+    lastKey = key;
+    if (!canExpandPlanAfter(next)) break;
+  }
+
+  return { current, hints };
+}
+
+function canExpandPlanAfter(hint: GuidedHint): boolean {
+  return hint.kind === "sell_here"
+    || hint.kind === "job_plan"
+    || hint.kind === "accept_job"
+    || hint.kind === "refuel";
+}
+
+function planHintKey(hint: GuidedHint): string {
+  switch (hint.kind) {
+    case "sell_here": return `${hint.kind}|${hint.good}|${Math.round(hint.qty)}`;
+    case "job_plan": return `${hint.kind}|${hint.acceptJobIds.join(",")}|${hint.sells.map(s => `${s.good}:${Math.round(s.qty)}`).join(",")}`;
+    case "accept_job": return `${hint.kind}|${hint.jobId}`;
+    case "refuel": return `${hint.kind}|${hint.critical}`;
+    case "buy_for_route": return `${hint.kind}|${hint.good}|${hint.dst}|${Math.round(hint.qty)}`;
+    case "travel_to_sell": return `${hint.kind}|${hint.good}|${hint.dst}|${Math.round(hint.qty)}`;
+    case "route_plan": return `${hint.kind}|${hint.dst}|${hint.buys.map(b => `${b.good}:${Math.round(b.qty)}`).join(",")}|${hint.futureBuys?.map(b => `${b.good}:${Math.round(b.qty)}`).join(",") ?? ""}`;
+    case "speculate": return `${hint.kind}|${hint.via}|${hint.thenBuy}|${hint.thenSellAt}`;
+    case "wait": return `${hint.kind}|${hint.reason}`;
+  }
+}
+
+function applyPlanHint(world: World, ship: Trader, hint: GuidedHint): boolean {
+  switch (hint.kind) {
+    case "sell_here":
+      return sellAtLocation(world, ship, hint.good, hint.qty).ok;
+    case "job_plan": {
+      let changed = false;
+      for (const jobId of hint.acceptJobIds) {
+        const result = acceptJob(world, jobId, ship.id);
+        changed = result.ok || changed;
+      }
+      for (const sell of hint.sells) {
+        const result = sellAtLocation(world, ship, sell.good, sell.qty);
+        changed = result.ok || changed;
+      }
+      return changed;
+    }
+    case "accept_job":
+      return acceptJob(world, hint.jobId, ship.id).ok;
+    case "refuel":
+      return refuelManual(world, ship).ok;
+    default:
+      return false;
+  }
 }
 
 function addPlannedBuy(buys: PlannedBuy[], good: GoodId, qty: number, reason: PlannedBuy["reason"]): void {
@@ -820,7 +902,6 @@ function localJobAcceptCandidates(world: World, ship: Trader): { value: number; 
 function cargoLoadedCandidates(world: World, ship: Trader): { value: number; hint: GuidedHint }[] {
   const ft = activeFuelType(ship);
   const fuel = ship.currentFuel;
-  const hereMarket = world.markets[ship.location];
   const out: { value: number; hint: GuidedHint }[] = [];
   const travelBlocked = maintenanceTravelBlockReason(ship);
 
@@ -851,7 +932,7 @@ function cargoLoadedCandidates(world: World, ship: Trader): { value: number; hin
   for (const [goodId, agg] of byGood) {
     const good = world.goods[goodId];
     if (!good) continue;
-    const hereGross = hereMarket.prices[goodId];
+    const hereGross = marketQuote(world, ship.location, goodId);
     const hereNet = hereGross * (1 - SALES_TAX_RATE);
     const hereRevenue = agg.totalQty * hereNet;
     const sellHerePnL = hereRevenue - agg.totalCost;
@@ -871,11 +952,11 @@ function cargoLoadedCandidates(world: World, ship: Trader): { value: number; hin
       const dstLoc = world.locations[to];
       const dstTarget = dstLoc.targetStock[goodId] ?? 0;
       const dstStockNow = dstMarket.stock[goodId] ?? 0;
-      const dstGross = dstTarget > 0
+      const dstGross = good.category !== "upgrade" && dstTarget > 0
         ? priceFor(good.basePrice, dstStockNow, dstTarget)
-        : dstMarket.prices[goodId];
+        : marketQuote(world, to, goodId);
       const dstNet = dstGross * (1 - SALES_TAX_RATE);
-      const fuelCost = fuelNeeded * (hereMarket.prices[fuel.good] ?? 0);
+      const fuelCost = fuelNeeded * marketQuote(world, ship.location, fuel.good);
       const travelTicks = Math.max(1, Math.ceil(dist / ship.speed));
       const tripMaint = travelTicks * ship.capacity * MAINTENANCE_PER_CAPACITY;
       const dockingFee = ship.capacity * DOCKING_FEE_PER_CAPACITY;
@@ -962,6 +1043,8 @@ export interface HintTarget {
   buyGoods?: Partial<Record<GoodId, number>>;
   sellGood?: GoodId;
   sellGoods?: GoodId[];
+  carryGood?: GoodId;
+  carryGoods?: GoodId[];
   travelTo?: LocationId;
   travelLabel?: string;
   refuel?: boolean;
@@ -975,7 +1058,7 @@ export function hintTarget(hint: GuidedHint): HintTarget {
     case "buy_for_route":
       return { buyGood: hint.good, buyQty: hint.qty };
     case "travel_to_sell":
-      return { travelTo: hint.dst, travelLabel: hint.jobId ? "Contract delivery" : undefined };
+      return { travelTo: hint.dst, travelLabel: hint.jobId ? "Contract delivery" : undefined, carryGood: hint.good };
     case "sell_here":
       return { sellGood: hint.good };
     case "refuel":

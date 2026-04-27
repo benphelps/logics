@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createWorld } from "./world";
-import { getGuidedHint, hintTarget } from "./suggestions";
+import { getGuidedHint, getGuidedPlan, hintTarget } from "./suggestions";
 import { MAINTENANCE_DEBT_TRAVEL_BLOCK } from "./crew";
 import { buyAtLocation } from "./traders";
 import { acceptJob } from "./jobs";
@@ -29,6 +29,22 @@ function assignAutoCrew(ship: ReturnType<typeof playerShip>): void {
 }
 
 describe("suggestion engine edge cases", () => {
+  it("marks travel-to-sell cargo as carried, not sell-here", () => {
+    const target = hintTarget({
+      kind: "travel_to_sell",
+      dst: "ironhold",
+      good: "grain",
+      qty: 5,
+      expectedNet: 500,
+      gainOverHere: 100,
+      ticks: 2,
+    });
+
+    expect(target.travelTo).toBe("ironhold");
+    expect(target.carryGood).toBe("grain");
+    expect(target.sellGood).toBeUndefined();
+  });
+
   it("suggests selling local cargo even when the ship is out of fuel", () => {
     const w = createWorld();
     const ship = playerShip(w);
@@ -205,6 +221,35 @@ describe("suggestion engine edge cases", () => {
 
     expect(hint.kind).toBe("sell_here");
     if (hint.kind === "sell_here") expect(hint.good).toBe("grain");
+  });
+
+  it("shows the follow-up plan after a required local sell", () => {
+    const w = createWorld();
+    const ship = playerShip(w);
+    ship.funds = 100_000;
+    ship.currentFuel = { good: "plasma", qty: ship.fuelCapacity };
+    ship.cargo = [{ good: "grain", qty: 40, source: "verdant", unitPrice: 2, purchasedAt: 0 }];
+
+    for (const market of Object.values(w.markets)) {
+      for (const gid of Object.keys(w.goods)) {
+        market.stock[gid] = 0;
+        market.prices[gid] = w.goods[gid].basePrice;
+      }
+    }
+    w.markets.haven.prices.grain = 10;
+    w.markets.haven.stock.grain = 0;
+    w.markets.haven.stock.protein = 20;
+    w.markets.haven.prices.protein = 2;
+    w.markets.haven.stock.plasma = 100;
+    w.markets.haven.prices.plasma = 15;
+    w.markets.ironhold.prices.protein = 200;
+    w.markets.ironhold.stock.plasma = 100;
+
+    const plan = getGuidedPlan(w, ship);
+
+    expect(plan.current.kind).toBe("sell_here");
+    expect(plan.hints[0].kind).toBe("sell_here");
+    expect(plan.hints.some(h => h.kind === "buy_for_route" || h.kind === "route_plan")).toBe(true);
   });
 
   it("plans rescue acceptance before buying fuel and departing", () => {

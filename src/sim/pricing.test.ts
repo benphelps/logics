@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { priceFor, PRICE_CEILING_MULT, PRICE_FLOOR_MULT } from "./pricing";
+import { priceFor, PRICE_CEILING_MULT, PRICE_FLOOR_MULT, recomputePrices } from "./pricing";
+import { createWorld } from "./world";
 
 describe("priceFor", () => {
   it("returns base price when stock equals target", () => {
@@ -39,5 +40,17 @@ describe("priceFor", () => {
 
   it("returns base when target is zero (no demand modeled)", () => {
     expect(priceFor(10, 50, 0)).toBe(10);
+  });
+
+  it("keeps upgrade shelf stock at base price instead of scarcity pricing", () => {
+    const world = createWorld();
+    const loc = world.locations.haven;
+    const market = world.markets.haven;
+    market.stock.upg_fuel_1 = 0;
+    market.prices.upg_fuel_1 = world.goods.upg_fuel_1.basePrice * PRICE_CEILING_MULT;
+
+    recomputePrices(world, loc, market);
+
+    expect(market.prices.upg_fuel_1).toBe(world.goods.upg_fuel_1.basePrice);
   });
 });

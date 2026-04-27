@@ -5,8 +5,10 @@ import {
   abandonJob, acceptJob, creditJobOnDelivery, expireJobs, generateJobs,
   listAvailableRescueJobs, listLocalJobs, listLocalShortageJobs, listVisibleAvailableJobs,
   EXPIRY_TICKS_BY_TIER, MAX_OPEN_JOBS, PENALTY_FRACTION_BY_TIER, REWARD_MULT_BY_TIER,
+  maxOpenJobs,
 } from "./jobs";
 import { sellAtLocation } from "./traders";
+import { generateWorld } from "./gen/world";
 
 describe("jobs: shortage generation", () => {
   it("posts a shortage job when a market is far below target on a consumed good", () => {
@@ -114,7 +116,7 @@ describe("jobs: rescue generation", () => {
 });
 
 describe("jobs: caps + expiry", () => {
-  it("respects MAX_OPEN_JOBS cap", () => {
+  it("respects the open job cap", () => {
     const w = createWorld();
     // Crash all consumed-good stocks to force many shortage jobs
     for (const loc of Object.values(w.locations)) {
@@ -123,7 +125,34 @@ describe("jobs: caps + expiry", () => {
       }
     }
     generateJobs(w);
-    expect(Object.keys(w.jobs).length).toBeLessThanOrEqual(MAX_OPEN_JOBS);
+    expect(Object.keys(w.jobs).length).toBeLessThanOrEqual(maxOpenJobs(w));
+  });
+
+  it("scales the open job cap with station count", () => {
+    const small = createWorld();
+    const large = generateWorld({ seed: 20260427, locationCount: 48, traderCount: 0, player: null });
+    expect(maxOpenJobs(small)).toBe(MAX_OPEN_JOBS);
+    expect(maxOpenJobs(large)).toBeGreaterThan(MAX_OPEN_JOBS);
+    expect(maxOpenJobs(large)).toBe(72);
+  });
+
+  it("does not let shortage pressure crowd out rescue contracts", () => {
+    const w = generateWorld({ seed: 20260427, locationCount: 48, traderCount: 12, player: null });
+    const locations = Object.keys(w.locations);
+    for (const loc of Object.values(w.locations)) {
+      for (const c of loc.consumes) {
+        w.markets[loc.id].stock[c.good] = 0;
+      }
+    }
+    Object.values(w.traders).slice(0, 8).forEach((trader, index) => {
+      trader.location = locations[index % locations.length];
+      trader.currentFuel = { good: trader.fuelTypes[0]?.good ?? "plasma", qty: 0 };
+      trader.stuckTicks = 12;
+    });
+
+    generateJobs(w);
+    expect(Object.values(w.jobs).some(j => j.kind === "rescue")).toBe(true);
+    expect(Object.keys(w.jobs).length).toBeLessThanOrEqual(maxOpenJobs(w));
   });
 
   it("expireJobs removes expired entries", () => {
