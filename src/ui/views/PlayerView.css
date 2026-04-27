@@ -48,7 +48,9 @@
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
+  min-height: 24px;          /* matches button height — keeps header consistent
+                                across cards with vs without buttons */
 }
 
 .bridge-card-title {
