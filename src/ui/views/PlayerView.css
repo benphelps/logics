@@ -203,6 +203,93 @@
   background: var(--good-bg);
 }
 
+/* ---- guided-hint highlights ---- */
+
+.hint-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 4px;
+  font-size: 13px;
+  border: 1px solid;
+  margin-bottom: 14px;
+}
+
+.hint-banner.hint-primary {
+  background: rgba(79, 182, 255, 0.10);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.hint-banner.hint-critical {
+  background: var(--bad-bg);
+  border-color: var(--bad);
+  color: var(--text);
+}
+
+.hint-banner.hint-neutral {
+  background: var(--bg-2);
+  border-color: var(--border);
+  color: var(--text-dim);
+}
+
+.hint-icon {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.hint-banner.hint-primary  .hint-icon { color: var(--accent); }
+.hint-banner.hint-critical .hint-icon { color: var(--bad); }
+.hint-banner.hint-neutral  .hint-icon { color: var(--text-faint); }
+
+.hint-text {
+  flex: 1;
+}
+
+/* row + button highlight when they are the suggested target */
+
+.row-suggested {
+  background: rgba(79, 182, 255, 0.12) !important;
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.row-suggested:hover {
+  background: rgba(79, 182, 255, 0.18) !important;
+}
+
+.btn-suggested {
+  background: var(--accent) !important;
+  color: white !important;
+  border-color: var(--accent) !important;
+  font-weight: 600;
+  box-shadow: 0 0 0 2px rgba(79, 182, 255, 0.25);
+}
+
+.btn-suggested:hover:not(:disabled) {
+  background: #6cc7ff !important;
+  border-color: #6cc7ff !important;
+}
+
+.btn-suggested-critical {
+  background: var(--bad) !important;
+  color: white !important;
+  border-color: var(--bad) !important;
+  font-weight: 600;
+  box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.30);
+}
+
+.btn-suggested-critical:hover:not(:disabled) {
+  background: #fa8585 !important;
+  border-color: #fa8585 !important;
+}
+
+.panel-suggested {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
 .market-footnote {
   font-size: 10px;
   margin-top: 6px;

@@ -1,10 +1,8 @@
 import { useStore } from "../store";
-import { listTradeOptions, type TradeOption } from "../../sim/traders";
 import { reachableNeighbors } from "../../sim/geometry";
+import { describeHint, getGuidedHint, hintTarget, type HintTarget } from "../../sim/suggestions";
 import type { LocationDef, Trader, World } from "../../sim/types";
 import "./PlayerView.css";
-
-const SUGGESTION_LIMIT = 6;
 
 export function PlayerView() {
   const world = useStore((s) => s.world);
@@ -31,7 +29,6 @@ export function PlayerView() {
           <span className="bad">⚠</span> {lastError} <span className="faint">(click to dismiss)</span>
         </div>
       )}
-
       {ships.map((ship) => (
         <ShipPanel key={ship.id} ship={ship} world={world} />
       ))}
@@ -44,9 +41,15 @@ function ShipPanel({ ship, world }: { ship: Trader; world: World }) {
   const fuel = ship.currentFuel;
   const fuelPct = fuel ? (fuel.qty / ship.fuelCapacity) * 100 : 0;
   const fuelTone = fuelPct < 25 ? "bad" : fuelPct < 50 ? "warn" : "";
-
   const inTransit = ship.state === "transit";
   const loc = world.locations[ship.location];
+
+  const hint = getGuidedHint(world, ship);
+  const target = hintTarget(hint);
+  const hintText = describeHint(hint, world);
+  const hintTone = hint.kind === "refuel" && hint.critical ? "critical" :
+                   hint.kind === "wait" ? "neutral" :
+                   "primary";
 
   return (
     <article className="ship-panel">
@@ -76,7 +79,7 @@ function ShipPanel({ ship, world }: { ship: Trader; world: World }) {
 
       <div className="ship-status mono">
         <span><span className="dim">cargo:</span> {ship.cargo
-          ? <><span className="good">{ship.cargo.good}×{ship.cargo.qty.toFixed(0)}</span></>
+          ? <span className="good">{ship.cargo.good}×{ship.cargo.qty.toFixed(0)}</span>
           : <span className="faint">empty</span>}</span>
         <span className="dim">·</span>
         <span><span className="dim">fuel:</span> <span className={fuelTone}>{fuel?.good} {fuel?.qty.toFixed(0)}/{ship.fuelCapacity}</span></span>
@@ -84,10 +87,17 @@ function ShipPanel({ ship, world }: { ship: Trader; world: World }) {
         <span><span className="dim">wallet:</span> Ç{Math.round(ship.funds).toLocaleString()}</span>
       </div>
 
+      {!inTransit && (
+        <div className={`hint-banner hint-${hintTone}`}>
+          <span className="hint-icon">{hint.kind === "wait" ? "○" : hint.kind === "refuel" && hint.critical ? "⚠" : "→"}</span>
+          <span className="hint-text">{hintText}</span>
+        </div>
+      )}
+
       {inTransit ? (
         <TransitView ship={ship} world={world} />
       ) : (
-        <DockedView ship={ship} world={world} loc={loc!} />
+        <DockedView ship={ship} world={world} loc={loc!} target={target} />
       )}
     </article>
   );
@@ -117,15 +127,14 @@ function TransitView({ ship, world }: { ship: Trader; world: World }) {
   );
 }
 
-function DockedView({ ship, world, loc }: { ship: Trader; world: World; loc: LocationDef }) {
+function DockedView({ ship, world, loc, target }: { ship: Trader; world: World; loc: LocationDef; target: HintTarget }) {
   return (
     <div className="docked-view">
       <LocationOverview loc={loc} />
       <div className="docked-grid">
-        <MarketSection ship={ship} world={world} loc={loc} />
-        <SidePanels ship={ship} world={world} loc={loc} />
+        <MarketSection ship={ship} world={world} loc={loc} target={target} />
+        <SidePanels ship={ship} world={world} loc={loc} target={target} />
       </div>
-      <SuggestionsSection ship={ship} world={world} />
     </div>
   );
 }
@@ -148,11 +157,10 @@ function LocationOverview({ loc }: { loc: LocationDef }) {
   );
 }
 
-function MarketSection({ ship, world, loc }: { ship: Trader; world: World; loc: LocationDef }) {
+function MarketSection({ ship, world, loc, target }: { ship: Trader; world: World; loc: LocationDef; target: HintTarget }) {
   const buy = useStore((s) => s.buy);
   const sell = useStore((s) => s.sell);
   const market = world.markets[loc.id];
-
   const goodsOrdered = Object.keys(world.goods);
 
   return (
@@ -172,13 +180,16 @@ function MarketSection({ ship, world, loc }: { ship: Trader; world: World; loc: 
           {goodsOrdered.map((gid) => {
             const stock = market.stock[gid] ?? 0;
             const price = market.prices[gid] ?? 0;
-            const netSell = price * (1 - 0.15); // SALES_TAX_RATE; rendered for clarity
+            const netSell = price * (1 - 0.15);
             const isCargo = ship.cargo?.good === gid;
             const cargoQty = isCargo ? ship.cargo!.qty : 0;
             const isFuel = ship.fuelTypes.some(f => f.good === gid);
+            const isBuyTarget = target.buyGood === gid;
+            const isSellTarget = target.sellCargo === true && isCargo;
+            const rowClass = (isBuyTarget || isSellTarget) ? "row-suggested" : isCargo ? "row-mine" : "";
 
             return (
-              <tr key={gid} className={isCargo ? "row-mine" : ""}>
+              <tr key={gid} className={rowClass}>
                 <td>
                   <span>{gid}</span>
                   {isCargo && <span className="dim mono"> · holding {cargoQty.toFixed(0)}</span>}
@@ -195,6 +206,8 @@ function MarketSection({ ship, world, loc }: { ship: Trader; world: World; loc: 
                     stock={stock}
                     price={price}
                     cargoQty={cargoQty}
+                    suggestedBuy={isBuyTarget}
+                    suggestedSell={isSellTarget}
                     onBuy={(qty) => buy(ship.id, gid, qty)}
                     onSell={(qty) => sell(ship.id, qty)}
                   />
@@ -212,9 +225,10 @@ function MarketSection({ ship, world, loc }: { ship: Trader; world: World; loc: 
 }
 
 function BuySellControls({
-  ship, world, goodId, stock, price, cargoQty, onBuy, onSell,
+  ship, world, goodId, stock, price, cargoQty, suggestedBuy, suggestedSell, onBuy, onSell,
 }: {
   ship: Trader; world: World; goodId: string; stock: number; price: number; cargoQty: number;
+  suggestedBuy: boolean; suggestedSell: boolean;
   onBuy: (qty: number) => void; onSell: (qty: number) => void;
 }) {
   const good = world.goods[goodId];
@@ -235,11 +249,22 @@ function BuySellControls({
       {maxBuy > 0 && (
         <>
           <button onClick={() => onBuy(Math.min(10, maxBuy))} disabled={maxBuy < 1}>+10</button>
-          <button onClick={() => onBuy(maxBuy)} className="primary" disabled={maxBuy < 1}>Buy max ({maxBuy})</button>
+          <button
+            onClick={() => onBuy(maxBuy)}
+            className={suggestedBuy ? "btn-suggested" : "primary"}
+            disabled={maxBuy < 1}
+          >
+            Buy max ({maxBuy})
+          </button>
         </>
       )}
       {isCargoMatch && cargoQty > 0 && (
-        <button onClick={() => onSell(cargoQty)}>Sell {cargoQty.toFixed(0)}</button>
+        <button
+          onClick={() => onSell(cargoQty)}
+          className={suggestedSell ? "btn-suggested" : ""}
+        >
+          Sell {cargoQty.toFixed(0)}
+        </button>
       )}
       {maxBuy === 0 && !isCargoMatch && (
         <span className="faint">{stock < 1 ? "out of stock" : maxByFunds < 1 ? "can't afford" : "no room"}</span>
@@ -248,16 +273,16 @@ function BuySellControls({
   );
 }
 
-function SidePanels({ ship, world, loc }: { ship: Trader; world: World; loc: LocationDef }) {
+function SidePanels({ ship, world, loc, target }: { ship: Trader; world: World; loc: LocationDef; target: HintTarget }) {
   return (
     <div className="side-panels">
-      <FuelStation ship={ship} world={world} loc={loc} />
-      <TravelOptions ship={ship} world={world} />
+      <FuelStation ship={ship} world={world} loc={loc} target={target} />
+      <TravelOptions ship={ship} world={world} target={target} />
     </div>
   );
 }
 
-function FuelStation({ ship, world, loc }: { ship: Trader; world: World; loc: LocationDef }) {
+function FuelStation({ ship, world, loc, target }: { ship: Trader; world: World; loc: LocationDef; target: HintTarget }) {
   const refuel = useStore((s) => s.refuel);
   const market = world.markets[loc.id];
   const types = ship.fuelTypes.map(ft => ({
@@ -267,9 +292,11 @@ function FuelStation({ ship, world, loc }: { ship: Trader; world: World; loc: Lo
     price: market.prices[ft.good] ?? 0,
   }));
   const tankFraction = ship.currentFuel ? (ship.currentFuel.qty / ship.fuelCapacity) * 100 : 0;
+  const suggested = target.refuel === true;
+  const critical = suggested && target.critical === true;
 
   return (
-    <div className="side-panel">
+    <div className={`side-panel ${suggested ? "panel-suggested" : ""}`}>
       <h4>Fuel Station</h4>
       <div className="fuel-status mono">
         <span className="dim">tank:</span>{" "}
@@ -286,18 +313,23 @@ function FuelStation({ ship, world, loc }: { ship: Trader; world: World; loc: Lo
             </div>
             <div className="mono">
               {t.stock > 0
-                ? <><span>{t.stock.toFixed(0)} @ Ç{t.price.toFixed(1)}</span></>
+                ? <span>{t.stock.toFixed(0)} @ Ç{t.price.toFixed(1)}</span>
                 : <span className="faint">unavailable</span>}
             </div>
           </li>
         ))}
       </ul>
-      <button onClick={() => refuel(ship.id)} className="primary fuel-btn">Fill tank</button>
+      <button
+        onClick={() => refuel(ship.id)}
+        className={`fuel-btn ${critical ? "btn-suggested-critical" : suggested ? "btn-suggested" : "primary"}`}
+      >
+        {critical ? "Refuel now" : "Fill tank"}
+      </button>
     </div>
   );
 }
 
-function TravelOptions({ ship, world }: { ship: Trader; world: World }) {
+function TravelOptions({ ship, world, target }: { ship: Trader; world: World; target: HintTarget }) {
   const travel = useStore((s) => s.travel);
   const ft = ship.fuelTypes.find(f => f.good === ship.currentFuel?.good);
   const fuel = ship.currentFuel?.qty ?? 0;
@@ -328,60 +360,26 @@ function TravelOptions({ ship, world }: { ship: Trader; world: World }) {
           </tr>
         </thead>
         <tbody>
-          {dests.map((d) => (
-            <tr key={d.to}>
-              <td>{d.name}</td>
-              <td className="numeric mono">{d.dist.toFixed(1)}</td>
-              <td className={`numeric mono ${d.canFly ? "" : "bad"}`}>{d.fuelNeeded.toFixed(1)}</td>
-              <td className="numeric mono">{d.travelTicks}t</td>
-              <td>
-                <button onClick={() => travel(ship.id, d.to)} disabled={!d.canFly}>Depart</button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function SuggestionsSection({ ship, world }: { ship: Trader; world: World }) {
-  const executeOption = useStore((s) => s.executeOption);
-  const suggestions: TradeOption[] = listTradeOptions(world, ship).slice(0, SUGGESTION_LIMIT);
-
-  if (suggestions.length === 0) {
-    return (
-      <div className="suggestions-empty dim">
-        No profitable arbitrage from {world.locations[ship.location]?.name} right now. Wait for prices to shift, or move on speculation.
-      </div>
-    );
-  }
-
-  return (
-    <div className="suggestions">
-      <h4>Suggested Trades <span className="faint">(buy + auto-depart, profit after all fees)</span></h4>
-      <table className="suggestions-table">
-        <thead>
-          <tr>
-            <th>Buy</th>
-            <th>Sell at</th>
-            <th className="numeric">Qty</th>
-            <th className="numeric">Net Profit</th>
-            <th className="numeric">Per/t</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {suggestions.map((opt, idx) => (
-            <tr key={idx}>
-              <td><span className="mono">{opt.good}</span> <span className="dim">@ Ç{opt.buyPrice.toFixed(1)}</span></td>
-              <td>{world.locations[opt.to]?.name ?? opt.to}</td>
-              <td className="numeric mono">{opt.qty}</td>
-              <td className="numeric mono good">Ç{Math.round(opt.totalProfit).toLocaleString()}</td>
-              <td className="numeric mono good">Ç{opt.profitPerTick.toFixed(1)}</td>
-              <td><button onClick={() => executeOption(ship.id, opt)}>Execute</button></td>
-            </tr>
-          ))}
+          {dests.map((d) => {
+            const suggested = target.travelTo === d.to;
+            return (
+              <tr key={d.to} className={suggested ? "row-suggested" : ""}>
+                <td>{d.name}</td>
+                <td className="numeric mono">{d.dist.toFixed(1)}</td>
+                <td className={`numeric mono ${d.canFly ? "" : "bad"}`}>{d.fuelNeeded.toFixed(1)}</td>
+                <td className="numeric mono">{d.travelTicks}t</td>
+                <td>
+                  <button
+                    onClick={() => travel(ship.id, d.to)}
+                    disabled={!d.canFly}
+                    className={suggested && d.canFly ? "btn-suggested" : ""}
+                  >
+                    Depart
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
