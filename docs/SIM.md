@@ -206,7 +206,7 @@ Player ships have `pilot: "manual" | "auto"`. NPCs always run the same auto-pilo
 | **Captain + Navigator** | All captain behavior. **Auto-accepts** any unaccepted local shortage contracts on arrival whose good matches the cargo about to be sold (free credit). **Pre-loads contract goods** before the primary buy when a buy_for_route's destination matches an accepted contract for a different good — high-tier first, primary fills the remaining bay. Trade scoring **folds in** unaccepted shortage bonuses for any reachable contract destination (the navigator will follow through on arrival). Trade scoring **folds in** accepted-contract `(reward + penalty)/qty` bonus, so the engine treats abandoned contracts as real cost. | Auto-pay maintenance. |
 | **Full crew (cap + nav + mech)** | All of the above. Fully autonomous. | — |
 
-Refuel logic, anti-stranding reserve, speculative travel, multi-good loadout, and contract-aware route scoring all live in `traders.ts` regardless of crew — the captain "unlocks" them by enabling auto-pilot at all; the navigator/mechanic add the contract-acceptance and maintenance branches on top.
+Refuel logic, anti-stranding reserve, speculative travel, and accepted-contract route scoring all live in `traders.ts` regardless of crew — the captain "unlocks" autonomous trading at all. Navigator-only branches cover unaccepted-contract scoring, auto-acceptance on arrival, contract cargo reservation, and multi-good pre-loads; mechanic-only branches cover auto-paid maintenance.
 
 ### Job board (contracts + rescues)
 

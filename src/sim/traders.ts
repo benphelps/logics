@@ -1,4 +1,4 @@
-import type { FuelType, GoodId, LocationId, Trader, TraderEvent, World } from "./types";
+import type { FuelType, GoodId, JobId, LocationId, Trader, TraderEvent, World } from "./types";
 import { distance, nearestDistance } from "./geometry";
 import { priceFor } from "./pricing";
 import { chargeDockingFee, DOCKING_FEE_PER_CAPACITY, MAINTENANCE_PER_CAPACITY, SALES_TAX_RATE } from "./economy";
@@ -25,6 +25,9 @@ export interface TradeOption {
   fuelNeeded: number;
   totalProfit: number;
   profitPerTick: number;
+  jobId?: JobId;
+  jobAccepted?: boolean;
+  jobBonus?: number;
 }
 
 export function activeFuelType(trader: Trader): FuelType | null {
@@ -70,6 +73,64 @@ function isPlayerShip(world: World, trader: Trader): boolean {
   return world.player?.shipIds.includes(trader.id) ?? false;
 }
 
+export function maintenanceTravelBlockReason(trader: Trader): string | null {
+  const debt = trader.maintenanceDebt ?? 0;
+  if (debt < MAINTENANCE_DEBT_TRAVEL_BLOCK) return null;
+  return `Maintenance debt Ç${Math.round(debt).toLocaleString()} too high — repair ship before travel.`;
+}
+
+function canUseContractCargoPlanning(world: World, trader: Trader): boolean {
+  return isPlayerShip(world, trader)
+    && (trader.pilot === "manual" || (trader.pilot === "auto" && hasCrew(trader, "navigator")));
+}
+
+type RouteJobBonus = {
+  jobId: JobId;
+  perUnit: number;
+  remaining: number;
+  accepted: boolean;
+  tierRank: number;
+  expiresAt: number;
+};
+
+const JOB_TIER_RANK = { high: 0, medium: 1, low: 2 } as const;
+
+function addRouteJobBonus(
+  map: Map<string, RouteJobBonus[]>,
+  key: string,
+  entry: RouteJobBonus,
+): void {
+  const list = map.get(key);
+  if (list) list.push(entry);
+  else map.set(key, [entry]);
+}
+
+function scoreRouteJobBonus(
+  entries: RouteJobBonus[] | undefined,
+  qty: number,
+): { total: number; jobId?: JobId; jobAccepted?: boolean } {
+  if (!entries || qty <= 0) return { total: 0 };
+  const sorted = [...entries].sort((a, b) =>
+    Number(b.accepted) - Number(a.accepted)
+    || a.tierRank - b.tierRank
+    || a.expiresAt - b.expiresAt,
+  );
+  let remainingQty = qty;
+  let total = 0;
+  let jobId: JobId | undefined;
+  let jobAccepted: boolean | undefined;
+  for (const entry of sorted) {
+    if (remainingQty <= 0) break;
+    const credited = Math.min(remainingQty, entry.remaining);
+    if (credited <= 0) continue;
+    total += credited * entry.perUnit;
+    remainingQty -= credited;
+    jobId ??= entry.jobId;
+    jobAccepted ??= entry.accepted;
+  }
+  return { total, jobId, jobAccepted };
+}
+
 function inTransitArrivalsByDestGood(world: World): Map<string, number> {
   const acc = new Map<string, number>();
   for (const t of Object.values(world.traders)) {
@@ -89,6 +150,8 @@ export function listTradeOptions(
   drawFraction: number = MAX_DRAW_FRACTION,
   fromLocation?: LocationId,
 ): TradeOption[] {
+  if (maintenanceTravelBlockReason(trader)) return [];
+
   const inflightMap = inflight ?? inTransitArrivalsByDestGood(world);
   const here = fromLocation ?? trader.location;
   const srcMarket = world.markets[here];
@@ -112,10 +175,8 @@ export function listTradeOptions(
   // in unaccepted shortage contracts at the destination. This makes the
   // engine actively chase contract-aligned trades instead of stumbling onto
   // them — and turns the navigator into a real value-add.
-  const willRealizeUnaccepted =
-    isPlayerShip(world, trader) &&
-    (trader.pilot === "manual" || (trader.pilot === "auto" && hasCrew(trader, "navigator")));
-  const jobBonusMap = new Map<string, { perUnit: number; remaining: number }>();
+  const willRealizeUnaccepted = canUseContractCargoPlanning(world, trader);
+  const jobBonusMap = new Map<string, RouteJobBonus[]>();
   for (const j of Object.values(world.jobs)) {
     if (j.acceptedBy === trader.id) {
       const remaining = j.qty - j.delivered;
@@ -125,14 +186,24 @@ export function listTradeOptions(
       // is worth reward + penalty, not just reward. Steers the engine to
       // follow through on commitments instead of getting distracted.
       const perUnit = (j.reward + j.penalty) / j.qty;
-      jobBonusMap.set(`${j.destination}|${j.good}`, { perUnit, remaining });
+      addRouteJobBonus(jobBonusMap, `${j.destination}|${j.good}`, {
+        jobId: j.id,
+        perUnit,
+        remaining,
+        accepted: true,
+        tierRank: JOB_TIER_RANK[j.tier],
+        expiresAt: j.expiresAt,
+      });
     } else if (j.acceptedBy == null && j.kind === "shortage" && willRealizeUnaccepted) {
-      // Don't clobber an accepted-bonus entry (acceptedBy === trader.id wins).
       // Unaccepted: just reward — no commitment cost yet.
-      const key = `${j.destination}|${j.good}`;
-      if (!jobBonusMap.has(key)) {
-        jobBonusMap.set(key, { perUnit: j.reward / j.qty, remaining: j.qty });
-      }
+      addRouteJobBonus(jobBonusMap, `${j.destination}|${j.good}`, {
+        jobId: j.id,
+        perUnit: j.reward / j.qty,
+        remaining: j.qty,
+        accepted: false,
+        tierRank: JOB_TIER_RANK[j.tier],
+        expiresAt: j.expiresAt,
+      });
     }
   }
 
@@ -148,18 +219,20 @@ export function listTradeOptions(
   // and available right here. Otherwise the engine recommends "max bay"
   // and crowds out the contract goods the player came here for.
   const reservedMassByDest = new Map<LocationId, Map<GoodId, number>>();
-  for (const j of Object.values(world.jobs)) {
-    if (j.acceptedBy !== trader.id) continue;
-    const remaining = j.qty - j.delivered;
-    if (remaining <= 0) continue;
-    const goodObj = world.goods[j.good]; if (!goodObj) continue;
-    const stockHere = srcMarket.stock[j.good] ?? 0;
-    const reserveQty = Math.min(remaining, Math.floor(stockHere));
-    if (reserveQty < 1) continue;
-    const reserveMass = reserveQty * goodObj.weight;
-    let inner = reservedMassByDest.get(j.destination);
-    if (!inner) { inner = new Map(); reservedMassByDest.set(j.destination, inner); }
-    inner.set(j.good, reserveMass);
+  if (canUseContractCargoPlanning(world, trader)) {
+    for (const j of Object.values(world.jobs)) {
+      if (j.acceptedBy !== trader.id) continue;
+      const remaining = j.qty - j.delivered;
+      if (remaining <= 0) continue;
+      const goodObj = world.goods[j.good]; if (!goodObj) continue;
+      const stockHere = srcMarket.stock[j.good] ?? 0;
+      const reserveQty = Math.min(remaining, Math.floor(stockHere));
+      if (reserveQty < 1) continue;
+      const reserveMass = reserveQty * goodObj.weight;
+      let inner = reservedMassByDest.get(j.destination);
+      if (!inner) { inner = new Map(); reservedMassByDest.set(j.destination, inner); }
+      inner.set(j.good, reserveMass);
+    }
   }
 
   for (const goodId of Object.keys(world.goods) as GoodId[]) {
@@ -220,8 +293,8 @@ export function listTradeOptions(
       const tripDockingFee = trader.capacity * DOCKING_FEE_PER_CAPACITY;
       let totalProfit = grossProfitPerUnit * maxQty - tripMaintenance - tripDockingFee;
       // Layer in any matching contract bonus for this trader.
-      const jobMatch = jobBonusMap.get(`${dstId}|${goodId}`);
-      if (jobMatch) totalProfit += Math.min(maxQty, jobMatch.remaining) * jobMatch.perUnit;
+      const jobBonus = scoreRouteJobBonus(jobBonusMap.get(`${dstId}|${goodId}`), maxQty);
+      totalProfit += jobBonus.total;
       if (totalProfit <= 0) continue;
       const profitPerTick = totalProfit / (travelTicks + 1);
       if (profitPerTick < MIN_PROFIT_PER_TICK) continue;
@@ -236,6 +309,9 @@ export function listTradeOptions(
         fuelNeeded,
         totalProfit,
         profitPerTick,
+        jobId: jobBonus.jobId,
+        jobAccepted: jobBonus.jobAccepted,
+        jobBonus: jobBonus.total,
       });
     }
   }
@@ -273,6 +349,8 @@ export function listSpeculativeOptions(
   trader: Trader,
   drawFraction: number = MAX_DRAW_FRACTION,
 ): SpeculativeOption[] {
+  if (maintenanceTravelBlockReason(trader)) return [];
+
   const ft = activeFuelType(trader);
   const fuel = trader.currentFuel;
   if (!ft || !fuel) return [];
@@ -405,6 +483,11 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
     return;
   }
 
+  if (maintenanceTravelBlockReason(trader)) {
+    events.push({ trader: trader.id, kind: "idle" });
+    return;
+  }
+
   tryRefuel(world, trader, events);
 
   const choice = evaluateOptions(world, trader, inflight);
@@ -433,18 +516,20 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
   const here = trader.location;
   const srcMarket = world.markets[here];
 
-  // Player-only multi-good loadout: before the primary buy, pre-load goods
+  // Navigator-only multi-good loadout: before the primary buy, pre-load goods
   // for any accepted contract bound for the same destination. Solves the
   // case where the engine picks a high-margin generic trade and would
   // otherwise abandon a parallel accepted contract that could have ridden
   // along in the same trip. Contract goods load FIRST (high-tier first),
   // primary fills the remaining bay.
-  const isPlayer = isPlayerShip(world, trader);
+  const canPreloadContracts = isPlayerShip(world, trader)
+    && trader.pilot === "auto"
+    && hasCrew(trader, "navigator");
   const tierRank = { high: 0, medium: 1, low: 2 } as const;
   const contractLoads: { good: GoodId; qty: number; price: number }[] = [];
   let preloadMass = 0;
   let fundsLeft = trader.funds;
-  if (isPlayer) {
+  if (canPreloadContracts) {
     const accs = Object.values(world.jobs)
       .filter(j => j.acceptedBy === trader.id && j.destination === choice.to && j.good !== choice.good)
       .sort((a, b) => tierRank[a.tier] - tierRank[b.tier]);
@@ -499,9 +584,9 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
   trader.ticksRemaining = choice.travelTicks;
   events.push({ trader: trader.id, kind: "depart", from: here, to: choice.to });
 
-  if (primaryQty > 0) {
-    const key = `${choice.to}|${choice.good}`;
-    inflight.set(key, (inflight.get(key) ?? 0) + primaryQty);
+  for (const lot of trader.cargo) {
+    const key = `${choice.to}|${lot.good}`;
+    inflight.set(key, (inflight.get(key) ?? 0) + lot.qty);
   }
 }
 
@@ -511,6 +596,8 @@ export type ExecuteResult =
 
 export function executeTrade(world: World, trader: Trader, choice: TradeOption): ExecuteResult {
   if (trader.state !== "idle") return { ok: false, reason: "Ship is in transit." };
+  const blocked = maintenanceTravelBlockReason(trader);
+  if (blocked) return { ok: false, reason: blocked };
 
   const here = trader.location;
   const srcMarket = world.markets[here];
@@ -685,11 +772,8 @@ export function travelTo(world: World, trader: Trader, dst: LocationId): Execute
   if (dst === trader.location) return { ok: false, reason: "Already at destination." };
   if (!world.locations[dst]) return { ok: false, reason: "Unknown destination." };
 
-  // Maintenance debt over the threshold grounds the ship until it's repaired.
-  // Player-side gating only — NPCs don't carry debt.
-  if ((trader.maintenanceDebt ?? 0) >= MAINTENANCE_DEBT_TRAVEL_BLOCK) {
-    return { ok: false, reason: `Maintenance debt Ç${Math.round(trader.maintenanceDebt!).toLocaleString()} too high — repair ship before travel.` };
-  }
+  const blocked = maintenanceTravelBlockReason(trader);
+  if (blocked) return { ok: false, reason: blocked };
 
   const ft = activeFuelType(trader);
   const fuel = trader.currentFuel;

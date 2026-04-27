@@ -1,4 +1,4 @@
-import type { Job, JobCompletionEvent } from "./types";
+import type { Job } from "./types";
 import type { ShipLogEntry, ShipLogTone, Trader, World } from "./types";
 import type { TraderEvent } from "./traders";
 
@@ -73,7 +73,12 @@ export function pushJobAccepted(world: World, ship: Trader, job: Job): void {
   });
 }
 
-export function pushJobCompleted(world: World, ship: Trader, ev: JobCompletionEvent, job: Job | null): void {
+export function pushJobCompleted(
+  world: World,
+  ship: Trader,
+  ev: { reward: number; partial: boolean },
+  job: Job | null,
+): void {
   if (ev.partial) return; // partial deliveries are noisy and the per-tick "Sold X" entry covers it
   pushShipLog(ship, {
     tick: world.tick,

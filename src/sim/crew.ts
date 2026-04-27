@@ -1,4 +1,4 @@
-import type { CrewMember, CrewModifiers, CrewRole, HireId, ShipCrew, Trader, World } from "./types";
+import type { CrewModifiers, CrewRole, HireId, ShipCrew, Trader, World } from "./types";
 import { snapshotFromHire, takeHire } from "./hires";
 
 // Maintenance debt accrued for player ships without a mechanic. Once debt

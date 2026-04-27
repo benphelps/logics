@@ -1,13 +1,13 @@
 import type { GoodId, JobId, LocationId, Trader, World } from "./types";
 import { distance, reachableNeighbors } from "./geometry";
 import { priceFor } from "./pricing";
-import { activeFuelType, listSpeculativeOptions, listTradeOptions, selectRefuelType } from "./traders";
+import { activeFuelType, listSpeculativeOptions, listTradeOptions, maintenanceTravelBlockReason, selectRefuelType } from "./traders";
 import { listLocalJobs } from "./jobs";
-import { effectivePerDistance } from "./crew";
+import { effectivePerDistance, hasCrew } from "./crew";
 import { DOCKING_FEE_PER_CAPACITY, MAINTENANCE_PER_CAPACITY, SALES_TAX_RATE } from "./economy";
 
 export type GuidedHint =
-  | { kind: "buy_for_route"; good: GoodId; qty: number; dst: LocationId; netProfit: number; ticks: number; profitPerTick: number; jobId?: JobId }
+  | { kind: "buy_for_route"; good: GoodId; qty: number; dst: LocationId; netProfit: number; ticks: number; profitPerTick: number; jobId?: JobId; jobAccepted?: boolean }
   | { kind: "travel_to_sell"; dst: LocationId; good: GoodId; qty: number; expectedNet: number; gainOverHere: number; ticks: number; jobId?: JobId }
   | { kind: "sell_here"; good: GoodId; qty: number; revenue: number; jobId?: JobId }
   | { kind: "refuel"; critical: boolean; reason: string }
@@ -19,6 +19,28 @@ const FUEL_LOW_FRACTION = 0.50;          // refuel proactively below this when l
 const FUEL_CRITICAL_FRACTION = 0.15;     // override anything else below this
 const FUEL_POST_TRADE_MIN = 0.30;        // if a trade would leave you below this and you can refuel here, refuel first
 
+function isPlayerShip(world: World, ship: Trader): boolean {
+  return world.player?.shipIds.includes(ship.id) ?? false;
+}
+
+function canRealizeUnacceptedContracts(world: World, ship: Trader): boolean {
+  return isPlayerShip(world, ship)
+    && (ship.pilot === "manual" || (ship.pilot === "auto" && hasCrew(ship, "navigator")));
+}
+
+function canAffordRefuelHere(world: World, ship: Trader): boolean {
+  const ft = selectRefuelType(world, ship);
+  if (!ft) return false;
+  const market = world.markets[ship.location];
+  const stock = market.stock[ft.good] ?? 0;
+  const price = market.prices[ft.good] ?? 0;
+  const switching = !ship.currentFuel || ship.currentFuel.good !== ft.good;
+  const currentQty = switching ? 0 : ship.currentFuel!.qty;
+  const room = Math.max(0, ship.fuelCapacity - currentQty);
+  const affordable = price > 0 ? ship.funds / price : 0;
+  return Math.min(room, stock, affordable) > 0.001;
+}
+
 export function getGuidedHint(world: World, ship: Trader): GuidedHint {
   if (ship.state === "transit") {
     return { kind: "wait", reason: `In transit to ${world.locations[ship.destination!]?.name ?? ship.destination}.` };
@@ -26,18 +48,15 @@ export function getGuidedHint(world: World, ship: Trader): GuidedHint {
 
   const ft = activeFuelType(ship);
   const fuel = ship.currentFuel;
+  const canRefuelHere = canAffordRefuelHere(world, ship);
+  const travelBlocked = maintenanceTravelBlockReason(ship);
 
   // Critical fuel + fuel for sale here → refuel right now (override everything)
   if (fuel && ft) {
     const fraction = fuel.qty / ship.fuelCapacity;
-    const altFuelAvailable = selectRefuelType(world, ship) != null;
 
-    if (fraction < FUEL_CRITICAL_FRACTION && altFuelAvailable) {
+    if (!travelBlocked && fraction < FUEL_CRITICAL_FRACTION && canRefuelHere) {
       return { kind: "refuel", critical: true, reason: `Tank at ${(fraction * 100).toFixed(0)}% — refuel before any move.` };
-    }
-    // No fuel + no fuel here → stuck
-    if (fuel.qty <= 0.001 && !altFuelAvailable) {
-      return { kind: "wait", reason: "Out of fuel and no compatible fuel for sale here. Wait for a trader to bring some, or summon help." };
     }
   }
 
@@ -78,7 +97,8 @@ export function getGuidedHint(world: World, ship: Trader): GuidedHint {
         netProfit: o.totalProfit,
         ticks: o.travelTicks + 1,
         profitPerTick: o.profitPerTick,
-        jobId: job?.id,
+        jobId: o.jobId ?? job?.id,
+        jobAccepted: o.jobAccepted ?? (job ? true : undefined),
       },
     });
   }
@@ -153,7 +173,7 @@ export function getGuidedHint(world: World, ship: Trader): GuidedHint {
   // would land critically low at a destination that may not have fuel,
   // suggest refueling FIRST (assuming current location does have fuel).
   // Without this, the engine happily walks the player into a stranding.
-  if (fuel && ft && selectRefuelType(world, ship) != null) {
+  if (fuel && ft && canRefuelHere && !travelBlocked) {
     const fraction = fuel.qty / ship.fuelCapacity;
 
     // Cargo is empty AND tank below LOW_FRACTION → top off opportunistically
@@ -193,6 +213,15 @@ export function getGuidedHint(world: World, ship: Trader): GuidedHint {
 
   if (top) return top.hint;
 
+  if (travelBlocked) return { kind: "wait", reason: travelBlocked };
+
+  if (fuel && fuel.qty <= 0.001) {
+    if (selectRefuelType(world, ship) == null) {
+      return { kind: "wait", reason: "Out of fuel and no compatible fuel for sale here. Wait for a trader to bring some, or summon help." };
+    }
+    return { kind: "wait", reason: "Out of fuel and can't afford compatible fuel here. Sell cargo if you can, or wait for help." };
+  }
+
   // Fallback: no profitable trade and no refuel triggered
   return { kind: "wait", reason: "No profitable trades from here right now. Wait for prices to shift, or move on speculation." };
 }
@@ -210,6 +239,7 @@ function localJobAcceptCandidates(world: World, ship: Trader): { value: number; 
   const hereMarket = world.markets[ship.location];
   const ft = activeFuelType(ship);
   const fuel = ship.currentFuel;
+  const travelBlocked = maintenanceTravelBlockReason(ship);
 
   for (const job of jobs) {
     const onHand = ship.cargo
@@ -245,7 +275,7 @@ function localJobAcceptCandidates(world: World, ship: Trader): { value: number; 
     }
 
     // Case B — empty bay. Find the cheapest fetch from a reachable neighbor.
-    if (!ft || !fuel) continue;
+    if (!ft || !fuel || travelBlocked) continue;
     const goodWeight = world.goods[job.good]?.weight ?? 1;
     const fuelPriceHere = hereMarket.prices[fuel.good] ?? 0;
     const dstGross = hereMarket.prices[job.good] ?? 0;
@@ -261,16 +291,27 @@ function localJobAcceptCandidates(world: World, ship: Trader): { value: number; 
       if (srcStock < 1) continue;
       const srcPrice = srcMarket.prices[job.good] ?? 0;
 
+      const fuelRemainingAtSource = fuel.qty - outFuelNeeded;
+      const returnFuelNeeded = outFuelNeeded;
+      const fuelDeficitForReturn = Math.max(0, returnFuelNeeded - fuelRemainingAtSource);
+      const srcFuelStock = srcMarket.stock[fuel.good] ?? 0;
+      const fuelPriceSrc = srcMarket.prices[fuel.good] ?? fuelPriceHere;
+      if (fuelDeficitForReturn > 0.001 && srcFuelStock < fuelDeficitForReturn) continue;
+
+      const stockReservedForReturnFuel = job.good === fuel.good ? fuelDeficitForReturn : 0;
+      const stockAvailableForCargo = Math.max(0, srcStock - stockReservedForReturnFuel);
+      const returnFuelCash = fuelDeficitForReturn * fuelPriceSrc;
+
       const maxByCargo = Math.floor(ship.capacity / goodWeight);
-      const maxByFunds = srcPrice > 0 ? Math.floor(ship.funds / srcPrice) : 0;
-      const buyQty = Math.max(0, Math.min(maxByCargo, maxByFunds, Math.floor(srcStock), job.qty));
+      const maxByFunds = srcPrice > 0 ? Math.floor((ship.funds - returnFuelCash) / srcPrice) : 0;
+      const buyQty = Math.max(0, Math.min(maxByCargo, maxByFunds, Math.floor(stockAvailableForCargo), job.qty));
       if (buyQty < 1) continue;
 
       const oneWayTicks = Math.max(1, Math.ceil(dist / ship.speed));
       const totalTicks = oneWayTicks * 2 + 1;            // out, return, accept/sell tick
-      const fuelPriceSrc = srcMarket.prices[fuel.good] ?? fuelPriceHere;
       const outFuelCost = outFuelNeeded * fuelPriceHere;
-      const returnFuelCost = outFuelNeeded * fuelPriceSrc;
+      const existingFuelForReturn = Math.min(returnFuelNeeded, Math.max(0, fuelRemainingAtSource));
+      const returnFuelCost = existingFuelForReturn * fuelPriceHere + returnFuelCash;
       const tripMaint = oneWayTicks * 2 * ship.capacity * MAINTENANCE_PER_CAPACITY;
       const dockingFees = ship.capacity * DOCKING_FEE_PER_CAPACITY * 2;
 
@@ -303,7 +344,7 @@ function localJobAcceptCandidates(world: World, ship: Trader): { value: number; 
   // carrying the requested good and can reach the destination, suggest
   // accepting + flying out to deliver. Naturally rewards "speculative buy
   // here, hold for a contract" play.
-  if (ft && fuel) {
+  if (ft && fuel && !travelBlocked) {
     const here = ship.location;
     const fuelPriceHere = hereMarket.prices[fuel.good] ?? 0;
     const perDist = effectivePerDistance(ship, ft.perDistance);
@@ -357,18 +398,21 @@ function cargoLoadedCandidates(world: World, ship: Trader): { value: number; hin
   const fuel = ship.currentFuel;
   const hereMarket = world.markets[ship.location];
   const out: { value: number; hint: GuidedHint }[] = [];
+  const travelBlocked = maintenanceTravelBlockReason(ship);
 
   // Pre-index unaccepted shortage contracts by (destination|good) → bonus.
   // The suggestion engine assumes the player will accept on arrival (or has
   // a navigator), so any matching destination earns the bonus when scoring.
   const unacceptedBonus = new Map<string, { perUnit: number; remaining: number; jobId: string }>();
-  for (const j of Object.values(world.jobs)) {
-    if (j.acceptedBy != null || j.kind !== "shortage") continue;
-    unacceptedBonus.set(`${j.destination}|${j.good}`, {
-      perUnit: j.reward / j.qty,
-      remaining: j.qty,
-      jobId: j.id,
-    });
+  if (canRealizeUnacceptedContracts(world, ship)) {
+    for (const j of Object.values(world.jobs)) {
+      if (j.acceptedBy != null || j.kind !== "shortage") continue;
+      unacceptedBonus.set(`${j.destination}|${j.good}`, {
+        perUnit: j.reward / j.qty,
+        remaining: j.qty,
+        jobId: j.id,
+      });
+    }
   }
 
   // Aggregate per-good across lots
@@ -393,7 +437,7 @@ function cargoLoadedCandidates(world: World, ship: Trader): { value: number; hin
       hint: { kind: "sell_here", good: goodId, qty: agg.totalQty, revenue: hereRevenue },
     });
 
-    if (!ft || !fuel) continue;
+    if (!ft || !fuel || travelBlocked) continue;
     const perDist = effectivePerDistance(ship, ft.perDistance);
 
     for (const { to, dist } of reachableNeighbors(world, ship.location)) {
@@ -447,7 +491,11 @@ export function describeHint(hint: GuidedHint, world: World): string {
   switch (hint.kind) {
     case "buy_for_route": {
       const dst = world.locations[hint.dst]?.name ?? hint.dst;
-      const jobNote = hint.jobId ? " — fulfills an active contract" : "";
+      const jobNote = hint.jobId
+        ? hint.jobAccepted === false
+          ? " — includes a contract bonus you can accept on arrival"
+          : " — fulfills an active contract"
+        : "";
       return `Buy ${hint.qty} ${goodName(hint.good)} here → travel to ${dst} → sell. Net Ç${Math.round(hint.netProfit).toLocaleString()} over ${hint.ticks} ticks (Ç${hint.profitPerTick.toFixed(1)}/t)${jobNote}.`;
     }
     case "travel_to_sell": {
@@ -504,4 +552,3 @@ export function hintTarget(hint: GuidedHint): HintTarget {
       return {};
   }
 }
-

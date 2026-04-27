@@ -85,7 +85,7 @@ export interface CrewModifiers {
   rangeEfficiency?: number;           // 0.10 = 10% reduction in fuel-per-distance
   buyDiscount?: number;               // 0.05 = 5% off buy price (NOT YET WIRED)
   sellPremium?: number;               // 0.05 = 5% bonus on sell (NOT YET WIRED)
-  maintenanceDiscount?: number;       // 0.10 = 10% off maintenance/tick (NOT YET WIRED)
+  maintenanceDiscount?: number;       // 0.10 = 10% off maintenance/tick
   contractRewardBonus?: number;       // 0.10 = +10% contract reward (NOT YET WIRED)
 }
 

@@ -1,4 +1,4 @@
-import type { GoodId, Job, JobId, JobKind, JobTier, LocationId, Trader, TraderId, World } from "./types";
+import type { GoodId, Job, JobId, JobTier, LocationId, Trader, TraderId, World } from "./types";
 import { pushJobAbandoned, pushJobAccepted, pushJobCompleted, pushJobExpired } from "./log";
 
 // --- tunables --------------------------------------------------------------
@@ -318,4 +318,3 @@ export function jobsForShipAtLocation(
     j => j.acceptedBy === trader.id && j.destination === location,
   );
 }
-

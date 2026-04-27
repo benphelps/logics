@@ -21,6 +21,7 @@ function singleTraderWorld(overrides: Partial<Trader>): World {
     ticksRemaining: 0,
     pilot: "npc",
     ...overrides,
+    log: overrides.log ?? [],
   };
   return createWorld({ traders: { t }, player: null });
 }

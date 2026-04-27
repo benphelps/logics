@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { createWorld } from "./world";
-import { tickN } from "./tick";
+import { tickN, tickWorld } from "./tick";
 import {
   fireCrew, hireCrew, MAINTENANCE_DEBT_TRAVEL_BLOCK, recomputeShipStats, totalCrewWage,
 } from "./crew";
-import { repairShip, travelTo } from "./traders";
+import { executeTrade, listTradeOptions, repairShip, travelTo } from "./traders";
 import { generateJobs } from "./jobs";
 import { generateHires, listHiresAt } from "./hires";
 import type { CrewModifiers, CrewRole, Hire, World } from "./types";
@@ -145,6 +145,33 @@ describe("crew: auto-pilot gating", () => {
     const accepted = ship.log.filter(e => e.kind === "job_accepted").length;
     expect(accepted).toBeGreaterThan(0);
   });
+
+  it("captain-only auto-pilot does not preload parallel contract cargo", () => {
+    const w = createWorld();
+    const ship = getPlayerShip(w);
+    ship.funds = 1_000_000;
+    tickN(w, 30);
+    const baseline = listTradeOptions(w, ship, undefined, 1.0)[0];
+    expect(baseline).toBeDefined();
+
+    const cap = postTestHire(w, ship.location, "captain", { hireCost: 25_000 });
+    expect(hireCrew(w, ship, cap.id).ok).toBe(true);
+
+    const preloadGood = ["protein", "fiber", "medkits"].find(g => g !== baseline.good)!;
+    w.markets[ship.location].stock[preloadGood] = 3;
+    w.markets[ship.location].prices[preloadGood] = 10_000;
+    w.jobs.j_parallel = {
+      id: "j_parallel", kind: "shortage", tier: "high", good: preloadGood, qty: 3,
+      destination: baseline.to, reward: 0, penalty: 0, postedTick: w.tick,
+      expiresAt: w.tick + 100, acceptedBy: ship.id, delivered: 0,
+    };
+
+    ship.pilot = "auto";
+    tickWorld(w);
+
+    expect(ship.state).toBe("transit");
+    expect(ship.cargo.some(l => l.good === preloadGood)).toBe(false);
+  });
 });
 
 describe("crew: maintenance debt + repair", () => {
@@ -176,6 +203,40 @@ describe("crew: maintenance debt + repair", () => {
     const r = travelTo(w, ship, "verdant");
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toContain("repair");
+  });
+
+  it("executeTrade refuses when debt is over the threshold", () => {
+    const w = createWorld();
+    const ship = getPlayerShip(w);
+    tickN(w, 30);
+    const choice = listTradeOptions(w, ship, undefined, 1.0)[0];
+    expect(choice).toBeDefined();
+
+    ship.maintenanceDebt = MAINTENANCE_DEBT_TRAVEL_BLOCK;
+    const r = executeTrade(w, ship, choice);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toContain("repair");
+    expect(ship.state).toBe("idle");
+  });
+
+  it("auto-pilot stays docked when maintenance debt grounds the ship", () => {
+    const w = createWorld();
+    const ship = getPlayerShip(w);
+    ship.funds = 1_000_000;
+    tickN(w, 30);
+    expect(listTradeOptions(w, ship, undefined, 1.0).length).toBeGreaterThan(0);
+
+    const cap = postTestHire(w, ship.location, "captain");
+    expect(hireCrew(w, ship, cap.id).ok).toBe(true);
+    ship.pilot = "auto";
+    ship.maintenanceDebt = MAINTENANCE_DEBT_TRAVEL_BLOCK;
+    const startLocation = ship.location;
+
+    tickN(w, 5);
+
+    expect(ship.state).toBe("idle");
+    expect(ship.location).toBe(startLocation);
+    expect(ship.cargo).toEqual([]);
   });
 
   it("repairShip pays debt from ship funds and clears it", () => {

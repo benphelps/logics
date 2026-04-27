@@ -191,12 +191,12 @@ function DockedView({ ship, world, loc, target, hintText, critical, inTransit }:
             <LocalJobsCallout ship={ship} world={world} loc={loc} target={target} hintText={hintText} />
           </div>
         )}
-      <ShipLogCard ship={ship} world={world} />
+      <ShipLogCard ship={ship} />
     </div>
   );
 }
 
-function ShipLogCard({ ship, world }: { ship: Trader; world: World }) {
+function ShipLogCard({ ship }: { ship: Trader }) {
   const entries = ship.log ?? [];
   // Newest-first display so the latest action is at the top — feels like a feed.
   const ordered = [...entries].reverse();
@@ -892,11 +892,11 @@ function CargoRow({ group, ship, world, refLocId }: { group: CargoGroup; ship: T
     </>
   );
 
-  const tip = useHoverTooltip<HTMLTableRowElement>(tooltip);
+  const { ref: tooltipRef, handlers: tooltipHandlers, portal: tooltipPortal } = useHoverTooltip<HTMLTableRowElement>(tooltip);
 
   return (
     <>
-      <tr className="cargo-row" ref={tip.ref} {...tip.handlers}>
+      <tr className="cargo-row" ref={tooltipRef} {...tooltipHandlers}>
         <td>
           <span className="cargo-row-name">{good.name}</span>
           {group.lots.length > 1 && <span className="cargo-row-lots dim mono"> ({group.lots.length}L)</span>}
@@ -907,7 +907,7 @@ function CargoRow({ group, ship, world, refLocId }: { group: CargoGroup; ship: T
           <span className="dim"> ({pnl >= 0 ? "+" : ""}{pnlPct.toFixed(0)}%)</span>
         </td>
       </tr>
-      {tip.portal}
+      {tooltipPortal}
     </>
   );
 }
