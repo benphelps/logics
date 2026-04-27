@@ -84,6 +84,10 @@ function canUseContractCargoPlanning(world: World, trader: Trader): boolean {
     && (trader.pilot === "manual" || (trader.pilot === "auto" && hasCrew(trader, "navigator")));
 }
 
+function playerDrawFraction(world: World, trader: Trader): number | undefined {
+  return isPlayerShip(world, trader) ? 1.0 : undefined;
+}
+
 type RouteJobBonus = {
   jobId: JobId;
   perUnit: number;
@@ -321,7 +325,7 @@ export function listTradeOptions(
 }
 
 function evaluateOptions(world: World, trader: Trader, inflight: Map<string, number>): TradeOption | null {
-  const opts = listTradeOptions(world, trader, inflight);
+  const opts = listTradeOptions(world, trader, inflight, playerDrawFraction(world, trader));
   return opts[0] ?? null;
 }
 
@@ -495,7 +499,7 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
     // No direct trade — try speculative travel: empty trip to a station
     // where a profitable trade exists, even after positioning costs.
     if (trader.cargo.length === 0) {
-      const speculative = listSpeculativeOptions(world, trader);
+      const speculative = listSpeculativeOptions(world, trader, playerDrawFraction(world, trader));
       const sp = speculative[0];
       if (sp) {
         // Depart empty for the via point. On arrival, refuel + take the
@@ -815,7 +819,11 @@ export function repairShip(world: World, trader: Trader): { ok: true; paid: numb
 export function stepTraders(world: World): TraderEvent[] {
   const events: TraderEvent[] = [];
   const inflight = inTransitArrivalsByDestGood(world);
-  for (const trader of Object.values(world.traders)) {
+  const playerIds = new Set(world.player?.shipIds ?? []);
+  const orderedTraders = Object.values(world.traders).sort((a, b) =>
+    Number(playerIds.has(b.id)) - Number(playerIds.has(a.id))
+  );
+  for (const trader of orderedTraders) {
     stepTrader(world, trader, events, inflight);
   }
   // Update stranded counters once per tick. Drives rescue-job tier escalation:

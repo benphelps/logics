@@ -18,10 +18,10 @@ import {
 } from "react-icons/gi";
 import { useStore } from "../store";
 import { distance, reachableNeighbors } from "../../sim/geometry";
-import { describeHint, getGuidedHint, hintTarget, type HintTarget } from "../../sim/suggestions";
+import { describeHint, getGuidedHint, hintTarget, type GuidedHint, type HintTarget } from "../../sim/suggestions";
 import { SALES_TAX_RATE } from "../../sim/economy";
 import { cargoMass as cargoMassFn, findCargoLot, groupCargoByGood, type CargoGroup } from "../../sim/cargo";
-import { listAvailableRescueJobs, listLocalJobs } from "../../sim/jobs";
+import { listLocalJobs } from "../../sim/jobs";
 import { hasCrew, totalCrewWage } from "../../sim/crew";
 import { MAINTENANCE_DEBT_TRAVEL_BLOCK } from "../../sim/crew";
 import { listHiresAt } from "../../sim/hires";
@@ -70,7 +70,7 @@ function ShipPanel({ ship, world }: { ship: Trader; world: World }) {
   const focusLoc = inTransit
     ? world.locations[ship.destination!]
     : world.locations[ship.location];
-  const hint = getGuidedHint(world, ship);
+  const hint = getGuidedHint(world, ship, { mode: ship.pilot === "auto" ? "actual" : "advisory" });
   const target = hintTarget(hint);
   const hintText = describeHint(hint, world);
   const isCriticalHint = hint.kind === "refuel" && hint.critical;
@@ -81,6 +81,7 @@ function ShipPanel({ ship, world }: { ship: Trader; world: World }) {
         ship={ship}
         world={world}
         loc={focusLoc!}
+        hint={hint}
         target={target}
         hintText={hintText}
         critical={isCriticalHint}
@@ -94,7 +95,7 @@ const TOOLTIP_WIDTH = 280;
 const TOOLTIP_MARGIN = 12;
 const TOOLTIP_GAP = 10;
 
-function SuggestedMarker({ tip, critical }: { tip: string; critical?: boolean }) {
+function SuggestedMarker({ tip, critical, label = "Suggested" }: { tip: string; critical?: boolean; label?: string }) {
   const dotRef = useRef<HTMLSpanElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
 
@@ -127,7 +128,7 @@ function SuggestedMarker({ tip, critical }: { tip: string; critical?: boolean })
           role="tooltip"
           style={{ left: `${pos.left}px`, top: `${pos.top}px` }}
         >
-          <span className="suggested-tooltip-label">Suggested</span>
+          <span className="suggested-tooltip-label">{label}</span>
           {tip}
         </span>,
         document.body,
@@ -136,12 +137,12 @@ function SuggestedMarker({ tip, critical }: { tip: string; critical?: boolean })
   );
 }
 
-function ActionCell({ suggested, hintText, critical, children }: {
-  suggested: boolean; hintText: string; critical?: boolean; children: ReactNode;
+function ActionCell({ suggested, hintText, critical, label, children }: {
+  suggested: boolean; hintText: string; critical?: boolean; label?: string; children: ReactNode;
 }) {
   return (
     <span className="action-cell">
-      {suggested && <SuggestedMarker tip={hintText} critical={critical} />}
+      {suggested && <SuggestedMarker tip={hintText} critical={critical} label={label} />}
       {children}
     </span>
   );
@@ -154,6 +155,12 @@ function IconLabel({ icon: Icon, children }: { icon: IconType; children: ReactNo
       <span>{children}</span>
     </span>
   );
+}
+
+function formatQty(qty: number | undefined): string {
+  if (qty == null) return "";
+  if (qty >= 100) return Math.round(qty).toLocaleString();
+  return Number.isInteger(qty) ? qty.toFixed(0) : qty.toFixed(1);
 }
 
 function DetailChip({ icon: Icon, label, value }: { icon: IconType; label: string; value: ReactNode }) {
@@ -217,13 +224,13 @@ function useHoverTooltip<T extends HTMLElement>(content: ReactNode) {
   return { ref, handlers: { onMouseEnter: show, onMouseLeave: hide }, portal };
 }
 
-function DockedView({ ship, world, loc, target, hintText, critical, inTransit }: {
-  ship: Trader; world: World; loc: LocationDef; target: HintTarget; hintText: string; critical: boolean; inTransit: boolean;
+function DockedView({ ship, world, loc, hint, target, hintText, critical, inTransit }: {
+  ship: Trader; world: World; loc: LocationDef; hint: GuidedHint; target: HintTarget; hintText: string; critical: boolean; inTransit: boolean;
 }) {
   return (
     <div className="docked-view">
       <div className="bridge">
-        <ShipCard ship={ship} world={world} target={target} hintText={hintText} critical={critical} inTransit={inTransit} />
+        <ShipCard ship={ship} world={world} hint={hint} target={target} hintText={hintText} critical={critical} inTransit={inTransit} />
         <StationCard loc={loc} world={world} inTransit={inTransit} />
         <CargoBridgeCard ship={ship} world={world} loc={loc} inTransit={inTransit} />
         {inTransit
@@ -277,26 +284,24 @@ function LocalJobsCallout({ ship, world, loc, target, hintText }: {
   ship: Trader; world: World; loc: LocationDef; target: HintTarget; hintText: string;
 }) {
   const acceptJob = useStore((s) => s.acceptJob);
-  // Local-station shortages + co-located rescues, plus ALL remote rescues
-  // (rescues broadcast over comms so they follow the player from station to
-  // station). Dedupe to avoid double-listing co-located rescues.
+  const manualActions = ship.pilot !== "auto";
+  // Keep this as a station-local board. Remote jobs only appear here when the
+  // guidance engine is explicitly pointing at their Accept button.
   const local = listLocalJobs(world, loc.id);
   const seen = new Set(local.map(j => j.id));
-  const remoteRescues = listAvailableRescueJobs(world).filter(j => !seen.has(j.id));
-  // Remote shortage contracts the player can act on right now because their
-  // cargo matches — keeps the suggestion engine's "accept this remote contract"
-  // hint actionable in this list (otherwise the highlighted Accept button has
-  // nowhere to render).
-  const cargoGoods = new Set(ship.cargo.map(l => l.good));
-  const remoteActionable = Object.values(world.jobs).filter(j =>
+  const suggestedIds = new Set<Job["id"]>();
+  if (target.acceptJobId) suggestedIds.add(target.acceptJobId);
+  for (const id of target.acceptJobIds ?? []) suggestedIds.add(id);
+  const remoteSuggested = Object.values(world.jobs).filter(j =>
     j.acceptedBy == null
-    && j.kind === "shortage"
     && j.destination !== loc.id
-    && cargoGoods.has(j.good)
+    && suggestedIds.has(j.id)
     && !seen.has(j.id)
   );
-  for (const j of remoteActionable) seen.add(j.id);
-  const jobs = [...local, ...remoteRescues, ...remoteActionable].sort(localJobSort);
+  const jobs = [...remoteSuggested, ...local].sort((a, b) =>
+    Number(suggestedIds.has(b.id)) - Number(suggestedIds.has(a.id))
+    || localJobSort(a, b)
+  );
 
   return (
     <section className="bridge-card local-jobs-card">
@@ -304,7 +309,7 @@ function LocalJobsCallout({ ship, world, loc, target, hintText }: {
         <SingleTabHeader label="Contracts" count={jobs.length} icon={GiContract} />
       </header>
       {jobs.length === 0 ? (
-        <div className="contract-empty">No open contracts here and no distress calls active.</div>
+        <div className="contract-empty">No open contracts here.</div>
       ) : (
         <div className="contract-list">
           {jobs.map((j) => (
@@ -313,8 +318,9 @@ function LocalJobsCallout({ ship, world, loc, target, hintText }: {
               job={j}
               world={world}
               ship={ship}
-              suggested={target.acceptJobId === j.id}
+              suggested={target.acceptJobId === j.id || target.acceptJobIds?.includes(j.id) === true}
               hintText={hintText}
+              showAction={manualActions}
               onAccept={() => acceptJob(j.id, ship.id)}
             />
           ))}
@@ -330,8 +336,8 @@ function localJobSort(a: Job, b: Job): number {
   return t !== 0 ? t : a.expiresAt - b.expiresAt;
 }
 
-function LocalJobRow({ job, world, ship, suggested, hintText, onAccept }: {
-  job: Job; world: World; ship: Trader; suggested: boolean; hintText: string; onAccept: () => void;
+function LocalJobRow({ job, world, ship, suggested, hintText, showAction, onAccept }: {
+  job: Job; world: World; ship: Trader; suggested: boolean; hintText: string; showAction: boolean; onAccept: () => void;
 }) {
   const good = world.goods[job.good]?.name ?? job.good;
   const ticksLeft = Math.max(0, job.expiresAt - world.tick);
@@ -341,7 +347,7 @@ function LocalJobRow({ job, world, ship, suggested, hintText, onAccept }: {
   const dst = world.locations[job.destination]?.name ?? job.destination;
   const remote = job.destination !== ship.location;
   return (
-    <article className={`contract-card contract-tier-${job.tier} ${suggested ? "contract-suggested" : ""}`}>
+    <article className={`contract-card contract-tier-${job.tier} ${suggested ? "contract-suggested" : ""} ${!showAction ? "contract-card-readonly" : ""}`}>
       <div className="contract-main">
         <div className="contract-title-row">
           <span className={`tier-badge tier-${job.tier}`}>{job.tier.toUpperCase()}</span>
@@ -363,13 +369,15 @@ function LocalJobRow({ job, world, ship, suggested, hintText, onAccept }: {
           <ContractMetric label="Expires" value={`${ticksLeft}t`} tone={expiringSoon ? "warn" : "dim"} />
         </div>
       </div>
-      <div className="contract-actions">
-        <ActionCell suggested={suggested} hintText={hintText}>
-          <button className={`btn-action ${suggested ? "btn-suggested" : "primary"}`} onClick={onAccept}>
-            <span className="btn-label">Accept</span>
-          </button>
-        </ActionCell>
-      </div>
+      {showAction && (
+        <div className="contract-actions">
+          <ActionCell suggested={suggested} hintText={hintText}>
+            <button className={`btn-action ${suggested ? "btn-suggested" : "primary"}`} onClick={onAccept}>
+              <span className="btn-label">Accept</span>
+            </button>
+          </ActionCell>
+        </div>
+      )}
     </article>
   );
 }
@@ -385,6 +393,7 @@ function ContractMetric({ label, value, tone }: { label: string; value: string; 
 
 function TransitCard({ ship, world }: { ship: Trader; world: World }) {
   const stepN = useStore((s) => s.stepN);
+  const manualActions = ship.pilot !== "auto";
   // Recover total trip ticks from origin/destination distance — same math the
   // sim used on departure (ship.location is still the ORIGIN until arrival).
   const tripDist = distance(world, ship.location, ship.destination!);
@@ -396,13 +405,15 @@ function TransitCard({ ship, world }: { ship: Trader; world: World }) {
     <section className="bridge-card travel-card">
       <header className="bridge-card-head">
         <SingleTabHeader label="Travel" icon={GiPathDistance} />
-        <button
-          className="btn-action btn-header-inline"
-          onClick={() => stepN(ship.ticksRemaining)}
-          title={`Advance ${ship.ticksRemaining} ticks until arrival`}
-        >
-          <span className="btn-label">Quick Travel</span>
-        </button>
+        {manualActions && (
+          <button
+            className="btn-action btn-header-inline"
+            onClick={() => stepN(ship.ticksRemaining)}
+            title={`Advance ${ship.ticksRemaining} ticks until arrival`}
+          >
+            <span className="btn-label">Quick Travel</span>
+          </button>
+        )}
       </header>
       <div className="transit-progress">
         <div className="transit-progress-meta mono">
@@ -481,8 +492,8 @@ function StationCard({ loc, world, inTransit }: { loc: LocationDef; world: World
   );
 }
 
-function ShipCard({ ship, world, target, hintText, critical, inTransit }: {
-  ship: Trader; world: World; target: HintTarget; hintText: string; critical: boolean; inTransit: boolean;
+function ShipCard({ ship, world, hint, target, hintText, critical, inTransit }: {
+  ship: Trader; world: World; hint: GuidedHint; target: HintTarget; hintText: string; critical: boolean; inTransit: boolean;
 }) {
   const setPilot = useStore((s) => s.setPilot);
   const repairShip = useStore((s) => s.repairShip);
@@ -527,6 +538,7 @@ function ShipCard({ ship, world, target, hintText, critical, inTransit }: {
       </div>
       <FuelPanel ship={ship} world={world} target={target} hintText={hintText} critical={critical} inTransit={inTransit} />
       <MaintenancePanel debt={debt} canRepair={canRepair} onRepair={() => repairShip(ship.id)} />
+      <ShipPlanPanel ship={ship} world={world} hint={hint} hintText={hintText} />
     </section>
   );
 }
@@ -558,10 +570,168 @@ function WalletPanel({ funds }: { funds: number }) {
   );
 }
 
+type PlanTone = "" | "warn" | "bad";
+type PlanStep = { icon: IconType; text: string; tone?: PlanTone };
+type ShipPlan = { label: string; meta: string; tone: PlanTone; steps: PlanStep[]; note?: string };
+
+function ShipPlanPanel({ ship, world, hint, hintText }: {
+  ship: Trader; world: World; hint: GuidedHint; hintText: string;
+}) {
+  const plan = buildShipPlan(ship, world, hint, hintText);
+
+  return (
+    <div className={`ship-plan-panel ${plan.tone}`}>
+      <div className="ship-plan-head">
+        <span className="ship-plan-label">{plan.label}</span>
+        <span className="ship-plan-meta mono">{plan.meta}</span>
+      </div>
+      <ol className="ship-plan-steps">
+        {plan.steps.map((step, i) => {
+          const Icon = step.icon;
+          return (
+            <li key={`${step.text}-${i}`} className={step.tone ? `tone-${step.tone}` : ""}>
+              <Icon className="ui-icon" aria-hidden="true" focusable="false" />
+              <span>{step.text}</span>
+            </li>
+          );
+        })}
+      </ol>
+      {plan.note && <div className="ship-plan-note dim">{plan.note}</div>}
+    </div>
+  );
+}
+
+function buildShipPlan(ship: Trader, world: World, hint: GuidedHint, hintText: string): ShipPlan {
+  const label = ship.pilot === "auto" ? "Auto plan" : "Suggested plan";
+  const goodName = (id: string) => world.goods[id]?.name ?? id;
+  const locName = (id: string) => world.locations[id]?.name ?? id;
+  const itemList = (items: { good: string; qty: number }[]) =>
+    items.map(item => `${formatQty(item.qty)} ${goodName(item.good)}`).join(", ");
+  const contractText = (count: number) => `${count} contract${count === 1 ? "" : "s"}`;
+
+  if (ship.state === "transit") {
+    const destination = locName(ship.destination ?? ship.location);
+    return {
+      label: "En route",
+      meta: `${ship.ticksRemaining}t remaining`,
+      tone: "",
+      steps: [
+        { icon: GiPathDistance, text: `Arrive at ${destination}` },
+      ],
+    };
+  }
+
+  switch (hint.kind) {
+    case "refuel":
+      return {
+        label,
+        meta: hint.critical ? "critical" : "fuel",
+        tone: hint.critical ? "bad" : "warn",
+        steps: [{ icon: GiFuelTank, text: "Refuel before leaving", tone: hint.critical ? "bad" : "warn" }],
+        note: hint.reason,
+      };
+    case "buy_for_route":
+      return {
+        label,
+        meta: `Ç${Math.round(hint.netProfit).toLocaleString()} · ${hint.ticks}t`,
+        tone: "",
+        steps: [
+          { icon: GiCargoCrate, text: `Buy ${formatQty(hint.qty)} ${goodName(hint.good)}` },
+          { icon: GiPathDistance, text: `Fly to ${locName(hint.dst)}` },
+          { icon: GiTrade, text: "Sell cargo" },
+        ],
+      };
+    case "travel_to_sell":
+      return {
+        label,
+        meta: `Ç${Math.round(hint.expectedNet).toLocaleString()} · ${hint.ticks}t`,
+        tone: "",
+        steps: [
+          { icon: GiPathDistance, text: `Fly to ${locName(hint.dst)}` },
+          ...(hint.jobId && hint.jobAccepted === false
+            ? [{ icon: GiContract, text: "Accept matching contract" } satisfies PlanStep]
+            : []),
+          { icon: GiTrade, text: `Sell ${formatQty(hint.qty)} ${goodName(hint.good)}` },
+        ],
+      };
+    case "sell_here":
+      return {
+        label,
+        meta: `Ç${Math.round(hint.revenue).toLocaleString()}`,
+        tone: "",
+        steps: [{ icon: GiTrade, text: `Sell ${formatQty(hint.qty)} ${goodName(hint.good)} here` }],
+      };
+    case "speculate":
+      return {
+        label,
+        meta: `Ç${Math.round(hint.netProfit).toLocaleString()} · ${hint.ticks}t`,
+        tone: "",
+        steps: [
+          { icon: GiPathDistance, text: `Reposition to ${locName(hint.via)}` },
+          { icon: GiCargoCrate, text: `Buy ${goodName(hint.thenBuy)}` },
+          { icon: GiTrade, text: `Sell at ${locName(hint.thenSellAt)}` },
+        ],
+      };
+    case "accept_job":
+      return {
+        label,
+        meta: `Ç${Math.round(hint.expectedNet).toLocaleString()} · ${hint.ticks}t`,
+        tone: "",
+        steps: [{ icon: GiContract, text: "Accept contract" }],
+        note: hint.reason,
+      };
+    case "route_plan": {
+      const steps: PlanStep[] = [];
+      if (hint.acceptJobIds.length > 0) steps.push({ icon: GiContract, text: `Accept ${contractText(hint.acceptJobIds.length)}` });
+      if (hint.loaded && hint.loaded.length > 0) steps.push({ icon: GiCargoCrate, text: `Keep ${itemList(hint.loaded)} loaded` });
+      if (hint.buys.length > 0) steps.push({ icon: GiCargoCrate, text: `Load ${itemList(hint.buys)}` });
+      steps.push({ icon: GiPathDistance, text: `Fly to ${locName(hint.dst)}` });
+      if (hint.futureBuys && hint.futureBuys.length > 0) {
+        steps.push({ icon: GiCargoCrate, text: `Buy ${itemList(hint.futureBuys)}` });
+        steps.push({ icon: GiPathDistance, text: "Return and deliver" });
+      } else {
+        steps.push({ icon: GiTrade, text: "Sell or deliver cargo" });
+      }
+      return {
+        label,
+        meta: `Ç${Math.round(hint.expectedNet).toLocaleString()} · ${hint.ticks}t`,
+        tone: "",
+        steps,
+      };
+    }
+    case "job_plan": {
+      const steps: PlanStep[] = [];
+      if (hint.acceptJobIds.length > 0) steps.push({ icon: GiContract, text: `Accept ${contractText(hint.acceptJobIds.length)}` });
+      steps.push({ icon: GiTrade, text: `Sell ${itemList(hint.sells)} here` });
+      return {
+        label,
+        meta: `Ç${Math.round(hint.expectedNet).toLocaleString()} · ${hint.ticks}t`,
+        tone: "",
+        steps,
+      };
+    }
+    case "wait":
+      return {
+        label,
+        meta: "waiting",
+        tone: "warn",
+        steps: [{ icon: GiRadarSweep, text: hint.reason, tone: "warn" }],
+      };
+    default:
+      return {
+        label,
+        meta: "",
+        tone: "",
+        steps: [{ icon: GiRadarSweep, text: hintText }],
+      };
+  }
+}
+
 function FuelPanel({ ship, world, target, hintText, critical, inTransit }: {
   ship: Trader; world: World; target: HintTarget; hintText: string; critical: boolean; inTransit: boolean;
 }) {
   const refuel = useStore((s) => s.refuel);
+  const manualActions = ship.pilot !== "auto";
   const fuel = ship.currentFuel;
   const fuelQty = fuel?.qty ?? 0;
   const fuelPct = ship.fuelCapacity > 0 ? (fuelQty / ship.fuelCapacity) * 100 : 0;
@@ -593,6 +763,8 @@ function FuelPanel({ ship, world, target, hintText, critical, inTransit }: {
 
   const action = inTransit
     ? <span className="ship-fuel-badge">In transit</span>
+    : !manualActions
+      ? <span className="ship-fuel-badge">Auto</span>
     : !refuelType
       ? <span className="ship-fuel-badge bad">No fuel here</span>
       : room <= 0.001
@@ -695,20 +867,25 @@ function MarketTableBody({ ship, world, loc, target, hintText }: {
 }) {
   const buy = useStore((s) => s.buy);
   const sell = useStore((s) => s.sell);
+  const manualActions = ship.pilot !== "auto";
   const market = world.markets[loc.id];
   const goodsOrdered = Object.keys(world.goods).filter((gid) =>
     (market.stock[gid] ?? 0) > 0.001 || findCargoLot(ship, gid) != null
   );
+  const suggestedBuyCount = Object.keys(target.buyGoods ?? {}).length;
+  const buyOptionSet = suggestedBuyCount > 1;
+  const buyHintLabel = buyOptionSet ? "Option set" : "Suggested";
+  const currentMass = cargoMassFn(ship, world);
 
   return (
     <>
-      <table className="market-table">
+      <table className={`market-table ${!manualActions ? "market-table-readonly" : ""}`}>
         <colgroup>
           <col className="col-good" />
           <col className="col-num" />
           <col className="col-num" />
           <col className="col-net-sell" />
-          <col className="col-action" />
+          {manualActions && <col className="col-action" />}
         </colgroup>
         <thead>
           <tr>
@@ -716,7 +893,7 @@ function MarketTableBody({ ship, world, loc, target, hintText }: {
             <th className="numeric">Stock</th>
             <th className="numeric">Price</th>
             <th className="numeric">Net Sell*</th>
-            <th>Action</th>
+            {manualActions && <th>Action</th>}
           </tr>
         </thead>
         <tbody>
@@ -728,8 +905,9 @@ function MarketTableBody({ ship, world, loc, target, hintText }: {
             const isCargo = matchingLot != null;
             const cargoQty = matchingLot?.qty ?? 0;
             const isFuel = ship.fuelTypes.some(f => f.good === gid);
-            const isBuyTarget = target.buyGood === gid;
-            const isSellTarget = target.sellGood === gid && isCargo;
+            const suggestedBuyQty = target.buyGoods?.[gid] ?? (target.buyGood === gid ? target.buyQty : undefined);
+            const isBuyTarget = suggestedBuyQty != null;
+            const isSellTarget = (target.sellGood === gid || target.sellGoods?.includes(gid) === true) && isCargo;
             const rowClass = (isBuyTarget || isSellTarget) ? "row-suggested" : isCargo ? "row-mine" : "";
 
             return (
@@ -738,31 +916,41 @@ function MarketTableBody({ ship, world, loc, target, hintText }: {
                   <span className="good-name">{world.goods[gid].name}</span>
                   {isCargo && <span className="dim mono"> · holding {cargoQty.toFixed(0)}</span>}
                   {isFuel && <span className="faint"> · fuel</span>}
+                  {isBuyTarget && buyOptionSet && <span className="suggestion-kind-tag">option</span>}
                 </td>
                 <td className="numeric mono">{stock.toFixed(0)}</td>
                 <td className="numeric mono">Ç{price.toFixed(1)}</td>
                 <td className="numeric mono dim">Ç{netSell.toFixed(1)}</td>
-                <td>
-                  <BuySellControls
-                    ship={ship}
-                    world={world}
-                    goodId={gid}
-                    stock={stock}
-                    price={price}
-                    cargoQty={cargoQty}
-                    suggestedBuy={isBuyTarget}
-                    suggestedSell={isSellTarget}
-                    hintText={hintText}
-                    recommendedBuyQty={isBuyTarget ? target.buyQty : undefined}
-                    onBuy={(qty) => buy(ship.id, gid, qty)}
-                    onSell={(qty) => sell(ship.id, gid, qty)}
-                  />
-                </td>
+                {manualActions && (
+                  <td>
+                    <BuySellControls
+                      ship={ship}
+                      world={world}
+                      goodId={gid}
+                      stock={stock}
+                      price={price}
+                      cargoQty={cargoQty}
+                      suggestedBuy={isBuyTarget}
+                      suggestedSell={isSellTarget}
+                      hintText={hintText}
+                      suggestionLabel={buyHintLabel}
+                      recommendedBuyQty={suggestedBuyQty}
+                      onBuy={(qty) => buy(ship.id, gid, qty)}
+                      onSell={(qty) => sell(ship.id, gid, qty)}
+                    />
+                  </td>
+                )}
               </tr>
             );
           })}
         </tbody>
       </table>
+      {buyOptionSet && (
+        <div className="market-option-note">
+          <span className="option-note-label">Option set</span>
+          <span className="dim">Highlighted buys compete for the same hold: {currentMass.toFixed(0)}/{ship.capacity} mass loaded.</span>
+        </div>
+      )}
       <div className="market-footnote faint">
         * Net Sell = listed price minus 15% port tax. What you'd actually receive if you sold here.
       </div>
@@ -771,10 +959,11 @@ function MarketTableBody({ ship, world, loc, target, hintText }: {
 }
 
 function BuySellControls({
-  ship, world, goodId, stock, price, cargoQty, suggestedBuy, suggestedSell, hintText, recommendedBuyQty, onBuy, onSell,
+  ship, world, goodId, stock, price, cargoQty, suggestedBuy, suggestedSell, hintText, suggestionLabel, recommendedBuyQty, onBuy, onSell,
 }: {
   ship: Trader; world: World; goodId: string; stock: number; price: number; cargoQty: number;
   suggestedBuy: boolean; suggestedSell: boolean; hintText: string;
+  suggestionLabel?: string;
   recommendedBuyQty?: number;
   onBuy: (qty: number) => void; onSell: (qty: number) => void;
 }) {
@@ -817,7 +1006,7 @@ function BuySellControls({
       >
         <span className="btn-label">+10</span>
       </button>
-      <ActionCell suggested={suggestedBuy} hintText={hintText}>
+      <ActionCell suggested={suggestedBuy} hintText={hintText} label={suggestionLabel}>
         <button
           className={`btn-action ${suggestedBuy ? "btn-suggested" : "primary"}`}
           onClick={() => onBuy(buyClickQty)}
@@ -1209,9 +1398,22 @@ function TravelOptions({ ship, world, target, hintText }: {
   ship: Trader; world: World; target: HintTarget; hintText: string;
 }) {
   const travel = useStore((s) => s.travel);
+  const manualActions = ship.pilot !== "auto";
   const ft = ship.fuelTypes.find(f => f.good === ship.currentFuel?.good);
   const fuel = ship.currentFuel?.qty ?? 0;
   const market = world.markets[ship.location];
+  const activeJobsByDestination = new Map<string, Job[]>();
+  for (const job of Object.values(world.jobs)) {
+    if (job.acceptedBy !== ship.id) continue;
+    const jobs = activeJobsByDestination.get(job.destination) ?? [];
+    jobs.push(job);
+    activeJobsByDestination.set(job.destination, jobs);
+  }
+  const contractLine = (jobs: Job[]) => {
+    const first = jobs.slice(0, 2).map(j => `${world.goods[j.good]?.name ?? j.good} ${Math.max(0, j.qty - j.delivered).toFixed(0)}`);
+    const more = jobs.length > 2 ? ` +${jobs.length - 2}` : "";
+    return `${jobs.length} active: ${first.join(", ")}${more}`;
+  };
 
   const dests = reachableNeighbors(world, ship.location)
     .map(({ to, dist }) => {
@@ -1229,13 +1431,13 @@ function TravelOptions({ ship, world, target, hintText }: {
       <header className="bridge-card-head">
         <SingleTabHeader label="Travel" icon={GiPathDistance} />
       </header>
-      <table className="travel-table">
+      <table className={`travel-table ${!manualActions ? "travel-table-readonly" : ""}`}>
         <colgroup>
           <col className="col-dest" />
           <col className="col-num" />
           <col className="col-num" />
           <col className="col-num" />
-          <col className="col-action" />
+          {manualActions && <col className="col-action" />}
         </colgroup>
         <thead>
           <tr>
@@ -1243,30 +1445,44 @@ function TravelOptions({ ship, world, target, hintText }: {
             <th className="numeric">Dist</th>
             <th className="numeric">Fuel</th>
             <th className="numeric">Time</th>
-            <th></th>
+            {manualActions && <th></th>}
           </tr>
         </thead>
         <tbody>
           {dests.map((d) => {
             const suggested = target.travelTo === d.to;
+            const destinationJobs = activeJobsByDestination.get(d.to) ?? [];
+            const travelLabel = suggested ? target.travelLabel : undefined;
             return (
-              <tr key={d.to} className={suggested ? "row-suggested" : ""}>
-                <td>{d.name}</td>
+              <tr key={d.to} className={`${suggested ? "row-suggested" : ""} ${destinationJobs.length > 0 ? "travel-has-contract" : ""}`}>
+                <td>
+                  <div className="travel-dest-cell">
+                    <span className="travel-dest-name">{d.name}</span>
+                    {(travelLabel || destinationJobs.length > 0) && (
+                      <span className="travel-contract-line">
+                        {travelLabel && <span className="travel-contract-pill">{travelLabel}</span>}
+                        {destinationJobs.length > 0 && <span>{contractLine(destinationJobs)}</span>}
+                      </span>
+                    )}
+                  </div>
+                </td>
                 <td className="numeric mono">{d.dist.toFixed(1)}</td>
                 <td className={`numeric mono ${d.canFly ? "" : "bad"}`}>{d.fuelNeeded.toFixed(1)}</td>
                 <td className="numeric mono">{d.travelTicks}t</td>
-                <td>
-                  <ActionCell suggested={suggested && d.canFly} hintText={hintText}>
-                    <button
-                      onClick={() => travel(ship.id, d.to)}
-                      disabled={!d.canFly}
-                      className={`btn-action ${suggested && d.canFly ? "btn-suggested" : ""}`}
-                      title={d.canFly ? "" : "Insufficient fuel for this trip"}
-                    >
-                      <span className="btn-label">Depart</span>
-                    </button>
-                  </ActionCell>
-                </td>
+                {manualActions && (
+                  <td>
+                    <ActionCell suggested={suggested && d.canFly} hintText={hintText}>
+                      <button
+                        onClick={() => travel(ship.id, d.to)}
+                        disabled={!d.canFly}
+                        className={`btn-action ${suggested && d.canFly ? "btn-suggested" : ""}`}
+                        title={d.canFly ? "" : "Insufficient fuel for this trip"}
+                      >
+                        <span className="btn-label">Depart</span>
+                      </button>
+                    </ActionCell>
+                  </td>
+                )}
               </tr>
             );
           })}

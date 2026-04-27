@@ -313,6 +313,23 @@ describe("hires: dynamic pool", () => {
     }
   });
 
+  it("generated navigators have an affordable early tier", () => {
+    const w = createWorld();
+    const navigators = [];
+    for (let i = 0; i < 1_200; i++) {
+      navigators.push(...tickWorld(w).hiresPosted.filter(h => h.role === "navigator"));
+    }
+
+    const tierOne = navigators.filter(h => h.tier === 1);
+    expect(tierOne.length).toBeGreaterThan(0);
+    expect(Math.min(...tierOne.map(h => h.hireCost))).toBeLessThanOrEqual(75_000);
+
+    const tierTwo = navigators.filter(h => h.tier === 2);
+    if (tierTwo.length > 0) {
+      expect(Math.max(...tierTwo.map(h => h.hireCost))).toBeLessThanOrEqual(140_000);
+    }
+  });
+
   it("generation is deterministic for the same starting state", () => {
     const a = createWorld();
     const b = createWorld();

@@ -47,15 +47,16 @@ const MOD_COST_WEIGHT: Record<keyof CrewModifiers, number> = {
 // reachable on roughly this timeline of player progression:
 //   captain   — within ~10 manual trades (post-tutorial)
 //   mechanic  — shortly after, before maintenance debt grounds the ship
-//   navigator — after a stretch of capt-only auto play has built up funds
+//   navigator — a stretch goal, but reachable without grinding past the point
+//               where contracts would have been useful
 const BASE_HIRE_BY_ROLE: Record<CrewRole, number> = {
   captain:   25_000,
-  navigator: 140_000,        // was 240_000 — too long to reach in observed sessions
+  navigator: 70_000,         // was 140_000 — still too far from the early economy
   mechanic:  40_000,         // was 60_000  — wanted hireable before debt threshold bites
 };
 const BASE_WAGE_BY_ROLE: Record<CrewRole, number> = {
   captain:   4,
-  navigator: 10,             // was 12
+  navigator: 7,
   mechanic:  3,
 };
 
