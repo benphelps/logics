@@ -102,15 +102,26 @@
 
 .inventory-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.hover-tooltip-host {
+  display: block;
 }
 
 .cargo-card {
   background: var(--bg-2);
   border: 1px solid var(--border);
   border-radius: 4px;
-  padding: 10px 12px;
+  padding: 8px 10px;
+  cursor: help;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.cargo-card:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-3);
 }
 
 .cargo-card.cargo-card-empty {
@@ -119,82 +130,133 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 120px;
+  min-height: 56px;
+  cursor: default;
+}
+
+.cargo-card.cargo-card-empty:hover {
+  background: transparent;
+  border-color: var(--border);
 }
 
 .cargo-card-empty-text {
   text-align: center;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .cargo-card-empty-text div + div {
-  margin-top: 3px;
-  font-size: 11px;
+  margin-top: 2px;
+  font-size: 10px;
 }
 
-.cargo-card-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 8px;
-}
-
-.cargo-card-header h5 {
-  margin: 0;
-  font-size: 14px;
+.cargo-card-title {
+  font-size: 13px;
   color: var(--text);
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.cargo-card-good {
   font-weight: 600;
 }
 
-.cargo-card-id {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-top: 2px;
+.cargo-card-times {
+  font-size: 11px;
 }
 
 .cargo-card-qty {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-}
-
-.cargo-qty-num {
-  font-size: 22px;
+  font-size: 13px;
   color: var(--text);
-  line-height: 1;
 }
 
-.cargo-qty-unit {
+.cargo-card-pnl {
+  font-size: 11px;
+  margin-top: 4px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cargo-card-pnl .good { color: var(--good); font-weight: 600; }
+.cargo-card-pnl .bad  { color: var(--bad);  font-weight: 600; }
+
+.cargo-here-hint {
   font-size: 9px;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
+  background: var(--bg-3);
+  color: var(--text-faint);
+  padding: 1px 5px;
+  border-radius: 2px;
 }
 
-.cargo-card-stats {
+.cargo-card:hover .cargo-here-hint {
+  background: var(--bg-1);
+}
+
+/* ---- cargo tooltip (DOM, portal'd to body) ---- */
+
+.cargo-tooltip {
+  position: fixed;
+  width: 280px;
+  padding: 10px 12px;
+  background: var(--bg-3);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+  transform: translateY(-100%);
+  z-index: 1000;
+  white-space: normal;
+  animation: tooltip-fade 0.12s ease forwards;
+}
+
+.cargo-tooltip-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+
+.cargo-tooltip-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.cargo-tooltip-qty {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.cargo-tooltip-stats {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 4px 12px;
-  margin: 0 0 8px;
+  gap: 3px 12px;
+  margin: 0 0 6px;
   padding: 0;
-  font-size: 11px;
 }
 
 .cargo-stat {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
 }
 
 .cargo-stat dt {
-  font-size: 10px;
+  font-size: 9px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   margin: 0;
+  color: var(--text-dim);
 }
 
 .cargo-stat dd {
@@ -202,15 +264,12 @@
   font-size: 11px;
 }
 
-.cargo-card-pnl {
-  font-size: 11px;
-  padding-top: 8px;
+.cargo-tooltip-pnl {
+  font-size: 10px;
+  padding-top: 6px;
   border-top: 1px solid var(--border);
-  line-height: 1.5;
+  line-height: 1.4;
 }
-
-.cargo-card-pnl .good { color: var(--good); font-weight: 600; }
-.cargo-card-pnl .bad  { color: var(--bad);  font-weight: 600; }
 
 /* ---- in transit ---- */
 

@@ -91,8 +91,6 @@ function ShipPanel({ ship, world }: { ship: Trader; world: World }) {
         <span><span className="dim">wallet:</span> Ç{Math.round(ship.funds).toLocaleString()}</span>
       </div>
 
-      <Inventory ship={ship} world={world} />
-
       {inTransit ? (
         <TransitView ship={ship} world={world} />
       ) : (
@@ -105,6 +103,8 @@ function ShipPanel({ ship, world }: { ship: Trader; world: World }) {
           critical={isCriticalHint}
         />
       )}
+
+      <Inventory ship={ship} world={world} />
     </article>
   );
 }
@@ -224,40 +224,44 @@ function CargoCard({ cargo, ship, world }: { cargo: NonNullable<Trader["cargo"]>
   const mass = cargo.qty * good.weight;
   const massPct = (mass / ship.capacity) * 100;
 
-  return (
-    <article className="cargo-card">
-      <header className="cargo-card-header">
-        <div>
-          <h5>{good.name}</h5>
-          <div className="cargo-card-id dim mono">{cargo.good}</div>
-        </div>
-        <div className="cargo-card-qty mono">
-          <span className="cargo-qty-num">{cargo.qty.toFixed(0)}</span>
-          <span className="cargo-qty-unit dim">units</span>
-        </div>
-      </header>
-
-      <dl className="cargo-card-stats">
+  const tooltip = (
+    <>
+      <div className="cargo-tooltip-header">
+        <span className="cargo-tooltip-name">{good.name}</span>
+        <span className="cargo-tooltip-qty mono">{cargo.qty.toFixed(0)} units</span>
+      </div>
+      <dl className="cargo-tooltip-stats">
         <Stat label="from"        value={sourceName} />
         <Stat label="paid"        value={`Ç${cargo.unitPrice.toFixed(2)}/u`} />
-        <Stat label="cost basis" value={`Ç${Math.round(costBasis).toLocaleString()}`} />
+        <Stat label="cost basis"  value={`Ç${Math.round(costBasis).toLocaleString()}`} />
         <Stat label="age"         value={`${ageTicks}t`} />
         <Stat label="mass"        value={`${mass.toFixed(0)} (${massPct.toFixed(0)}%)`} />
-        <Stat label="weight/u"   value={`${good.weight}`} />
+        <Stat label="weight/u"    value={`${good.weight}`} />
       </dl>
+      <div className="cargo-tooltip-pnl">
+        <span className="dim">at Ç{herePrice.toFixed(1)} ({(SALES_TAX_RATE * 100).toFixed(0)}% tax) → </span>
+        <span className="mono">Ç{Math.round(hereNetRevenue).toLocaleString()} net</span>
+      </div>
+    </>
+  );
 
-      <div className="cargo-card-pnl">
-        <div className="dim">if sold here at Ç{herePrice.toFixed(1)} ({(SALES_TAX_RATE * 100).toFixed(0)}% tax):</div>
-        <div className="mono">
-          <span>Ç{Math.round(hereNetRevenue).toLocaleString()} net</span>
-          {" → "}
+  return (
+    <HoverTooltip content={tooltip}>
+      <article className="cargo-card">
+        <div className="cargo-card-title mono">
+          <span className="cargo-card-good">{cargo.good}</span>
+          <span className="cargo-card-times dim">×</span>
+          <span className="cargo-card-qty">{cargo.qty.toFixed(0)}</span>
+        </div>
+        <div className="cargo-card-pnl mono">
           <span className={pnlTone}>
             {pnl >= 0 ? "+" : ""}Ç{Math.round(pnl).toLocaleString()}
-            {" "}({pnl >= 0 ? "+" : ""}{pnlPct.toFixed(1)}%)
+            <span className="dim"> ({pnl >= 0 ? "+" : ""}{pnlPct.toFixed(0)}%)</span>
           </span>
+          <span className="cargo-here-hint">here</span>
         </div>
-      </div>
-    </article>
+      </article>
+    </HoverTooltip>
   );
 }
 
@@ -267,6 +271,40 @@ function Stat({ label, value }: { label: string; value: string }) {
       <dt className="dim">{label}</dt>
       <dd className="mono">{value}</dd>
     </div>
+  );
+}
+
+function HoverTooltip({ content, children }: { content: ReactNode; children: ReactNode }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+
+  const show = () => {
+    const el = ref.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    let left = rect.left;
+    if (left + TOOLTIP_WIDTH > window.innerWidth - TOOLTIP_MARGIN) {
+      left = window.innerWidth - TOOLTIP_MARGIN - TOOLTIP_WIDTH;
+    }
+    if (left < TOOLTIP_MARGIN) left = TOOLTIP_MARGIN;
+    setPos({ left, top: rect.top - TOOLTIP_GAP });
+  };
+  const hide = () => setPos(null);
+
+  return (
+    <span className="hover-tooltip-host" ref={ref} onMouseEnter={show} onMouseLeave={hide}>
+      {children}
+      {pos && createPortal(
+        <span
+          className="cargo-tooltip"
+          role="tooltip"
+          style={{ left: `${pos.left}px`, top: `${pos.top}px` }}
+        >
+          {content}
+        </span>,
+        document.body,
+      )}
+    </span>
   );
 }
 
