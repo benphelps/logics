@@ -11,8 +11,9 @@ export type GuidedHint =
   | { kind: "refuel"; critical: boolean; reason: string }
   | { kind: "wait"; reason: string };
 
-const FUEL_LOW_FRACTION = 0.25;
-const FUEL_CRITICAL_FRACTION = 0.10;
+const FUEL_LOW_FRACTION = 0.50;          // refuel proactively below this when local fuel exists
+const FUEL_CRITICAL_FRACTION = 0.15;     // override anything else below this
+const FUEL_POST_TRADE_MIN = 0.30;        // if a trade would leave you below this and you can refuel here, refuel first
 
 export function getGuidedHint(world: World, ship: Trader): GuidedHint {
   if (ship.state === "transit") {
@@ -66,19 +67,54 @@ export function getGuidedHint(world: World, ship: Trader): GuidedHint {
   }
   candidates.push(...cargoSell);
 
-  if (candidates.length > 0) {
-    candidates.sort((a, b) => b.value - a.value);
-    return candidates[0].hint;
-  }
+  candidates.sort((a, b) => b.value - a.value);
+  const top = candidates[0];
 
-  // Low fuel + nothing to do → suggest topping off opportunistically
-  if (fuel && ft) {
+  // Pre-emptive refuel: if the player follows the top suggestion blindly and
+  // would land critically low at a destination that may not have fuel,
+  // suggest refueling FIRST (assuming current location does have fuel).
+  // Without this, the engine happily walks the player into a stranding.
+  if (fuel && ft && selectRefuelType(world, ship) != null) {
     const fraction = fuel.qty / ship.fuelCapacity;
-    if (fraction < FUEL_LOW_FRACTION && selectRefuelType(world, ship) != null) {
-      return { kind: "refuel", critical: false, reason: `Tank at ${(fraction * 100).toFixed(0)}% — top off while waiting for opportunities.` };
+
+    // Cargo is empty AND tank below LOW_FRACTION → top off opportunistically
+    if (ship.cargo.length === 0 && fraction < FUEL_LOW_FRACTION) {
+      return { kind: "refuel", critical: false, reason: `Tank at ${(fraction * 100).toFixed(0)}% — top off before the next route.` };
+    }
+
+    // Top suggestion is buy+travel and would leave fuel critically low
+    if (top && top.hint.kind === "buy_for_route") {
+      const hint = top.hint;
+      const planned = buyOptions.find(o => o.good === hint.good && o.to === hint.dst);
+      if (planned) {
+        const fuelAfter = fuel.qty - planned.fuelNeeded;
+        const dstHasFuel = ship.fuelTypes.some(f => (world.markets[planned.to].stock[f.good] ?? 0) >= ship.fuelCapacity * 0.4);
+        if (fuelAfter / ship.fuelCapacity < FUEL_POST_TRADE_MIN && !dstHasFuel) {
+          return { kind: "refuel", critical: false, reason: `Refuel here first — that trip would leave you with only ${Math.max(0, fuelAfter).toFixed(0)} fuel at a station with no fuel for sale.` };
+        }
+      }
+    }
+
+    // Same check for travel-to-sell
+    if (top && top.hint.kind === "travel_to_sell") {
+      const dst = top.hint.dst;
+      const dstLoc = world.locations[dst];
+      if (dstLoc) {
+        const here = world.locations[ship.location];
+        const dist = Math.hypot(here.position.x - dstLoc.position.x, here.position.y - dstLoc.position.y);
+        const fuelNeeded = dist * ft.perDistance;
+        const fuelAfter = fuel.qty - fuelNeeded;
+        const dstHasFuel = ship.fuelTypes.some(f => (world.markets[dst].stock[f.good] ?? 0) >= ship.fuelCapacity * 0.4);
+        if (fuelAfter / ship.fuelCapacity < FUEL_POST_TRADE_MIN && !dstHasFuel) {
+          return { kind: "refuel", critical: false, reason: `Refuel here first — that trip would leave you with only ${Math.max(0, fuelAfter).toFixed(0)} fuel at a station with no fuel for sale.` };
+        }
+      }
     }
   }
 
+  if (top) return top.hint;
+
+  // Fallback: no profitable trade and no refuel triggered
   return { kind: "wait", reason: "No profitable trades from here right now. Wait for prices to shift, or move on speculation." };
 }
 

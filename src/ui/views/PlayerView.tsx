@@ -615,9 +615,8 @@ function FuelStation({ ship, world, loc, target, hintText, critical }: {
         <div className="bridge-card-title">
           <span className="bridge-card-eyebrow ship-eyebrow">Fuel</span>
           <span className="fuel-tank-inline mono">
-            <span className="dim">tank </span>
             <span>{tankFuelName}</span>{" "}
-            <span>{ship.currentFuel?.qty.toFixed(0)}/{ship.fuelCapacity}</span>
+            <span className={tankFraction < 25 ? "bad" : tankFraction < 50 ? "warn" : ""}>{ship.currentFuel?.qty.toFixed(0)}/{ship.fuelCapacity}</span>
             <span className="dim"> ({tankFraction.toFixed(0)}%)</span>
           </span>
         </div>
