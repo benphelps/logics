@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useStore } from "../store";
 import { reachableNeighbors } from "../../sim/geometry";
 import { describeHint, getGuidedHint, hintTarget, type HintTarget } from "../../sim/suggestions";
@@ -47,15 +48,16 @@ function ShipPanel({ ship, world }: { ship: Trader; world: World }) {
   const hint = getGuidedHint(world, ship);
   const target = hintTarget(hint);
   const hintText = describeHint(hint, world);
-  const hintTone = hint.kind === "refuel" && hint.critical ? "critical" :
-                   hint.kind === "wait" ? "neutral" :
-                   "primary";
+  const isCriticalHint = hint.kind === "refuel" && hint.critical;
 
   return (
     <article className="ship-panel">
       <header className="ship-header">
         <div>
-          <h3>{ship.name} <span className="faint mono">· {inTransit ? `→ ${world.locations[ship.destination!]?.name} (${ship.ticksRemaining}t)` : `at ${loc?.name}`}</span></h3>
+          <h3>
+            {ship.name}{" "}
+            <span className="faint mono">· {inTransit ? `→ ${world.locations[ship.destination!]?.name} (${ship.ticksRemaining}t)` : `at ${loc?.name}`}</span>
+          </h3>
           <div className="ship-meta dim">
             cap {ship.capacity} · speed {ship.speed} · uses {ship.fuelTypes.map(f => f.good).join(" / ")}
           </div>
@@ -87,19 +89,42 @@ function ShipPanel({ ship, world }: { ship: Trader; world: World }) {
         <span><span className="dim">wallet:</span> Ç{Math.round(ship.funds).toLocaleString()}</span>
       </div>
 
-      {!inTransit && (
-        <div className={`hint-banner hint-${hintTone}`}>
-          <span className="hint-icon">{hint.kind === "wait" ? "○" : hint.kind === "refuel" && hint.critical ? "⚠" : "→"}</span>
-          <span className="hint-text">{hintText}</span>
-        </div>
-      )}
-
       {inTransit ? (
         <TransitView ship={ship} world={world} />
       ) : (
-        <DockedView ship={ship} world={world} loc={loc!} target={target} />
+        <DockedView
+          ship={ship}
+          world={world}
+          loc={loc!}
+          target={target}
+          hintText={hintText}
+          critical={isCriticalHint}
+        />
       )}
     </article>
+  );
+}
+
+function SuggestedMarker({ tip, critical }: { tip: string; critical?: boolean }) {
+  return (
+    <span className={`suggested-marker ${critical ? "critical" : ""}`}>
+      <span className="suggested-marker-dot">✦</span>
+      <span className="suggested-tooltip" role="tooltip">
+        <span className="suggested-tooltip-label">Suggested</span>
+        {tip}
+      </span>
+    </span>
+  );
+}
+
+function ActionCell({ suggested, hintText, critical, children }: {
+  suggested: boolean; hintText: string; critical?: boolean; children: ReactNode;
+}) {
+  return (
+    <span className="action-cell">
+      {suggested && <SuggestedMarker tip={hintText} critical={critical} />}
+      {children}
+    </span>
   );
 }
 
@@ -127,13 +152,15 @@ function TransitView({ ship, world }: { ship: Trader; world: World }) {
   );
 }
 
-function DockedView({ ship, world, loc, target }: { ship: Trader; world: World; loc: LocationDef; target: HintTarget }) {
+function DockedView({ ship, world, loc, target, hintText, critical }: {
+  ship: Trader; world: World; loc: LocationDef; target: HintTarget; hintText: string; critical: boolean;
+}) {
   return (
     <div className="docked-view">
       <LocationOverview loc={loc} />
       <div className="docked-grid">
-        <MarketSection ship={ship} world={world} loc={loc} target={target} />
-        <SidePanels ship={ship} world={world} loc={loc} target={target} />
+        <MarketSection ship={ship} world={world} loc={loc} target={target} hintText={hintText} />
+        <SidePanels ship={ship} world={world} loc={loc} target={target} hintText={hintText} critical={critical} />
       </div>
     </div>
   );
@@ -157,7 +184,9 @@ function LocationOverview({ loc }: { loc: LocationDef }) {
   );
 }
 
-function MarketSection({ ship, world, loc, target }: { ship: Trader; world: World; loc: LocationDef; target: HintTarget }) {
+function MarketSection({ ship, world, loc, target, hintText }: {
+  ship: Trader; world: World; loc: LocationDef; target: HintTarget; hintText: string;
+}) {
   const buy = useStore((s) => s.buy);
   const sell = useStore((s) => s.sell);
   const market = world.markets[loc.id];
@@ -167,6 +196,13 @@ function MarketSection({ ship, world, loc, target }: { ship: Trader; world: Worl
     <div className="market-panel">
       <h4>Market</h4>
       <table className="market-table">
+        <colgroup>
+          <col className="col-good" />
+          <col className="col-num" />
+          <col className="col-num" />
+          <col className="col-num" />
+          <col className="col-action" />
+        </colgroup>
         <thead>
           <tr>
             <th>Good</th>
@@ -208,6 +244,7 @@ function MarketSection({ ship, world, loc, target }: { ship: Trader; world: Worl
                     cargoQty={cargoQty}
                     suggestedBuy={isBuyTarget}
                     suggestedSell={isSellTarget}
+                    hintText={hintText}
                     onBuy={(qty) => buy(ship.id, gid, qty)}
                     onSell={(qty) => sell(ship.id, qty)}
                   />
@@ -225,10 +262,10 @@ function MarketSection({ ship, world, loc, target }: { ship: Trader; world: Worl
 }
 
 function BuySellControls({
-  ship, world, goodId, stock, price, cargoQty, suggestedBuy, suggestedSell, onBuy, onSell,
+  ship, world, goodId, stock, price, cargoQty, suggestedBuy, suggestedSell, hintText, onBuy, onSell,
 }: {
   ship: Trader; world: World; goodId: string; stock: number; price: number; cargoQty: number;
-  suggestedBuy: boolean; suggestedSell: boolean;
+  suggestedBuy: boolean; suggestedSell: boolean; hintText: string;
   onBuy: (qty: number) => void; onSell: (qty: number) => void;
 }) {
   const good = world.goods[goodId];
@@ -237,52 +274,73 @@ function BuySellControls({
   const maxByRoom = Math.floor(roomMass / good.weight);
   const maxByFunds = price > 0 ? Math.floor(ship.funds / price) : 0;
   const maxBuy = Math.max(0, Math.min(maxByRoom, maxByFunds, Math.floor(stock)));
-  const cannotBuy = ship.cargo && ship.cargo.good !== goodId;
+  const wrongCargo = ship.cargo != null && ship.cargo.good !== goodId;
   const isCargoMatch = ship.cargo?.good === goodId;
 
-  if (cannotBuy && !isCargoMatch) {
-    return <span className="faint">other cargo loaded</span>;
-  }
+  const canBuy10 = maxBuy >= 10;
+  const canBuyMax = maxBuy >= 1;
+  const canSell = isCargoMatch && cargoQty >= 1;
+
+  let buyTitle = "";
+  if (wrongCargo) buyTitle = `Carrying ${ship.cargo!.good} — sell or unload first`;
+  else if (stock < 1) buyTitle = "Out of stock here";
+  else if (maxByRoom < 1) buyTitle = "Cargo bay full";
+  else if (maxByFunds < 1) buyTitle = "Insufficient funds";
+
+  const sellTitle = !isCargoMatch
+    ? (ship.cargo ? `Carrying ${ship.cargo.good}, not ${goodId}` : "No matching cargo")
+    : "";
 
   return (
     <div className="buy-sell">
-      {maxBuy > 0 && (
-        <>
-          <button onClick={() => onBuy(Math.min(10, maxBuy))} disabled={maxBuy < 1}>+10</button>
-          <button
-            onClick={() => onBuy(maxBuy)}
-            className={suggestedBuy ? "btn-suggested" : "primary"}
-            disabled={maxBuy < 1}
-          >
-            Buy max ({maxBuy})
-          </button>
-        </>
-      )}
-      {isCargoMatch && cargoQty > 0 && (
+      <button
+        className="btn-action btn-narrow"
+        onClick={() => onBuy(10)}
+        disabled={!canBuy10}
+        title={canBuy10 ? "Buy 10" : (buyTitle || "Need room/funds/stock for at least 10")}
+      >
+        <span className="btn-label">+10</span>
+      </button>
+      <ActionCell suggested={suggestedBuy} hintText={hintText}>
         <button
-          onClick={() => onSell(cargoQty)}
-          className={suggestedSell ? "btn-suggested" : ""}
+          className={`btn-action ${suggestedBuy ? "btn-suggested" : "primary"}`}
+          onClick={() => onBuy(maxBuy)}
+          disabled={!canBuyMax}
+          title={canBuyMax ? "" : buyTitle}
         >
-          Sell {cargoQty.toFixed(0)}
+          <span className="btn-label">Buy max</span>
+          <span className="btn-count">{maxBuy}</span>
         </button>
-      )}
-      {maxBuy === 0 && !isCargoMatch && (
-        <span className="faint">{stock < 1 ? "out of stock" : maxByFunds < 1 ? "can't afford" : "no room"}</span>
-      )}
+      </ActionCell>
+      <ActionCell suggested={suggestedSell} hintText={hintText}>
+        <button
+          className={`btn-action ${suggestedSell ? "btn-suggested" : ""}`}
+          onClick={() => onSell(cargoQty)}
+          disabled={!canSell}
+          title={canSell ? "" : sellTitle}
+        >
+          <span className="btn-label">Sell</span>
+          <span className="btn-count">{canSell ? cargoQty.toFixed(0) : "0"}</span>
+        </button>
+      </ActionCell>
     </div>
   );
 }
 
-function SidePanels({ ship, world, loc, target }: { ship: Trader; world: World; loc: LocationDef; target: HintTarget }) {
+function SidePanels({ ship, world, loc, target, hintText, critical }: {
+  ship: Trader; world: World; loc: LocationDef; target: HintTarget; hintText: string; critical: boolean;
+}) {
   return (
     <div className="side-panels">
-      <FuelStation ship={ship} world={world} loc={loc} target={target} />
-      <TravelOptions ship={ship} world={world} target={target} />
+      <FuelStation ship={ship} world={world} loc={loc} target={target} hintText={hintText} critical={critical} />
+      <TravelOptions ship={ship} world={world} target={target} hintText={hintText} />
     </div>
   );
 }
 
-function FuelStation({ ship, world, loc, target }: { ship: Trader; world: World; loc: LocationDef; target: HintTarget }) {
+function FuelStation({ ship, world, loc, target, hintText, critical }: {
+  ship: Trader; world: World; loc: LocationDef; target: HintTarget; hintText: string; critical: boolean;
+}) {
   const refuel = useStore((s) => s.refuel);
   const market = world.markets[loc.id];
   const types = ship.fuelTypes.map(ft => ({
@@ -293,7 +351,6 @@ function FuelStation({ ship, world, loc, target }: { ship: Trader; world: World;
   }));
   const tankFraction = ship.currentFuel ? (ship.currentFuel.qty / ship.fuelCapacity) * 100 : 0;
   const suggested = target.refuel === true;
-  const critical = suggested && target.critical === true;
 
   return (
     <div className={`side-panel ${suggested ? "panel-suggested" : ""}`}>
@@ -319,17 +376,21 @@ function FuelStation({ ship, world, loc, target }: { ship: Trader; world: World;
           </li>
         ))}
       </ul>
-      <button
-        onClick={() => refuel(ship.id)}
-        className={`fuel-btn ${critical ? "btn-suggested-critical" : suggested ? "btn-suggested" : "primary"}`}
-      >
-        {critical ? "Refuel now" : "Fill tank"}
-      </button>
+      <ActionCell suggested={suggested} hintText={hintText} critical={critical}>
+        <button
+          onClick={() => refuel(ship.id)}
+          className={`btn-action btn-fuel ${critical ? "btn-suggested-critical" : suggested ? "btn-suggested" : "primary"}`}
+        >
+          <span className="btn-label">{critical ? "Refuel now" : "Fill tank"}</span>
+        </button>
+      </ActionCell>
     </div>
   );
 }
 
-function TravelOptions({ ship, world, target }: { ship: Trader; world: World; target: HintTarget }) {
+function TravelOptions({ ship, world, target, hintText }: {
+  ship: Trader; world: World; target: HintTarget; hintText: string;
+}) {
   const travel = useStore((s) => s.travel);
   const ft = ship.fuelTypes.find(f => f.good === ship.currentFuel?.good);
   const fuel = ship.currentFuel?.qty ?? 0;
@@ -350,6 +411,13 @@ function TravelOptions({ ship, world, target }: { ship: Trader; world: World; ta
     <div className="side-panel">
       <h4>Travel</h4>
       <table className="travel-table">
+        <colgroup>
+          <col className="col-dest" />
+          <col className="col-num" />
+          <col className="col-num" />
+          <col className="col-num" />
+          <col className="col-action" />
+        </colgroup>
         <thead>
           <tr>
             <th>To</th>
@@ -369,13 +437,16 @@ function TravelOptions({ ship, world, target }: { ship: Trader; world: World; ta
                 <td className={`numeric mono ${d.canFly ? "" : "bad"}`}>{d.fuelNeeded.toFixed(1)}</td>
                 <td className="numeric mono">{d.travelTicks}t</td>
                 <td>
-                  <button
-                    onClick={() => travel(ship.id, d.to)}
-                    disabled={!d.canFly}
-                    className={suggested && d.canFly ? "btn-suggested" : ""}
-                  >
-                    Depart
-                  </button>
+                  <ActionCell suggested={suggested && d.canFly} hintText={hintText}>
+                    <button
+                      onClick={() => travel(ship.id, d.to)}
+                      disabled={!d.canFly}
+                      className={`btn-action ${suggested && d.canFly ? "btn-suggested" : ""}`}
+                      title={d.canFly ? "" : "Insufficient fuel for this trip"}
+                    >
+                      <span className="btn-label">Depart</span>
+                    </button>
+                  </ActionCell>
                 </td>
               </tr>
             );

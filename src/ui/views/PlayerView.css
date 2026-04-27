@@ -157,7 +157,14 @@
   width: 100%;
   border-collapse: collapse;
   font-size: 12px;
+  table-layout: fixed;
 }
+
+.col-good   { width: auto; }
+.col-dest   { width: auto; }
+.col-num    { width: 64px; }
+.col-action { width: 296px; }
+.travel-table .col-action { width: 132px; }
 
 .market-table th,
 .travel-table th,
@@ -206,48 +213,8 @@
 }
 
 /* ---- guided-hint highlights ---- */
-
-.hint-banner {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  border-radius: 4px;
-  font-size: 13px;
-  border: 1px solid;
-  margin-bottom: 14px;
-}
-
-.hint-banner.hint-primary {
-  background: rgba(79, 182, 255, 0.10);
-  border-color: var(--accent);
-  color: var(--text);
-}
-
-.hint-banner.hint-critical {
-  background: var(--bad-bg);
-  border-color: var(--bad);
-  color: var(--text);
-}
-
-.hint-banner.hint-neutral {
-  background: var(--bg-2);
-  border-color: var(--border);
-  color: var(--text-dim);
-}
-
-.hint-icon {
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.hint-banner.hint-primary  .hint-icon { color: var(--accent); }
-.hint-banner.hint-critical .hint-icon { color: var(--bad); }
-.hint-banner.hint-neutral  .hint-icon { color: var(--text-faint); }
-
-.hint-text {
-  flex: 1;
-}
+/* hint banner removed — guidance is now shown via highlighted UI elements
+   + the hover ✦ marker on the suggested button. */
 
 /* row + button highlight when they are the suggested target */
 
@@ -301,19 +268,148 @@
   display: flex;
   gap: 4px;
   align-items: center;
-  min-height: 22px;       /* keeps text-only cells the same height as button cells */
+  min-height: 24px;
   white-space: nowrap;
 }
 
-.buy-sell button {
+/* unified action button — fixed dimensions across every table */
+.btn-action {
   font-size: 11px;
-  padding: 2px 8px;
-  height: 22px;
+  padding: 0 8px;
+  height: 24px;
+  width: 108px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;       /* label left, count right */
+  gap: 6px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
 }
 
-.travel-table button {
-  height: 22px;
-  padding: 0 8px;
+.btn-action.btn-narrow {
+  width: 52px;
+  justify-content: center;
+}
+
+.btn-action.btn-fuel {
+  width: 100%;
+}
+
+.btn-label {
+  text-align: left;
+  flex: 1;
+}
+
+.btn-count {
+  display: inline-block;
+  min-width: 24px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.btn-action.primary .btn-count { color: rgba(255, 255, 255, 0.85); }
+.btn-action.btn-suggested .btn-count { color: rgba(255, 255, 255, 0.9); }
+
+/* ghost state — disabled buttons stay visible, dimmed, same dimensions */
+.btn-action:disabled {
+  opacity: 0.32;
+  cursor: not-allowed;
+}
+
+.btn-action:disabled .btn-count {
+  color: var(--text-faint);
+}
+
+/* ----- suggested-marker: floats top-left of suggested element ----- */
+.action-cell {
+  position: relative;
+  display: inline-block;
+}
+
+.suggested-marker {
+  position: absolute;
+  top: -7px;
+  left: -7px;
+  z-index: 5;
+  cursor: help;
+}
+
+.suggested-marker-dot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  box-shadow: 0 0 0 2px var(--bg-2);
+  animation: marker-pulse 2.2s ease-in-out infinite;
+}
+
+.suggested-marker.critical .suggested-marker-dot {
+  background: var(--bad);
+  animation: marker-pulse-critical 1.4s ease-in-out infinite;
+}
+
+@keyframes marker-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px var(--bg-2), 0 0 0 0 rgba(79, 182, 255, 0.6); }
+  50%      { box-shadow: 0 0 0 2px var(--bg-2), 0 0 0 8px rgba(79, 182, 255, 0); }
+}
+
+@keyframes marker-pulse-critical {
+  0%, 100% { box-shadow: 0 0 0 2px var(--bg-2), 0 0 0 0 rgba(248, 113, 113, 0.7); }
+  50%      { box-shadow: 0 0 0 2px var(--bg-2), 0 0 0 9px rgba(248, 113, 113, 0); }
+}
+
+/* DOM tooltip — appears on marker hover */
+.suggested-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: -4px;
+  width: 280px;
+  padding: 8px 10px;
+  background: var(--bg-3);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(2px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  z-index: 100;
+  white-space: normal;
+}
+
+.suggested-marker:hover .suggested-tooltip,
+.suggested-marker:focus-within .suggested-tooltip {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.suggested-marker.critical .suggested-tooltip {
+  border-color: var(--bad);
+}
+
+.suggested-tooltip-label {
+  display: block;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  margin-bottom: 4px;
+  font-weight: 700;
+}
+
+.suggested-marker.critical .suggested-tooltip-label {
+  color: var(--bad);
 }
 
 /* ---- side panels: fuel + travel ---- */
