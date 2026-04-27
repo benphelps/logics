@@ -239,6 +239,7 @@
 .btn-suggested:hover:not(:disabled) {
   background: #6cc7ff !important;
   border-color: #6cc7ff !important;
+  box-shadow: 0 0 0 2px rgba(108, 199, 255, 0.35);
 }
 
 .btn-suggested-critical {
@@ -252,6 +253,7 @@
 .btn-suggested-critical:hover:not(:disabled) {
   background: #fa8585 !important;
   border-color: #fa8585 !important;
+  box-shadow: 0 0 0 2px rgba(250, 133, 133, 0.40);
 }
 
 .panel-suggested {
@@ -366,35 +368,33 @@
   50%      { box-shadow: 0 0 0 2px var(--bg-2), 0 0 0 9px rgba(248, 113, 113, 0); }
 }
 
-/* DOM tooltip — appears on marker hover */
+/* DOM tooltip — portaled to <body>, position: fixed with JS-clamped coords
+   so it never overflows the viewport. translateY(-100%) places it ABOVE
+   the marker (top: rect.top - GAP becomes the bottom edge of the tooltip). */
 .suggested-tooltip {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: -4px;
+  position: fixed;
   width: 280px;
   padding: 8px 10px;
   background: var(--bg-3);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--accent);
   border-radius: 4px;
   font-size: 11px;
   line-height: 1.45;
   color: var(--text);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
-  opacity: 0;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
   pointer-events: none;
-  transform: translateY(2px);
-  transition: opacity 0.12s ease, transform 0.12s ease;
-  z-index: 100;
+  transform: translateY(-100%);
+  z-index: 1000;
   white-space: normal;
+  animation: tooltip-fade 0.12s ease forwards;
 }
 
-.suggested-marker:hover .suggested-tooltip,
-.suggested-marker:focus-within .suggested-tooltip {
-  opacity: 1;
-  transform: translateY(0);
+@keyframes tooltip-fade {
+  from { opacity: 0; transform: translateY(calc(-100% + 4px)); }
+  to   { opacity: 1; transform: translateY(-100%); }
 }
 
-.suggested-marker.critical .suggested-tooltip {
+.suggested-tooltip.critical {
   border-color: var(--bad);
 }
 

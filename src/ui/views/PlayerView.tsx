@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useStore } from "../store";
 import { reachableNeighbors } from "../../sim/geometry";
 import { describeHint, getGuidedHint, hintTarget, type HintTarget } from "../../sim/suggestions";
@@ -105,14 +106,48 @@ function ShipPanel({ ship, world }: { ship: Trader; world: World }) {
   );
 }
 
+const TOOLTIP_WIDTH = 280;
+const TOOLTIP_MARGIN = 12;
+const TOOLTIP_GAP = 10;
+
 function SuggestedMarker({ tip, critical }: { tip: string; critical?: boolean }) {
+  const dotRef = useRef<HTMLSpanElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+
+  const show = () => {
+    const el = dotRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    let left = rect.left;
+    if (left + TOOLTIP_WIDTH > window.innerWidth - TOOLTIP_MARGIN) {
+      left = window.innerWidth - TOOLTIP_MARGIN - TOOLTIP_WIDTH;
+    }
+    if (left < TOOLTIP_MARGIN) left = TOOLTIP_MARGIN;
+    setPos({ left, top: rect.top - TOOLTIP_GAP });
+  };
+  const hide = () => setPos(null);
+
   return (
-    <span className={`suggested-marker ${critical ? "critical" : ""}`}>
-      <span className="suggested-marker-dot">✦</span>
-      <span className="suggested-tooltip" role="tooltip">
-        <span className="suggested-tooltip-label">Suggested</span>
-        {tip}
-      </span>
+    <span
+      className={`suggested-marker ${critical ? "critical" : ""}`}
+      onMouseEnter={show}
+      onMouseLeave={hide}
+      onFocus={show}
+      onBlur={hide}
+      tabIndex={0}
+    >
+      <span className="suggested-marker-dot" ref={dotRef}>✦</span>
+      {pos && createPortal(
+        <span
+          className={`suggested-tooltip ${critical ? "critical" : ""}`}
+          role="tooltip"
+          style={{ left: `${pos.left}px`, top: `${pos.top}px` }}
+        >
+          <span className="suggested-tooltip-label">Suggested</span>
+          {tip}
+        </span>,
+        document.body,
+      )}
     </span>
   );
 }

@@ -57,7 +57,8 @@ button {
 
 button:hover:not(:disabled) {
   background: var(--bg-3);
-  border-color: var(--border-strong);
+  /* don't override border-color — it would clobber accent borders on
+     primary / suggested buttons. Specific hover overrides below. */
 }
 
 button:disabled {
@@ -71,8 +72,9 @@ button.primary {
   color: white;
 }
 
-button.primary:hover {
+button.primary:hover:not(:disabled) {
   background: var(--accent);
+  border-color: var(--accent);
 }
 
 .mono {
