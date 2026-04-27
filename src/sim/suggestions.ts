@@ -121,17 +121,18 @@ function cargoLoadedHint(world: World, ship: Trader): GuidedHint {
 }
 
 export function describeHint(hint: GuidedHint, world: World): string {
+  const goodName = (id: string) => world.goods[id]?.name ?? id;
   switch (hint.kind) {
     case "buy_for_route": {
       const dst = world.locations[hint.dst]?.name ?? hint.dst;
-      return `Buy ${hint.qty} ${hint.good} here → travel to ${dst} → sell. Net Ç${Math.round(hint.netProfit).toLocaleString()} over ${hint.ticks} ticks (Ç${hint.profitPerTick.toFixed(1)}/t).`;
+      return `Buy ${hint.qty} ${goodName(hint.good)} here → travel to ${dst} → sell. Net Ç${Math.round(hint.netProfit).toLocaleString()} over ${hint.ticks} ticks (Ç${hint.profitPerTick.toFixed(1)}/t).`;
     }
     case "travel_to_sell": {
       const dst = world.locations[hint.dst]?.name ?? hint.dst;
-      return `Travel to ${dst} to sell your ${hint.qty.toFixed(0)} ${hint.good} — expected net Ç${Math.round(hint.expectedNet).toLocaleString()} (Ç${Math.round(hint.gainOverHere).toLocaleString()} better than selling here).`;
+      return `Travel to ${dst} to sell your ${hint.qty.toFixed(0)} ${goodName(hint.good)} — expected net Ç${Math.round(hint.expectedNet).toLocaleString()} (Ç${Math.round(hint.gainOverHere).toLocaleString()} better than selling here).`;
     }
     case "sell_here":
-      return `Sell your ${hint.qty.toFixed(0)} ${hint.good} here for Ç${Math.round(hint.revenue).toLocaleString()} net. No better destination is reachable.`;
+      return `Sell your ${hint.qty.toFixed(0)} ${goodName(hint.good)} here for Ç${Math.round(hint.revenue).toLocaleString()} net. No better destination is reachable.`;
     case "refuel":
       return hint.critical ? `⚠ ${hint.reason}` : hint.reason;
     case "wait":

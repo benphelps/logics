@@ -83,10 +83,10 @@ function ShipPanel({ ship, world }: { ship: Trader; world: World }) {
 
       <div className="ship-status mono">
         <span><span className="dim">cargo:</span> {ship.cargo
-          ? <span className="good">{ship.cargo.good}×{ship.cargo.qty.toFixed(0)}</span>
+          ? <span className="good">{world.goods[ship.cargo.good]?.name ?? ship.cargo.good} × {ship.cargo.qty.toFixed(0)}</span>
           : <span className="faint">empty</span>}</span>
         <span className="dim">·</span>
-        <span><span className="dim">fuel:</span> <span className={fuelTone}>{fuel?.good} {fuel?.qty.toFixed(0)}/{ship.fuelCapacity}</span></span>
+        <span><span className="dim">fuel:</span> <span className={fuelTone}>{fuel ? (world.goods[fuel.good]?.name ?? fuel.good) : "—"} {fuel?.qty.toFixed(0)}/{ship.fuelCapacity}</span></span>
         <span className="dim">·</span>
         <span><span className="dim">wallet:</span> Ç{Math.round(ship.funds).toLocaleString()}</span>
       </div>
@@ -248,10 +248,10 @@ function CargoCard({ cargo, ship, world }: { cargo: NonNullable<Trader["cargo"]>
   return (
     <HoverTooltip content={tooltip}>
       <article className="cargo-card">
-        <div className="cargo-card-title mono">
-          <span className="cargo-card-good">{cargo.good}</span>
-          <span className="cargo-card-times dim">×</span>
-          <span className="cargo-card-qty">{cargo.qty.toFixed(0)}</span>
+        <div className="cargo-card-title">
+          <span className="cargo-card-good">{good.name}</span>
+          <span className="cargo-card-times dim mono">×</span>
+          <span className="cargo-card-qty mono">{cargo.qty.toFixed(0)}</span>
         </div>
         <div className="cargo-card-pnl mono">
           <span className={pnlTone}>
@@ -324,7 +324,7 @@ function TransitView({ ship, world }: { ship: Trader; world: World }) {
         {ship.cargo && (
           <div>
             <div className="transit-label dim">Carrying</div>
-            <div className="transit-name mono">{ship.cargo.good} × {ship.cargo.qty.toFixed(0)}</div>
+            <div className="transit-name">{world.goods[ship.cargo.good]?.name ?? ship.cargo.good} <span className="mono">× {ship.cargo.qty.toFixed(0)}</span></div>
           </div>
         )}
       </div>
@@ -407,7 +407,7 @@ function MarketSection({ ship, world, loc, target, hintText }: {
             return (
               <tr key={gid} className={rowClass}>
                 <td>
-                  <span>{gid}</span>
+                  <span className="good-name">{world.goods[gid].name}</span>
                   {isCargo && <span className="dim mono"> · holding {cargoQty.toFixed(0)}</span>}
                   {isFuel && <span className="faint"> · fuel</span>}
                 </td>
@@ -545,7 +545,7 @@ function FuelStation({ ship, world, loc, target, hintText, critical }: {
         {types.map((t) => (
           <li key={t.good}>
             <div>
-              <span>{t.good}</span>
+              <span>{world.goods[t.good]?.name ?? t.good}</span>
               <span className="faint"> · {t.perDistance.toFixed(1)}/dist</span>
             </div>
             <div className="mono">
