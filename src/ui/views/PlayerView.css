@@ -47,7 +47,16 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 4px;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.bridge-card-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;          /* allow ellipsis if needed */
+  flex: 1;
 }
 
 .bridge-card-eyebrow {
@@ -55,6 +64,12 @@
   font-weight: 600;
   letter-spacing: 0.10em;
   text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.bridge-card-meta {
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 /* Left/right colored accent — station/travel = blue, ship/fuel = green */
@@ -82,56 +97,44 @@
   font-size: 13px;
   font-weight: 600;
   color: var(--text);
-  margin-bottom: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .station-tags {
   display: flex;
   flex-wrap: wrap;
   gap: 3px;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
+}
+
+.station-flows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .station-flow {
-  margin-top: 4px;
   font-size: 11px;
   display: flex;
   gap: 6px;
-}
-
-.station-flow > .dim {
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  white-space: nowrap;
-  flex-shrink: 0;
-  align-self: center;
-  min-width: 50px;
-}
-
-.bridge-card-stats {
-  display: flex;
-  gap: 12px;
-  margin: 4px 0 0;
-  padding: 0;
-  font-size: 11px;
-}
-
-.bridge-card-stats .cargo-stat {
-  flex-direction: row;
   align-items: baseline;
-  gap: 4px;
+  line-height: 1.3;
 }
 
-.bridge-card-stats .cargo-stat dt {
+.flow-label {
   font-size: 9px;
-  text-transform: uppercase;
+  font-weight: 600;
   letter-spacing: 0.05em;
+  flex-shrink: 0;
+  width: 18px;
 }
 
-.bridge-card-stats .cargo-stat dd {
-  font-size: 11px;
-  color: var(--text);
+.flow-list {
+  flex: 1;
+  min-width: 0;
 }
 
 /* ship card */
@@ -140,18 +143,16 @@
   font-size: 13px;
   font-weight: 600;
   color: var(--text);
-  margin-bottom: 1px;
 }
 
 .ship-spec {
   font-size: 10px;
-  margin-bottom: 6px;
 }
 
 .ship-vital-row {
   display: flex;
-  gap: 10px;
-  margin-top: 4px;
+  gap: 12px;
+  margin-top: 0;
 }
 
 .vital {
@@ -819,17 +820,20 @@
 
 /* ---- fuel station card body ---- */
 
-.fuel-status {
+.fuel-tank-inline {
   font-size: 11px;
-  margin-bottom: 5px;
-  padding: 3px 6px;
-  background: var(--bg-3);
-  border-radius: 2px;
+}
+
+.btn-fuel-inline {
+  width: auto;
+  min-width: 0;
+  padding: 0 10px;
+  flex-shrink: 0;
 }
 
 .fuel-list {
   list-style: none;
-  margin: 0 0 6px;
+  margin: 0;
   padding: 0;
   font-size: 11px;
 }
@@ -838,6 +842,7 @@
   display: flex;
   justify-content: space-between;
   padding: 2px 0;
+  line-height: 1.3;
 }
 
 /* ---- suggestions ---- */

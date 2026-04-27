@@ -350,31 +350,34 @@ function StationCard({ loc, world }: { loc: LocationDef; world: World }) {
   return (
     <section className="bridge-card station-card">
       <header className="bridge-card-head">
-        <span className="bridge-card-eyebrow station-eyebrow">Station</span>
+        <div className="bridge-card-title">
+          <span className="bridge-card-eyebrow station-eyebrow">Station</span>
+          <span className="station-name">{loc.name}</span>
+        </div>
+        <div className="bridge-card-meta mono dim">
+          L{loc.traits.techLevel} · {loc.population >= 1000 ? `${(loc.population/1000).toFixed(1)}k` : loc.population} pop
+        </div>
       </header>
-      <div className="station-name">{loc.name}</div>
       <div className="station-tags">
         {loc.traits.faction && <span className="loc-tag">{loc.traits.faction}</span>}
         {loc.traits.tags.map(t => (
           <span key={t} className="loc-tag">{t}</span>
         ))}
       </div>
-      <dl className="bridge-card-stats">
-        <Stat label="tech"   value={`L${loc.traits.techLevel}`} />
-        <Stat label="pop"    value={loc.population.toLocaleString()} />
-      </dl>
-      {loc.primaryExports.length > 0 && (
-        <div className="station-flow">
-          <div className="dim">Exports</div>
-          <div>{loc.primaryExports.map(g => world.goods[g]?.name ?? g).join(", ")}</div>
-        </div>
-      )}
-      {imports.length > 0 && (
-        <div className="station-flow">
-          <div className="dim">Imports</div>
-          <div>{imports.join(", ")}</div>
-        </div>
-      )}
+      <div className="station-flows">
+        {loc.primaryExports.length > 0 && (
+          <div className="station-flow">
+            <span className="flow-label dim">EX</span>
+            <span className="flow-list">{loc.primaryExports.map(g => world.goods[g]?.name ?? g).join(", ")}</span>
+          </div>
+        )}
+        {imports.length > 0 && (
+          <div className="station-flow">
+            <span className="flow-label dim">IM</span>
+            <span className="flow-list">{imports.join(", ")}</span>
+          </div>
+        )}
+      </div>
     </section>
   );
 }
@@ -396,7 +399,11 @@ function ShipCard({ ship, world }: { ship: Trader; world: World }) {
   return (
     <section className="bridge-card ship-card">
       <header className="bridge-card-head">
-        <span className="bridge-card-eyebrow ship-eyebrow">Ship</span>
+        <div className="bridge-card-title">
+          <span className="bridge-card-eyebrow ship-eyebrow">Ship</span>
+          <span className="ship-name">{ship.name}</span>
+          <span className="ship-spec mono dim">cap {ship.capacity} · v{ship.speed}</span>
+        </div>
         <div className="ship-pilot">
           <button
             className={ship.pilot === "manual" ? "primary" : ""}
@@ -413,20 +420,16 @@ function ShipCard({ ship, world }: { ship: Trader; world: World }) {
           </button>
         </div>
       </header>
-      <div className="ship-name">{ship.name}</div>
-      <div className="ship-spec dim">
-        cap {ship.capacity} · speed {ship.speed} · uses {ship.fuelTypes.map(f => world.goods[f.good]?.name ?? f.good).join(" / ")}
-      </div>
       <div className="ship-vital-row">
-        <Vital label="Cargo" value={cargoLabel} sub={`${mass.toFixed(0)}/${ship.capacity}`} pct={cargoPct} />
+        <Vital label="cargo" value={cargoLabel} sub={`${mass.toFixed(0)}/${ship.capacity}`} pct={cargoPct} />
         <Vital
-          label="Fuel"
+          label="fuel"
           value={<span className={fuelTone}>{fuel ? (world.goods[fuel.good]?.name ?? fuel.good) : "—"}</span>}
           sub={fuel ? `${fuel.qty.toFixed(0)}/${ship.fuelCapacity}` : "—"}
           pct={fuelPct}
           tone={fuelTone}
         />
-        <Vital label="Wallet" value={<span className="mono">Ç{Math.round(ship.funds).toLocaleString()}</span>} />
+        <Vital label="wallet" value={<span className="mono">Ç{Math.round(ship.funds).toLocaleString()}</span>} />
       </div>
     </section>
   );
@@ -604,43 +607,45 @@ function FuelStation({ ship, world, loc, target, hintText, critical }: {
   const suggested = target.refuel === true;
   const anyFuelAvailable = types.some(t => t.stock > 0);
 
+  const tankFuelName = ship.currentFuel?.good ? (world.goods[ship.currentFuel.good]?.name ?? ship.currentFuel.good) : "—";
+
   return (
     <section className={`bridge-card fuel-card ${suggested ? "panel-suggested" : ""} ${!anyFuelAvailable ? "fuel-card-empty" : ""}`}>
       <header className="bridge-card-head">
-        <span className="bridge-card-eyebrow ship-eyebrow">Fuel Station</span>
-        {!anyFuelAvailable && <span className="fuel-badge-empty">No fuel here</span>}
+        <div className="bridge-card-title">
+          <span className="bridge-card-eyebrow ship-eyebrow">Fuel</span>
+          <span className="fuel-tank-inline mono">
+            <span className="dim">tank </span>
+            <span>{tankFuelName}</span>{" "}
+            <span>{ship.currentFuel?.qty.toFixed(0)}/{ship.fuelCapacity}</span>
+            <span className="dim"> ({tankFraction.toFixed(0)}%)</span>
+          </span>
+        </div>
+        {!anyFuelAvailable
+          ? <span className="fuel-badge-empty">No fuel here</span>
+          : (
+            <ActionCell suggested={suggested} hintText={hintText} critical={critical}>
+              <button
+                onClick={() => refuel(ship.id)}
+                className={`btn-action btn-fuel-inline ${critical ? "btn-suggested-critical" : suggested ? "btn-suggested" : "primary"}`}
+              >
+                <span className="btn-label">{critical ? "Refuel now" : "Fill tank"}</span>
+              </button>
+            </ActionCell>
+          )}
       </header>
-      <div className="fuel-status mono">
-        <span className="dim">tank </span>
-        <span>{ship.currentFuel?.good ? (world.goods[ship.currentFuel.good]?.name ?? ship.currentFuel.good) : "—"}</span>{" "}
-        <span>{ship.currentFuel?.qty.toFixed(0)}/{ship.fuelCapacity}</span>{" "}
-        <span className="dim">({tankFraction.toFixed(0)}%)</span>
-      </div>
       <ul className="fuel-list">
         {types.map((t) => (
           <li key={t.good} className={t.stock > 0 ? "" : "fuel-row-empty"}>
-            <div>
-              <span>{world.goods[t.good]?.name ?? t.good}</span>
-              <span className="faint"> · {t.perDistance.toFixed(1)}/dist</span>
-            </div>
-            <div className="mono">
+            <span><span>{world.goods[t.good]?.name ?? t.good}</span><span className="faint"> · {t.perDistance.toFixed(1)}/d</span></span>
+            <span className="mono">
               {t.stock > 0
                 ? <span>{t.stock.toFixed(0)} @ Ç{t.price.toFixed(1)}</span>
                 : <span className="faint">—</span>}
-            </div>
+            </span>
           </li>
         ))}
       </ul>
-      <ActionCell suggested={suggested} hintText={hintText} critical={critical}>
-        <button
-          onClick={() => refuel(ship.id)}
-          disabled={!anyFuelAvailable}
-          className={`btn-action btn-fuel ${critical ? "btn-suggested-critical" : suggested ? "btn-suggested" : "primary"}`}
-          title={anyFuelAvailable ? "" : "No compatible fuel for sale at this station"}
-        >
-          <span className="btn-label">{critical ? "Refuel now" : "Fill tank"}</span>
-        </button>
-      </ActionCell>
     </section>
   );
 }
@@ -667,7 +672,10 @@ function TravelOptions({ ship, world, target, hintText }: {
   return (
     <section className="bridge-card travel-card">
       <header className="bridge-card-head">
-        <span className="bridge-card-eyebrow station-eyebrow">Travel</span>
+        <div className="bridge-card-title">
+          <span className="bridge-card-eyebrow station-eyebrow">Travel</span>
+          <span className="dim mono">{dests.length} routes</span>
+        </div>
       </header>
       <table className="travel-table">
         <colgroup>
