@@ -87,14 +87,19 @@ export function listTradeOptions(
   trader: Trader,
   inflight?: Map<string, number>,
   drawFraction: number = MAX_DRAW_FRACTION,
+  fromLocation?: LocationId,
 ): TradeOption[] {
   const inflightMap = inflight ?? inTransitArrivalsByDestGood(world);
-  const here = trader.location;
+  const here = fromLocation ?? trader.location;
   const srcMarket = world.markets[here];
   const fuel = trader.currentFuel;
   const ft = activeFuelType(trader);
   if (!fuel || !ft) return [];
   const localFuelPrice = srcMarket.prices[fuel.good];
+  // When evaluating from a hypothetical location (speculative travel),
+  // assume the ship refueled at that location (fuel = capacity).
+  const isHypothetical = fromLocation != null && fromLocation !== trader.location;
+  const effectiveFuel = isHypothetical ? trader.fuelCapacity : fuel.qty;
   const options: TradeOption[] = [];
 
   // Cargo space available for new buys = capacity - existing lot mass.
@@ -117,10 +122,10 @@ export function listTradeOptions(
       if (dstId === here) continue;
       const dist = distance(world, here, dstId);
       const fuelNeeded = dist * ft.perDistance;
-      if (fuelNeeded > fuel.qty) continue;
+      if (fuelNeeded > effectiveFuel) continue;
 
       const dstMarket = world.markets[dstId];
-      const fuelAfter = fuel.qty - fuelNeeded;
+      const fuelAfter = effectiveFuel - fuelNeeded;
       const dstHasMyFuel = trader.fuelTypes.some(
         f => (dstMarket.stock[f.good] ?? 0) >= trader.fuelCapacity * REFUEL_THRESHOLD,
       );
@@ -171,6 +176,91 @@ function evaluateOptions(world: World, trader: Trader, inflight: Map<string, num
   return opts[0] ?? null;
 }
 
+export interface SpeculativeOption {
+  via: LocationId;          // where to fly empty to
+  thenBuy: GoodId;          // best good to buy at via
+  thenSellAt: LocationId;   // where to sell after
+  qty: number;
+  emptyTravelTicks: number; // ticks to fly empty to via
+  emptyFuelNeeded: number;
+  totalTicks: number;       // emptyTravel + tradeTravel + 1
+  netProfit: number;        // best trade total - empty trip costs
+  profitPerTick: number;
+}
+
+// Per-call cap on candidates considered. Speculative is O(L² × G) without
+// it; with K=6 we evaluate at most K * G * L per call — fine even at scale.
+const SPECULATIVE_NEAREST_K = 6;
+
+// When no profitable trade is available from the current location, see if
+// an empty positioning trip to another station opens up a trade that's still
+// net-positive after the positioning cost.
+export function listSpeculativeOptions(
+  world: World,
+  trader: Trader,
+  drawFraction: number = MAX_DRAW_FRACTION,
+): SpeculativeOption[] {
+  const ft = activeFuelType(trader);
+  const fuel = trader.currentFuel;
+  if (!ft || !fuel) return [];
+  const here = trader.location;
+  const hereMarket = world.markets[here];
+  const localFuelPrice = hereMarket.prices[fuel.good] ?? 0;
+  const out: SpeculativeOption[] = [];
+
+  // Sort candidate via-points by distance and only consider the K nearest.
+  // Long empty trips rarely repay their positioning cost anyway.
+  const candidates = (Object.keys(world.locations) as LocationId[])
+    .filter(id => id !== here)
+    .map(id => ({ id, dist: distance(world, here, id) }))
+    .sort((a, b) => a.dist - b.dist)
+    .slice(0, SPECULATIVE_NEAREST_K);
+
+  for (const { id: viaId, dist } of candidates) {
+    const emptyFuelNeeded = dist * ft.perDistance;
+    if (emptyFuelNeeded > fuel.qty) continue;
+
+    // Need fuel at via (so we can refuel + continue) OR enough remaining
+    // to skip the 2-leg plan. We require the via to have fuel — otherwise
+    // the trader would arrive at via and be stuck.
+    const viaMarket = world.markets[viaId];
+    const viaHasMyFuel = trader.fuelTypes.some(
+      f => (viaMarket.stock[f.good] ?? 0) >= trader.fuelCapacity * REFUEL_THRESHOLD,
+    );
+    if (!viaHasMyFuel) continue;
+
+    const emptyTravelTicks = Math.max(1, Math.ceil(dist / trader.speed));
+    const emptyTripMaint = emptyTravelTicks * trader.capacity * MAINTENANCE_PER_CAPACITY;
+    const emptyDockingFee = trader.capacity * DOCKING_FEE_PER_CAPACITY;
+    const fuelCost = emptyFuelNeeded * localFuelPrice;
+    const positioningCost = fuelCost + emptyTripMaint + emptyDockingFee;
+
+    // Best trade originating from via (assuming refueled at via)
+    const tradesFromVia = listTradeOptions(world, trader, undefined, drawFraction, viaId);
+    const best = tradesFromVia[0];
+    if (!best) continue;
+
+    const netProfit = best.totalProfit - positioningCost;
+    if (netProfit <= 0) continue;
+
+    const totalTicks = emptyTravelTicks + best.travelTicks + 1;
+    out.push({
+      via: viaId,
+      thenBuy: best.good,
+      thenSellAt: best.to,
+      qty: best.qty,
+      emptyTravelTicks,
+      emptyFuelNeeded,
+      totalTicks,
+      netProfit,
+      profitPerTick: netProfit / totalTicks,
+    });
+  }
+
+  out.sort((a, b) => b.profitPerTick - a.profitPerTick);
+  return out;
+}
+
 function isStuck(world: World, trader: Trader): boolean {
   const ft = activeFuelType(trader);
   if (!ft || !trader.currentFuel || trader.currentFuel.qty <= 0) return true;
@@ -218,6 +308,23 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
 
   const choice = evaluateOptions(world, trader, inflight);
   if (!choice) {
+    // No direct trade — try speculative travel: empty trip to a station
+    // where a profitable trade exists, even after positioning costs.
+    if (trader.cargo.length === 0) {
+      const speculative = listSpeculativeOptions(world, trader);
+      const sp = speculative[0];
+      if (sp) {
+        // Depart empty for the via point. On arrival, refuel + take the
+        // best trade from there (which we'll re-evaluate next tick).
+        const here = trader.location;
+        trader.currentFuel = { good: trader.currentFuel!.good, qty: trader.currentFuel!.qty - sp.emptyFuelNeeded };
+        trader.destination = sp.via;
+        trader.state = "transit";
+        trader.ticksRemaining = sp.emptyTravelTicks;
+        events.push({ trader: trader.id, kind: "depart", from: here, to: sp.via });
+        return;
+      }
+    }
     events.push({ trader: trader.id, kind: isStuck(world, trader) ? "stuck" : "idle" });
     return;
   }

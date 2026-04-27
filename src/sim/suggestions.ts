@@ -1,7 +1,7 @@
 import type { GoodId, LocationId, Trader, World } from "./types";
 import { reachableNeighbors } from "./geometry";
 import { priceFor } from "./pricing";
-import { activeFuelType, listTradeOptions, selectRefuelType } from "./traders";
+import { activeFuelType, listSpeculativeOptions, listTradeOptions, selectRefuelType } from "./traders";
 import { DOCKING_FEE_PER_CAPACITY, MAINTENANCE_PER_CAPACITY, SALES_TAX_RATE } from "./economy";
 
 export type GuidedHint =
@@ -9,6 +9,7 @@ export type GuidedHint =
   | { kind: "travel_to_sell"; dst: LocationId; good: GoodId; qty: number; expectedNet: number; gainOverHere: number; ticks: number }
   | { kind: "sell_here"; good: GoodId; qty: number; revenue: number }
   | { kind: "refuel"; critical: boolean; reason: string }
+  | { kind: "speculate"; via: LocationId; thenBuy: GoodId; thenSellAt: LocationId; netProfit: number; ticks: number }
   | { kind: "wait"; reason: string };
 
 const FUEL_LOW_FRACTION = 0.50;          // refuel proactively below this when local fuel exists
@@ -66,6 +67,17 @@ export function getGuidedHint(world: World, ship: Trader): GuidedHint {
     });
   }
   candidates.push(...cargoSell);
+
+  // Speculative travel — only when cargo is empty (otherwise the player has
+  // existing cargo to deal with first). Score against direct candidates.
+  if (ship.cargo.length === 0) {
+    for (const sp of listSpeculativeOptions(world, ship, drawFraction)) {
+      candidates.push({
+        value: sp.netProfit,
+        hint: { kind: "speculate", via: sp.via, thenBuy: sp.thenBuy, thenSellAt: sp.thenSellAt, netProfit: sp.netProfit, ticks: sp.totalTicks },
+      });
+    }
+  }
 
   candidates.sort((a, b) => b.value - a.value);
   const top = candidates[0];
@@ -203,6 +215,11 @@ export function describeHint(hint: GuidedHint, world: World): string {
       return `Sell your ${hint.qty.toFixed(0)} ${goodName(hint.good)} here for Ç${Math.round(hint.revenue).toLocaleString()} net. No better destination is reachable.`;
     case "refuel":
       return hint.critical ? `⚠ ${hint.reason}` : hint.reason;
+    case "speculate": {
+      const via = world.locations[hint.via]?.name ?? hint.via;
+      const dst = world.locations[hint.thenSellAt]?.name ?? hint.thenSellAt;
+      return `No good trade from here. Reposition to ${via} (empty) → buy ${goodName(hint.thenBuy)} → sell at ${dst}. Net Ç${Math.round(hint.netProfit).toLocaleString()} over ${hint.ticks} ticks after positioning costs.`;
+    }
     case "wait":
       return hint.reason;
   }
@@ -227,6 +244,8 @@ export function hintTarget(hint: GuidedHint): HintTarget {
       return { sellCargo: true };
     case "refuel":
       return { refuel: true, critical: hint.critical };
+    case "speculate":
+      return { travelTo: hint.via };
     case "wait":
       return {};
   }
