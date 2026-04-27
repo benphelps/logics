@@ -445,14 +445,10 @@
   border-radius: 2px;
 }
 
-.market-panel {
-  background: var(--bg-2);
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  padding: 10px 12px;
+.market-card {
+  margin-top: 6px;
 }
 
-.market-panel h4,
 .bridge-card h4 {
   margin: 0 0 8px;
   font-size: 11px;
@@ -465,7 +461,8 @@
 .market-table,
 .travel-table,
 .suggestions-table {
-  width: 100%;
+  width: calc(100% + 20px);
+  margin: 4px -10px 0;       /* flush full-width like cargo-table */
   border-collapse: collapse;
   font-size: 12px;
   table-layout: fixed;
@@ -487,14 +484,14 @@
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  padding: 4px 6px;
+  padding: 4px 14px;
   border-bottom: 1px solid var(--border);
 }
 
 .market-table td,
 .travel-table td,
 .suggestions-table td {
-  padding: 4px 6px;
+  padding: 4px 14px;
   border-bottom: 1px solid var(--border);
   font-variant-numeric: tabular-nums;
   vertical-align: middle;
@@ -503,7 +500,14 @@
 
 .travel-table td {
   height: 28px;
-  padding: 3px 6px;
+  padding: 3px 14px;
+}
+
+/* Last row of each card-embedded table loses bottom border so it doesn't
+   double-up with the card border below */
+.bridge-card .market-table tbody tr:last-child td,
+.bridge-card .travel-table tbody tr:last-child td {
+  border-bottom: none;
 }
 
 .market-table th.numeric,
@@ -580,7 +584,8 @@
 
 .market-footnote {
   font-size: 10px;
-  margin-top: 6px;
+  margin-top: 8px;
+  padding: 0 4px;
 }
 
 .buy-sell {

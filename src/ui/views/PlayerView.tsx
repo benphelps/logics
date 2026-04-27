@@ -330,8 +330,13 @@ function MarketSection({ ship, world, loc, target, hintText }: {
   const goodsOrdered = Object.keys(world.goods);
 
   return (
-    <div className="market-panel">
-      <h4>Market</h4>
+    <section className="bridge-card market-card">
+      <header className="bridge-card-head">
+        <div className="bridge-card-title">
+          <span className="bridge-card-eyebrow station-eyebrow">Market</span>
+          <span className="dim mono">{loc.name} — {goodsOrdered.length} goods</span>
+        </div>
+      </header>
       <table className="market-table">
         <colgroup>
           <col className="col-good" />
@@ -395,7 +400,7 @@ function MarketSection({ ship, world, loc, target, hintText }: {
       <div className="market-footnote faint">
         * Net Sell = listed price minus 15% port tax. What you'd actually receive if you sold here.
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -485,7 +490,7 @@ function CargoBridgeCard({ ship, world, loc, target, hintText, critical }: {
         <div className="bridge-card-title">
           <span className="bridge-card-eyebrow ship-eyebrow">Cargo</span>
           <span className="cargo-bay-inline mono">
-            <span className="dim">bay </span>{cargoMass.toFixed(0)}/{ship.capacity}
+            {cargoMass.toFixed(0)}/{ship.capacity}
           </span>
           <span className="fuel-tank-inline mono">
             <span className="dim">· </span>
