@@ -86,7 +86,7 @@ export function maintenanceTravelBlockReason(trader: Trader): string | null {
 
 function canUseContractCargoPlanning(world: World, trader: Trader): boolean {
   return isPlayerShip(world, trader)
-    && (trader.pilot === "manual" || (trader.pilot === "auto" && hasCrew(trader, "navigator")));
+    && (trader.pilot === "manual" || (trader.pilot === "auto" && hasCrew(trader, "captain")));
 }
 
 function playerDrawFraction(world: World, trader: Trader): number | undefined {
@@ -188,10 +188,10 @@ export function listTradeOptions(
   // the next move (and follows through on contracts it has signed up for).
   //
   // For player ships in manual mode (where the engine runs as a hint) and
-  // auto+navigator (where the navigator auto-accepts on arrival), also fold
+  // auto+pilot (where the pilot auto-accepts on arrival), also fold
   // in unaccepted shortage contracts at the destination. This makes the
   // engine actively chase contract-aligned trades instead of stumbling onto
-  // them — and turns the navigator into a real value-add.
+  // them.
   const willRealizeUnaccepted = canUseContractCargoPlanning(world, trader);
   const jobBonusMap = new Map<string, RouteJobBonus[]>();
   for (const j of Object.values(world.jobs)) {
@@ -560,10 +560,9 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
     // until the player clicks Sell. The hint engine highlights the Sell
     // button on arrival so the next-step CTA is obvious.
     if (trader.cargo.length > 0 && trader.pilot !== "manual") {
-      // Auto-accept matching local contracts on arrival — but only if the
-      // ship has a navigator on the crew. Without one, contracts must be
-      // accepted manually by the player.
-      if (trader.pilot === "auto" && hasCrew(trader, "navigator")) {
+      // Auto-accept matching local contracts on arrival when a pilot is
+      // handling the ship. Manual players still choose contracts themselves.
+      if (trader.pilot === "auto" && hasCrew(trader, "captain")) {
         const cargoGoods = new Set(trader.cargo.map(l => l.good));
         for (const job of Object.values(world.jobs)) {
           if (job.acceptedBy != null) continue;
@@ -598,7 +597,7 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
     return;
   }
 
-  // Player ships in auto mode require a captain on the crew. Without one
+  // Player ships in auto mode require a pilot on the crew. Without one
   // they sit idle just like manual ships — the player must hire to unlock
   // autonomous trading. NPCs (pilot === "npc") never have crew; their auto
   // behavior is implicit.
@@ -649,7 +648,7 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
   const here = trader.location;
   const srcMarket = world.markets[here];
 
-  // Navigator-only multi-good loadout: before the primary buy, pre-load goods
+  // Auto-pilot multi-good loadout: before the primary buy, pre-load goods
   // for any accepted contract bound for the same destination. Solves the
   // case where the engine picks a high-margin generic trade and would
   // otherwise abandon a parallel accepted contract that could have ridden
@@ -657,7 +656,7 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
   // primary fills the remaining bay.
   const canPreloadContracts = isPlayerShip(world, trader)
     && trader.pilot === "auto"
-    && hasCrew(trader, "navigator");
+    && hasCrew(trader, "captain");
   const tierRank = { high: 0, medium: 1, low: 2 } as const;
   const contractLoads: { good: GoodId; qty: number; price: number }[] = [];
   let preloadMass = 0;

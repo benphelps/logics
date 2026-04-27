@@ -5,7 +5,6 @@ import {
   fireCrew, hireCrew, MAINTENANCE_DEBT_TRAVEL_BLOCK, recomputeShipStats, totalCrewWage,
 } from "./crew";
 import { executeTrade, listTradeOptions, repairShip, travelTo } from "./traders";
-import { generateJobs } from "./jobs";
 import { generateHires, listHiresAt } from "./hires";
 import type { CrewModifiers, CrewRole, Hire, World } from "./types";
 
@@ -107,7 +106,7 @@ describe("crew: hire / fire / modifiers", () => {
 });
 
 describe("crew: auto-pilot gating", () => {
-  it("auto-pilot does NOT trade without a captain (silent idle)", () => {
+  it("auto-pilot does NOT trade without a pilot (silent idle)", () => {
     const w = createWorld();
     const ship = getPlayerShip(w);
     ship.pilot = "auto";
@@ -118,35 +117,46 @@ describe("crew: auto-pilot gating", () => {
     expect(ship.funds).toBeLessThanOrEqual(fundsBefore);
   });
 
-  it("auto-pilot WITH captain trades, but does NOT auto-accept contracts (no navigator)", () => {
+  it("navigator alone does NOT unlock auto-pilot", () => {
+    const w = createWorld();
+    const ship = getPlayerShip(w);
+    ship.funds = 500_000;
+    const nav = postTestHire(w, ship.location, "navigator", { hireCost: 18_000 });
+    expect(hireCrew(w, ship, nav.id).ok).toBe(true);
+    ship.pilot = "auto";
+    const fundsBefore = ship.funds;
+    tickN(w, 50);
+    const traded = ship.log.some(e => e.kind === "buy" || e.kind === "sell");
+    expect(traded).toBe(false);
+    expect(ship.funds).toBeLessThanOrEqual(fundsBefore);
+  });
+
+  it("auto-pilot WITH pilot accepts matching contracts on arrival without a navigator", () => {
     const w = createWorld();
     const ship = getPlayerShip(w);
     ship.funds = 1_000_000;
+    tickN(w, 30);
     const cap = postTestHire(w, ship.location, "captain", { hireCost: 25_000 });
     expect(hireCrew(w, ship, cap.id).ok).toBe(true);
-    ship.pilot = "auto";
-    w.markets.haven.stock.grain = 0;
-    generateJobs(w);
-    tickN(w, 200);
-    const accepted = ship.log.filter(e => e.kind === "job_accepted").length;
-    expect(accepted).toBe(0);
-  });
 
-  it("auto-pilot WITH captain + navigator accepts contracts on arrival", () => {
-    const w = createWorld();
-    const ship = getPlayerShip(w);
-    ship.funds = 5_000_000;
-    const cap = postTestHire(w, ship.location, "captain", { hireCost: 25_000 });
-    const nav = postTestHire(w, ship.location, "navigator", { hireCost: 240_000 });
-    expect(hireCrew(w, ship, cap.id).ok).toBe(true);
-    expect(hireCrew(w, ship, nav.id).ok).toBe(true);
+    const option = listTradeOptions(w, ship, undefined, 1.0)[0];
+    expect(option).toBeDefined();
+    w.jobs.j_auto_contract = {
+      id: "j_auto_contract", kind: "shortage", tier: "high", good: option.good, qty: Math.max(1, Math.min(3, option.qty)),
+      destination: option.to, reward: 100_000, penalty: 0, postedTick: w.tick,
+      expiresAt: w.tick + 100, acceptedBy: null, delivered: 0,
+    };
+
     ship.pilot = "auto";
-    tickN(w, 300);
+    tickWorld(w);
+    tickN(w, option.travelTicks + 1);
+
     const accepted = ship.log.filter(e => e.kind === "job_accepted").length;
     expect(accepted).toBeGreaterThan(0);
+    expect(ship.log.some(e => e.kind === "job_completed")).toBe(true);
   });
 
-  it("captain-only auto-pilot does not preload parallel contract cargo", () => {
+  it("pilot-only auto-pilot preloads parallel contract cargo", () => {
     const w = createWorld();
     const ship = getPlayerShip(w);
     ship.funds = 1_000_000;
@@ -170,7 +180,7 @@ describe("crew: auto-pilot gating", () => {
     tickWorld(w);
 
     expect(ship.state).toBe("transit");
-    expect(ship.cargo.some(l => l.good === preloadGood)).toBe(false);
+    expect(ship.cargo.some(l => l.good === preloadGood)).toBe(true);
   });
 });
 
@@ -322,12 +332,24 @@ describe("hires: dynamic pool", () => {
 
     const tierOne = navigators.filter(h => h.tier === 1);
     expect(tierOne.length).toBeGreaterThan(0);
-    expect(Math.min(...tierOne.map(h => h.hireCost))).toBeLessThanOrEqual(75_000);
+    expect(Math.min(...tierOne.map(h => h.hireCost))).toBeLessThanOrEqual(25_000);
 
     const tierTwo = navigators.filter(h => h.tier === 2);
     if (tierTwo.length > 0) {
-      expect(Math.max(...tierTwo.map(h => h.hireCost))).toBeLessThanOrEqual(140_000);
+      expect(Math.max(...tierTwo.map(h => h.hireCost))).toBeLessThanOrEqual(95_000);
     }
+  });
+
+  it("generated pilots are a later auto-play unlock", () => {
+    const w = createWorld();
+    const pilots = [];
+    for (let i = 0; i < 1_200; i++) {
+      pilots.push(...tickWorld(w).hiresPosted.filter(h => h.role === "captain"));
+    }
+
+    const tierOne = pilots.filter(h => h.tier === 1);
+    expect(tierOne.length).toBeGreaterThan(0);
+    expect(Math.min(...tierOne.map(h => h.hireCost))).toBeGreaterThanOrEqual(120_000);
   });
 
   it("generation is deterministic for the same starting state", () => {

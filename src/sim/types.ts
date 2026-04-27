@@ -71,7 +71,7 @@ export interface CargoLot {
   purchasedAt: number;      // tick of first purchase (oldest, for age calculations)
 }
 
-export type CrewRole = "captain" | "navigator" | "mechanic";    // mercenary reserved for combat-era
+export type CrewRole = "captain" | "navigator" | "mechanic";    // captain is displayed as Pilot; mercenary reserved for combat-era
 
 // Modifiers a crew member contributes to the ship. Each field is additive
 // across all hired crew. Stat-touching fields (cargo/speed/fuel/range) are

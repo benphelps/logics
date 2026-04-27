@@ -32,6 +32,7 @@ import type { GoodId, Job, JobId, LocationDef, LocationId, Trader, UpgradeSlot, 
 import "./PlayerView.css";
 
 const SHOW_DEV_SHIP_PLAN_PANEL = false;
+const GUIDANCE_LOCKED_TEXT = "Hire a navigator for guided suggestions.";
 
 export function PlayerView() {
   const world = useStore((s) => s.world);
@@ -73,10 +74,13 @@ function ShipPanel({ ship, world }: { ship: Trader; world: World }) {
   const focusLoc = inTransit
     ? world.locations[ship.destination!]
     : world.locations[ship.location];
-  const guidedPlan = getGuidedPlan(world, ship, { mode: ship.pilot === "auto" ? "actual" : "advisory" });
+  const guidanceUnlocked = hasCrew(ship, "navigator");
+  const guidedPlan = guidanceUnlocked
+    ? getGuidedPlan(world, ship, { mode: ship.pilot === "auto" ? "actual" : "advisory" })
+    : lockedGuidancePlan();
   const hint = guidedPlan.current;
-  const target = targetFromGuidedPlan(guidedPlan);
-  const cueText = cueTextFromGuidedPlan(guidedPlan, world);
+  const target = guidanceUnlocked ? targetFromGuidedPlan(guidedPlan) : {};
+  const cueText = guidanceUnlocked ? cueTextFromGuidedPlan(guidedPlan, world) : emptyCueText(GUIDANCE_LOCKED_TEXT);
   const hintText = cueText.fallback;
   const isCriticalHint = target.critical === true;
 
@@ -170,6 +174,11 @@ function formatQty(qty: number | undefined): string {
   return Number.isInteger(qty) ? qty.toFixed(0) : qty.toFixed(1);
 }
 
+function lockedGuidancePlan(): GuidedPlan {
+  const hint: GuidedHint = { kind: "wait", reason: GUIDANCE_LOCKED_TEXT };
+  return { current: hint, hints: [hint] };
+}
+
 function targetFromGuidedPlan(guidedPlan: GuidedPlan): HintTarget {
   const target: HintTarget = {};
   const buyGoods: Partial<Record<GoodId, number>> = {};
@@ -242,9 +251,8 @@ type CueTextMap = {
   };
 };
 
-function cueTextFromGuidedPlan(guidedPlan: GuidedPlan, world: World): CueTextMap {
-  const fallback = describeHint(guidedPlan.current, world);
-  const cue: CueTextMap = {
+function emptyCueText(fallback: string): CueTextMap {
+  return {
     fallback,
     buyGoods: {},
     sellGoods: {},
@@ -252,6 +260,11 @@ function cueTextFromGuidedPlan(guidedPlan: GuidedPlan, world: World): CueTextMap
     acceptJobs: {},
     sections: {},
   };
+}
+
+function cueTextFromGuidedPlan(guidedPlan: GuidedPlan, world: World): CueTextMap {
+  const fallback = describeHint(guidedPlan.current, world);
+  const cue = emptyCueText(fallback);
   const set = <K extends string>(map: Partial<Record<K, string>>, key: K | undefined, value: string) => {
     if (key && map[key] == null) map[key] = value;
   };
@@ -921,7 +934,7 @@ function ShipCard({ ship, world, guidedPlan, target, hintText, cueText, critical
             className={ship.pilot === "auto" ? "primary" : ""}
             onClick={() => setPilot(ship.id, "auto")}
             disabled={autoBlocked}
-            title={autoBlocked ? "Hire a captain to engage auto-pilot" : "Auto-pilot (captain handles trades; navigator unlocks contracts)"}
+            title={autoBlocked ? "Hire a pilot to enable auto-play" : "Auto-play: pilot handles trading. Navigator unlocks guided hints."}
           >
             <IconLabel icon={GiRadarSweep}>Auto</IconLabel>
           </button>
@@ -2332,7 +2345,7 @@ function CrewTab({ ship }: { ship: Trader }) {
   const docked = ship.state === "idle";
   const wage = totalCrewWage(ship);
   const roles: { role: CrewRole; label: string }[] = [
-    { role: "captain",   label: "Captain" },
+    { role: "captain",   label: "Pilot" },
     { role: "navigator", label: "Navigator" },
     { role: "mechanic",  label: "Mechanic" },
   ];
@@ -2523,7 +2536,7 @@ function HireOffersTab({ ship, world }: { ship: Trader; world: World }) {
 }
 
 const ROLE_SHORT: Record<CrewRole, string> = {
-  captain: "Captain", navigator: "Navigator", mechanic: "Mechanic",
+  captain: "Pilot", navigator: "Navigator", mechanic: "Mechanic",
 };
 
 function tierClass(tier: number): "high" | "medium" | "low" {

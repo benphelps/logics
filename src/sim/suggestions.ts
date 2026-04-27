@@ -57,7 +57,7 @@ function isPlayerShip(world: World, ship: Trader): boolean {
 
 function canRealizeUnacceptedContracts(world: World, ship: Trader): boolean {
   return isPlayerShip(world, ship)
-    && (ship.pilot === "manual" || (ship.pilot === "auto" && hasCrew(ship, "navigator")));
+    && (ship.pilot === "manual" || (ship.pilot === "auto" && hasCrew(ship, "captain")));
 }
 
 function canAffordRefuelHere(world: World, ship: Trader): boolean {

@@ -47,20 +47,19 @@ const MOD_COST_WEIGHT: Record<keyof CrewModifiers, number> = {
   contractRewardBonus: 200_000,
 };
 
-// Role-baseline pricing (T1 with no mods). Tuned so each role becomes
-// reachable on roughly this timeline of player progression:
-//   captain   — within ~10 manual trades (post-tutorial)
-//   mechanic  — shortly after, before maintenance debt grounds the ship
-//   navigator — a stretch goal, but reachable without grinding past the point
-//               where contracts would have been useful
+// Role-baseline pricing (T1 with no mods). Internal "captain" is presented
+// as Pilot in the UI. Progression is:
+//   navigator — early guidance unlock, roughly a handful of manual actions
+//   mechanic  — mid/cheap maintenance stabilizer
+//   captain   — later autopilot unlock after meaningful hand play
 const BASE_HIRE_BY_ROLE: Record<CrewRole, number> = {
-  captain:   25_000,
-  navigator: 70_000,         // was 140_000 — still too far from the early economy
-  mechanic:  40_000,         // was 60_000  — wanted hireable before debt threshold bites
+  captain:   140_000,
+  navigator: 18_000,
+  mechanic:  40_000,
 };
 const BASE_WAGE_BY_ROLE: Record<CrewRole, number> = {
-  captain:   4,
-  navigator: 7,
+  captain:   9,
+  navigator: 3,
   mechanic:  3,
 };
 
@@ -69,12 +68,12 @@ const TIER_HIRE_MULT: Record<number, number> = { 1: 1.0, 2: 1.5, 3: 2.4 };
 const TIER_WAGE_MULT: Record<number, number> = { 1: 1.0, 2: 1.6, 3: 2.4 };
 const MOD_COUNT_BY_TIER: Record<number, number> = { 1: 0, 2: 1, 3: 2 };
 
-// Role posting weights — captains are the gateway, post most often. Mechanics
-// next. Navigators rarest (also most expensive).
+// Role posting weights — navigators are the early on-ramp, mechanics stay
+// common, pilots are rarer because they unlock automation.
 const ROLE_WEIGHTS: { role: CrewRole; weight: number }[] = [
-  { role: "captain",   weight: 5 },
+  { role: "navigator", weight: 5 },
   { role: "mechanic",  weight: 3 },
-  { role: "navigator", weight: 2 },
+  { role: "captain",   weight: 2 },
 ];
 
 // --- name pool -------------------------------------------------------------
