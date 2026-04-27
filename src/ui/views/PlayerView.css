@@ -1923,6 +1923,7 @@
 .col-good     { width: auto; }
 .col-dest     { width: auto; }
 .col-num      { width: 64px; }
+.col-held     { width: 58px; }
 .col-net-sell { width: 84px; }
 .col-action   { width: 296px; }
 .market-table .col-action { width: 176px; }
@@ -2109,31 +2110,6 @@
   padding: 0;
 }
 
-.market-option-note {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-  font-size: 10px;
-}
-
-.option-note-label,
-.suggestion-kind-tag {
-  display: inline-flex;
-  align-items: center;
-  height: 18px;
-  padding: 0 6px;
-  border: 1px solid rgba(79, 182, 255, 0.35);
-  border-radius: 999px;
-  background: rgba(79, 182, 255, 0.08);
-  color: var(--accent);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
 .row-meta-pill {
   display: inline-flex;
   align-items: center;
@@ -2155,10 +2131,9 @@
   color: var(--text-faint);
 }
 
-.suggestion-kind-tag {
-  height: 16px;
-  margin-left: 6px;
-  vertical-align: middle;
+.market-held-cell {
+  color: var(--text);
+  font-weight: 650;
 }
 
 .buy-sell {

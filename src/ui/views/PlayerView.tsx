@@ -1495,17 +1495,13 @@ function MarketTableBody({ ship, world, loc, target, hintText, cueText, selected
   const goodsOrdered = (Object.keys(world.goods) as GoodId[]).filter((gid) =>
     !isUpgradeGood(gid) && ((market.stock[gid] ?? 0) > 0.001 || findCargoLot(ship, gid) != null)
   );
-  const suggestedBuyCount = Object.keys(target.buyGoods ?? {}).length;
-  const buyOptionSet = suggestedBuyCount > 1;
-  const buyHintLabel = buyOptionSet ? "Option set" : "Suggested";
-  const currentMass = cargoMassFn(ship, world);
-
   return (
     <>
       <table className={`market-table ${!manualActions ? "market-table-readonly" : ""}`}>
         <colgroup>
           <col className="col-good" />
           <col className="col-num" />
+          <col className="col-held" />
           <col className="col-num" />
           <col className="col-net-sell" />
           {manualActions && <col className="col-action" />}
@@ -1514,6 +1510,7 @@ function MarketTableBody({ ship, world, loc, target, hintText, cueText, selected
           <tr>
             <th>Good</th>
             <th className="numeric">Stock</th>
+            <th className="numeric">Held</th>
             <th className="numeric">Price</th>
             <th className="numeric">Net Sell*</th>
             {manualActions && <th>Action</th>}
@@ -1547,11 +1544,10 @@ function MarketTableBody({ ship, world, loc, target, hintText, cueText, selected
                     <span className="good-name">{world.goods[gid].name}</span>
                     {pinned && <MdPushPin className="ui-icon row-pin-icon" aria-hidden="true" focusable="false" />}
                   </span>
-                  {isCargo && <span className="row-meta-pill">holding {cargoQty.toFixed(0)}</span>}
                   {isFuel && <span className="row-meta-pill muted">fuel</span>}
-                  {isBuyTarget && buyOptionSet && <span className="suggestion-kind-tag">option</span>}
                 </td>
                 <td className="numeric mono">{stock.toFixed(0)}</td>
+                <td className={`numeric mono market-held-cell ${isCargo ? "" : "dim"}`}>{isCargo ? cargoQty.toFixed(0) : "—"}</td>
                 <td className="numeric mono">Ç{price.toFixed(1)}</td>
                 <td className="numeric mono dim">Ç{netSell.toFixed(1)}</td>
                 {manualActions && (
@@ -1564,7 +1560,6 @@ function MarketTableBody({ ship, world, loc, target, hintText, cueText, selected
                       price={price}
                       suggestedBuy={isBuyTarget}
                       hintText={cueText.buyGoods[gid] ?? hintText}
-                      suggestionLabel={buyHintLabel}
                       recommendedBuyQty={suggestedBuyQty}
                       onBuy={(qty) => buy(ship.id, gid, qty)}
                     />
@@ -1575,12 +1570,6 @@ function MarketTableBody({ ship, world, loc, target, hintText, cueText, selected
           })}
         </tbody>
       </table>
-      {buyOptionSet && (
-        <div className="market-option-note">
-          <span className="option-note-label">Option set</span>
-          <span className="dim">Highlighted buys compete for the same hold: {currentMass.toFixed(0)}/{ship.capacity} mass loaded.</span>
-        </div>
-      )}
       <div className="market-footnote faint">
         * Net Sell = listed price minus 15% port tax. What you'd actually receive if you sold here.
       </div>
@@ -2289,8 +2278,6 @@ function StationUpgradePurchaseTab({ ship, world, target, hintText, cueText }: {
     : [];
   const totalMass = cargoMassFn(ship, world);
   const roomMass = ship.capacity - totalMass;
-  const suggestedBuyCount = Object.keys(target.buyGoods ?? {}).length;
-  const suggestionLabel = suggestedBuyCount > 1 ? "Option set" : "Suggested";
 
   return (
     <div className="upgrades-tab">
@@ -2350,7 +2337,7 @@ function StationUpgradePurchaseTab({ ship, world, target, hintText, cueText }: {
                   <td className="numeric mono">{stock.toFixed(0)}</td>
                   <td className="numeric mono">Ç{Math.round(price).toLocaleString()}</td>
                   <td>
-                    <ActionCell suggested={suggested} hintText={cueText.buyGoods[goodId] ?? hintText} label={suggestionLabel}>
+                    <ActionCell suggested={suggested} hintText={cueText.buyGoods[goodId] ?? hintText}>
                       <button
                         className={`btn-action upgrade-action ${suggested ? "btn-suggested" : "primary"}`}
                         onClick={() => buy(ship.id, goodId, 1)}
