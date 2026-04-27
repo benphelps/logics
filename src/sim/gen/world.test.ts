@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import { generateWorld } from "./world";
 import { tickN } from "../tick";
 import { STOCKPILE_CAP_MULT } from "../economy";
+import { reachableNeighbors, routeCount } from "../geometry";
+import { PRICE_CEILING_MULT, PRICE_FLOOR_MULT } from "../pricing";
 
 describe("seeded generation", () => {
   it("same seed produces identical worlds", () => {
@@ -58,6 +60,24 @@ describe("generated world structure", () => {
     const w = generateWorld({ seed: 13, locationCount: 5 });
     const first = Object.values(w.locations)[0];
     expect(first.position).toEqual({ x: 0, y: 0 });
+  });
+
+  it("generates a connected route network", () => {
+    const w = generateWorld({ seed: 23, locationCount: 30, traderCount: 0 });
+    expect(routeCount(w)).toBeGreaterThan(Object.keys(w.locations).length - 1);
+
+    const [start] = Object.keys(w.locations);
+    const seen = new Set<string>([start]);
+    const queue = [start];
+    while (queue.length > 0) {
+      const here = queue.shift()!;
+      for (const next of reachableNeighbors(w, here)) {
+        if (seen.has(next.to)) continue;
+        seen.add(next.to);
+        queue.push(next.to);
+      }
+    }
+    expect(seen.size).toBe(Object.keys(w.locations).length);
   });
 
   it("declared primaryExports/Imports are consistent with production data", () => {
@@ -162,4 +182,35 @@ describe("invariants hold at scale", () => {
       expect(t.funds).toBeGreaterThanOrEqual(0);
     }
   }, 15_000);
+
+  it("long-run markets do not bunch at exact price or stock bounds", () => {
+    const w = generateWorld({ seed: 11, locationCount: 50 });
+    tickN(w, 300);
+
+    let quotes = 0;
+    let priceEdgeHits = 0;
+    let zeroStockHits = 0;
+
+    for (const loc of Object.values(w.locations)) {
+      const market = w.markets[loc.id];
+      for (const good of Object.values(w.goods)) {
+        const target = loc.targetStock[good.id] ?? 0;
+        if (target <= 0) continue;
+        quotes += 1;
+
+        const stock = market.stock[good.id] ?? 0;
+        const price = market.prices[good.id] ?? good.basePrice;
+        if (stock <= 0.0001) zeroStockHits += 1;
+        if (
+          price <= good.basePrice * PRICE_FLOOR_MULT + 0.001
+          || price >= good.basePrice * PRICE_CEILING_MULT - 0.001
+        ) {
+          priceEdgeHits += 1;
+        }
+      }
+    }
+
+    expect(priceEdgeHits / quotes).toBeLessThan(0.05);
+    expect(zeroStockHits / quotes).toBeLessThan(0.08);
+  });
 });

@@ -18,8 +18,10 @@ describe("priceFor", () => {
     expect(p).toBeGreaterThan(10 * PRICE_FLOOR_MULT);
   });
 
-  it("clamps at the ceiling for near-zero stock", () => {
-    expect(priceFor(10, 0.0001, 100)).toBeCloseTo(10 * PRICE_CEILING_MULT, 5);
+  it("approaches scarcity pricing without immediately pinning at the ceiling", () => {
+    const p = priceFor(10, 0, 100);
+    expect(p).toBeGreaterThan(10);
+    expect(p).toBeLessThan(10 * PRICE_CEILING_MULT);
   });
 
   it("clamps at the floor for massive overstock", () => {

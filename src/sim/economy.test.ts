@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createWorld } from "./world";
 import { tickN } from "./tick";
-import { productionScale, STOCKPILE_CAP_MULT } from "./economy";
+import { consumptionDemand, productionScale, STOCKPILE_CAP_MULT } from "./economy";
 
 describe("productionScale", () => {
   it("returns 1 below or at target stock", () => {
@@ -20,6 +20,26 @@ describe("productionScale", () => {
 
   it("returns 1 when target is 0 (no cap modeled)", () => {
     expect(productionScale(500, 0)).toBe(1);
+  });
+});
+
+describe("consumptionDemand", () => {
+  it("uses full demand while stock is healthy", () => {
+    expect(consumptionDemand(40, 10, 100)).toBe(10);
+  });
+
+  it("rations demand when stock is near empty", () => {
+    const demand = consumptionDemand(10, 10, 100);
+    expect(demand).toBeGreaterThan(0);
+    expect(demand).toBeLessThan(10);
+  });
+
+  it("preserves a small local reserve instead of draining to exact zero", () => {
+    expect(consumptionDemand(5, 10, 100)).toBeCloseTo(1, 5);
+  });
+
+  it("never consumes more than available stock", () => {
+    expect(consumptionDemand(2, 10, 100)).toBeLessThanOrEqual(2);
   });
 });
 

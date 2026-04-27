@@ -1,103 +1,307 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
+import type { IconType } from "react-icons";
+import { GiCargoCrate, GiFactory, GiReceiveMoney, GiTrade, GiUpgrade, GiWallet } from "react-icons/gi";
 import { useStore } from "../store";
+import type { Good, GoodCategory, GoodId, LocationDef, LocationId, World } from "../../sim/types";
 import "./MarketsView.css";
 
-interface Cell {
-  stock: number;
+type CommodityTone = "short" | "surplus" | "";
+
+interface Quote {
+  location: LocationId;
+  locName: string;
   price: number;
-  basePrice: number;
+  stock: number;
   target: number;
 }
 
-function priceTone(price: number, base: number): string {
-  if (base <= 0) return "";
-  const ratio = price / base;
-  if (ratio >= 2.5) return "bad";
-  if (ratio >= 1.5) return "warn";
-  if (ratio <= 0.5) return "good";
-  return "";
+interface CommodityRow {
+  good: Good;
+  category: GoodCategory;
+  totalStock: number;
+  totalTarget: number;
+  avgPrice: number;
+  lowAsk: Quote | null;
+  highBid: Quote | null;
+  spreadPct: number;
+  activeMarkets: number;
+  tone: CommodityTone;
 }
 
-function stockTone(stock: number, target: number): string {
-  if (target <= 0) return "faint";
-  const ratio = stock / target;
-  if (ratio < 0.25) return "bad";
-  if (ratio < 0.75) return "warn";
-  if (ratio > 2.5) return "good";
-  return "";
-}
+const CATEGORY_ORDER: Record<GoodCategory, number> = {
+  food: 0,
+  raw: 1,
+  intermediate: 2,
+  fuel: 3,
+  advanced: 4,
+  luxury: 5,
+  upgrade: 6,
+};
+
+const CATEGORY_LABEL: Record<GoodCategory, string> = {
+  food: "Food",
+  raw: "Raw",
+  intermediate: "Intermediate",
+  fuel: "Fuel",
+  advanced: "Advanced",
+  luxury: "Luxury",
+  upgrade: "Upgrade",
+};
 
 export function MarketsView() {
   const world = useStore((s) => s.world);
+  const selectedGood = useStore((s) => s.selectedGood);
+  const selectGood = useStore((s) => s.selectGood);
   useStore((s) => s.tickEpoch);
 
-  const goodIds = useMemo(() => Object.keys(world.goods), [world.goods]);
-  const locationIds = useMemo(() => Object.keys(world.locations), [world.locations]);
+  const rows = useMemo(() => commodityRows(world), [world]);
+  const selectedId = selectedGood && world.goods[selectedGood] ? selectedGood : rows[0]?.good.id ?? null;
+  const selected = selectedId ? rows.find(row => row.good.id === selectedId) ?? null : null;
+  const stats = useMemo(() => marketStats(rows), [rows]);
 
   return (
-    <section>
-      <h2>Markets — stock @ price</h2>
-      <div className="markets-scroll">
-        <table className="markets">
-          <thead>
-            <tr>
-              <th className="rowhead">Location</th>
-              <th className="rowhead numeric">Tech</th>
-              {goodIds.map((g) => (
-                <th key={g} className="numeric goodcol">
-                  <div className="goodname">{world.goods[g].name.split(" ").pop()}</div>
-                  <div className="goodbase faint mono">Ç{world.goods[g].basePrice}</div>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {locationIds.map((locId) => {
-              const loc = world.locations[locId];
-              const market = world.markets[locId];
-              return (
-                <tr key={locId}>
-                  <td className="rowhead">
-                    <div>{loc.name}</div>
-                    <div className="faint" style={{ fontSize: 10 }}>
-                      {loc.traits.tags.slice(0, 2).join(" · ")}
-                    </div>
-                  </td>
-                  <td className="numeric mono dim">{loc.traits.techLevel}</td>
-                  {goodIds.map((g) => {
-                    const cell: Cell = {
-                      stock: market.stock[g] ?? 0,
-                      price: market.prices[g] ?? 0,
-                      basePrice: world.goods[g].basePrice,
-                      target: loc.targetStock[g] ?? 0,
-                    };
-                    const sTone = stockTone(cell.stock, cell.target);
-                    const pTone = priceTone(cell.price, cell.basePrice);
-                    return (
-                      <td key={g} className={`numeric mono cell tone-${pTone || "neutral"}`}>
-                        <div className={`stock ${sTone}`}>{cell.stock.toFixed(0)}</div>
-                        <div className={`price ${pTone}`}>{cell.price.toFixed(1)}</div>
-                      </td>
-                    );
-                  })}
+    <section className="markets-view">
+      <header className="markets-header">
+        <div>
+          <div className="markets-eyebrow">Markets</div>
+          <h2>Commodity Exchange</h2>
+        </div>
+        <div className="markets-summary">
+          <MarketSummary icon={GiCargoCrate} label="Commodities" value={rows.length.toLocaleString()} />
+          <MarketSummary icon={GiFactory} label="Markets" value={Object.keys(world.locations).length.toLocaleString()} />
+          <MarketSummary icon={GiTrade} label="Quotes" value={stats.quotes.toLocaleString()} />
+          <MarketSummary icon={GiReceiveMoney} label="Short" value={stats.short.toLocaleString()} />
+          <MarketSummary icon={GiUpgrade} label="Upgrades" value={stats.upgrades.toLocaleString()} />
+        </div>
+      </header>
+
+      <div className="markets-layout">
+        <section className="commodity-board">
+          <div className="markets-panel-head">
+            <div>
+              <span className="markets-panel-label">Board</span>
+              <span className="dim">Aggregate sector stock, demand, and station quotes</span>
+            </div>
+            <div className="markets-legend">
+              <span><span className="market-dot short" /> short</span>
+              <span><span className="market-dot surplus" /> surplus</span>
+              <span><span className="market-dot upgrade" /> upgrade module</span>
+            </div>
+          </div>
+          <div className="commodity-scroll">
+            <table className="commodity-table">
+              <colgroup>
+                <col className="col-good" />
+                <col className="col-cat" />
+                <col className="col-price" />
+                <col className="col-depth" />
+                <col className="col-quote" />
+                <col className="col-quote" />
+                <col className="col-market" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>Commodity</th>
+                  <th>Class</th>
+                  <th>Price</th>
+                  <th>Depth</th>
+                  <th>Low Ask</th>
+                  <th>High Bid</th>
+                  <th>Market</th>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              </thead>
+              <tbody>
+                {rows.map(row => (
+                  <tr
+                    key={row.good.id}
+                    className={`${selectedId === row.good.id ? "active" : ""} ${row.tone}`}
+                    onClick={() => selectGood(row.good.id)}
+                  >
+                    <td>
+                      <span className="commodity-name-cell">
+                        <CommodityIcon category={row.category} />
+                        <span>
+                          <span className="commodity-name">{row.good.name}</span>
+                          <span className="commodity-id dim">{row.good.id}</span>
+                        </span>
+                      </span>
+                    </td>
+                    <td><span className={`category-pill category-${row.category}`}>{CATEGORY_LABEL[row.category]}</span></td>
+                    <td>
+                      <span className="market-stack">
+                        <span className="mono">Ç{row.avgPrice.toFixed(row.avgPrice >= 1000 ? 0 : 1)} avg</span>
+                        <span className="mono dim">Ç{row.good.basePrice.toLocaleString()} base</span>
+                      </span>
+                    </td>
+                    <td>
+                      <span className="market-stack">
+                        <span className="mono">{formatQty(row.totalStock)} stock</span>
+                        <span className="mono dim">{formatQty(row.totalTarget)} target</span>
+                      </span>
+                    </td>
+                    <td><QuoteCell quote={row.lowAsk} /></td>
+                    <td><QuoteCell quote={row.highBid} /></td>
+                    <td>
+                      <span className="market-stack">
+                        <span className={`mono ${row.spreadPct >= 75 ? "good" : row.spreadPct <= 10 ? "dim" : ""}`}>
+                          {row.spreadPct.toFixed(0)}% spread
+                        </span>
+                        <span className="mono dim">{row.activeMarkets} markets</span>
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <aside className="commodity-detail">
+          {selected && (
+            <>
+              <div className="commodity-detail-head">
+                <div>
+                  <span className="markets-panel-label">Commodity</span>
+                  <h3>{selected.good.name}</h3>
+                </div>
+                <span className={`category-pill category-${selected.category}`}>{CATEGORY_LABEL[selected.category]}</span>
+              </div>
+              <div className="commodity-detail-stats">
+                <MarketSummary icon={GiWallet} label="Base" value={`Ç${selected.good.basePrice.toLocaleString()}`} />
+                <MarketSummary icon={GiCargoCrate} label="Mass" value={selected.good.weight.toFixed(1)} />
+                <MarketSummary icon={GiTrade} label="Avg" value={`Ç${selected.avgPrice.toFixed(selected.avgPrice >= 1000 ? 0 : 1)}`} />
+                <MarketSummary icon={GiFactory} label="Markets" value={selected.activeMarkets.toString()} />
+              </div>
+
+              <div className="commodity-depth">
+                <div className="markets-section-title">Best Asks</div>
+                <QuoteList quotes={quotesForGood(world, selected.good.id, "ask").slice(0, 7)} mode="ask" />
+              </div>
+              <div className="commodity-depth">
+                <div className="markets-section-title">Best Bids</div>
+                <QuoteList quotes={quotesForGood(world, selected.good.id, "bid").slice(0, 7)} mode="bid" />
+              </div>
+            </>
+          )}
+        </aside>
       </div>
-      <Legend />
     </section>
   );
 }
 
-function Legend() {
+function MarketSummary({ icon: Icon, label, value }: { icon: IconType; label: string; value: ReactNode }) {
   return (
-    <div className="markets-legend dim">
-      <span><span className="swatch tone-good" /> price ≤ ½×</span>
-      <span><span className="swatch tone-warn" /> price ≥ 1.5×</span>
-      <span><span className="swatch tone-bad"  /> price ≥ 2.5×</span>
-      <span className="faint">cells stack stock above price</span>
+    <span className="markets-summary-item">
+      <Icon className="markets-icon" aria-hidden="true" focusable="false" />
+      <span>
+        <span className="markets-summary-label">{label}</span>
+        <span className="markets-summary-value">{value}</span>
+      </span>
+    </span>
+  );
+}
+
+function CommodityIcon({ category }: { category: GoodCategory }) {
+  const Icon = category === "upgrade" ? GiUpgrade : category === "fuel" ? GiTrade : GiCargoCrate;
+  return <Icon className={`commodity-icon category-${category}`} aria-hidden="true" focusable="false" />;
+}
+
+function QuoteCell({ quote }: { quote: Quote | null }) {
+  if (!quote) return <span className="dim">none</span>;
+  return (
+    <span className="quote-cell">
+      <span className="quote-station">{quote.locName}</span>
+      <span className="mono">Ç{quote.price.toFixed(quote.price >= 1000 ? 0 : 1)}</span>
+    </span>
+  );
+}
+
+function QuoteList({ quotes, mode }: { quotes: Quote[]; mode: "ask" | "bid" }) {
+  return (
+    <div className="quote-list">
+      {quotes.length === 0 ? (
+        <div className="quote-empty">No active {mode === "ask" ? "sellers" : "buyers"}.</div>
+      ) : quotes.map(quote => (
+        <div key={quote.location} className="quote-row">
+          <span className="quote-station">{quote.locName}</span>
+          <span className="mono">Ç{quote.price.toFixed(quote.price >= 1000 ? 0 : 1)}</span>
+          <span className="mono dim">{mode === "ask" ? `${formatQty(quote.stock)} stock` : `${formatQty(quote.target)} target`}</span>
+        </div>
+      ))}
     </div>
   );
+}
+
+function commodityRows(world: World): CommodityRow[] {
+  return Object.values(world.goods).map(good => commodityRow(world, good)).sort((a, b) =>
+    CATEGORY_ORDER[a.category] - CATEGORY_ORDER[b.category]
+    || Number(b.tone === "short") - Number(a.tone === "short")
+    || b.spreadPct - a.spreadPct
+    || a.good.name.localeCompare(b.good.name)
+  );
+}
+
+function commodityRow(world: World, good: Good): CommodityRow {
+  const quotes = quotesForGood(world, good.id, "all");
+  const totalStock = quotes.reduce((sum, q) => sum + q.stock, 0);
+  const totalTarget = quotes.reduce((sum, q) => sum + q.target, 0);
+  const avgPrice = quotes.length > 0
+    ? quotes.reduce((sum, q) => sum + q.price, 0) / quotes.length
+    : good.basePrice;
+  const asks = quotes.filter(q => q.stock > 0.001).sort((a, b) => a.price - b.price);
+  const bids = quotes.filter(q => q.target > 0).sort((a, b) => b.price - a.price);
+  const lowAsk = asks[0] ?? null;
+  const highBid = bids[0] ?? null;
+  const spreadPct = lowAsk && highBid && lowAsk.price > 0
+    ? ((highBid.price - lowAsk.price) / lowAsk.price) * 100
+    : 0;
+  const stockRatio = totalTarget > 0 ? totalStock / totalTarget : 1;
+  const tone: CommodityTone = totalTarget > 0 && stockRatio < 0.55
+    ? "short"
+    : totalTarget > 0 && stockRatio > 1.8
+      ? "surplus"
+      : "";
+  return {
+    good,
+    category: good.category,
+    totalStock,
+    totalTarget,
+    avgPrice,
+    lowAsk,
+    highBid,
+    spreadPct,
+    activeMarkets: quotes.length,
+    tone,
+  };
+}
+
+function quotesForGood(world: World, goodId: GoodId, mode: "all" | "ask" | "bid"): Quote[] {
+  const rows = Object.values(world.locations).map((loc: LocationDef) => {
+    const market = world.markets[loc.id];
+    return {
+      location: loc.id,
+      locName: loc.name,
+      price: market.prices[goodId] ?? world.goods[goodId].basePrice,
+      stock: market.stock[goodId] ?? 0,
+      target: loc.targetStock[goodId] ?? 0,
+    };
+  }).filter(q => q.stock > 0.001 || q.target > 0);
+
+  if (mode === "ask") return rows.filter(q => q.stock > 0.001).sort((a, b) => a.price - b.price || b.stock - a.stock);
+  if (mode === "bid") return rows.filter(q => q.target > 0).sort((a, b) => b.price - a.price || a.stock - b.stock);
+  return rows.sort((a, b) => a.locName.localeCompare(b.locName));
+}
+
+function marketStats(rows: CommodityRow[]) {
+  return {
+    quotes: rows.reduce((sum, row) => sum + row.activeMarkets, 0),
+    short: rows.filter(row => row.tone === "short").length,
+    upgrades: rows.filter(row => row.category === "upgrade").length,
+  };
+}
+
+function formatQty(value: number): string {
+  if (value >= 1000) return Math.round(value).toLocaleString();
+  if (value >= 100) return Math.round(value).toString();
+  return value.toFixed(value % 1 === 0 ? 0 : 1);
 }

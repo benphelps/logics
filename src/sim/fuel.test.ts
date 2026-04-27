@@ -61,7 +61,7 @@ describe("fuel — single fuel type", () => {
     for (const m of Object.values(w.markets)) m.stock.plasma = 0;
     const reports = tickN(w, 5);
     expect(w.traders.t.state).toBe("idle");
-    expect(reports.at(-1)!.traderEvents.some(e => e.trader === "t" && e.kind === "stuck")).toBe(true);
+    expect(reports.some(r => r.traderEvents.some(e => e.trader === "t" && e.kind === "stuck"))).toBe(true);
   });
 
   it("fuel demand from traders pulls fuel stock down at trade hubs", () => {

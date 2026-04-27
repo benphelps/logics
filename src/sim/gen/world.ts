@@ -1,5 +1,7 @@
-import type { LocationDef, LocationId, Position, World } from "../types";
+import { euclidean } from "../geometry";
+import type { LaneMap, LocationDef, LocationId, Player, Position, World } from "../types";
 import { createWorld } from "../world";
+import type { PlayerSeedConfig } from "../data/player";
 import { ARCHETYPE_BUILDERS, type ArchetypeName } from "./archetypes";
 import { generateName } from "./names";
 import { mulberry32, rangeFloat, type Rng } from "./rng";
@@ -10,6 +12,7 @@ export interface GenerateWorldOptions {
   locationCount: number;
   traderCount?: number;
   mapRadius?: number;
+  player?: Player | null | PlayerSeedConfig;
 }
 
 const ARCHETYPE_MIX: { archetype: ArchetypeName; weight: number }[] = [
@@ -57,6 +60,91 @@ function randomPosition(rng: Rng, archetype: ArchetypeName, mapRadius: number): 
   return { x: Math.cos(theta) * r, y: Math.sin(theta) * r };
 }
 
+function routeModifier(a: LocationDef, b: LocationDef): number {
+  const tags = new Set([...a.traits.tags, ...b.traits.tags]);
+  const tech = (a.traits.techLevel + b.traits.techLevel) / 2;
+  let modifier = 1.0;
+  if (tags.has("trade-hub")) modifier -= 0.10;
+  if (tech >= 8) modifier -= 0.04;
+  if (tags.has("frontier") || tags.has("rim")) modifier += 0.06;
+  return Math.max(0.78, Math.min(1.12, Number(modifier.toFixed(2))));
+}
+
+function addRoute(lanes: LaneMap, a: LocationDef, b: LocationDef): boolean {
+  if (a.id === b.id) return false;
+  lanes[a.id] ??= {};
+  lanes[b.id] ??= {};
+  if (lanes[a.id][b.id] != null || lanes[b.id][a.id] != null) return false;
+  const modifier = routeModifier(a, b);
+  lanes[a.id][b.id] = modifier;
+  lanes[b.id][a.id] = modifier;
+  return true;
+}
+
+function routeDegree(lanes: LaneMap, id: LocationId): number {
+  const direct = new Set(Object.keys(lanes[id] ?? {}));
+  for (const [from, edges] of Object.entries(lanes)) {
+    if (edges[id] != null) direct.add(from);
+  }
+  direct.delete(id);
+  return direct.size;
+}
+
+export function generateRoutes(locations: Record<LocationId, LocationDef>): LaneMap {
+  const ids = Object.keys(locations) as LocationId[];
+  const lanes: LaneMap = {};
+  for (const id of ids) lanes[id] = {};
+  if (ids.length <= 1) return lanes;
+
+  const connected = new Set<LocationId>([ids[0]]);
+  const remaining = new Set<LocationId>(ids.slice(1));
+  while (remaining.size > 0) {
+    let best: { a: LocationId; b: LocationId; dist: number } | null = null;
+    for (const a of connected) {
+      for (const b of remaining) {
+        const dist = euclidean(locations[a].position, locations[b].position);
+        if (!best || dist < best.dist) best = { a, b, dist };
+      }
+    }
+    if (!best) break;
+    addRoute(lanes, locations[best.a], locations[best.b]);
+    connected.add(best.b);
+    remaining.delete(best.b);
+  }
+
+  for (const id of ids) {
+    const loc = locations[id];
+    const targetDegree = loc.traits.tags.includes("trade-hub")
+      ? 5
+      : loc.traits.tags.includes("research") || loc.traits.tags.includes("industrial")
+        ? 4
+        : loc.traits.tags.includes("frontier") || loc.traits.tags.includes("rim")
+          ? 2
+          : 3;
+    const nearest = ids
+      .filter(other => other !== id)
+      .map(other => ({ id: other, dist: euclidean(loc.position, locations[other].position) }))
+      .sort((a, b) => a.dist - b.dist);
+    for (const n of nearest) {
+      if (routeDegree(lanes, id) >= targetDegree) break;
+      addRoute(lanes, loc, locations[n.id]);
+    }
+  }
+
+  const hubs = ids.filter(id => locations[id].traits.tags.includes("trade-hub"));
+  for (const id of hubs) {
+    const loc = locations[id];
+    const nearestHubs = hubs
+      .filter(other => other !== id)
+      .map(other => ({ id: other, dist: euclidean(loc.position, locations[other].position) }))
+      .sort((a, b) => a.dist - b.dist)
+      .slice(0, 2);
+    for (const hub of nearestHubs) addRoute(lanes, loc, locations[hub.id]);
+  }
+
+  return lanes;
+}
+
 export function generateWorld(opts: GenerateWorldOptions): World {
   const rng = mulberry32(opts.seed);
   const locationCount = Math.max(1, opts.locationCount);
@@ -74,6 +162,7 @@ export function generateWorld(opts: GenerateWorldOptions): World {
     locations[id] = ARCHETYPE_BUILDERS[archetype]({ rng, id, name, position });
   }
 
+  const lanes = generateRoutes(locations);
   const traders = generateTraders({
     rng,
     count: traderCount,
@@ -81,5 +170,5 @@ export function generateWorld(opts: GenerateWorldOptions): World {
     antimatterAvailable: locationsHaveAntimatter(locations),
   });
 
-  return createWorld({ locations, lanes: {}, traders });
+  return createWorld({ locations, lanes, traders, player: opts.player ?? null });
 }

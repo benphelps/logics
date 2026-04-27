@@ -7,12 +7,31 @@ export const CREW_WAGES_PER_CAPACITY = 0;
 export const DOCKING_FEE_PER_CAPACITY = 5;
 export const SALES_TAX_RATE = 0.15;
 export const STOCKPILE_CAP_MULT = 3.0;
+export const CONSUMPTION_RATION_FLOOR = 0.2;
+export const CONSUMPTION_RATION_BAND = 0.35;
+export const CONSUMPTION_RESERVE_FRACTION = 0.04;
 
 export function productionScale(stock: number, target: number): number {
   if (target <= 0) return 1.0;
   if (stock >= target * STOCKPILE_CAP_MULT) return 0;
   if (stock <= target) return 1.0;
   return 1 - (stock - target) / (target * (STOCKPILE_CAP_MULT - 1));
+}
+
+export function consumptionDemand(have: number, want: number, target: number): number {
+  if (have <= 0 || want <= 0) return 0;
+  if (target <= 0) return Math.min(have, want);
+
+  const reserve = target * CONSUMPTION_RESERVE_FRACTION;
+  const available = Math.max(0, have - reserve);
+  if (available <= 0) return 0;
+
+  const ratio = have / target;
+  if (ratio >= CONSUMPTION_RATION_BAND) return Math.min(available, want);
+
+  const pressure = Math.max(0, ratio / CONSUMPTION_RATION_BAND);
+  const scale = CONSUMPTION_RATION_FLOOR + (1 - CONSUMPTION_RATION_FLOOR) * pressure;
+  return Math.min(available, want * scale);
 }
 
 function isPlayerShip(world: World, ship: Trader): boolean {

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { CrewRole, World, LocationId, GoodId, JobId, TraderId } from "../sim/types";
-import { createWorld } from "../sim/world";
+import { createStartingWorld } from "../sim/start";
 import { tickWorld } from "../sim/tick";
 import {
   buyAtLocation,
@@ -55,7 +55,7 @@ interface UiState {
 }
 
 export const useStore = create<UiState>((set, get) => ({
-  world: createWorld(),
+  world: createStartingWorld(),
   speed: 0,
   tickEpoch: 0,
   selectedTab: "player",
@@ -76,7 +76,7 @@ export const useStore = create<UiState>((set, get) => ({
     for (let i = 0; i < n; i++) tickWorld(w);
     set({ tickEpoch: get().tickEpoch + 1 });
   },
-  reset: () => set({ world: createWorld(), tickEpoch: 0, speed: 0, lastError: null }),
+  reset: () => set({ world: createStartingWorld(), tickEpoch: 0, speed: 0, lastError: null }),
   selectTab: (t) => set({ selectedTab: t }),
   selectLocation: (id) => set({ selectedLocation: id }),
   selectGood: (id) => set({ selectedGood: id }),

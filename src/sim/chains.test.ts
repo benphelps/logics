@@ -42,7 +42,8 @@ describe("tech-gated production", () => {
     const noTraders = createWorld({ traders: {} });
     tickN(noTraders, 50);
     expect(noTraders.markets.ironhold.stock.electronics).toBeGreaterThan(0);
-    expect(noTraders.markets.verdant.stock.electronics).toBeCloseTo(0, 9);
+    const verdantTarget = noTraders.locations.verdant.targetStock.electronics ?? 0;
+    expect(noTraders.markets.verdant.stock.electronics).toBeLessThan(verdantTarget * 0.15);
   });
 
   it("starter universe: saffron produces luxury_goods (tech 5 = recipe req 5)", () => {

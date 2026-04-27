@@ -1,7 +1,7 @@
 import type { GoodId, Hire, HireId, Job, LocationDef, MarketState, World } from "./types";
 import { recomputePrices } from "./pricing";
 import { stepTraders, type TraderEvent } from "./traders";
-import { chargeMaintenance, productionScale } from "./economy";
+import { chargeMaintenance, consumptionDemand, productionScale } from "./economy";
 import { expireJobs, generateJobs, type JobExpiryEvent } from "./jobs";
 import { expireHires, generateHires } from "./hires";
 
@@ -48,12 +48,10 @@ function consume(
   for (const entry of loc.consumes) {
     const have = market.stock[entry.good] ?? 0;
     const want = entry.ratePerTick;
-    if (have >= want) {
-      market.stock[entry.good] = have - want;
-    } else {
-      market.stock[entry.good] = 0;
-      shortages.push({ location: loc.id, good: entry.good, missing: want - have });
-    }
+    const target = loc.targetStock[entry.good] ?? 0;
+    const taken = consumptionDemand(have, want, target);
+    market.stock[entry.good] = Math.max(0, have - taken);
+    if (taken < want) shortages.push({ location: loc.id, good: entry.good, missing: want - taken });
   }
 }
 

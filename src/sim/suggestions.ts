@@ -1,5 +1,5 @@
 import type { GoodId, Job, JobId, LocationId, Trader, World } from "./types";
-import { distance, reachableNeighbors } from "./geometry";
+import { reachableNeighbors, routeDistance } from "./geometry";
 import { priceFor } from "./pricing";
 import { activeFuelType, listSpeculativeOptions, listTradeOptions, maintenanceTravelBlockReason, selectRefuelType, type TradeOption } from "./traders";
 import { listAvailableRescueJobs, listLocalJobs } from "./jobs";
@@ -32,6 +32,7 @@ const FUEL_LOW_FRACTION = 0.50;          // refuel proactively below this when l
 const FUEL_CRITICAL_FRACTION = 0.15;     // override anything else below this
 const FUEL_POST_TRADE_MIN = 0.30;        // if a trade would leave you below this and you can refuel here, refuel first
 const PLAN_FILLER_GOOD_LIMIT = 4;
+const LOCAL_SELL_EXIT_MIN_VALUE = 0.5;
 const JOB_TIER_PRIORITY = { high: 0, medium: 1, low: 2 } as const;
 
 type Candidate = { value: number; hint: GuidedHint };
@@ -65,6 +66,20 @@ function canAffordRefuelHere(world: World, ship: Trader): boolean {
   const room = Math.max(0, ship.fuelCapacity - currentQty);
   const affordable = price > 0 ? ship.funds / price : 0;
   return Math.min(room, stock, affordable) > 0.001;
+}
+
+function buyHintFromTradeOption(option: TradeOption, acceptedJob?: Job): GuidedHint {
+  return {
+    kind: "buy_for_route",
+    good: option.good,
+    qty: option.qty,
+    dst: option.to,
+    netProfit: option.totalProfit,
+    ticks: option.travelTicks + 1,
+    profitPerTick: option.profitPerTick,
+    jobId: option.jobId ?? acceptedJob?.id,
+    jobAccepted: option.jobAccepted ?? (acceptedJob ? true : undefined),
+  };
 }
 
 export function getGuidedHint(
@@ -114,6 +129,13 @@ export function getGuidedHint(
 
   const candidates: Candidate[] = [];
 
+  // In actual auto mode, mirror the autopilot executor's priority exactly:
+  // it takes the best direct trade before considering empty repositioning.
+  // Advisory mode can still compare full plans by total expected value.
+  if (options.mode === "actual" && advisoryShip.pilot === "auto" && buyOptions[0]) {
+    return buyHintFromTradeOption(buyOptions[0]);
+  }
+
   for (const o of buyOptions) {
     // listTradeOptions already folds the contract bonus into totalProfit for
     // accepted jobs — we just tag the hint so the UI can show "fulfills an
@@ -121,17 +143,7 @@ export function getGuidedHint(
     const job = jobByKey.get(`${o.to}|${o.good}`);
     candidates.push({
       value: o.totalProfit,
-      hint: {
-        kind: "buy_for_route",
-        good: o.good,
-        qty: o.qty,
-        dst: o.to,
-        netProfit: o.totalProfit,
-        ticks: o.travelTicks + 1,
-        profitPerTick: o.profitPerTick,
-        jobId: o.jobId ?? job?.id,
-        jobAccepted: o.jobAccepted ?? (job ? true : undefined),
-      },
+      hint: buyHintFromTradeOption(o, job),
     });
   }
   // Boost cargo-loaded candidates if they fulfill a job. Accepted contracts
@@ -202,6 +214,21 @@ export function getGuidedHint(
     candidates.splice(candidates.indexOf(localContractSell), 1);
     candidates.unshift(localContractSell);
   }
+
+  // Cargo that can already be sold at a profit should be cleared before the
+  // engine suggests adding more goods or chaining into another route plan.
+  // Otherwise the combined route scorer can keep the player hauling a mixed
+  // cargo bay across several stations without an obvious cash-out step.
+  const commitmentHint = candidates[0]?.hint.kind === "job_plan" || candidates[0]?.hint.kind === "accept_job";
+  const localCargoSell = commitmentHint ? null : candidates.find(c =>
+    c.hint.kind === "sell_here"
+    && c.value > LOCAL_SELL_EXIT_MIN_VALUE
+  );
+  if (localCargoSell) {
+    candidates.splice(candidates.indexOf(localCargoSell), 1);
+    candidates.unshift(localCargoSell);
+  }
+
   const top = candidates[0];
 
   // Pre-emptive refuel: if the player follows the top suggestion blindly and
@@ -295,7 +322,9 @@ function travelFuelIntent(world: World, ship: Trader, hint: GuidedHint, buyOptio
   }
   if (!dst) return null;
 
-  const fuelNeeded = plannedFuelNeeded ?? distance(world, ship.location, dst) * effectivePerDistance(ship, ft.perDistance);
+  const directDist = routeDistance(world, ship.location, dst);
+  if (directDist == null && plannedFuelNeeded == null) return null;
+  const fuelNeeded = plannedFuelNeeded ?? directDist! * effectivePerDistance(ship, ft.perDistance);
   const fuelAfter = fuel.qty - fuelNeeded;
   const dstHasFuel = ship.fuelTypes.some(f => (world.markets[dst].stock[f.good] ?? 0) >= ship.fuelCapacity * 0.4);
   return {
@@ -748,29 +777,22 @@ function localJobAcceptCandidates(world: World, ship: Trader): { value: number; 
   // here, hold for a contract" play.
   if (ft && fuel && !travelBlocked) {
     const here = ship.location;
-    const fuelPriceHere = hereMarket.prices[fuel.good] ?? 0;
-    const perDist = effectivePerDistance(ship, ft.perDistance);
     for (const job of Object.values(world.jobs)) {
       if (job.acceptedBy != null) continue;
       if (job.kind !== "shortage") continue;
       if (job.destination === here) continue;            // local — already handled above
       const onHand = ship.cargo.filter(l => l.good === job.good).reduce((s, l) => s + l.qty, 0);
       if (onHand <= 0) continue;
-      const dist = distance(world, here, job.destination);
-      const fuelNeeded = dist * perDist;
-      if (fuelNeeded > fuel.qty) continue;
+      const profile = travelProfile(world, ship, job.destination);
+      if (!profile) continue;
       const dstMarket = world.markets[job.destination];
       const dstPrice = dstMarket.prices[job.good] ?? 0;
       const sellNet = onHand * dstPrice * (1 - SALES_TAX_RATE);
       const lots = ship.cargo.filter(l => l.good === job.good);
       const totalCost = lots.reduce((s, l) => s + l.qty * l.unitPrice, 0);
-      const fuelCost = fuelNeeded * fuelPriceHere;
-      const travelTicks = Math.max(1, Math.ceil(dist / ship.speed));
-      const tripMaint = travelTicks * ship.capacity * MAINTENANCE_PER_CAPACITY;
-      const dockingFee = ship.capacity * DOCKING_FEE_PER_CAPACITY;
       const credit = Math.min(onHand, job.qty);
       const bonus = credit * (job.reward / job.qty);
-      const value = sellNet + bonus - totalCost - fuelCost - tripMaint - dockingFee;
+      const value = sellNet + bonus - totalCost - profile.travelCost;
       if (value <= 0) continue;
       const dstName = world.locations[job.destination]?.name ?? job.destination;
       const goodName = world.goods[job.good]?.name ?? job.good;
@@ -781,7 +803,7 @@ function localJobAcceptCandidates(world: World, ship: Trader): { value: number; 
           jobId: job.id,
           reason: `Accept and head to ${dstName} — your ${onHand.toFixed(0)} ${goodName} delivers a Ç${Math.round(bonus).toLocaleString()} contract bonus on top of Ç${Math.round(sellNet - totalCost).toLocaleString()} sell P&L.`,
           expectedNet: value,
-          ticks: travelTicks + 1,
+          ticks: profile.travelTicks + 1,
         },
       });
     }

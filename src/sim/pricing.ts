@@ -3,6 +3,7 @@ import type { GoodId, LocationDef, MarketState, World } from "./types";
 export const PRICE_ELASTICITY = 0.6;
 export const PRICE_FLOOR_MULT = 0.25;
 export const PRICE_CEILING_MULT = 5.0;
+export const PRICE_RESERVE_FRACTION = 0.08;
 
 export function priceFor(
   basePrice: number,
@@ -10,8 +11,10 @@ export function priceFor(
   target: number,
 ): number {
   if (target <= 0) return basePrice;
-  const safeStock = Math.max(stock, 0.001);
-  const ratio = Math.pow(target / safeStock, PRICE_ELASTICITY);
+  const reserve = Math.max(0.001, target * PRICE_RESERVE_FRACTION);
+  const effectiveStock = Math.max(stock, 0) + reserve;
+  const effectiveTarget = target + reserve;
+  const ratio = Math.pow(effectiveTarget / effectiveStock, PRICE_ELASTICITY);
   const clamped = Math.min(PRICE_CEILING_MULT, Math.max(PRICE_FLOOR_MULT, ratio));
   return basePrice * clamped;
 }

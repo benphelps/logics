@@ -187,6 +187,26 @@ describe("suggestion engine edge cases", () => {
     }
   });
 
+  it("sells profitable local cargo before chaining into another route plan", () => {
+    const w = createWorld();
+    const ship = playerShip(w);
+    ship.funds = 100_000;
+    ship.currentFuel = { good: "plasma", qty: ship.fuelCapacity };
+    ship.cargo = [{ good: "grain", qty: 40, source: "verdant", unitPrice: 2, purchasedAt: 0 }];
+
+    w.markets.haven.prices.grain = 10;
+    w.markets.ironhold.prices.grain = 200;
+    w.markets.haven.stock.protein = 20;
+    w.markets.haven.prices.protein = 2;
+    w.markets.ironhold.prices.protein = 200;
+    w.markets.ironhold.stock.plasma = 100;
+
+    const hint = getGuidedHint(w, ship);
+
+    expect(hint.kind).toBe("sell_here");
+    if (hint.kind === "sell_here") expect(hint.good).toBe("grain");
+  });
+
   it("plans rescue acceptance before buying fuel and departing", () => {
     const w = createWorld();
     const ship = playerShip(w);

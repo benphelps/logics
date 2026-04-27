@@ -156,6 +156,14 @@ describe("player primitives — manual buy / sell / refuel / travel", () => {
     expect(ship.currentFuel!.qty).toBeLessThan(fuelBefore);
   });
 
+  it("travelTo refuses destinations without a plotted route when lanes exist", () => {
+    const w = createWorld();
+    w.lanes = { haven: { ironhold: 1 }, ironhold: { haven: 1 } };
+    const ship = w.traders[w.player!.shipIds[0]];
+    const r = travelTo(w, ship, "verdant");
+    expect(r.ok).toBe(false);
+  });
+
   it("travelTo refuses when fuel is insufficient", () => {
     const w = createWorld();
     const ship = w.traders[w.player!.shipIds[0]];

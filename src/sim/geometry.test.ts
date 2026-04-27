@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { distance, euclidean, laneModifier, nearestDistance, reachableNeighbors } from "./geometry";
+import { distance, euclidean, laneModifier, nearestDistance, reachableNeighbors, routeCount, routeDistance, routeExists } from "./geometry";
 import { createWorld } from "./world";
 import type { LaneMap, LocationDef } from "./types";
 
@@ -104,6 +104,15 @@ describe("reachableNeighbors", () => {
     const map = Object.fromEntries(ns.map(n => [n.to, n.dist]));
     expect(map.b).toBeCloseTo(5, 5);
     expect(map.c).toBeCloseTo(10, 5);
+  });
+
+  it("uses explicit lanes as the route graph when present", () => {
+    const w = createWorld({ locations: tinyLocations, lanes: { a: { b: 0.5 }, b: { c: 1.2 } }, traders: {} });
+    expect(reachableNeighbors(w, "a").map(n => n.to)).toEqual(["b"]);
+    expect(reachableNeighbors(w, "c").map(n => n.to)).toEqual(["b"]);
+    expect(routeExists(w, "a", "c")).toBe(false);
+    expect(routeDistance(w, "a", "c")).toBeNull();
+    expect(routeCount(w)).toBe(2);
   });
 });
 

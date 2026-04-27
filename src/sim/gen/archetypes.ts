@@ -31,11 +31,12 @@ const tradeHub: Builder = ({ rng, id, name, position }) => {
       tags: ["trade-hub", "core", "civilian"],
       faction: "League",
     },
-    primaryExports: ["protein", "fiber", "medkits"],
+    primaryExports: ["protein", "fiber", "medkits", "plasma"],
     primaryImports: ["grain", "polymer", "parts", "electronics", "luxury_goods", "weapons"],
     produces: [
       { good: "protein", ratePerTick: jitter(rng, 14, 0.2) },
       { good: "fiber",   ratePerTick: jitter(rng, 4, 0.2), inputs: [{ good: "polymer", perUnit: 0.2 }] },
+      { good: "plasma",  ratePerTick: jitter(rng, 4.5, 0.2) },
       { good: "medkits", ratePerTick: jitter(rng, 3, 0.2), requiresTechLevel: 4,
         inputs: [{ good: "protein", perUnit: 0.5 }, { good: "fiber", perUnit: 0.3 }] },
     ],
@@ -43,13 +44,13 @@ const tradeHub: Builder = ({ rng, id, name, position }) => {
       { good: "grain",        ratePerTick: jitter(rng, 8, 0.15) },
       { good: "polymer",      ratePerTick: jitter(rng, 2, 0.15) },
       { good: "parts",        ratePerTick: jitter(rng, 1, 0.15) },
-      { good: "plasma",       ratePerTick: jitter(rng, 3, 0.15) },
+      { good: "plasma",       ratePerTick: jitter(rng, 1.2, 0.15) },
       { good: "electronics",  ratePerTick: jitter(rng, 0.5, 0.2) },
       { good: "weapons",      ratePerTick: jitter(rng, 0.3, 0.2) },
       { good: "luxury_goods", ratePerTick: jitter(rng, 0.5, 0.2) },
     ],
     targetStock: {
-      protein: 100, grain: 80, polymer: 40, fiber: 40, parts: 20, plasma: 30,
+      protein: 100, grain: 80, polymer: 40, fiber: 40, parts: 20, plasma: 120,
       medkits: 40, electronics: 20, weapons: 15, luxury_goods: 20,
       upg_cargo_1: 1, upg_fuel_1: 1, upg_hull_1: 1,
     },
@@ -97,7 +98,7 @@ const miningBelt: Builder = ({ rng, id, name, position }) => {
       { good: "medkits", ratePerTick: jitter(rng, 0.5, 0.2) },
     ],
     targetStock: {
-      ore: 120, parts: 30, grain: 60, protein: 20, polymer: 30, plasma: 30, antimatter: 40,
+      ore: 120, parts: 30, grain: 60, protein: 20, polymer: 30, plasma: 180, antimatter: 60,
       weapons: 30, medkits: 10,
       upg_engine_1: 1, upg_fuel_1: 1, upg_hull_1: 1, upg_weapon_1: 1,
       ...(techLevel >= 8 ? { upg_engine_2: 1, upg_hull_2: 1, upg_weapon_2: 1 } : {}),
@@ -121,17 +122,18 @@ const agriculturalRing: Builder = ({ rng, id, name, position }) => {
       { good: "grain",   ratePerTick: jitter(rng, 22, 0.2) },
       { good: "vatmeat", ratePerTick: jitter(rng, 5, 0.2) },
       { good: "polymer", ratePerTick: jitter(rng, 9, 0.2) },
+      { good: "plasma",  ratePerTick: jitter(rng, 2.2, 0.2) },
     ],
     consumes: [
       { good: "parts",       ratePerTick: jitter(rng, 2, 0.15) },
       { good: "fiber",       ratePerTick: jitter(rng, 2, 0.15) },
-      { good: "plasma",      ratePerTick: jitter(rng, 3, 0.15) },
+      { good: "plasma",      ratePerTick: jitter(rng, 1.8, 0.15) },
       { good: "medkits",     ratePerTick: jitter(rng, 1.0, 0.2) },
       { good: "electronics", ratePerTick: jitter(rng, 0.4, 0.2) },
       { good: "weapons",     ratePerTick: jitter(rng, 0.2, 0.2) },
     ],
     targetStock: {
-      grain: 200, vatmeat: 50, polymer: 80, parts: 20, fiber: 20, plasma: 30,
+      grain: 200, vatmeat: 50, polymer: 80, parts: 20, fiber: 20, plasma: 80,
       medkits: 50, electronics: 20, weapons: 10,
       upg_cargo_1: 1, upg_fuel_1: 1,
     },
@@ -144,6 +146,7 @@ const frontierOutpost: Builder = ({ rng, id, name, position }) => {
   const otherLuxury = luxuryGood === "xenospice" ? "silk" : "xenospice";
   const produces: LocationDef["produces"] = [
     { good: luxuryGood, ratePerTick: jitter(rng, 4, 0.3) },
+    { good: "plasma", ratePerTick: jitter(rng, 1.8, 0.25) },
   ];
   if (rng() < 0.4) {
     produces.push({ good: otherLuxury, ratePerTick: jitter(rng, 2, 0.3) });
@@ -171,13 +174,13 @@ const frontierOutpost: Builder = ({ rng, id, name, position }) => {
       { good: "grain",       ratePerTick: jitter(rng, 5, 0.2) },
       { good: "protein",     ratePerTick: jitter(rng, 3, 0.2) },
       { good: "parts",       ratePerTick: jitter(rng, 1, 0.2) },
-      { good: "plasma",      ratePerTick: jitter(rng, 2, 0.2) },
+      { good: "plasma",      ratePerTick: jitter(rng, 1.1, 0.2) },
       { good: "medkits",     ratePerTick: jitter(rng, 0.4, 0.2) },
       { good: "electronics", ratePerTick: jitter(rng, 0.3, 0.2) },
       { good: "weapons",     ratePerTick: jitter(rng, 0.5, 0.2) },
     ],
     targetStock: {
-      xenospice: 30, silk: 20, grain: 40, protein: 25, parts: 10, plasma: 20,
+      xenospice: 30, silk: 20, grain: 40, protein: 25, parts: 10, plasma: 70,
       luxury_goods: 30, medkits: 15, electronics: 15, weapons: 20, fiber: 10,
       upg_cargo_2: 1, upg_fuel_2: 1, upg_hull_2: 1, upg_weapon_2: 1,
     },
@@ -197,6 +200,7 @@ const researchStation: Builder = ({ rng, id, name, position }) => {
     primaryExports: ["electronics"],
     primaryImports: ["grain", "protein", "parts", "antimatter", "medkits", "luxury_goods"],
     produces: [
+      { good: "plasma", ratePerTick: jitter(rng, 2.4, 0.25) },
       { good: "electronics", ratePerTick: jitter(rng, 2.5, 0.3), requiresTechLevel: 7,
         inputs: [{ good: "parts", perUnit: 0.5 }, { good: "antimatter", perUnit: 0.2 }] },
     ],
@@ -205,12 +209,12 @@ const researchStation: Builder = ({ rng, id, name, position }) => {
       { good: "protein",      ratePerTick: jitter(rng, 2, 0.2) },
       { good: "parts",        ratePerTick: jitter(rng, 2, 0.2) },
       { good: "antimatter",   ratePerTick: jitter(rng, 1, 0.2) },
-      { good: "plasma",       ratePerTick: jitter(rng, 2, 0.2) },
+      { good: "plasma",       ratePerTick: jitter(rng, 1.2, 0.2) },
       { good: "medkits",      ratePerTick: jitter(rng, 0.5, 0.2) },
       { good: "luxury_goods", ratePerTick: jitter(rng, 0.3, 0.2) },
     ],
     targetStock: {
-      electronics: 40, grain: 30, protein: 20, parts: 30, antimatter: 25, plasma: 20,
+      electronics: 40, grain: 30, protein: 20, parts: 30, antimatter: 30, plasma: 80,
       medkits: 15, luxury_goods: 10,
       upg_engine_2: 1, upg_fuel_2: 1, upg_hull_2: 1,
       ...(techLevel >= 9 ? { upg_cargo_3: 1, upg_engine_3: 1, upg_fuel_3: 1, upg_hull_3: 1 } : {}),

@@ -156,6 +156,7 @@ export interface Trader {
   ticksRemaining: number;
   pilot: PilotMode;
   stuckTicks?: number;              // ticks the trader has been stuck (out of fuel + isolated). Drives rescue-job tier.
+  noOpportunityTicks?: number;      // autonomous idle streak after finding no profitable work; drives repositioning.
   log: ShipLogEntry[];              // capped action history (oldest entries dropped). Drives the per-ship log card.
   crew?: ShipCrew;                  // player-only — NPCs operate without a crew model.
   maintenanceDebt?: number;         // accrued unpaid maintenance for player ships missing a mechanic.
