@@ -2,15 +2,12 @@ import { useMemo, type ReactNode } from "react";
 import type { IconType } from "react-icons";
 import {
   GiCargoCrate,
-  GiContract,
   GiFactory,
   GiHabitatDome,
   GiPathDistance,
-  GiRadarSweep,
-  GiTrade,
 } from "react-icons/gi";
 import { useStore } from "../store";
-import { reachableNeighbors, routeCount, routeSegments } from "../../sim/geometry";
+import { reachableNeighbors, routeSegments } from "../../sim/geometry";
 import { netProductionRate } from "../../sim/locations";
 import type { LocationDef, LocationId, World } from "../../sim/types";
 import "./LocationsView.css";
@@ -80,26 +77,11 @@ export function LocationsView() {
   const projected = useMemo(() => projectLocations(locations), [locations]);
   const projectedById = useMemo(() => new Map(projected.map(p => [p.loc.id, p])), [projected]);
   const links = useMemo(() => buildAtlasLinks(world, locations), [world, locations]);
-  const stats = useMemo(() => atlasStats(world), [world]);
   const selectedMarket = selected ? marketRows(world, selected).slice(0, 9) : [];
   const selectedCounts = selected ? stationCounts(world, selected.id) : { docked: 0, inbound: 0, jobs: 0, routes: 0 };
 
   return (
     <section className="atlas-view">
-      <header className="atlas-header">
-        <div>
-          <div className="atlas-eyebrow">Atlas</div>
-          <h2>Station Exchange</h2>
-        </div>
-        <div className="atlas-summary">
-          <AtlasSummary icon={GiHabitatDome} label="Stations" value={stats.stations.toLocaleString()} />
-          <AtlasSummary icon={GiRadarSweep} label="Ships" value={stats.ships.toLocaleString()} />
-          <AtlasSummary icon={GiPathDistance} label="Routes" value={stats.routes.toLocaleString()} />
-          <AtlasSummary icon={GiContract} label="Contracts" value={stats.contracts.toLocaleString()} />
-          <AtlasSummary icon={GiTrade} label="Age" value={`t${world.tick.toLocaleString()}`} />
-        </div>
-      </header>
-
       <div className="atlas-grid">
         <section className="atlas-sheet-panel">
           <div className="atlas-panel-head">
@@ -360,16 +342,6 @@ function FlowText({ world, loc, goods }: { world: World; loc: LocationDef; goods
       {goods.length > visible.length && <span className="dim">+{goods.length - visible.length}</span>}
     </span>
   );
-}
-
-function atlasStats(world: World) {
-  const traders = Object.values(world.traders);
-  return {
-    stations: Object.keys(world.locations).length,
-    ships: traders.length,
-    routes: routeCount(world),
-    contracts: Object.values(world.jobs).filter(j => j.acceptedBy == null).length,
-  };
 }
 
 function stationCounts(world: World, id: LocationId) {

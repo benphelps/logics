@@ -1,6 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
-import type { IconType } from "react-icons";
-import { GiBank, GiCargoCrate, GiTrade, GiWallet } from "react-icons/gi";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { MdArrowDropDown, MdArrowDropUp, MdRemove } from "react-icons/md";
 import { useStore } from "../store";
 import type { Equity, EquityKind, StockPosition, TradeRecord, World } from "../../sim/types";
@@ -14,7 +12,6 @@ import {
   listPositions,
   listTradeRecords,
   maxShortableShares,
-  portfolioValue,
   priceChangePct,
   totalUnrealizedPnl,
   unrealizedPnl,
@@ -78,7 +75,6 @@ export function StockMarketView() {
 
   const docked = !!playerShip && playerShip.state === "idle";
   const cash = playerShip?.funds ?? 0;
-  const portfolio = portfolioValue(world);
   const unrealizedTotal = totalUnrealizedPnl(world);
   const positions = useMemo(() => listPositions(world), [world, tickEpoch]);
   const trades = useMemo(() => listTradeRecords(world, 100), [world, tickEpoch]);
@@ -97,27 +93,6 @@ export function StockMarketView() {
 
   return (
     <section className="stocks-view">
-      <header className="stocks-header">
-        <div>
-          <div className="stocks-eyebrow">Exchange</div>
-          <h2>Equity Markets</h2>
-        </div>
-        <div className="stocks-summary">
-          <Stat icon={GiWallet} label="Cash" value={`Ç${Math.round(cash).toLocaleString()}`} />
-          <Stat icon={GiBank} label="Long MV" value={`Ç${Math.round(portfolio).toLocaleString()}`} />
-          <Stat
-            icon={GiTrade}
-            label="Unrealized"
-            value={
-              <span className={unrealizedTotal > 0 ? "stock-pnl-up" : unrealizedTotal < 0 ? "stock-pnl-down" : ""}>
-                {unrealizedTotal >= 0 ? "+" : ""}Ç{Math.round(unrealizedTotal).toLocaleString()}
-              </span>
-            }
-          />
-          <Stat icon={GiCargoCrate} label="Positions" value={`${longCount}L · ${shortCount}S`} />
-        </div>
-      </header>
-
       {lastError && (
         <div className="stocks-error" onClick={clearError}>
           {lastError} <span className="stocks-error-dismiss">dismiss</span>
@@ -963,18 +938,6 @@ function Sparkline({ equity, position }: { equity: Equity; position: StockPositi
       <text x={4} y={12} className="spark-label">{`Ç${fmtPrice(max)}`}</text>
       <text x={4} y={h - 6} className="spark-label">{`Ç${fmtPrice(min)}`}</text>
     </svg>
-  );
-}
-
-function Stat({ icon: Icon, label, value }: { icon: IconType; label: string; value: ReactNode }) {
-  return (
-    <span className="stocks-summary-item">
-      <Icon className="stocks-icon" aria-hidden="true" focusable="false" />
-      <span>
-        <span className="stocks-summary-label">{label}</span>
-        <span className="stocks-summary-value">{value}</span>
-      </span>
-    </span>
   );
 }
 

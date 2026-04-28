@@ -1,8 +1,25 @@
-import { useRef } from "react";
+import { useRef, type ReactNode } from "react";
 import { MdAdd, MdClose, MdCode, MdRestartAlt, MdSave } from "react-icons/md";
-import { GiRadarSweep, GiShipWheel } from "react-icons/gi";
+import type { IconType } from "react-icons";
+import {
+  GiBank,
+  GiCargoCrate,
+  GiContract,
+  GiFactory,
+  GiHabitatDome,
+  GiPathDistance,
+  GiRadarSweep,
+  GiReceiveMoney,
+  GiShipWheel,
+  GiTrade,
+  GiUpgrade,
+  GiWallet,
+} from "react-icons/gi";
 import { useStore, type Speed, type Tab } from "../store";
 import { hasCrew } from "../../sim/crew";
+import { routeCount } from "../../sim/geometry";
+import { listPositions, portfolioValue, totalUnrealizedPnl } from "../../sim/stock";
+import type { World } from "../../sim/types";
 import type { SaveSlotSummary } from "../saveGames";
 import "./TopBar.css";
 
@@ -56,6 +73,7 @@ export function TopBar() {
   const fleet = world.player
     ? world.player.shipIds.reduce((s, id) => s + (world.traders[id]?.funds ?? 0), 0)
     : 0;
+  const pageSummary = selectedTab === "player" ? null : buildPageSummary(selectedTab, world, selectedShip?.funds ?? 0);
   const storageLabel = saveStatus === "saved" ? "Autosaved" : saveStatus === "unavailable" ? "Unsaved" : "Save error";
   const closeMenu = () => {
     if (menuRef.current) menuRef.current.open = false;
@@ -222,25 +240,33 @@ export function TopBar() {
           {world.player && <Stat label="Fleet" value={`Ç${Math.round(fleet).toLocaleString()}`} />}
         </div>
 
-        <div className="topbar-pilot-tabs" aria-label="Pilot mode">
-          <button
-            className={`topbar-tab ${selectedShip?.pilot === "manual" ? "active" : ""}`}
-            onClick={() => selectedShip && setPilot(selectedShip.id, "manual")}
-            disabled={!selectedShip}
-          >
-            <GiShipWheel className="topbar-tab-icon" aria-hidden="true" focusable="false" />
-            Manual
-          </button>
-          <button
-            className={`topbar-tab ${selectedShip?.pilot === "auto" ? "active" : ""}`}
-            onClick={() => selectedShip && setPilot(selectedShip.id, "auto")}
-            disabled={!selectedShip || autoBlocked}
-            title={autoBlocked ? "Hire a pilot to enable auto-play" : "Auto-play: pilot handles trading. Navigator unlocks guided hints."}
-          >
-            <GiRadarSweep className="topbar-tab-icon" aria-hidden="true" focusable="false" />
-            Auto
-          </button>
-        </div>
+        {selectedTab === "player" ? (
+          <div className="topbar-pilot-tabs" aria-label="Pilot mode">
+            <button
+              className={`topbar-tab ${selectedShip?.pilot === "manual" ? "active" : ""}`}
+              onClick={() => selectedShip && setPilot(selectedShip.id, "manual")}
+              disabled={!selectedShip}
+            >
+              <GiShipWheel className="topbar-tab-icon" aria-hidden="true" focusable="false" />
+              Manual
+            </button>
+            <button
+              className={`topbar-tab ${selectedShip?.pilot === "auto" ? "active" : ""}`}
+              onClick={() => selectedShip && setPilot(selectedShip.id, "auto")}
+              disabled={!selectedShip || autoBlocked}
+              title={autoBlocked ? "Hire a pilot to enable auto-play" : "Auto-play: pilot handles trading. Navigator unlocks guided hints."}
+            >
+              <GiRadarSweep className="topbar-tab-icon" aria-hidden="true" focusable="false" />
+              Auto
+            </button>
+          </div>
+        ) : pageSummary && (
+          <div className="topbar-page-summary" aria-label={`${selectedTab} summary`}>
+            {pageSummary.map(item => (
+              <TopbarSummaryItem key={item.label} {...item} />
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );
@@ -292,4 +318,98 @@ function Stat({ label, value }: { label: string; value: string }) {
       <span className="topbar-stat-value">{value}</span>
     </span>
   );
+}
+
+interface TopbarSummary {
+  icon: IconType;
+  label: string;
+  value: ReactNode;
+}
+
+function TopbarSummaryItem({ icon: Icon, label, value }: TopbarSummary) {
+  return (
+    <span className="topbar-summary-item">
+      <Icon className="topbar-summary-icon" aria-hidden="true" focusable="false" />
+      <span>
+        <span className="topbar-summary-label">{label}</span>
+        <span className="topbar-summary-value">{value}</span>
+      </span>
+    </span>
+  );
+}
+
+function buildPageSummary(tab: Tab, world: World, cash: number): TopbarSummary[] | null {
+  if (tab === "markets") {
+    const stats = commoditySummaryStats(world);
+    return [
+      { icon: GiCargoCrate, label: "Commodities", value: stats.commodities.toLocaleString() },
+      { icon: GiFactory, label: "Markets", value: stats.markets.toLocaleString() },
+      { icon: GiTrade, label: "Quotes", value: stats.quotes.toLocaleString() },
+      { icon: GiReceiveMoney, label: "Short", value: stats.short.toLocaleString() },
+      { icon: GiUpgrade, label: "Upgrades", value: stats.upgrades.toLocaleString() },
+    ];
+  }
+
+  if (tab === "locations") {
+    return [
+      { icon: GiHabitatDome, label: "Stations", value: Object.keys(world.locations).length.toLocaleString() },
+      { icon: GiRadarSweep, label: "Ships", value: Object.keys(world.traders).length.toLocaleString() },
+      { icon: GiPathDistance, label: "Routes", value: routeCount(world).toLocaleString() },
+      { icon: GiContract, label: "Contracts", value: Object.values(world.jobs).filter(j => j.acceptedBy == null).length.toLocaleString() },
+      { icon: GiTrade, label: "Age", value: `t${world.tick.toLocaleString()}` },
+    ];
+  }
+
+  if (tab === "stocks") {
+    const unrealized = totalUnrealizedPnl(world);
+    const positions = listPositions(world);
+    const longCount = positions.filter(p => p.kind === "long").length;
+    const shortCount = positions.filter(p => p.kind === "short").length;
+    return [
+      { icon: GiWallet, label: "Cash", value: `Ç${Math.round(cash).toLocaleString()}` },
+      { icon: GiBank, label: "Long MV", value: `Ç${Math.round(portfolioValue(world)).toLocaleString()}` },
+      {
+        icon: GiTrade,
+        label: "Unrealized",
+        value: (
+          <span className={unrealized > 0 ? "stock-pnl-up" : unrealized < 0 ? "stock-pnl-down" : ""}>
+            {unrealized >= 0 ? "+" : ""}Ç{Math.round(unrealized).toLocaleString()}
+          </span>
+        ),
+      },
+      { icon: GiCargoCrate, label: "Positions", value: `${longCount}L · ${shortCount}S` },
+    ];
+  }
+
+  return null;
+}
+
+function commoditySummaryStats(world: World) {
+  let quotes = 0;
+  let short = 0;
+  let upgrades = 0;
+  const goods = Object.values(world.goods);
+  for (const good of goods) {
+    let totalStock = 0;
+    let totalTarget = 0;
+    let activeMarkets = 0;
+    for (const loc of Object.values(world.locations)) {
+      const market = world.markets[loc.id];
+      const stock = market?.stock[good.id] ?? 0;
+      const target = loc.targetStock[good.id] ?? 0;
+      if (stock > 0.001 || target > 0) activeMarkets += 1;
+      totalStock += stock;
+      totalTarget += target;
+    }
+    quotes += activeMarkets;
+    if (totalTarget > 0 && totalStock / totalTarget < 0.55) short += 1;
+    if (good.category === "upgrade") upgrades += 1;
+  }
+  return {
+    commodities: goods.length,
+    markets: Object.keys(world.locations).length,
+    quotes,
+    short,
+    upgrades,
+  };
 }

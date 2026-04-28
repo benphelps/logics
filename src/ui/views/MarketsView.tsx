@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 import type { IconType } from "react-icons";
-import { GiCargoCrate, GiFactory, GiReceiveMoney, GiTrade, GiUpgrade, GiWallet } from "react-icons/gi";
+import { GiCargoCrate, GiFactory, GiTrade, GiUpgrade, GiWallet } from "react-icons/gi";
 import { useStore } from "../store";
 import type { Good, GoodCategory, GoodId, LocationDef, LocationId, World } from "../../sim/types";
 import "./MarketsView.css";
@@ -75,25 +75,10 @@ export function MarketsView() {
   );
   const selectedId = selectedGood && rows.some(row => row.good.id === selectedGood) ? selectedGood : rows[0]?.good.id ?? null;
   const selected = selectedId ? rows.find(row => row.good.id === selectedId) ?? null : null;
-  const stats = useMemo(() => marketStats(allRows), [allRows]);
   const tabCounts = useMemo(() => commodityTabCounts(allRows), [allRows]);
 
   return (
     <section className="markets-view">
-      <header className="markets-header">
-        <div>
-          <div className="markets-eyebrow">Markets</div>
-          <h2>Commodity Exchange</h2>
-        </div>
-        <div className="markets-summary">
-          <MarketSummary icon={GiCargoCrate} label="Commodities" value={rows.length.toLocaleString()} />
-          <MarketSummary icon={GiFactory} label="Markets" value={Object.keys(world.locations).length.toLocaleString()} />
-          <MarketSummary icon={GiTrade} label="Quotes" value={stats.quotes.toLocaleString()} />
-          <MarketSummary icon={GiReceiveMoney} label="Short" value={stats.short.toLocaleString()} />
-          <MarketSummary icon={GiUpgrade} label="Upgrades" value={stats.upgrades.toLocaleString()} />
-        </div>
-      </header>
-
       <div className="markets-layout">
         <section className="commodity-board">
           <div className="markets-card-tabs commodity-tabs">
@@ -320,14 +305,6 @@ function quotesForGood(world: World, goodId: GoodId, mode: "all" | "ask" | "bid"
   if (mode === "ask") return rows.filter(q => q.stock > 0.001).sort((a, b) => a.price - b.price || b.stock - a.stock);
   if (mode === "bid") return rows.filter(q => q.target > 0).sort((a, b) => b.price - a.price || a.stock - b.stock);
   return rows.sort((a, b) => a.locName.localeCompare(b.locName));
-}
-
-function marketStats(rows: CommodityRow[]) {
-  return {
-    quotes: rows.reduce((sum, row) => sum + row.activeMarkets, 0),
-    short: rows.filter(row => row.tone === "short").length,
-    upgrades: rows.filter(row => row.category === "upgrade").length,
-  };
 }
 
 function commodityTabCounts(rows: CommodityRow[]): Record<CommodityTab, number> {
