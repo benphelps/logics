@@ -14,6 +14,8 @@
   display: flex;
   flex-direction: column;
   gap: var(--bridge-gap);
+  height: 100%;
+  min-height: 0;
   max-width: 1540px;
   margin: 0 auto;
 }
@@ -30,6 +32,10 @@
 .ship-panel {
   background: transparent;
   border: none;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
   padding: 0;
 }
 
@@ -1614,15 +1620,19 @@
 
 .docked-view {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: var(--bridge-gap);
+  min-height: 0;
 }
 
 .bridge-split {
+  flex: 1 1 auto;
   display: grid;
   grid-template-columns: var(--bridge-columns);
   gap: var(--bridge-gap);
-  align-items: start;
+  align-items: stretch;
+  min-height: 0;
 }
 
 .bridge-split > .bridge-card {
@@ -1640,7 +1650,7 @@
   grid-column: 3;
   display: flex;
   flex-direction: column;
-  height: clamp(560px, calc(100vh - 168px), 760px);
+  height: auto;
   min-height: 0;
   overflow: hidden;
 }

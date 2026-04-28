@@ -16,10 +16,11 @@ import {
   GiWallet,
 } from "react-icons/gi";
 import { useStore, type Speed, type Tab } from "../store";
+import { cargoMass } from "../../sim/cargo";
 import { hasCrew } from "../../sim/crew";
 import { routeCount } from "../../sim/geometry";
 import { listPositions, portfolioValue, totalUnrealizedPnl } from "../../sim/stock";
-import type { World } from "../../sim/types";
+import type { Trader, World } from "../../sim/types";
 import type { SaveSlotSummary } from "../saveGames";
 import "./TopBar.css";
 
@@ -32,13 +33,14 @@ const SPEED_PRESETS: { value: Speed; label: string }[] = [
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "player", label: "My Fleet" },
+  { id: "stocks", label: "Exchange" },
   { id: "markets", label: "Markets" },
   { id: "locations", label: "Atlas" },
-  { id: "stocks", label: "Exchange" },
 ];
 
 export function TopBar() {
   const menuRef = useRef<HTMLDetailsElement>(null);
+  const shipMenuRef = useRef<HTMLDetailsElement>(null);
   const selectedTab = useStore((s) => s.selectedTab);
   const selectTab = useStore((s) => s.selectTab);
   const selectedTrader = useStore((s) => s.selectedTrader);
@@ -77,6 +79,9 @@ export function TopBar() {
   const storageLabel = saveStatus === "saved" ? "Autosaved" : saveStatus === "unavailable" ? "Unsaved" : "Save error";
   const closeMenu = () => {
     if (menuRef.current) menuRef.current.open = false;
+  };
+  const closeShipMenu = () => {
+    if (shipMenuRef.current) shipMenuRef.current.open = false;
   };
 
   return (
@@ -202,43 +207,77 @@ export function TopBar() {
           </nav>
         </div>
 
-        <div className="topbar-speed-tabs" aria-label="Game speed">
-          <button className="topbar-tab" onClick={step} disabled={speed !== 0} title="Step one tick">Step</button>
-          {SPEED_PRESETS.map((p) => (
-            <button
-              key={p.value}
-              className={`topbar-tab ${speed === p.value ? "active" : ""}`}
-              onClick={() => setSpeed(p.value)}
-            >
-              {p.label}
-            </button>
-          ))}
+        <div className="topbar-run-controls">
+          <span className="topbar-tick-pill mono" aria-label={`Tick ${tick.toLocaleString()}`}>
+            <span>Tick</span>
+            <strong>{tick.toLocaleString()}</strong>
+          </span>
+          <div className="topbar-speed-tabs" aria-label="Game speed">
+            <button className="topbar-tab" onClick={step} disabled={speed !== 0} title="Step one tick">Step</button>
+            {SPEED_PRESETS.map((p) => (
+              <button
+                key={p.value}
+                className={`topbar-tab ${speed === p.value ? "active" : ""}`}
+                onClick={() => setSpeed(p.value)}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       <div className="topbar-card">
-        <label className="topbar-ship-picker">
-          <span className="topbar-ship-select-wrap">
-            <select
-              className="topbar-ship-select"
-              aria-label="Controlled ship"
-              value={selectedShipId}
-              onChange={(event) => selectTrader(event.currentTarget.value || null)}
-              disabled={playerShips.length === 0}
-            >
-              {playerShips.length === 0 ? (
-                <option value="">No ship</option>
-              ) : playerShips.map(ship => (
-                <option key={ship.id} value={ship.id}>{ship.name}</option>
-              ))}
-            </select>
-          </span>
-        </label>
-
-        <div className="topbar-stats mono">
-          <Stat label="Tick" value={tick.toLocaleString()} />
-          {world.player && <Stat label="Fleet" value={`Ç${Math.round(fleet).toLocaleString()}`} />}
-        </div>
+        <details ref={shipMenuRef} className={`topbar-ship-picker ${playerShips.length === 0 ? "is-empty" : ""}`}>
+          <summary className="topbar-ship-summary" aria-label="Controlled ship">
+            <span className="topbar-ship-summary-main">
+              <span className="topbar-ship-name-row">
+                <span className="topbar-ship-name">{selectedShip?.name ?? "No ship"}</span>
+                {selectedShip && <span className={`topbar-ship-state state-${selectedShip.state}`}>{shipStateLabel(selectedShip)}</span>}
+              </span>
+            </span>
+            <span className="topbar-ship-summary-meta">
+              {selectedShip ? (
+                <>
+                  <span><span>Wallet</span>{formatCredits(selectedShip.funds)}</span>
+                  <span><span>Fleet</span>{formatCredits(fleet)}</span>
+                  <span>{shipLocationLabel(selectedShip, world)}</span>
+                </>
+              ) : (
+                <span>Fleet unavailable</span>
+              )}
+            </span>
+          </summary>
+          <div className="topbar-ship-menu">
+            {playerShips.length === 0 ? (
+              <div className="topbar-ship-empty">No controlled ships available.</div>
+            ) : playerShips.map(ship => {
+              const active = ship.id === selectedShipId;
+              return (
+                <button
+                  key={ship.id}
+                  className={`topbar-ship-option ${active ? "active" : ""}`}
+                  onClick={() => {
+                    selectTrader(ship.id);
+                    closeShipMenu();
+                  }}
+                  type="button"
+                >
+                  <span className="topbar-ship-option-head">
+                    <span className="topbar-ship-option-name">{ship.name}</span>
+                    <span className={`topbar-ship-state state-${ship.state}`}>{shipStateLabel(ship)}</span>
+                  </span>
+                  <span className="topbar-ship-option-meta">
+                    <span><span>Wallet</span>{formatCredits(ship.funds)}</span>
+                    <span><span>Cargo</span>{cargoMass(ship, world).toFixed(0)}/{ship.capacity}</span>
+                    <span>{shipLocationLabel(ship, world)}</span>
+                    <span>{ship.pilot}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </details>
 
         {selectedTab === "player" ? (
           <div className="topbar-pilot-tabs" aria-label="Pilot mode">
@@ -270,6 +309,21 @@ export function TopBar() {
       </div>
     </section>
   );
+}
+
+function formatCredits(value: number): string {
+  return `Ç${Math.round(value).toLocaleString()}`;
+}
+
+function shipStateLabel(ship: Trader): string {
+  return ship.state === "transit" ? "Transit" : "Docked";
+}
+
+function shipLocationLabel(ship: Trader, world: World): string {
+  if (ship.state === "transit" && ship.destination) {
+    return `to ${world.locations[ship.destination]?.name ?? ship.destination} · ${ship.ticksRemaining}t`;
+  }
+  return world.locations[ship.location]?.name ?? ship.location;
 }
 
 function SaveSlotRow({ slot, active, canDelete, onLoad, onDelete }: {
@@ -326,10 +380,9 @@ interface TopbarSummary {
   value: ReactNode;
 }
 
-function TopbarSummaryItem({ icon: Icon, label, value }: TopbarSummary) {
+function TopbarSummaryItem({ label, value }: TopbarSummary) {
   return (
     <span className="topbar-summary-item">
-      <Icon className="topbar-summary-icon" aria-hidden="true" focusable="false" />
       <span>
         <span className="topbar-summary-label">{label}</span>
         <span className="topbar-summary-value">{value}</span>
