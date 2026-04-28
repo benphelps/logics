@@ -324,6 +324,7 @@
 .ship-cargo-tabs {
   flex: 0 0 auto;
   width: 100%;
+  margin-bottom: 10px;
 }
 
 .ship-status-tabs .ship-meter-tab {
@@ -1032,6 +1033,7 @@
 .upgrade-table .col-action { width: 118px; }
 
 .upgrade-table th {
+  position: relative;
   text-align: left;
   font-size: 10px;
   font-weight: 500;
@@ -1049,6 +1051,10 @@
   border-bottom: 1px solid var(--border);
   font-variant-numeric: tabular-nums;
   vertical-align: middle;
+}
+
+.upgrade-table tbody tr {
+  height: 48px;
 }
 
 .upgrade-table .icon-label {
@@ -1153,11 +1159,12 @@
   table-layout: fixed;
 }
 
-.crew-table .col-action { width: 64px; }
-.crew-table .col-role { width: 70px; }
+.crew-table .col-action { width: 80px; }
+.crew-table .col-role { width: 76px; }
 .jobs-table .col-role { width: 76px; }
 
 .crew-table th {
+  position: relative;
   text-align: left;
   font-size: 10px;
   font-weight: 500;
@@ -1178,7 +1185,11 @@
   border-bottom: 1px solid var(--border);
   font-variant-numeric: tabular-nums;
   vertical-align: middle;
-  height: 28px;
+  height: 34px;
+}
+
+.crew-table tbody tr {
+  height: 48px;
 }
 
 .crew-table td.numeric {
@@ -1217,12 +1228,10 @@
 }
 
 .crew-table .btn-action {
-  width: auto;
+  width: 100%;
   min-width: 0;
   justify-content: center;
-  padding: 0 10px;
-  height: 26px;
-  font-size: 11px;
+  padding: 0 8px;
 }
 
 /* ---- jobs / contracts table styling (used by LocalJobsCallout +
@@ -1278,52 +1287,34 @@
   text-align: right;
 }
 
-/* ---- contract cards ---- */
+/* ---- contract tables ---- */
 
-.contract-list {
-  display: grid;
-  gap: 0;
-  margin: 2px -16px 0;
+.jobs-table.contract-table .col-tier { width: 60px; }
+.jobs-table.contract-table .col-held { width: 64px; }
+.jobs-table.contract-table .col-money { width: 86px; }
+.jobs-table.contract-table .col-expires { width: 70px; }
+.jobs-table.contract-table .col-action { width: 96px; }
+.jobs-table.contract-table .col-progress { width: 118px; }
+
+.contract-row.contract-tier-high td:first-child {
+  box-shadow: inset 3px 0 0 #d04848;
 }
 
-.contract-card {
-  box-sizing: border-box;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: center;
-  min-height: 72px;
-  padding: 8px 16px;
-  background: transparent;
-  border: 0;
-  border-radius: 0;
+.contract-row.contract-tier-medium td:first-child {
+  box-shadow: inset 3px 0 0 #c8a23a;
 }
 
-.contract-card-readonly {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.contract-card.contract-tier-high {
-  background: linear-gradient(90deg, rgba(208, 72, 72, 0.075), rgba(208, 72, 72, 0.018) 58%, transparent);
-}
-
-.contract-card.contract-tier-medium {
-  background: linear-gradient(90deg, rgba(200, 162, 58, 0.065), rgba(200, 162, 58, 0.015) 58%, transparent);
-}
-
-.contract-card.contract-tier-low {
-  background: linear-gradient(90deg, rgba(120, 140, 160, 0.05), rgba(120, 140, 160, 0.012) 58%, transparent);
-}
-
-.contract-card + .contract-card {
-  border-top: 1px solid rgba(255, 255, 255, 0.095);
+.contract-row.contract-tier-low td:first-child {
+  box-shadow: inset 3px 0 0 #406070;
 }
 
 .contract-title-row {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
+  max-width: 100%;
   min-width: 0;
+  vertical-align: middle;
 }
 
 .contract-good {
@@ -1336,91 +1327,16 @@
   white-space: nowrap;
 }
 
-.contract-route {
-  margin-top: 2px;
-  font-size: 11px;
-}
-
-.contract-metrics {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(54px, 1fr));
-  gap: 4px 8px;
-  margin-top: 6px;
-}
-
-.contract-active .contract-metrics {
-  grid-template-columns: repeat(3, minmax(64px, 1fr));
-}
-
-.contract-metric {
+.jobs-table.contract-table .btn-action {
+  width: 100%;
   min-width: 0;
-}
-
-.contract-metric-label {
-  display: block;
-  color: var(--text-faint);
-  font-size: 8px;
-  font-weight: 650;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.contract-metric-value {
-  display: block;
-  margin-top: 0;
-  overflow: hidden;
-  color: var(--text-dim);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.contract-metric-value.good { color: var(--good); }
-.contract-metric-value.bad  { color: var(--bad); }
-.contract-metric-value.warn { color: var(--warn); }
-
-.contract-actions {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.contract-actions .btn-action {
-  width: auto;
-  min-width: 86px;
   justify-content: center;
-  align-items: center;
-  height: 28px;
-  padding: 0 14px;
-  background: transparent;
-  border-color: rgba(255, 255, 255, 0.11);
-  color: var(--text-dim);
-  font-weight: 500;
-  line-height: 1;
-  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+  padding: 0 8px;
 }
 
-.contract-actions .btn-label {
+.jobs-table.contract-table .btn-label {
   flex: 0 0 auto;
-  line-height: 1;
   text-align: center;
-}
-
-.contract-actions .btn-action:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.075);
-  border-color: rgba(255, 255, 255, 0.28);
-  color: var(--text);
-}
-
-.contract-actions .btn-action.primary:not(.btn-suggested) {
-  background: rgba(79, 182, 255, 0.08);
-  border-color: rgba(79, 182, 255, 0.28);
-  color: #9dd7ff;
-}
-
-.contract-actions .btn-action.primary:not(.btn-suggested):hover:not(:disabled) {
-  background: rgba(79, 182, 255, 0.15);
-  border-color: rgba(79, 182, 255, 0.46);
-  color: #d7f0ff;
 }
 
 .contract-progress {
@@ -1428,7 +1344,7 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 7px;
   align-items: center;
-  margin-top: 6px;
+  margin-top: 0;
 }
 
 .contract-progress-bar {
@@ -2068,6 +1984,7 @@
 .travel-table th,
 .suggestions-table th,
 .jobs-table th {
+  position: relative;
   text-align: left;
   font-size: 10px;
   font-weight: 500;
@@ -2077,6 +1994,36 @@
   padding: 7px 9px;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
+}
+
+.market-table th:last-child::after,
+.travel-table th:last-child::after,
+.suggestions-table th:last-child::after,
+.jobs-table th:last-child::after,
+.upgrade-table th:last-child::after,
+.crew-table th:last-child::after,
+.cargo-table th:last-child::after {
+  content: "";
+  position: absolute;
+  right: -16px;
+  bottom: -1px;
+  width: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.market-table th:first-child::before,
+.travel-table th:first-child::before,
+.suggestions-table th:first-child::before,
+.jobs-table th:first-child::before,
+.upgrade-table th:first-child::before,
+.crew-table th:first-child::before,
+.cargo-table th:first-child::before {
+  content: "";
+  position: absolute;
+  left: -16px;
+  bottom: -1px;
+  width: 16px;
+  border-bottom: 1px solid var(--border);
 }
 
 .market-table tbody tr,
@@ -2099,18 +2046,19 @@
   height: 34px;
 }
 
-/* Jobs tables sit in narrower containers (half-width bridge split) — tighten
-   horizontal padding so all the numeric columns + Accept button fit. */
+/* Jobs/offers tables sit in narrower containers — keep the shared table
+   height while tightening horizontal padding enough for numeric columns. */
 .jobs-table th,
 .jobs-table td {
   padding: 7px 8px;
 }
 
-/* Job rows can carry a sub-line (rescue target name, destination → for remote
-   broadcasts) — relax the locked row height so they don't clip. */
 .jobs-table td {
-  height: auto;
-  min-height: 30px;
+  height: 34px;
+}
+
+.jobs-table tbody tr {
+  height: 48px;
 }
 
 .travel-table td {
@@ -2485,6 +2433,7 @@
 .cargo-col-action { width: 132px; }
 
 .cargo-table th {
+  position: relative;
   text-align: left;
   font-size: 10px;
   font-weight: 500;

@@ -619,25 +619,50 @@ function ContractsTab({ ship, world, loc, target, hintText, cueText, interaction
         </div>
       )}
       <div className="contract-section">
-        <div className="exchange-section-title">Available here</div>
         {jobs.length === 0 ? (
           <div className="contract-empty">No open contracts here.</div>
         ) : (
-          <div className="contract-list">
-            {jobs.map((j) => (
-              <LocalJobRow
-                key={j.id}
-                job={j}
-                world={world}
-                ship={ship}
-                suggested={target.acceptJobId === j.id || target.acceptJobIds?.includes(j.id) === true}
-                hintText={cueText.acceptJobs[j.id] ?? hintText}
-                showAction={manualActions}
-                interactionLocked={interactionLocked}
-                onAccept={() => acceptJob(j.id, ship.id)}
-              />
-            ))}
-          </div>
+          <table className="jobs-table contract-table available-contracts-table">
+            <colgroup>
+              <col className="col-tier" />
+              <col />
+              <col className="col-dest" />
+              <col className="col-num" />
+              <col className="col-held" />
+              <col className="col-money" />
+              <col className="col-money" />
+              <col className="col-expires" />
+              {manualActions && <col className="col-action" />}
+            </colgroup>
+            <thead>
+              <tr>
+                <th>Tier</th>
+                <th>Contract</th>
+                <th>Route</th>
+                <th className="numeric">Qty</th>
+                <th className="numeric">Held</th>
+                <th className="numeric">Reward</th>
+                <th className="numeric">Penalty</th>
+                <th className="numeric">Expires</th>
+                {manualActions && <th></th>}
+              </tr>
+            </thead>
+            <tbody>
+              {jobs.map((j) => (
+                <LocalJobRow
+                  key={j.id}
+                  job={j}
+                  world={world}
+                  ship={ship}
+                  suggested={target.acceptJobId === j.id || target.acceptJobIds?.includes(j.id) === true}
+                  hintText={cueText.acceptJobs[j.id] ?? hintText}
+                  showAction={manualActions}
+                  interactionLocked={interactionLocked}
+                  onAccept={() => acceptJob(j.id, ship.id)}
+                />
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
     </div>
@@ -661,30 +686,26 @@ function LocalJobRow({ job, world, ship, suggested, hintText, showAction, intera
   const dst = world.locations[job.destination]?.name ?? job.destination;
   const remote = job.destination !== ship.location;
   return (
-    <article className={`contract-card contract-tier-${job.tier} ${!showAction ? "contract-card-readonly" : ""}`}>
-      <div className="contract-main">
-        <div className="contract-title-row">
-          <span className={`tier-badge tier-${job.tier}`}>{job.tier.toUpperCase()}</span>
+    <tr className={`contract-row contract-tier-${job.tier}`}>
+      <td><span className={`tier-badge tier-${job.tier}`}>{job.tier.toUpperCase()}</span></td>
+      <td>
+        <span className="contract-title-row">
           <span className="contract-good">{good}</span>
           {job.kind === "rescue" && (
             <span className="job-kind-tag" title={job.rescueTarget ? `Rescue ${world.traders[job.rescueTarget]?.name ?? job.rescueTarget}` : "Rescue contract"}>
               rescue
             </span>
           )}
-        </div>
-        <div className="contract-route dim mono">
-          {remote ? `Deliver to ${dst}` : `Deliver here`}
-        </div>
-        <div className="contract-metrics">
-          <ContractMetric label="Qty" value={job.qty.toLocaleString()} />
-          <ContractMetric label="In hold" value={onHand > 0 ? onHand.toFixed(0) : "none"} tone={onHandTone} />
-          <ContractMetric label="Reward" value={`Ç${job.reward.toLocaleString()}`} tone="good" />
-          <ContractMetric label="Penalty" value={job.penalty > 0 ? `Ç${job.penalty.toLocaleString()}` : "none"} tone={job.penalty > 0 ? "bad" : "faint"} />
-          <ContractMetric label="Expires" value={`${ticksLeft}t`} tone={expiringSoon ? "warn" : "dim"} />
-        </div>
-      </div>
+        </span>
+      </td>
+      <td className="dim mono">{remote ? `to ${dst}` : "here"}</td>
+      <td className="numeric mono">{job.qty.toLocaleString()}</td>
+      <td className={`numeric mono ${onHandTone}`}>{onHand > 0 ? onHand.toFixed(0) : "—"}</td>
+      <td className="numeric mono good">Ç{job.reward.toLocaleString()}</td>
+      <td className={`numeric mono ${job.penalty > 0 ? "bad" : "faint"}`}>{job.penalty > 0 ? `Ç${job.penalty.toLocaleString()}` : "—"}</td>
+      <td className={`numeric mono ${expiringSoon ? "warn" : "dim"}`}>{ticksLeft}t</td>
       {showAction && (
-        <div className="contract-actions">
+        <td>
           <ActionCell suggested={suggested} hintText={hintText}>
             <button
               className={`btn-action ${suggested ? "btn-suggested" : "primary"}`}
@@ -695,18 +716,9 @@ function LocalJobRow({ job, world, ship, suggested, hintText, showAction, intera
               <span className="btn-label">Accept</span>
             </button>
           </ActionCell>
-        </div>
+        </td>
       )}
-    </article>
-  );
-}
-
-function ContractMetric({ label, value, tone }: { label: string; value: string; tone?: string }) {
-  return (
-    <span className="contract-metric">
-      <span className="contract-metric-label">{label}</span>
-      <span className={`contract-metric-value mono ${tone ?? ""}`}>{value}</span>
-    </span>
+    </tr>
   );
 }
 
@@ -2328,9 +2340,7 @@ function StationUpgradePurchaseTab({ ship, world, loc, target, hintText, cueText
   const roomMass = ship.capacity - totalMass;
 
   return (
-    <div className="upgrades-tab">
-      <div className="upgrade-offer-title dim">Station upgrades</div>
-      <table className="upgrade-table upgrade-offers-table">
+    <table className="upgrade-table upgrade-offers-table">
         <colgroup>
           <col />
           <col className="col-role" />
@@ -2401,8 +2411,7 @@ function StationUpgradePurchaseTab({ ship, world, loc, target, hintText, cueText
             })
           )}
         </tbody>
-      </table>
-    </div>
+    </table>
   );
 }
 
@@ -2636,50 +2645,72 @@ function ActiveContractsTab({ ship, world, jobs }: { ship: Trader; world: World;
       {sorted.length === 0 ? (
         <div className="contract-empty">No active contracts.</div>
       ) : (
-        <div className="contract-list active-contracts-list">
-          {sorted.map((j) => {
-          const ticksLeft = Math.max(0, j.expiresAt - world.tick);
-          const expiringSoon = ticksLeft <= 10;
-          const dst = world.locations[j.destination]?.name ?? j.destination;
-          const good = world.goods[j.good]?.name ?? j.good;
-          const away = j.destination !== ship.location;
-          const pct = j.qty > 0 ? Math.max(0, Math.min(100, (j.delivered / j.qty) * 100)) : 0;
-          return (
-            <article key={j.id} className={`contract-card contract-tier-${j.tier} contract-active`}>
-              <div className="contract-main">
-                <div className="contract-title-row">
-                  <span className={`tier-badge tier-${j.tier}`}>{j.tier.toUpperCase()}</span>
-                  <span className="contract-good">{good}</span>
-                  {j.kind === "rescue" && <span className="job-kind-tag">rescue</span>}
-                </div>
-                <div className="contract-route dim mono">
-                  {away ? `Deliver to ${dst}` : `Deliver here`}
-                </div>
-                <div className="contract-progress">
-                  <div className="contract-progress-bar">
-                    <div className="contract-progress-fill" style={{ width: `${pct}%` }} />
-                  </div>
-                  <span className="mono dim">{j.delivered.toFixed(0)}/{j.qty}</span>
-                </div>
-                <div className="contract-metrics">
-                  <ContractMetric label="Reward" value={`Ç${j.reward.toLocaleString()}`} tone="good" />
-                  <ContractMetric label="Penalty" value={j.penalty > 0 ? `Ç${j.penalty.toLocaleString()}` : "none"} tone={j.penalty > 0 ? "bad" : "faint"} />
-                  <ContractMetric label="Expires" value={`${ticksLeft}t`} tone={expiringSoon ? "warn" : "dim"} />
-                </div>
-              </div>
-              <div className="contract-actions">
-                <button
-                  className="btn-action"
-                  onClick={() => abandonJob(j.id)}
-                  title={j.penalty > 0 ? `Abandoning costs Ç${j.penalty.toLocaleString()}` : "Abandon (no penalty)"}
-                >
-                  <span className="btn-label">Abandon</span>
-                </button>
-              </div>
-            </article>
-          );
-        })}
-        </div>
+        <table className="jobs-table contract-table active-contracts-table">
+          <colgroup>
+            <col className="col-tier" />
+            <col />
+            <col className="col-dest" />
+            <col className="col-progress" />
+            <col className="col-money" />
+            <col className="col-money" />
+            <col className="col-expires" />
+            <col className="col-action" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th>Tier</th>
+              <th>Contract</th>
+              <th>Route</th>
+              <th>Progress</th>
+              <th className="numeric">Reward</th>
+              <th className="numeric">Penalty</th>
+              <th className="numeric">Expires</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((j) => {
+              const ticksLeft = Math.max(0, j.expiresAt - world.tick);
+              const expiringSoon = ticksLeft <= 10;
+              const dst = world.locations[j.destination]?.name ?? j.destination;
+              const good = world.goods[j.good]?.name ?? j.good;
+              const away = j.destination !== ship.location;
+              const pct = j.qty > 0 ? Math.max(0, Math.min(100, (j.delivered / j.qty) * 100)) : 0;
+              return (
+                <tr key={j.id} className={`contract-row contract-tier-${j.tier}`}>
+                  <td><span className={`tier-badge tier-${j.tier}`}>{j.tier.toUpperCase()}</span></td>
+                  <td>
+                    <span className="contract-title-row">
+                      <span className="contract-good">{good}</span>
+                      {j.kind === "rescue" && <span className="job-kind-tag">rescue</span>}
+                    </span>
+                  </td>
+                  <td className="dim mono">{away ? `to ${dst}` : "here"}</td>
+                  <td>
+                    <div className="contract-progress">
+                      <div className="contract-progress-bar">
+                        <div className="contract-progress-fill" style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="mono dim">{j.delivered.toFixed(0)}/{j.qty}</span>
+                    </div>
+                  </td>
+                  <td className="numeric mono good">Ç{j.reward.toLocaleString()}</td>
+                  <td className={`numeric mono ${j.penalty > 0 ? "bad" : "faint"}`}>{j.penalty > 0 ? `Ç${j.penalty.toLocaleString()}` : "—"}</td>
+                  <td className={`numeric mono ${expiringSoon ? "warn" : "dim"}`}>{ticksLeft}t</td>
+                  <td>
+                    <button
+                      className="btn-action"
+                      onClick={() => abandonJob(j.id)}
+                      title={j.penalty > 0 ? `Abandoning costs Ç${j.penalty.toLocaleString()}` : "Abandon (no penalty)"}
+                    >
+                      <span className="btn-label">Abandon</span>
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       )}
     </>
   );
