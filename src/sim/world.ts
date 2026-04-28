@@ -3,6 +3,8 @@ import { GOODS } from "./data/goods";
 import { LOCATIONS, LANES } from "./data/locations";
 import { STARTER_TRADERS } from "./data/traders";
 import { DEFAULT_PLAYER_SEED, makePlayer, type PlayerSeedConfig } from "./data/player";
+import { defaultTreasuryTarget } from "./economy";
+import { ensureStockMarket } from "./stock";
 
 export function createWorld(opts?: {
   goods?: Record<GoodId, Good>;
@@ -48,8 +50,15 @@ export function createWorld(opts?: {
       stock[goodId] = loc.targetStock[goodId] ?? 0;
       prices[goodId] = goods[goodId].basePrice;
     }
-    markets[loc.id] = { stock, prices };
+    const treasuryTarget = defaultTreasuryTarget(loc);
+    markets[loc.id] = { stock, prices, treasury: treasuryTarget, treasuryTarget };
   }
 
-  return { tick: 0, goods, locations, markets, lanes, traders, player, jobs: {}, nextJobId: 1, hires: {}, nextHireId: 1 };
+  const world: World = {
+    tick: 0, goods, locations, markets, lanes, traders, player,
+    jobs: {}, nextJobId: 1, hires: {}, nextHireId: 1,
+    equities: {}, syndicates: {},
+  };
+  ensureStockMarket(world);
+  return world;
 }

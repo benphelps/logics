@@ -1,8 +1,18 @@
 import type { CargoLot, FuelType, GoodId, JobId, LocationId, ShipUpgradeSlots, Trader, TraderEvent, World } from "./types";
 import { reachableNeighbors, routeDistance } from "./geometry";
 import { marketQuote, priceFor } from "./pricing";
-import { chargeDockingFee, DOCKING_FEE_PER_CAPACITY, MAINTENANCE_PER_CAPACITY, SALES_TAX_RATE } from "./economy";
+import {
+  chargeDockingFee,
+  DOCKING_FEE_PER_CAPACITY,
+  MAINTENANCE_PER_CAPACITY,
+  SALES_TAX_RATE,
+  treasuryHealthMultiplier,
+  settlePurchase,
+  settleSale,
+  withdrawFromTreasury,
+} from "./economy";
 import { acceptJob, creditJobOnDelivery, type JobCompletionEvent } from "./jobs";
+import { noteSyndicateRevenue } from "./stock";
 import { pushNote, pushTraderEvent } from "./log";
 import { effectivePerDistance, hasCrew, MAINTENANCE_DEBT_TRAVEL_BLOCK, recomputeShipStats } from "./crew";
 import { isUpgradeGood, upgradeDef } from "./upgrades";
@@ -61,6 +71,9 @@ function tryRefuel(world: World, trader: Trader, events: TraderEvent[]): void {
   const currentQty = switching ? 0 : trader.currentFuel!.qty;
 
   const need = trader.fuelCapacity - currentQty;
+  // Emergency credit: when an NPC is broke + stuck or has been idle a long
+  // stretch, the local treasury underwrites a top-off so they can rejoin the
+  // economy. Closes the loop: bailout funds come from the city, not nowhere.
   const emergencyCredit = !isPlayerShip(world, trader)
     && (isStuck(world, trader) || (trader.noOpportunityTicks ?? 0) >= MAX_NO_OPPORTUNITY_TICKS);
   const affordable = emergencyCredit ? Infinity : price > 0 ? trader.funds / price : 0;
@@ -68,7 +81,34 @@ function tryRefuel(world: World, trader: Trader, events: TraderEvent[]): void {
   if (buyQty <= 0.001) return;
 
   market.stock[choice.good] = stock - buyQty;
-  trader.funds = Math.max(0, trader.funds - buyQty * price);
+  const cost = buyQty * price;
+  if (emergencyCredit && trader.funds < cost) {
+    // City underwrites the gap. Trader pays what they can (down to 0); the
+    // remainder is drawn from the treasury, capped at the treasury floor —
+    // closed loop, no money creation. If the city is broke too, the partial
+    // refuel still happens for what the trader could afford.
+    const traderShare = trader.funds;
+    const bridgeWanted = cost - traderShare;
+    const bridgeAvailable = withdrawFromTreasury(market, bridgeWanted);
+    settlePurchase(market, price, traderShare / Math.max(price, 0.0001));
+    trader.funds = 0;
+    // Note: the city pays the supplier (the deposit) the part it covered.
+    // Net effect on treasury = +traderShare (deposit) - bridgeAvailable.
+    if (bridgeAvailable < bridgeWanted) {
+      // City couldn't cover the full bridge. Refund the unfunded portion
+      // back to stock (we can't fuel air).
+      const unfunded = bridgeWanted - bridgeAvailable;
+      const unfundedQty = unfunded / Math.max(price, 0.0001);
+      market.stock[choice.good] = (market.stock[choice.good] ?? 0) + unfundedQty;
+      const finalQty = buyQty - unfundedQty;
+      trader.currentFuel = { good: choice.good, qty: currentQty + finalQty };
+      if (finalQty > 0.001) events.push({ trader: trader.id, kind: "refuel", good: choice.good, qty: finalQty, unitPrice: price });
+      return;
+    }
+  } else {
+    trader.funds = Math.max(0, trader.funds - cost);
+    settlePurchase(market, price, buyQty);
+  }
   trader.currentFuel = { good: choice.good, qty: currentQty + buyQty };
 
   events.push({ trader: trader.id, kind: "refuel", good: choice.good, qty: buyQty, unitPrice: price });
@@ -98,7 +138,15 @@ function restoreNpcOperatingFloat(world: World, trader: Trader): void {
   if (trader.cargo.length > 0) return;
   if ((trader.noOpportunityTicks ?? 0) < MAX_NO_OPPORTUNITY_TICKS) return;
   if (trader.funds >= NPC_OPERATING_FLOAT) return;
-  trader.funds = NPC_OPERATING_FLOAT;
+  // Closed-loop bailout: top up from the local treasury when possible. If
+  // the local treasury is below the haircut threshold, fall back to a smaller
+  // grant — even cities running deficits can write a courtesy check to keep
+  // the local trade flow alive. Money comes from the city's debt, not nowhere.
+  const market = world.markets[trader.location];
+  if (!market) return;
+  const want = NPC_OPERATING_FLOAT - trader.funds;
+  const grant = withdrawFromTreasury(market, want);
+  if (grant > 0) trader.funds += grant;
 }
 
 type RouteJobBonus = {
@@ -301,7 +349,11 @@ export function listTradeOptions(
       const grossSellPrice = dstTarget > 0
         ? priceFor(world.goods[goodId].basePrice, dstStockAtArrival, dstTarget)
         : marketQuote(world, dstId, goodId);
-      const sellPrice = grossSellPrice * (1 - SALES_TAX_RATE);
+      // Treasury haircut: a city short on treasury can't pay full price. The
+      // trader factors in this haircut when scoring routes. Without this, they
+      // would happily sail into a depleted treasury and lose money.
+      const dstTreasuryMult = treasuryHealthMultiplier(dstMarket);
+      const sellPrice = grossSellPrice * dstTreasuryMult * (1 - SALES_TAX_RATE);
       const fuelCost = fuelNeeded * localFuelPrice;
       const grossProfitPerUnit = sellPrice - buyPrice - fuelCost / maxQty;
       if (grossProfitPerUnit <= 0) continue;
@@ -554,7 +606,7 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
     trader.state = "idle";
     trader.noOpportunityTicks = 0;
     events.push({ trader: trader.id, kind: "arrive", to: dst });
-    chargeDockingFee(trader);
+    chargeDockingFee(world, trader);
 
     // Manual player ships do NOT auto-sell on arrival — cargo stays loaded
     // until the player clicks Sell. The hint engine highlights the Sell
@@ -578,9 +630,14 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
         const { good, qty } = lot;
         const unitPrice = marketQuote(world, dst, good);
         dstMarket.stock[good] = (dstMarket.stock[good] ?? 0) + qty;
-        const netUnitPrice = unitPrice * (1 - SALES_TAX_RATE);
-        trader.funds += qty * netUnitPrice;
-        events.push({ trader: trader.id, kind: "sell", good, qty, unitPrice: netUnitPrice, to: dst });
+        // Settle through the city treasury. If treasury is healthy, trader
+        // gets full price (post-tax). If poor, payout is haircut to whatever
+        // the city can pay — losses incurred here are real.
+        const settlement = settleSale(dstMarket, unitPrice, qty);
+        trader.funds += settlement.traderRevenue;
+        // Track revenue against the trader's syndicate (drives stock price)
+        noteSyndicateRevenue(world, trader.id, settlement.traderRevenue);
+        events.push({ trader: trader.id, kind: "sell", good, qty, unitPrice: settlement.effectiveUnitPrice, to: dst });
         // Credit any matching accepted contracts (player ships only — the
         // creditJobOnDelivery helper bails for non-player ids). Pays out the
         // contract reward + emits a job_completed log entry.
@@ -700,13 +757,15 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
   trader.cargo = [];
   for (const l of contractLoads) {
     srcMarket.stock[l.good] = (srcMarket.stock[l.good] ?? 0) - l.qty;
-    trader.funds -= l.qty * l.price;
+    const purchase = settlePurchase(srcMarket, l.price, l.qty);
+    trader.funds -= purchase.totalCost;
     trader.cargo.push({ good: l.good, qty: l.qty, source: here, unitPrice: l.price, purchasedAt: world.tick });
     events.push({ trader: trader.id, kind: "buy", good: l.good, qty: l.qty, unitPrice: l.price, from: here });
   }
   if (primaryQty > 0) {
     srcMarket.stock[choice.good] = (srcMarket.stock[choice.good] ?? 0) - primaryQty;
-    trader.funds -= primaryQty * choice.buyPrice;
+    const purchase = settlePurchase(srcMarket, choice.buyPrice, primaryQty);
+    trader.funds -= purchase.totalCost;
     trader.cargo.push({ good: choice.good, qty: primaryQty, source: here, unitPrice: choice.buyPrice, purchasedAt: world.tick });
     events.push({ trader: trader.id, kind: "buy", good: choice.good, qty: primaryQty, unitPrice: choice.buyPrice, from: here });
   }
@@ -757,7 +816,8 @@ export function executeTrade(world: World, trader: Trader, choice: TradeOption):
   const events: TraderEvent[] = [];
 
   srcMarket.stock[choice.good] = stockHere - choice.qty;
-  trader.funds -= choice.qty * choice.buyPrice;
+  const purchase = settlePurchase(srcMarket, choice.buyPrice, choice.qty);
+  trader.funds -= purchase.totalCost;
   addCargoLot(trader, choice.good, choice.qty, here, choice.buyPrice, world.tick);
   trader.currentFuel = { good: fuel.good, qty: fuel.qty - fuelNeeded };
   events.push({
@@ -948,9 +1008,11 @@ export function installUpgradeFromMarket(world: World, trader: Trader, goodId: G
   const snap = snapshotUpgradeInstall(trader);
   const previous = trader.upgrades?.[def.slot];
   const stockBefore = stock;
+  const treasuryBefore = market.treasury;
 
   market.stock[goodId] = stock - 1;
-  trader.funds -= price;
+  const purchase = settlePurchase(market, price, 1);
+  trader.funds -= purchase.totalCost;
   trader.upgrades = { ...(trader.upgrades ?? {}), [def.slot]: goodId };
   if (previous) {
     addCargoLot(trader, previous, 1, trader.location, replacedUpgradeCargoPrice(world, trader, previous), world.tick);
@@ -960,6 +1022,7 @@ export function installUpgradeFromMarket(world: World, trader: Trader, goodId: G
   if (!result.ok) {
     restoreUpgradeInstall(trader, snap);
     market.stock[goodId] = stockBefore;
+    market.treasury = treasuryBefore;
   }
   return result;
 }
@@ -988,7 +1051,8 @@ export function buyAtLocation(world: World, trader: Trader, goodId: GoodId, qty:
   if (trader.funds < cost - 0.001) return { ok: false, reason: `Need Ç${cost.toFixed(0)}, have Ç${trader.funds.toFixed(0)}.` };
 
   market.stock[goodId] = stock - qty;
-  trader.funds -= cost;
+  const purchase = settlePurchase(market, price, qty);
+  trader.funds -= purchase.totalCost;
   addCargoLot(trader, goodId, qty, trader.location, price, world.tick);
 
   const events: TraderEvent[] = [{ trader: trader.id, kind: "buy", good: goodId, qty, unitPrice: price, from: trader.location }];
@@ -1017,11 +1081,11 @@ export function sellAtLocation(world: World, trader: Trader, goodId: GoodId, qty
 
   const market = world.markets[trader.location];
   const grossPrice = marketQuote(world, trader.location, goodId);
-  const netPrice = grossPrice * (1 - SALES_TAX_RATE);
-  const revenue = sellQty * netPrice;
+  const settlement = settleSale(market, grossPrice, sellQty);
+  const netPrice = settlement.effectiveUnitPrice;
 
   market.stock[goodId] = (market.stock[goodId] ?? 0) + sellQty;
-  trader.funds += revenue;
+  trader.funds += settlement.traderRevenue;
 
   // Drain matching lots FIFO until sellQty is satisfied. Remove emptied lots.
   let remaining = sellQty;
@@ -1068,7 +1132,8 @@ export function refuelManual(world: World, trader: Trader, qty?: number): Execut
   }
 
   market.stock[ft.good] = stock - buyQty;
-  trader.funds -= buyQty * price;
+  const purchase = settlePurchase(market, price, buyQty);
+  trader.funds -= purchase.totalCost;
   trader.currentFuel = { good: ft.good, qty: currentQty + buyQty };
 
   const events: TraderEvent[] = [{ trader: trader.id, kind: "refuel", good: ft.good, qty: buyQty, unitPrice: price }];

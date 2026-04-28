@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { CrewMember, CrewRole, World, LocationId, GoodId, JobId, TraderId } from "../sim/types";
+import type { CrewMember, CrewRole, EquityId, World, LocationId, GoodId, JobId, TraderId } from "../sim/types";
 import { createStartingWorld } from "../sim/start";
 import { tickWorld } from "../sim/tick";
 import {
@@ -15,6 +15,7 @@ import {
 } from "../sim/traders";
 import { abandonJob, acceptJob } from "../sim/jobs";
 import { fireCrew, hireCrew, recomputeShipStats } from "../sim/crew";
+import { abandonPosition, buyShares, coverShares, sellShares, setStopLoss, setTakeProfit, shortShares } from "../sim/stock";
 import {
   createGameSlot,
   deleteGameSlot,
@@ -28,7 +29,7 @@ import {
   type SaveStatus,
 } from "./saveGames";
 
-export type Tab = "player" | "markets" | "locations";
+export type Tab = "player" | "markets" | "locations" | "stocks";
 export type Speed = 0 | 1 | 4 | 16;
 
 const initialGame = loadInitialGame(() => createStartingWorld());
@@ -97,6 +98,7 @@ interface UiState {
   selectedLocation: LocationId | null;
   selectedGood: GoodId | null;
   selectedTrader: TraderId | null;
+  selectedEquity: EquityId | null;
   lastError: string | null;
 
   setSpeed: (s: Speed) => void;
@@ -127,6 +129,14 @@ interface UiState {
   repairShip: (traderId: TraderId) => void;
   installUpgradeFromCargo: (traderId: TraderId, good: GoodId) => void;
   installUpgradeFromMarket: (traderId: TraderId, good: GoodId) => void;
+  selectEquity: (id: EquityId | null) => void;
+  buyShares: (equityId: EquityId, qty: number) => void;
+  sellShares: (equityId: EquityId, qty: number) => void;
+  shortShares: (equityId: EquityId, qty: number) => void;
+  coverShares: (equityId: EquityId, qty: number) => void;
+  abandonPosition: (equityId: EquityId) => void;
+  setStopLoss: (equityId: EquityId, price: number | null) => void;
+  setTakeProfit: (equityId: EquityId, price: number | null) => void;
 }
 
 export const useStore = create<UiState>((set, get) => {
@@ -196,6 +206,7 @@ export const useStore = create<UiState>((set, get) => {
     selectedLocation: null,
     selectedGood: null,
     selectedTrader: null,
+    selectedEquity: null,
     lastError: null,
 
     setSpeed: (s) => set({ speed: s }),
@@ -339,6 +350,42 @@ export const useStore = create<UiState>((set, get) => {
       const w = get().world;
       const t = w.traders[traderId]; if (!t) return;
       const r = installUpgradeFromMarketAction(w, t, good);
+      persistCurrentGame({ lastError: r.ok ? null : r.reason });
+    },
+    selectEquity: (id) => set({ selectedEquity: id }),
+    buyShares: (equityId, qty) => {
+      const w = get().world;
+      const r = buyShares(w, equityId, qty);
+      persistCurrentGame({ lastError: r.ok ? null : r.reason });
+    },
+    sellShares: (equityId, qty) => {
+      const w = get().world;
+      const r = sellShares(w, equityId, qty);
+      persistCurrentGame({ lastError: r.ok ? null : r.reason });
+    },
+    shortShares: (equityId, qty) => {
+      const w = get().world;
+      const r = shortShares(w, equityId, qty);
+      persistCurrentGame({ lastError: r.ok ? null : r.reason });
+    },
+    coverShares: (equityId, qty) => {
+      const w = get().world;
+      const r = coverShares(w, equityId, qty);
+      persistCurrentGame({ lastError: r.ok ? null : r.reason });
+    },
+    abandonPosition: (equityId) => {
+      const w = get().world;
+      const r = abandonPosition(w, equityId);
+      persistCurrentGame({ lastError: r.ok ? null : r.reason });
+    },
+    setStopLoss: (equityId, price) => {
+      const w = get().world;
+      const r = setStopLoss(w, equityId, price);
+      persistCurrentGame({ lastError: r.ok ? null : r.reason });
+    },
+    setTakeProfit: (equityId, price) => {
+      const w = get().world;
+      const r = setTakeProfit(w, equityId, price);
       persistCurrentGame({ lastError: r.ok ? null : r.reason });
     },
   };

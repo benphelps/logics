@@ -28,6 +28,8 @@ Listed in commit order. Each was scoped tight, landed with tests, and updated th
 | Death-spiral fix | Idle maintenance → 0; trip-aware profit math (subtracts trip maintenance from net). Fleets stay healthy across 200/500/1000/2000 ticks at all scales — zero stuck traders observed. |
 | Anticipation fix | Anticipated arrival price now only counts *other* traders' in-flight cargo, not own. Trader actually receives the listed price at arrival; price drop from own delivery only affects future traders. Restored active trade across all scales. |
 | Tier 2 sinks | Docking fee (5/cap per arrival) + sales tax (15%) bound NPC fleet wealth growth without re-triggering death spiral. Verified to 5000 ticks at all scales. Loop not strictly closed; Tier 3 (treasuries) handles that when needed. |
+| Tier 3 stability — location treasuries | Closed money loop. Each `MarketState` has a `treasury` + `treasuryTarget`. Sells withdraw, buys deposit, sales tax + docking fee stay in treasury. Per-tick replenishment from population (with soft taper above target). NPC wealth carry (0.08%/tick) feeds back into treasuries — caps fleet growth at a stable equilibrium. **Verified across 50k ticks**: NPC fleet wealth growth dropped from 200× → 4–8×; treasury totals bounded. Operating-float bailout is now treasury-funded (no money creation). See `docs/AUDIT_REPORT.md`. |
+| Stock market layer | Stations + 4 NPC syndicates listed as publicly traded equities. Share price = clamped function of underlying treasury health / fleet wealth. 1% broker fee. Quarterly dividends from treasury surplus. Player portfolio + closed-loop cash flow with the underlying. Determinism preserved. 18 dedicated tests + audit-harness invariants. |
 | Player ship + bridge UI | Single player-owned ship at Haven. Manual pilot via UI bridge: 2×2 station/ship/cargo/travel cards, market + local-contracts split, action log card, in-transit progress bar with quick-travel. Suggestion engine drives ✦ markers + row highlights. |
 | Speculative travel | When no profitable local trade exists, NPCs + auto-pilot can fly empty to a nearby station that opens up a profitable trade. K=6 nearest cap. |
 | Job board | `world.jobs` pool generated each tick. Two kinds: location-gated **shortage contracts** (visible only at the destination), broadcast **rescue calls** (NPCs stranded ≥ 1 tick). Tier scales with severity → `(reward, penalty, expiry)` triples. Reward credited on delivery via `creditJobOnDelivery` inside `sellAtLocation` and the auto-pilot's arrive-sell. Penalty charged on expiry/abandon. |
@@ -45,10 +47,11 @@ Listed in commit order. Each was scoped tight, landed with tests, and updated th
 
 These are the natural next steps that stay in the sim layer and can ship before the player exists.
 
-### Tier 3 economic stability — location treasuries (closed money loop)
-**Why deferred**: Tier 1 (stockpile cap + maintenance) and Tier 2 (docking fee + sales tax) together keep NPC fleet growth slow enough that no play session sees inflation. But typical trades have positive markup, so NPC fleet wealth still grows — just much more slowly. The loop is not strictly closed.
-**Trigger to do**: when player wealth growth interacts with NPC growth in problematic ways (e.g., the player can't compete because NPCs have run away with the wealth), OR when very-long-running NPC-only sims hit price-clamps unexpectedly.
-**Shape**: each location has a `treasury` balance. When trader sells goods at a location, the treasury pays them (treasury -= sale_price × qty); if treasury empty, sale falls back to floor price or refused. When trader buys, money goes INTO the source location's treasury. Treasuries replenish from a per-tick "local revenue" proportional to population. Money becomes strictly conserved system-wide.
+### ~~Tier 3 economic stability — location treasuries (closed money loop)~~ — DONE
+Implemented 2026-04-28. See `docs/AUDIT_REPORT.md` for the full before/after.
+NPC fleet wealth growth dropped from 200× (25k ticks, baseline) to 4–8× (and
+plateaued — no longer growing). Trade volume preserved, prices still
+unpinned, all 195 prior tests still passing.
 
 ### Population-driven consumption
 Locations have `population` but it doesn't drive anything. Consumption rates are flat. Realistic: bigger pop = more grain consumed.

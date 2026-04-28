@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "sim": "tsx src/sim/scenarios/run.ts",
     "bench": "tsx src/sim/scenarios/bench.ts",
+    "audit": "tsx src/sim/scenarios/audit.ts",
     "art:coverage": "tsx src/tools/artCoverage.ts"
   },
   "dependencies": {

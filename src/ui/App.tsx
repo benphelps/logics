@@ -6,6 +6,7 @@ import { Sidebar } from "./components/Sidebar";
 import { MarketsView } from "./views/MarketsView";
 import { LocationsView } from "./views/LocationsView";
 import { PlayerView } from "./views/PlayerView";
+import { StockMarketView } from "./views/StockMarketView";
 import "./App.css";
 
 export function App() {
@@ -35,6 +36,7 @@ export function App() {
           {tab === "markets"   && <MarketsView />}
           {tab === "locations" && <LocationsView />}
           {tab === "player"    && <PlayerView />}
+          {tab === "stocks"    && <StockMarketView />}
         </main>
       </div>
     </div>

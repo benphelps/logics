@@ -1,4 +1,5 @@
 import type { World } from "../sim/types";
+import { ensureStockMarket } from "../sim/stock";
 
 const SAVE_REGISTRY_KEY = "logics.saveGames.v1";
 const SAVE_VERSION = 1;
@@ -67,6 +68,42 @@ function isPersistedSave(value: unknown): value is PersistedSaveGame {
 function cloneWorld(world: World): World {
   if (typeof structuredClone === "function") return structuredClone(world) as World;
   return JSON.parse(JSON.stringify(world)) as World;
+}
+
+// Saves predating later mechanics (treasuries, stock market, long/short
+// positions) won't have those fields. Backfill on load so the rest of the
+// sim doesn't blow up on `Object.keys(undefined)`. Treasuries get
+// initialized lazily inside `tickTreasuries`, so just the stock market
+// + portfolio shape need explicit backfill.
+function migrateLoadedWorld(world: World): World {
+  if (!world.equities) world.equities = {};
+  if (!world.syndicates) world.syndicates = {};
+  ensureStockMarket(world);
+  if (world.player) {
+    if (!world.player.positions) world.player.positions = {};
+    if (!world.player.trades) world.player.trades = [];
+    // Pre-position-model saves used `portfolio: { eqId: shares }` for
+    // long-only holdings. Migrate any leftover entries into the new
+    // positions record using the current equity price as a stand-in entry
+    // price (we don't know the historical fill).
+    if (world.player.portfolio) {
+      for (const [eqId, shares] of Object.entries(world.player.portfolio)) {
+        if (typeof shares !== "number" || shares <= 0) continue;
+        if (world.player.positions[eqId]) continue;       // already has a real position
+        const eq = world.equities[eqId];
+        if (!eq) continue;
+        world.player.positions[eqId] = {
+          equityId: eqId,
+          kind: "long",
+          shares,
+          avgEntryPrice: eq.price,
+          openedAt: world.tick,
+        };
+      }
+      world.player.portfolio = {};
+    }
+  }
+  return world;
 }
 
 function readRegistry(): SaveRegistry | null {
@@ -143,7 +180,7 @@ function makeSave(id: string, name: string, kind: SaveGameKind, world: World, cr
 
 function loadedFromSave(save: PersistedSaveGame, registry: SaveRegistry, status: SaveStatus): LoadedGameSession {
   return {
-    world: cloneWorld(save.world),
+    world: migrateLoadedWorld(cloneWorld(save.world)),
     activeSaveId: save.id,
     gameName: save.name,
     gameKind: save.kind,

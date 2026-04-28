@@ -5,6 +5,7 @@ const TABS: { id: Tab; label: string; hint?: string }[] = [
   { id: "player",    label: "My Fleet" },
   { id: "markets",   label: "Markets" },
   { id: "locations", label: "Atlas" },
+  { id: "stocks",    label: "Exchange" },
 ];
 
 export function Sidebar() {

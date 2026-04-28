@@ -53,6 +53,13 @@ export type LaneMap = Record<LocationId, Record<LocationId, number>>;
 export interface MarketState {
   stock: Record<GoodId, number>;
   prices: Record<GoodId, number>;
+  // Local "city wallet" — every buy from this market deposits, every sell
+  // withdraws. Replenished per tick from the abstract local economy
+  // (residents earning + spending money outside the trader system) up to
+  // `treasuryTarget`. When treasury runs low, sale prices get haircut so
+  // the city can't pay infinite revenue forever — closes the money loop.
+  treasury: number;
+  treasuryTarget: number;
 }
 
 export type TraderState = "idle" | "transit";
@@ -186,6 +193,109 @@ export interface TraderEvent {
 export interface Player {
   funds: number;
   shipIds: TraderId[];
+  // Long-only legacy holdings, kept around for save migration. Replaced by
+  // `positions`. New writes always go through positions; this field is
+  // backfilled from positions on read so downstream readers don't break
+  // mid-migration. Will be removed once all consumers migrate.
+  portfolio?: Record<EquityId, number>;
+  // Modern position record: at most one position per equity, tagged long
+  // or short, with weighted-average entry price + open tick.
+  positions?: Record<EquityId, StockPosition>;
+  // Trade ledger — chronological log of opens, adds, closes, covers, with
+  // realized P&L on closes. Capped (oldest dropped) at TRADE_LEDGER_MAX.
+  trades?: TradeRecord[];
+}
+
+export type PositionKind = "long" | "short";
+
+// A stock position. Named StockPosition (not just Position) because the
+// existing Position interface is the coordinate type for locations.
+export interface StockPosition {
+  equityId: EquityId;
+  kind: PositionKind;
+  shares: number;          // always positive — sign carried by `kind`
+  avgEntryPrice: number;   // weighted-average cost basis per share (pre-fee)
+  openedAt: number;        // tick of the first entry
+  // Optional auto-close thresholds. The semantics flip with the side:
+  //   long  · stopLoss   triggers when price ≤ stopLoss
+  //          takeProfit triggers when price ≥ takeProfit
+  //   short · stopLoss   triggers when price ≥ stopLoss
+  //          takeProfit triggers when price ≤ takeProfit
+  // Triggers are evaluated per tick after price recompute. The first to fire
+  // closes the entire position (no partial). Fall-back is `abandonPosition`
+  // if the regular close path can't execute (e.g. treasury starved for a long
+  // sell, player broke for a short cover).
+  stopLoss?: number;
+  takeProfit?: number;
+}
+
+export type TriggerKind = "stop_loss" | "take_profit";
+
+export type TradeAction =
+  | "open_long"
+  | "add_long"
+  | "close_long"
+  | "open_short"
+  | "add_short"
+  | "cover_short";
+
+export interface TradeRecord {
+  id: string;
+  tick: number;
+  equityId: EquityId;
+  ticker: string;
+  action: TradeAction;
+  shares: number;
+  price: number;           // execution price per share, pre-fee
+  fee: number;
+  cashFlow: number;        // signed: +ve = into player wallet, -ve = out
+  realizedPnl?: number;    // present on close_long / cover_short
+  trigger?: TriggerKind;   // present when an auto-close fired the trade
+}
+
+// --- stock market types ----------------------------------------------------
+
+export type EquityId = string;
+export type EquityKind = "station" | "syndicate";
+
+export interface Equity {
+  id: EquityId;
+  kind: EquityKind;
+  name: string;
+  ticker: string;          // 3-4 char trading symbol, e.g., "HVN", "IRO"
+  sharesOutstanding: number;
+  // Current public quote per share. Recomputed each tick from the
+  // underlying entity's economic health (treasury, traffic, etc.).
+  price: number;
+  // Anchor (IPO) price, used as the price clamp pivot. Clamped to
+  // [0.1×, 10×] of anchor.
+  anchorPrice: number;
+  // Previous tick's price — surfaced for delta display.
+  prevPrice?: number;
+  // Reference to the underlying entity. For "station" equities this is the
+  // LocationId. For "syndicate" equities, it's a SyndicateId pointing into
+  // world.syndicates.
+  underlyingId: string;
+  // Recent history (capped) — used by the UI to draw sparklines.
+  history?: { tick: number; price: number }[];
+  // Last dividend paid per share (tick stamped). Anchor for "yield"
+  // calculations in the UI.
+  lastDividend?: { tick: number; perShare: number };
+}
+
+export type SyndicateId = string;
+
+export interface Syndicate {
+  id: SyndicateId;
+  name: string;
+  // The NPC ships that belong to this syndicate. The syndicate's "wealth"
+  // is the sum of these ships' funds + an explicit treasury (the syndicate's
+  // own cash float). Dividends are paid from the syndicate treasury.
+  memberShipIds: TraderId[];
+  treasury: number;
+  // Trade volume tally over recent ticks (decays). Drives share-price drift —
+  // active syndicates trade at a premium.
+  recentRevenue: number;
 }
 
 export type JobKind = "shortage" | "rescue";
@@ -220,4 +330,8 @@ export interface World {
   nextJobId: number;
   hires: Record<HireId, Hire>;
   nextHireId: number;
+  // Stock market: the listed equities (stations + syndicates) and the
+  // syndicate definitions themselves. Initialized in createWorld.
+  equities: Record<EquityId, Equity>;
+  syndicates: Record<SyndicateId, Syndicate>;
 }

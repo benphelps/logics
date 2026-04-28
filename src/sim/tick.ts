@@ -1,9 +1,10 @@
 import type { GoodId, Hire, HireId, Job, LocationDef, MarketState, World } from "./types";
 import { recomputePrices } from "./pricing";
 import { stepTraders, type TraderEvent } from "./traders";
-import { chargeMaintenance, consumptionDemand, productionScale } from "./economy";
+import { chargeMaintenance, chargeNpcWealthCarry, consumptionDemand, productionScale, tickTreasuries } from "./economy";
 import { expireJobs, generateJobs, type JobExpiryEvent } from "./jobs";
 import { expireHires, generateHires } from "./hires";
+import { tickStockMarket } from "./stock";
 
 export interface TickReport {
   tick: number;
@@ -68,6 +69,20 @@ export function tickWorld(world: World): TickReport {
   }
 
   chargeMaintenance(world);
+
+  // Wealth-proportional carry tax on NPC traders flows back to local
+  // treasuries — a soft cap on long-run NPC fleet wealth.
+  chargeNpcWealthCarry(world);
+
+  // City treasuries replenish from the abstract local economy. This is the
+  // sole money source in the closed-loop model; it has to balance the
+  // sinks (maintenance + crew wages) at steady state.
+  tickTreasuries(world);
+
+  // Stock market: recompute share prices from underlying signals (treasury
+  // health for stations, fleet wealth for syndicates). Pays quarterly
+  // dividends to player shareholders.
+  tickStockMarket(world);
 
   // Job board housekeeping. Expire first (so the board has room), then post.
   const jobsExpired = expireJobs(world);
