@@ -11,6 +11,10 @@ Every call to `tickWorld(world)` runs, in order:
 3. **Consumption** — each location burns its `consumes` rates. Shortfalls emit `shortage` events.
 4. **Reprice** — recompute every market's prices from current stock vs target.
 5. **Maintenance** — drain trader funds at `capacity × MAINTENANCE_PER_CAPACITY`, scaled by `MAINTENANCE_IDLE_FACTOR` for docked ships, floored at 0 funds.
+6. **NPC wealth carry** — `chargeNpcWealthCarry` deposits a per-tick fraction of every NPC trader's funds into their current location's treasury. Caps long-run NPC fleet growth.
+7. **Treasury replenish** — `tickTreasuries` adds population-scaled local revenue to every city's treasury, with a soft taper above target so reserves don't accumulate unboundedly.
+8. **Stock market** — recompute every equity's price from underlying signals, fire stop-loss / take-profit triggers on player positions, decay syndicate revenue, accrue short borrow fees, pay quarterly dividends.
+9. **Job + hire housekeeping** — expire then post.
 
 `tickWorld` is deterministic given a world. `tickN(world, n)` runs N consecutive ticks. Tested.
 
@@ -33,12 +37,17 @@ Constants in `src/sim/pricing.ts`:
 A `World` holds:
 - `goods: Record<GoodId, Good>` — good definitions (basePrice, weight, category)
 - `locations: Record<LocationId, LocationDef>` — stations with positions, traits, recipes
-- `markets: Record<LocationId, MarketState>` — per-station stock and prices
+- `markets: Record<LocationId, MarketState>` — per-station stock, prices, and treasury
 - `lanes: LaneMap` — optional per-edge distance modifiers
-- `traders: Record<TraderId, Trader>` — NPC ships
+- `traders: Record<TraderId, Trader>` — NPC ships + (optionally) the player ship
+- `player: Player | null` — player wallet, ship ids, equity portfolio + trade ledger
+- `jobs: Record<JobId, Job>` — open work-board (shortage contracts + rescue calls)
+- `hires: Record<HireId, Hire>` — open crew offers, per-station
+- `equities: Record<EquityId, Equity>` — listed equities (one per station + N syndicates)
+- `syndicates: Record<SyndicateId, Syndicate>` — NPC trader collectives backing the syndicate listings
 - `tick: number`
 
-Constructed by `createWorld({ goods?, locations?, lanes?, traders? })`. Defaults seed from `src/sim/data/`.
+Constructed by `createWorld({ goods?, locations?, lanes?, traders?, player? })`. Defaults seed from `src/sim/data/`. `createWorld` also calls `ensureStockMarket` so every fresh world ships with the equity exchange initialized.
 
 ### Geometry
 
@@ -138,15 +147,60 @@ In transit: countdown ticks, on arrival sell cargo at destination's listed price
 
 ### Stability invariants on traders
 
-- **Transit-only maintenance**: `capacity × MAINTENANCE_PER_CAPACITY = 0.5` per tick during transit, `× MAINTENANCE_IDLE_FACTOR = 0` when docked. A parked ship has zero operational cost. Maintenance is purely the cost of being in motion.
-- **Docking fee**: `capacity × DOCKING_FEE_PER_CAPACITY = 5` charged on every arrival. Scales with activity (more trips = more fees) so it's self-correlated with the money creation that happens on sales.
-- **Sales tax**: `SALES_TAX_RATE = 0.15` of every sale revenue is destroyed (treated as port tax). Trader receives 85% of the listed price.
-- **Trip-aware profit math**: `evaluateOptions` subtracts both trip-maintenance (`travelTicks × capacity × MAINTENANCE_PER_CAPACITY`) and the docking fee (`capacity × DOCKING_FEE_PER_CAPACITY`) from total profit before deciding. Sell price in the math uses the *net* (after-tax) value. Trader only commits if `profitPerTick > MIN_PROFIT_PER_TICK = 0.05`.
-- **Floor at zero funds**: a broke trader pays no maintenance and can't trade. With the current constants this is rare across 5000-tick runs at all scales.
+- **Transit-only maintenance**: `capacity × MAINTENANCE_PER_CAPACITY = 0.5` per tick during transit, `× MAINTENANCE_IDLE_FACTOR = 0` when docked. A parked ship has zero operational cost. Maintenance is purely the cost of being in motion. Maintenance is destroyed (real "wear-and-tear" sink that leaves the local economy).
+- **Docking fee**: `capacity × DOCKING_FEE_PER_CAPACITY = 5` charged on every arrival. Flows into the local treasury (closed loop) so the city collects from every visitor.
+- **Sales tax**: `SALES_TAX_RATE = 0.15`. The city treasury pays out the listed sale price, but only the post-tax 85% leaves the treasury — the 15% withholding stays in the city. Closes the loop without an explicit destruction step.
+- **NPC wealth carry**: `NPC_WEALTH_CARRY_PER_TICK = 0.0008`. Every tick, each NPC trader pays 0.08% of their funds to their current location's treasury. Caps long-run NPC fleet wealth at a stable plateau (roughly proportional to per-trade arbitrage divided by the carry rate).
+- **Trip-aware profit math**: `evaluateOptions` subtracts both trip-maintenance (`travelTicks × capacity × MAINTENANCE_PER_CAPACITY`) and the docking fee (`capacity × DOCKING_FEE_PER_CAPACITY`) from total profit before deciding. Sell price in the math uses the *net* (after-tax) value, further haircut by the destination treasury's `treasuryHealthMultiplier` so traders avoid depleted cities. Trader only commits if `profitPerTick > MIN_PROFIT_PER_TICK = 0.05`.
+- **Floor at zero funds**: a broke trader pays no maintenance and can't trade. Rescue is via the rescue-job board or via the treasury-funded operating-float bailout (see below).
+- **Operating-float bailout**: when an NPC is broke + idle for ≥ `MAX_NO_OPPORTUNITY_TICKS = 12` ticks, `restoreNpcOperatingFloat` draws from the local treasury (capped at the floor) so the trader can rejoin the economy. Closed loop — the city writes a small courtesy check, no money is created.
 
-Verified across starter / 10 / 50 / 100 generated locations and durations 200 / 500 / 2000 / 5000 ticks: **zero stuck traders, active trade, shortage rates 7-9 units/tick/loc**.
+Verified across 50,000-tick runs at starter / 12-loc / 50-loc generated worlds: NPC fleet wealth growth ratio drops from baseline ~135–200× to ~5–8× and **plateaus** (no further drift). All five load-bearing invariants hold. Audit harness in `src/sim/scenarios/audit.ts`; full before/after in `docs/AUDIT_REPORT.md`.
 
-NPC fleet wealth still grows over very long runs because typical trades have positive markup (sales create slightly more money than purchases destroy). The 15% tax + docking fee dramatically slows this — fleet wealth roughly doubles every ~2000 ticks rather than growing 10× — but does not fully close the loop. Real loop closure (Tier 3) requires location treasuries that pay traders for sales out of a finite pool replenished by abstract local revenue. Deferred until needed; for now the slow growth is bounded enough that a play session won't see meaningful inflation.
+## Treasuries
+
+Every market has a `treasury` and `treasuryTarget`. A treasury is the city's wallet — every dollar that reaches a trader on a sale comes out of the city's wallet, every dollar a trader pays on a buy goes into it. Combined with the NPC wealth carry, this turns the previously-open economy into a closed-loop one.
+
+### Helpers (`src/sim/economy.ts`)
+
+| Helper | Purpose |
+|---|---|
+| `defaultTreasuryTarget(loc)` | Initial treasury size + replenishment ceiling. Population-scaled. |
+| `treasuryHealthMultiplier(market)` | Returns 1.0 for a healthy treasury, falling linearly to a floor of `TREASURY_HAIRCUT_FLOOR = 0.50` once the city is in deep deficit. Used on every sell-price calc so depleted cities can't pay full price. |
+| `depositToTreasury` / `withdrawFromTreasury` | Primitive cash-flow helpers; the withdraw is capped at `TREASURY_FLOOR_FRACTION = -2.0` × target so a treasury can run a debt but not an infinite one. |
+| `settleSale(market, grossUnitPrice, qty)` | Trader → city sell. Returns `{ effectiveUnitPrice, traderRevenue, taxKept, haircut }`. The treasury net change is `-traderRevenue` (the tax fraction stays in the treasury). |
+| `settlePurchase(market, grossUnitPrice, qty)` | Trader → city buy. Just deposits the principal. |
+| `chargeDockingFee(world, trader)` | Per-arrival fee → local treasury. |
+| `chargeNpcWealthCarry(world)` | Per-tick wealth-proportional drain on NPC traders → their current location's treasury. |
+| `tickTreasuries(world)` | Per-tick replenishment, with a multiplier that's `1.5` when the city is in deficit, tapers to `1.0` at target, and falls below `0.05` once the treasury is far above target. |
+
+### Money flows (closed loop)
+
+| Direction | Flow | Sink/Transfer |
+|---|---|---|
+| trader buy | trader → city treasury | transfer |
+| trader sell (post-tax) | city treasury → trader | transfer |
+| sales tax | stays in treasury | transfer (was destruction pre-Tier-3) |
+| docking fee | trader → city treasury | transfer |
+| NPC wealth carry | trader → current location treasury | transfer |
+| transit maintenance | trader → ∅ | **destroyed** (real sink) |
+| crew wages (player ships) | ship → ∅ | **destroyed** (off-station expense) |
+| treasury replenishment | ∅ → city treasury | **created** (population's local economy) |
+| operating-float bailout | local treasury → broke trader | transfer |
+
+At steady state: replenishment ≈ maintenance + crew wages, so total system money is bounded.
+
+### Constants (`src/sim/economy.ts`)
+
+| Constant | Value | Effect |
+|---|---|---|
+| `TREASURY_PER_POPULATION` | `150` | Initial size + replenishment target per resident |
+| `TREASURY_REPLENISH_PER_POP_PER_TICK` | `0.035` | Steady-state replenishment rate |
+| `TREASURY_HAIRCUT_START_FRACTION` | `0.0` | Haircut kicks in once treasury dips below 0 |
+| `TREASURY_HAIRCUT_FULL_FRACTION` | `-1.0` | Haircut bottoms out at this ratio |
+| `TREASURY_HAIRCUT_FLOOR` | `0.50` | Minimum payout multiplier — even broke cities pay 50% |
+| `TREASURY_FLOOR_FRACTION` | `-2.0` | Hard cap on treasury debt; further withdrawals refused |
+| `NPC_WEALTH_CARRY_PER_TICK` | `0.0008` | 0.08% of NPC funds per tick → local treasury |
 
 ## Player layer
 
@@ -253,6 +307,100 @@ Every Trader has a capped `log: ShipLogEntry[]` (cap = 60 entries) of formatted 
 
 Display is reverse-chronological under the bridge: tick · kind · message. Tone (`good` / `bad` / `warn` / `info`) drives row color.
 
+## Equity exchange
+
+Every station and four NPC syndicates are publicly-traded equities. Players can go long, short, set stop-loss / take-profit thresholds, collect quarterly dividends. Lives in `src/sim/stock.ts`.
+
+### Listed entities
+
+- **Stations**: `eq_loc_<locId>` — one equity per `LocationDef`. IPO anchor scales with population (`STATION_IPO_PER_POPULATION = 50` per share, `SHARES_OUTSTANDING_DEFAULT = 10_000`).
+- **Syndicates**: `eq_syn_<synId>` — four NPC trader collectives by default, each holding a slice of the NPC fleet round-robin. IPO anchor `SYNDICATE_IPO_DEFAULT = 250`. Created by `buildSyndicates(world, count, seed)` and assigned at world creation.
+
+### Price formation
+
+```
+sharePrice_t+1 = clamp(
+  sharePrice_t + 0.10 × (fundamental - sharePrice_t),
+  0.1 × anchor,
+  10 × anchor
+)
+```
+
+The same shape as goods pricing — anchored to a known IPO price, clamped forever to a fixed band, no global drift. The `fundamental` is computed each tick:
+
+- **Station fundamental**: `anchor × treasuryHealthFactor`. A station at 100% treasury target maps to ~1.0× anchor; deep deficit → ~0.3×; strong surplus → ~1.6×.
+- **Syndicate fundamental**: `anchor × wealthMultiplier × revenueMultiplier`. `wealthMultiplier = 0.5 + 0.5 × (totalSyndicateWealth / fairWealth)` where `fairWealth = members × 20_000`. `revenueMultiplier` adds a small premium for syndicates with active recent trade revenue.
+
+Each tick adds ±0.25% deterministic noise (per-equity, world-tick seeded) so prices wiggle without breaking determinism. History capped at `SHARE_PRICE_HISTORY_MAX = 60` for sparkline rendering.
+
+### Player positions (`StockPosition`)
+
+One position per equity per player, tagged `kind: "long" | "short"`:
+
+- `shares: number` — always positive; sign carried by `kind`
+- `avgEntryPrice: number` — weighted-average across opens / adds
+- `openedAt: number` — tick of first entry
+- `stopLoss?: number` / `takeProfit?: number` — auto-close thresholds. Direction flips with side: long stop fires at `price ≤ stopLoss`; short stop fires at `price ≥ stopLoss`.
+
+### Trade actions (state machine)
+
+| Current state | `buyShares` | `sellShares` | `shortShares` | `coverShares` |
+|---|---|---|---|---|
+| no position | open long | refused | open short | refused |
+| long | add to long | close (or partial) | refused | refused |
+| short | refused | refused | add to short | close (or partial) |
+
+`abandonPosition(world, equityId)` is the escape hatch — closes any position at the current mark with a 5% penalty, regardless of cash. Used as a fallback when triggered close paths can't execute (treasury starved on a long sell, or player broke for a short cover) and as a manual button.
+
+### Cash flow (closed loop)
+
+| Action | Source | Sink |
+|---|---|---|
+| `buyShares` | player ship's wallet | underlying entity (station treasury or syndicate treasury) |
+| `sellShares` | underlying entity | player ship's wallet (post-1% broker fee) |
+| `shortShares` | underlying entity | player ship's wallet (post-fee) |
+| `coverShares` | player ship's wallet | underlying entity |
+| `abandonPosition` | player ship (if losing) or underlying (if winning) | the other side |
+| broker fee on every leg | wallet | destroyed (real sink) |
+| short borrow fee per tick | wallet | destroyed |
+
+Crucially, `shortShares` is gated by `maxShortableShares(world, eq)` so the player can never open a short an underlying can't fund — without this cap, shorting against a depleted syndicate left the player with a position they could never afford to cover.
+
+### Dividends
+
+Every `DIVIDEND_INTERVAL = 200` ticks, each equity pays:
+- **Stations**: `DIVIDEND_PAYOUT_FRACTION = 0.05` of treasury surplus (treasury - target). Depleted treasuries pay nothing.
+- **Syndicates**: `DIVIDEND_PAYOUT_FRACTION` of `synd.treasury`. Empty syndicate treasuries pay nothing.
+
+Long positions receive their pro-rata share. Short positions **owe** the dividend to the underlying (real-market mechanic — short sellers cover lender's accrued dividends).
+
+### Stop-loss / take-profit
+
+`checkPositionTriggers(world)` runs each tick after the price recompute. For every open position, if the current price has crossed the threshold, the position is auto-closed via `sellShares` / `coverShares` (with `trigger: "stop_loss" | "take_profit"` recorded on the trade ledger). If the regular close path can't execute, falls back to `abandonPosition` so the player isn't trapped.
+
+### Constants (`src/sim/stock.ts`)
+
+| Constant | Value | Effect |
+|---|---|---|
+| `SHARE_PRICE_FLOOR_MULT` / `SHARE_PRICE_CEILING_MULT` | `0.1` / `10.0` | Hard clamp on share price vs anchor |
+| `SHARE_PRICE_SMOOTHING` | `0.10` | EMA blend rate; small = sticky prices |
+| `SHARE_PRICE_NOISE` | `0.0025` | ±0.25% per-tick noise |
+| `BROKER_FEE_RATE` | `0.01` | 1% fee on every trade leg |
+| `DIVIDEND_INTERVAL` | `200` | Ticks between dividend payouts |
+| `DIVIDEND_PAYOUT_FRACTION` | `0.05` | Surplus fraction paid out |
+| `SHORT_BORROW_RATE_PER_TICK` | `0.0001` | Per-tick borrow fee on short notional |
+| `TRADE_LEDGER_MAX` | `200` | Capped trade history per player |
+
+### Trade ledger
+
+Every player action appends a `TradeRecord` to `world.player.trades`:
+
+```ts
+{ id, tick, equityId, ticker, action, shares, price, fee, cashFlow, realizedPnl?, trigger? }
+```
+
+`action` is one of `open_long | add_long | close_long | open_short | add_short | cover_short`. `realizedPnl` is set on close actions. `trigger` is `"stop_loss" | "take_profit"` when the trade was fired by the per-tick threshold check.
+
 ## Goods catalog
 
 15 goods across 6 categories:
@@ -294,14 +442,17 @@ Any future change should preserve these unless explicitly intended:
 1. **Per-unit price ∈ [0.25× base, 5× base]** for every good, every location, every tick. Enforced by the price clamp, tested in `pricing.test.ts`.
 2. **Stockpile of any produced good ≤ 3× target** at every location. Enforced by `productionScale`, tested in `economy.test.ts`.
 3. **Trader funds ≥ 0** always. Enforced by maintenance floor, tested.
-4. **No tier-2 good is permanently starved everywhere** at steady state. Tested in `chains.test.ts`.
-5. **Determinism** — same starting world, same N ticks, same final state. Tested in `tick.test.ts`.
+4. **Treasury ∈ [-2× target, +∞)** — withdrawals refused below the floor. Tested in `treasury.test.ts`.
+5. **NPC fleet wealth growth ratio ≤ ~10×** at 10k ticks across all world sizes. Tested in `treasury.test.ts`.
+6. **No tier-2 good is permanently starved everywhere** at steady state. Tested in `chains.test.ts`.
+7. **Share price ∈ [0.1× anchor, 10× anchor]** for every equity, every tick. Tested in `stock.test.ts`.
+8. **Determinism** — same starting world, same N ticks, same final state (including treasuries + share prices). Tested in `tick.test.ts`, `treasury.test.ts`, `stock.test.ts`.
 
 If a change breaks one of these, it should be deliberate and documented.
 
 ## Testing
 
-`npm test` runs ≈65 tests in ~0.3s. Coverage spans:
+`npm test` runs 247 tests in ~22s. Coverage spans:
 
 | Test file | What it covers |
 |---|---|
@@ -313,16 +464,27 @@ If a change breaks one of these, it should be deliberate and documented.
 | `economy.test.ts` | productionScale curve, stockpile bound, fund bound, broke-trader freeze |
 | `locations.test.ts` | Net production helpers, trait queries, declared/derived export consistency |
 | `chains.test.ts` | Tech-gated production, chain throttling, tier-2 steady-state bounds |
+| `treasury.test.ts` | Treasury init, sell/buy money flow, haircut multiplier, withdraw cap, long-run NPC growth bound, determinism |
+| `stock.test.ts` | Equity init, syndicate assignment, share-price clamp, dividends, long open/close + P&L, short open/cover + P&L, refusal-states (state machine), borrow fees, ledger cap, stop-loss / take-profit triggers (long + short, both directions), abandon |
+| `crew.test.ts` | Hire/fire, modifier folding, auto-pilot gating, maintenance debt, repair |
+| `jobs.test.ts` | Job posting, expiry, accept / abandon / credit-on-delivery |
+| `suggestions.test.ts` | Hint engine candidate scoring, honor-commitments, refuel pre-emption |
+| `player.test.ts` | Player layer integration (buy/sell/refuel/travel) |
+| `upgrades.test.ts` | Module install from market + cargo, slot replacement |
+| `start.test.ts` | Starting-world generation + player placement |
+| `gen/world.test.ts` | Seeded generation, archetype mix, route network, declared/derived export consistency, scale invariants at 50 / 200 locs |
 
-## The scenario harness
+## Scenario harnesses
 
-`npm run sim 500` runs 500 ticks and prints:
-- Per-location stockpile and price for every good
-- Trader status (location, state, cargo, funds)
-- Total shortage volume and worst recurring shortages
-- Trade count
+Three CLI tools under `src/sim/scenarios/`:
 
-This is the tuning workbench. When you change a constant in `economy.ts`, run the harness before and after to see the effect.
+| Command | Purpose |
+|---|---|
+| `npm run sim 500` | Runs the starter universe for N ticks and prints final markets, trader state, top shortages, trade count. Best for eyeballing a constant tweak. |
+| `npm run audit [ticks]` | Runs the long-horizon audit harness across three universes (4-loc starter, 12-loc gen, 50-loc gen). Reports trader funds, treasury balances, total system money, trade volume, stuck/broke fractions, invariant violations, and stock-market price-band utilization. Use before/after any economy-touching change to confirm steady-state stability. Default 10k ticks. |
+| `npm run bench` | Scale benchmark — generator at 10 / 25 / 50 / 100 / 200 / 500 / 1000 locations, reports ms/tick. |
+
+Plus two diagnostic scripts that aren't wired to npm (run via `npx tsx`): `scenarios/money_flow.ts` (per-tick money tracer for spot-checking closed-loop accounting) and `scenarios/player_audit.ts` (player progression sanity).
 
 ## World generation
 

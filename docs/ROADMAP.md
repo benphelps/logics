@@ -29,7 +29,9 @@ Listed in commit order. Each was scoped tight, landed with tests, and updated th
 | Anticipation fix | Anticipated arrival price now only counts *other* traders' in-flight cargo, not own. Trader actually receives the listed price at arrival; price drop from own delivery only affects future traders. Restored active trade across all scales. |
 | Tier 2 sinks | Docking fee (5/cap per arrival) + sales tax (15%) bound NPC fleet wealth growth without re-triggering death spiral. Verified to 5000 ticks at all scales. Loop not strictly closed; Tier 3 (treasuries) handles that when needed. |
 | Tier 3 stability — location treasuries | Closed money loop. Each `MarketState` has a `treasury` + `treasuryTarget`. Sells withdraw, buys deposit, sales tax + docking fee stay in treasury. Per-tick replenishment from population (with soft taper above target). NPC wealth carry (0.08%/tick) feeds back into treasuries — caps fleet growth at a stable equilibrium. **Verified across 50k ticks**: NPC fleet wealth growth dropped from 200× → 4–8×; treasury totals bounded. Operating-float bailout is now treasury-funded (no money creation). See `docs/AUDIT_REPORT.md`. |
-| Stock market layer | Stations + 4 NPC syndicates listed as publicly traded equities. Share price = clamped function of underlying treasury health / fleet wealth. 1% broker fee. Quarterly dividends from treasury surplus. Player portfolio + closed-loop cash flow with the underlying. Determinism preserved. 18 dedicated tests + audit-harness invariants. |
+| Equity exchange | Stations + N NPC syndicates as publicly-traded equities with anchor-clamped prices `[0.1×, 10×]`, 1% broker fee, quarterly dividends from treasury surplus. Long + short positions per equity, weighted-average entry, per-position stop-loss / take-profit thresholds checked every tick (recorded as `STOP` / `TAKE` triggers in the trade ledger). Funding-aware short cap (no trapped shorts on a depleted underlying). `abandonPosition` escape hatch with 5% penalty. Player portfolio + 200-entry capped trade ledger. Save migration backfills equities/syndicates/positions for older save slots. |
+| Exchange UI tab | Three left-side panels (Tape / Positions / Trades) + narrow sidebar with company info + entry actions. Click a position → that row becomes the only entry shown and surfaces inline risk-level inputs (with quick-fill 2/5/10% adverse and 5/10/20% favorable chips), close-side controls (Sell / Cover), and Abandon. Click again → back to the full list. Auto-closes (manual or trigger-fired) clear focus and return to the list naturally. |
+| Long-horizon audit harness | `npm run audit [ticks]` exercises starter / 12-loc / 50-loc universes, reports trader funds, treasury balances, total system money, trade volume, stuck/broke fractions, invariant violations, and stock-market price-band utilization. Run before/after any economy-touching change. |
 | Player ship + bridge UI | Single player-owned ship at Haven. Manual pilot via UI bridge: 2×2 station/ship/cargo/travel cards, market + local-contracts split, action log card, in-transit progress bar with quick-travel. Suggestion engine drives ✦ markers + row highlights. |
 | Speculative travel | When no profitable local trade exists, NPCs + auto-pilot can fly empty to a nearby station that opens up a profitable trade. K=6 nearest cap. |
 | Job board | `world.jobs` pool generated each tick. Two kinds: location-gated **shortage contracts** (visible only at the destination), broadcast **rescue calls** (NPCs stranded ≥ 1 tick). Tier scales with severity → `(reward, penalty, expiry)` triples. Reward credited on delivery via `creditJobOnDelivery` inside `sellAtLocation` and the auto-pilot's arrive-sell. Penalty charged on expiry/abandon. |
@@ -44,14 +46,6 @@ Listed in commit order. Each was scoped tight, landed with tests, and updated th
 ---
 
 ## Queued (next up — sim layer)
-
-These are the natural next steps that stay in the sim layer and can ship before the player exists.
-
-### ~~Tier 3 economic stability — location treasuries (closed money loop)~~ — DONE
-Implemented 2026-04-28. See `docs/AUDIT_REPORT.md` for the full before/after.
-NPC fleet wealth growth dropped from 200× (25k ticks, baseline) to 4–8× (and
-plateaued — no longer growing). Trade volume preserved, prices still
-unpinned, all 195 prior tests still passing.
 
 ### Population-driven consumption
 Locations have `population` but it doesn't drive anything. Consumption rates are flat. Realistic: bigger pop = more grain consumed.
@@ -162,9 +156,12 @@ These are baked into the sim and the test suite. If a change breaks one, the cha
 1. **Per-unit price ∈ [0.25× base, 5× base]** — `pricing.test.ts`
 2. **Stockpile of any produced good ≤ 3× target** — `economy.test.ts`
 3. **Trader funds ≥ 0 always** — `economy.test.ts`
-4. **No tier-2 good permanently starved at every location** — `chains.test.ts`
-5. **Sim is deterministic** — `tick.test.ts`
-6. **Declared `primaryExports`/`primaryImports` consistent with production data** — `locations.test.ts`
+4. **Treasury ≥ -2× target always; payouts capped at floor** — `treasury.test.ts`
+5. **NPC fleet wealth growth ratio ≤ ~10× at 10k ticks** — `treasury.test.ts`
+6. **No tier-2 good permanently starved at every location** — `chains.test.ts`
+7. **Share price ∈ [0.1× anchor, 10× anchor]** — `stock.test.ts`
+8. **Sim + stock market both deterministic** — `tick.test.ts`, `treasury.test.ts`, `stock.test.ts`
+9. **Declared `primaryExports`/`primaryImports` consistent with production data** — `locations.test.ts`
 
 Adding new invariants is encouraged. Removing one without a written reason should feel uncomfortable.
 
@@ -178,11 +175,16 @@ Most balance levers are exported constants. Search for them:
 |---|---|---|
 | `pricing.ts` | `PRICE_ELASTICITY` | Steepness of price response to stock vs target |
 | `pricing.ts` | `PRICE_FLOOR_MULT` / `PRICE_CEILING_MULT` | The unbreakable price band |
-| `economy.ts` | `MAINTENANCE_PER_CAPACITY` | Per-tick fund drain on traders during transit (currently 0.5) |
+| `economy.ts` | `MAINTENANCE_PER_CAPACITY` | Per-tick fund drain on traders during transit (currently 0.5). Destroyed (real sink). |
 | `economy.ts` | `MAINTENANCE_IDLE_FACTOR` | Multiplier for docked ships (currently 0 — parked is free) |
-| `economy.ts` | `DOCKING_FEE_PER_CAPACITY` | One-time fee on every arrival (currently 5) |
-| `economy.ts` | `SALES_TAX_RATE` | Fraction of every sale destroyed as port tax (currently 0.15) |
+| `economy.ts` | `DOCKING_FEE_PER_CAPACITY` | Per-arrival fee (currently 5). Flows to local treasury (closed loop). |
+| `economy.ts` | `SALES_TAX_RATE` | Fraction of every sale withheld by the treasury as tax (currently 0.15) |
 | `economy.ts` | `STOCKPILE_CAP_MULT` | Production tapers to zero at this × target |
+| `economy.ts` | `TREASURY_PER_POPULATION` | Initial treasury size + replenish target per resident (150) |
+| `economy.ts` | `TREASURY_REPLENISH_PER_POP_PER_TICK` | Per-tick replenishment per resident (0.035) |
+| `economy.ts` | `TREASURY_HAIRCUT_FLOOR` | Minimum sale-price multiplier even at depleted treasury (0.50) |
+| `economy.ts` | `TREASURY_FLOOR_FRACTION` | Hard cap on treasury debt (-2.0 × target) |
+| `economy.ts` | `NPC_WEALTH_CARRY_PER_TICK` | Per-tick wealth fraction NPCs pay to local treasury (0.0008) |
 | `traders.ts` | `MIN_PROFIT_PER_TICK` | Minimum margin a trader will accept after subtracting fuel + maintenance (currently 0.05) |
 | `traders.ts` | `MAX_DRAW_FRACTION` | Cap on how much of a market a single trader can drain in one trip |
 | `traders.ts` | `REFUEL_THRESHOLD` | Tank fraction below which refuel triggers |
@@ -197,5 +199,13 @@ Most balance levers are exported constants. Search for them:
 | `jobs.ts` | `MAX_OPEN_JOBS` | Cap on concurrent open contracts world-wide (currently 24) |
 | `jobs.ts` | `REWARD_MULT_BY_TIER` / `PENALTY_FRACTION_BY_TIER` / `EXPIRY_TICKS_BY_TIER` | Per-tier reward × base-price scaling, penalty as fraction of reward, contract deadline window |
 | `jobs.ts` | `SHORTAGE_HIGH_FRACTION` / `SHORTAGE_MED_FRACTION` / `SHORTAGE_LOW_FRACTION` | Stock/target thresholds that classify shortage tier |
+| `stock.ts` | `SHARE_PRICE_FLOOR_MULT` / `SHARE_PRICE_CEILING_MULT` | Hard clamp on equity price vs IPO anchor (0.1 / 10.0) |
+| `stock.ts` | `SHARE_PRICE_SMOOTHING` | EMA blend rate toward fundamental (0.10 — sticky) |
+| `stock.ts` | `SHARE_PRICE_NOISE` | Per-tick deterministic noise on share prices (0.0025) |
+| `stock.ts` | `BROKER_FEE_RATE` | Fee on every share trade leg (0.01) |
+| `stock.ts` | `DIVIDEND_INTERVAL` / `DIVIDEND_PAYOUT_FRACTION` | Ticks between dividends (200) and surplus fraction paid (0.05) |
+| `stock.ts` | `SHORT_BORROW_RATE_PER_TICK` | Per-tick borrow fee on short notional (0.0001) |
+| `stock.ts` | `TRADE_LEDGER_MAX` | Capped player trade history (200 entries) |
+| `stock.ts` | `ABANDON_PENALTY_RATE` | Penalty applied when force-closing a trapped position (0.05) |
 
-Tuning workflow: change a constant → `npm test` (ensure invariants hold) → `npm run sim 500` (eyeball the steady state).
+Tuning workflow: change a constant → `npm test` (ensure invariants hold) → `npm run sim 500` (eyeball the steady state) → `npm run audit 25000` (long-horizon stability).

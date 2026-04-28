@@ -173,51 +173,95 @@ sharePrice_t+1 = clamp(
 - Hard clamp: `[0.1× anchor, 10× anchor]` — same shape as the goods price
   clamp; share prices physically can't escape a known band.
 
-**Trading:**
-- `buyShares(world, equityId, qty)` — pays from the player's anchor ship
-  wallet. 1% broker fee (real sink).
-- `sellShares(world, equityId, qty)` — proceeds paid from the underlying
-  treasury (or syndicate treasury). 1% broker fee.
-- Float bounded by `sharesOutstanding` (default 10,000 per equity).
-- Cash flows are closed-loop: buy money goes into station/syndicate treasury;
-  sell proceeds come out of it.
+**Trading (state machine):**
+- `buyShares` opens or adds to a long. Refused while short.
+- `sellShares` closes (or partially closes) a long. Refused without a long.
+- `shortShares` opens or adds to a short. Refused while long. Capped by
+  `maxShortableShares(world, eq)` so a short can never open against an
+  underlying that can't fund the proceeds (no trapped positions).
+- `coverShares` closes (or partially closes) a short. Refused without a short.
+- `abandonPosition` is the escape hatch: closes any position at the current
+  mark with a 5% penalty, regardless of cash. Used as both a manual button
+  and as the fallback when an auto-trigger can't fire the regular close.
 
-**Dividends:**
-- Every `DIVIDEND_INTERVAL = 200` ticks.
-- Stations: 5% of treasury surplus (treasury - target) → shareholders pro-rata.
-- Syndicates: 5% of syndicate.treasury → shareholders pro-rata.
-- Player share owners get cash injected into the anchor ship's wallet; the
-  source treasury is debited.
+**Positions:** at most one position per equity, tagged `kind: "long" | "short"`,
+with `shares`, `avgEntryPrice` (weighted across opens / adds), `openedAt`,
+and optional `stopLoss` / `takeProfit` thresholds.
+
+**Stop-loss / take-profit:** per-position thresholds checked every tick after
+the price recompute. Long stop fires at `price ≤ stopLoss`; short stop fires
+at `price ≥ stopLoss`; take-profit flips the inequality. Fired closes are
+recorded on the trade ledger with `trigger: "stop_loss" | "take_profit"`.
+
+**Trade ledger:** every action appends a `TradeRecord` to `world.player.trades`,
+capped at 200 entries (oldest dropped). Records `action`, `shares`, `price`,
+`fee`, `cashFlow`, optional `realizedPnl` on closes, and optional `trigger`
+on auto-fired closes.
+
+**Dividends:** every `DIVIDEND_INTERVAL = 200` ticks. Stations pay 5% of
+treasury surplus (treasury - target). Syndicates pay 5% of `synd.treasury`.
+Long positions receive their pro-rata share. **Short positions owe** the
+dividend to the underlying — real-market mechanic where the short seller
+covers the lender's accrued dividend.
+
+**Borrow fee:** open shorts accrue `SHORT_BORROW_RATE_PER_TICK = 0.0001` of
+notional per tick, drained from the player's wallet (real sink). Without
+this, holding a short forever would be free.
 
 **Anti-exploit:**
 - 1% broker fee on every trade — round-trip costs 2%.
-- Share-price ceiling at 10× anchor + floor at 0.1× anchor blocks
-  hyperinflation.
-- Selling more than the underlying can pay (treasury at floor) gets haircut.
+- Share-price ceiling at 10× anchor + floor at 0.1× anchor.
+- Funding-aware short cap (no trapped shorts).
+- Sale haircut at depleted treasury.
+- Borrow fee on open shorts.
+
+**UI:**
+- Three left-side panels: Tape (live equity quotes), Positions (open trades),
+  Trades (chronological ledger).
+- Click a position row in the Positions table → focuses on that position.
+  The panel collapses to that single row and reveals inline controls:
+  risk-level inputs (with quick-fill 2/5/10% adverse and 5/10/20% favorable
+  chips), close-side controls (Sell or Cover), and an Abandon button. Click
+  again to return to the full list. Auto-closes (manual or trigger-fired)
+  clear the focus naturally.
+- Narrow right sidebar shows company info + entry actions only: header,
+  sparkline (with horizontal lines for entry / stop / take when a position
+  is open), underlying signals, Buy and Short controls. Sell / Cover /
+  Abandon / risk levels live in the focused position row, not duplicated.
 
 **Reading the market:**
-- A station with a depleting treasury → its share price will drop.
+- A station with a depleting treasury → its share price will drop. Watch
+  the Health column on the Tape; short the listing before others react.
 - A wealthy syndicate with growing recent revenue → its share price rises.
-- The player can read treasury balances and recent-revenue counters in the
-  same UI panes they read goods prices, then anticipate share moves.
+- Stop-loss + take-profit let the player encode their exit thresholds and
+  walk away. Stops fire as soon as the next tick's price crosses the level.
 
 ---
 
 ## Files changed / added
 
 ```
-src/sim/types.ts            (+treasury fields, +stock types)
+src/sim/types.ts            (+treasury fields, +equity/syndicate/StockPosition/TradeRecord)
 src/sim/economy.ts          (+treasury logic, +settlement helpers, +wealth carry)
 src/sim/traders.ts          (all money flows route through treasuries)
 src/sim/tick.ts             (treasury + wealth carry + stock market each tick)
 src/sim/world.ts            (initialize treasuries + stock market in createWorld)
-src/sim/stock.ts            (NEW — full stock-market layer)
-src/sim/treasury.test.ts    (NEW — 14 invariant tests)
-src/sim/stock.test.ts       (NEW — 18 invariant tests)
+src/sim/stock.ts            (NEW — full stock-market layer with shorts + stop/take + abandon)
+src/sim/treasury.test.ts    (NEW)
+src/sim/stock.test.ts       (NEW)
 src/sim/scenarios/audit.ts  (NEW — long-horizon audit harness)
 src/sim/scenarios/money_flow.ts (NEW — per-tick money tracer)
 src/sim/scenarios/player_audit.ts (NEW — player-progression audit)
+src/ui/store.ts             (+stock actions: buy/sell/short/cover/abandon, stop/take setters)
+src/ui/saveGames.ts         (+migration for older portfolios → positions)
+src/ui/App.tsx              (+stocks tab)
+src/ui/components/Sidebar.tsx (+Exchange entry)
+src/ui/views/StockMarketView.tsx (NEW — tape + positions + trades + sidebar)
+src/ui/views/StockMarketView.css (NEW)
 docs/AUDIT_REPORT.md        (THIS FILE)
+docs/SIM.md                 (+treasury section, +equity exchange section)
+docs/VISION.md              (+equity exchange in late game)
+docs/ROADMAP.md             (Done table updated; tuning constants table extended)
 package.json                (+npm run audit script)
 ```
 
@@ -259,12 +303,13 @@ package.json                (+npm run audit script)
 ## How to reproduce / verify
 
 ```sh
-npm test                       # 227 tests, ~21s
+npm test                       # 247 tests, ~22s
 npm run sim 500                # short scenario printout
 npm run audit                  # 10k-tick audit (default)
 npm run audit -- 25000         # 25k-tick audit
 npm run audit -- 50000         # 50k-tick audit (the full long-horizon test)
 npm run bench                  # scale benchmark, unchanged
+npm run dev                    # full UI with the Exchange tab live
 ```
 
 The `audit` command exercises three universes (4-loc starter, 12-loc gen,
