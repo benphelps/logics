@@ -88,10 +88,14 @@
 }
 
 .bridge-card {
+  --bridge-card-pad-x: 16px;
+  --bridge-card-pad-y: 14px;
+  --bridge-table-pad-x: 28px;
+  --bridge-table-bottom-gap: 14px;
   background: var(--ship-surface);
   border: 1px solid var(--ship-line);
   border-radius: 7px;
-  padding: 14px 16px;
+  padding: var(--bridge-card-pad-y) var(--bridge-card-pad-x);
   position: relative;
   min-width: 0;
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
@@ -952,19 +956,6 @@
   color: #b9ddf2;
 }
 
-.tab-suggestion-cue {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  border-radius: 999px;
-  color: #9dd7ff;
-  font-size: 10px;
-  line-height: 1;
-  text-shadow: 0 0 8px rgba(79, 182, 255, 0.65);
-}
-
 .bridge-tab-count {
   font-size: 10px;
   color: var(--text-faint);
@@ -1096,7 +1087,7 @@
 }
 
 .upgrade-offer-title {
-  padding: 2px 8px 0;
+  padding: 2px calc(var(--bridge-table-pad-x) - var(--bridge-card-pad-x)) 0;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -1160,6 +1151,7 @@
 }
 
 .crew-table .col-action { width: 80px; }
+.crew-table .col-tier { width: 56px; }
 .crew-table .col-role { width: 76px; }
 .jobs-table .col-role { width: 76px; }
 
@@ -1216,11 +1208,6 @@
 
 .crew-name {
   font-weight: 500;
-}
-
-.crew-tier {
-  color: var(--warn);
-  font-size: 11px;
 }
 
 .crew-mods {
@@ -1527,6 +1514,11 @@
 
 .bridge-split > .trade-helper-card {
   grid-column: 3;
+  display: flex;
+  flex-direction: column;
+  height: clamp(560px, calc(100vh - 168px), 760px);
+  min-height: 0;
+  overflow: hidden;
 }
 
 .exchange-card .bridge-card-tabs {
@@ -1552,7 +1544,7 @@
 }
 
 .exchange-section-title {
-  padding: 2px 8px 0;
+  padding: 2px calc(var(--bridge-table-pad-x) - var(--bridge-card-pad-x)) 0;
   color: var(--text-faint);
   font-size: 9px;
   font-weight: 750;
@@ -1561,7 +1553,7 @@
 }
 
 .trade-helper-card {
-  min-height: 100%;
+  min-height: 0;
 }
 
 .info-area-tabs {
@@ -1623,7 +1615,14 @@
 
 .info-area-content {
   position: relative;
+  flex: 1 1 auto;
   isolation: isolate;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+  scrollbar-gutter: stable;
 }
 
 .info-area-content.is-entering {
@@ -2037,6 +2036,18 @@
   .bridge-split > .trade-helper-card {
     grid-column: 1;
   }
+
+  .bridge-split > .trade-helper-card {
+    display: block;
+    height: auto;
+    overflow: visible;
+  }
+
+  .info-area-content {
+    overflow: visible;
+    padding-right: 0;
+    scrollbar-gutter: auto;
+  }
 }
 
 @media (max-width: 560px) {
@@ -2101,12 +2112,24 @@
 .market-table,
 .travel-table,
 .suggestions-table,
-.jobs-table {
+.jobs-table,
+.upgrade-table,
+.crew-table {
   width: 100%;
   margin: 2px 0 0;
   border-collapse: collapse;
   font-size: 12px;
   table-layout: fixed;
+}
+
+.bridge-card :is(.market-table, .travel-table, .suggestions-table, .jobs-table, .upgrade-table, .crew-table, .cargo-table) {
+  width: calc(100% + (var(--bridge-card-pad-x) * 2));
+  margin-left: calc(var(--bridge-card-pad-x) * -1);
+  margin-right: calc(var(--bridge-card-pad-x) * -1);
+}
+
+.bridge-card :is(.market-table, .travel-table, .suggestions-table, .jobs-table, .upgrade-table, .crew-table, .cargo-table):last-child {
+  margin-bottom: calc((var(--bridge-card-pad-y) - var(--bridge-table-bottom-gap)) * -1);
 }
 
 .col-good     { width: auto; }
@@ -2123,7 +2146,9 @@
 .market-table th,
 .travel-table th,
 .suggestions-table th,
-.jobs-table th {
+.jobs-table th,
+.upgrade-table th,
+.crew-table th {
   position: relative;
   text-align: left;
   font-size: 10px;
@@ -2143,12 +2168,7 @@
 .upgrade-table th:last-child::after,
 .crew-table th:last-child::after,
 .cargo-table th:last-child::after {
-  content: "";
-  position: absolute;
-  right: -16px;
-  bottom: -1px;
-  width: 16px;
-  border-bottom: 1px solid var(--border);
+  display: none;
 }
 
 .market-table th:first-child::before,
@@ -2158,32 +2178,55 @@
 .upgrade-table th:first-child::before,
 .crew-table th:first-child::before,
 .cargo-table th:first-child::before {
-  content: "";
-  position: absolute;
-  left: -16px;
-  bottom: -1px;
-  width: 16px;
-  border-bottom: 1px solid var(--border);
+  display: none;
 }
 
 .market-table tbody tr,
-.suggestions-table tbody tr {
+.travel-table tbody tr,
+.suggestions-table tbody tr,
+.upgrade-table tbody tr,
+.crew-table tbody tr,
+.cargo-table tbody tr {
   height: 48px;
-}
-
-.travel-table tbody tr {
-  height: 44px;
 }
 
 .market-table td,
 .travel-table td,
 .suggestions-table td,
-.jobs-table td {
+.jobs-table td,
+.upgrade-table td,
+.crew-table td,
+.cargo-table td {
   padding: 7px 9px;
   border-bottom: 1px solid var(--border);
   font-variant-numeric: tabular-nums;
   vertical-align: middle;
   height: 34px;
+}
+
+.bridge-card :is(.market-table, .travel-table, .suggestions-table, .jobs-table, .upgrade-table, .crew-table, .cargo-table) :is(th, td):first-child {
+  padding-left: var(--bridge-table-pad-x);
+}
+
+.bridge-card :is(.market-table, .travel-table, .suggestions-table, .jobs-table, .upgrade-table, .crew-table, .cargo-table) :is(th, td):last-child {
+  padding-right: var(--bridge-table-pad-x);
+}
+
+.upgrade-table td,
+.crew-table td,
+.cargo-table td:not(:last-child) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upgrade-table td:last-child,
+.crew-table td:last-child,
+.cargo-table td:last-child {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
 }
 
 /* Jobs/offers tables sit in narrower containers — keep the shared table
@@ -2199,11 +2242,6 @@
 
 .jobs-table tbody tr {
   height: 48px;
-}
-
-.travel-table td {
-  height: 32px;
-  padding: 6px 9px;
 }
 
 .travel-has-contract {
@@ -2259,7 +2297,9 @@
    double-up with the card border below */
 .bridge-card .market-table tbody tr:last-child td,
 .bridge-card .travel-table tbody tr:last-child td,
-.bridge-card .jobs-table tbody tr:last-child td {
+.bridge-card .jobs-table tbody tr:last-child td,
+.bridge-card .upgrade-table tbody tr:last-child td,
+.bridge-card .crew-table tbody tr:last-child td {
   border-bottom: none;
 }
 
@@ -2270,14 +2310,20 @@
 .suggestions-table th.numeric,
 .suggestions-table td.numeric,
 .jobs-table th.numeric,
-.jobs-table td.numeric {
+.jobs-table td.numeric,
+.upgrade-table th.numeric,
+.upgrade-table td.numeric,
+.crew-table th.numeric,
+.crew-table td.numeric {
   text-align: right;
 }
 
 .market-table tbody tr:hover,
 .travel-table tbody tr:hover,
 .suggestions-table tbody tr:hover,
-.jobs-table tbody tr:hover {
+.jobs-table tbody tr:hover,
+.upgrade-table tbody tr:hover,
+.crew-table tbody tr:hover {
   background: rgba(255, 255, 255, 0.025);
 }
 
@@ -2287,8 +2333,7 @@
 }
 
 /* ---- guided-hint highlights ---- */
-/* hint banner removed — guidance is now shown via highlighted UI elements
-   + the hover ✦ marker on the suggested button. */
+/* hint banner removed — guidance is now shown via highlighted UI elements. */
 
 /* Button highlight when it is the suggested target. Row-wide hints stay off. */
 
@@ -2364,7 +2409,7 @@
 .market-footnote {
   font-size: 10px;
   margin-top: 10px;
-  padding: 0;
+  padding: 0 calc(var(--bridge-table-pad-x) - var(--bridge-card-pad-x));
 }
 
 .row-meta-pill {
@@ -2471,7 +2516,6 @@
   color: var(--text-faint);
 }
 
-/* ----- suggested-marker: floats top-left of suggested element ----- */
 .action-cell {
   position: relative;
   display: inline-block;
@@ -2489,13 +2533,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   background: var(--accent);
-  color: white;
-  font-size: 10px;
-  font-weight: 700;
+  border: 2px solid var(--bg-2);
   box-shadow: 0 0 0 2px var(--bg-2);
   animation: marker-pulse 2.2s ease-in-out infinite;
 }
@@ -2515,9 +2557,6 @@
   50%      { box-shadow: 0 0 0 2px var(--bg-2), 0 0 0 9px rgba(248, 113, 113, 0); }
 }
 
-/* DOM tooltip — portaled to <body>, position: fixed with JS-clamped coords
-   so it never overflows the viewport. translateY(-100%) places it ABOVE
-   the marker (top: rect.top - GAP becomes the bottom edge of the tooltip). */
 .suggested-tooltip {
   position: fixed;
   width: 280px;
@@ -2570,7 +2609,7 @@
 }
 
 .cargo-col-pnl { width: 150px; }
-.cargo-col-action { width: 132px; }
+.cargo-col-action { width: 148px; }
 
 .cargo-table th {
   position: relative;
@@ -2586,14 +2625,6 @@
 
 .cargo-table th.numeric {
   text-align: right;
-}
-
-.cargo-table td {
-  padding: 7px 8px;
-  border-bottom: 1px solid var(--border);
-  font-variant-numeric: tabular-nums;
-  vertical-align: middle;
-  height: 34px;
 }
 
 .cargo-table tbody tr:last-child td {

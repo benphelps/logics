@@ -36,6 +36,7 @@ const SHOW_DEV_SHIP_LOG_PANEL = false;
 const GUIDANCE_LOCKED_TEXT = "Hire a navigator for guided suggestions.";
 const DEPART_SUGGESTION_GUARD_MS = 1800;
 const SUGGESTION_PULSE_MS = 3700;
+const INFO_HOVER_CLEAR_DELAY_MS = 90;
 
 export function PlayerView() {
   const world = useStore((s) => s.world);
@@ -135,7 +136,7 @@ function SuggestedMarker({ tip, critical, label = "Suggested" }: { tip: string; 
       onBlur={hide}
       tabIndex={0}
     >
-      <span className="suggested-marker-dot" ref={dotRef}>✦</span>
+      <span className="suggested-marker-dot" ref={dotRef} />
       {pos && createPortal(
         <span
           className={`suggested-tooltip ${critical ? "critical" : ""}`}
@@ -412,19 +413,6 @@ function infoFocusLabel(focus: InfoFocus, world: World): string {
   return world.locations[focus.loc]?.name ?? focus.loc;
 }
 
-function TabSuggestionCue({ show, hintText }: { show?: boolean; hintText?: string }) {
-  if (!show) return null;
-  return (
-    <span
-      className="tab-suggestion-cue"
-      title={hintText ? `Suggested: ${hintText}` : "Suggested action in this section"}
-      aria-label="Suggested action in this section"
-    >
-      ✦
-    </span>
-  );
-}
-
 function SingleTabHeader({ label, count, suggested, hintText, trailing }: {
   label: string; count?: number; suggested?: boolean; hintText?: string; trailing?: ReactNode;
 }) {
@@ -433,7 +421,6 @@ function SingleTabHeader({ label, count, suggested, hintText, trailing }: {
       <span className={`bridge-tab single-tab-main active ${suggested ? "has-suggestion" : ""}`} title={suggested ? hintText : undefined}>
         {label}
         {count != null && <span className="bridge-tab-count">{count}</span>}
-        <TabSuggestionCue show={suggested} hintText={hintText} />
       </span>
       {trailing && <span className="bridge-tab-spacer" aria-hidden="true" />}
       {trailing}
@@ -458,9 +445,25 @@ function DockedView({ ship, world, loc, guidedPlan, hint, target, hintText, cueT
   const [activePinnedKey, setActivePinnedKey] = useState<string | null>(null);
   const [suggestionPulse, setSuggestionPulse] = useState(0);
   const suggestionPulseTimer = useRef<number | null>(null);
+  const hoverClearTimer = useRef<number | null>(null);
   useEffect(() => () => {
     if (suggestionPulseTimer.current != null) window.clearTimeout(suggestionPulseTimer.current);
+    if (hoverClearTimer.current != null) window.clearTimeout(hoverClearTimer.current);
   }, []);
+  const setHoverFocus = (focus: InfoFocus) => {
+    if (hoverClearTimer.current != null) {
+      window.clearTimeout(hoverClearTimer.current);
+      hoverClearTimer.current = null;
+    }
+    setHoveredFocus(focus);
+  };
+  const clearHoverFocus = () => {
+    if (hoverClearTimer.current != null) window.clearTimeout(hoverClearTimer.current);
+    hoverClearTimer.current = window.setTimeout(() => {
+      setHoveredFocus(null);
+      hoverClearTimer.current = null;
+    }, INFO_HOVER_CLEAR_DELAY_MS);
+  };
   const pulseSuggestionActions = () => {
     setSuggestionPulse(prev => (prev % 2) + 1);
     if (suggestionPulseTimer.current != null) window.clearTimeout(suggestionPulseTimer.current);
@@ -491,6 +494,10 @@ function DockedView({ ship, world, loc, guidedPlan, hint, target, hintText, cueT
     }
   };
   const clearInfoFocus = () => {
+    if (hoverClearTimer.current != null) {
+      window.clearTimeout(hoverClearTimer.current);
+      hoverClearTimer.current = null;
+    }
     setHoveredFocus(null);
     setActivePinnedKey(null);
   };
@@ -525,7 +532,10 @@ function DockedView({ ship, world, loc, guidedPlan, hint, target, hintText, cueT
           selectedGood={activeFocus?.kind === "good" && activeFocus.source === "cargo" ? activeFocus.good : null}
           pinnedGoods={pinnedCargoGoods}
           onSelectGood={(good) => togglePinnedFocus({ kind: "good", good, source: "cargo" })}
-          onHoverGood={(good) => setHoveredFocus(good ? { kind: "good", good, source: "cargo" } : null)}
+          onHoverGood={(good) => {
+            if (good) setHoverFocus({ kind: "good", good, source: "cargo" });
+            else clearHoverFocus();
+          }}
         />
         <TravelOptions
           ship={ship}
@@ -538,7 +548,10 @@ function DockedView({ ship, world, loc, guidedPlan, hint, target, hintText, cueT
           pinnedStations={pinnedStations}
           inTransit={inTransit}
           onSelectStation={(station) => togglePinnedFocus({ kind: "station", loc: station, source: "travel" })}
-          onHoverStation={(station) => setHoveredFocus(station ? { kind: "station", loc: station, source: "travel" } : null)}
+          onHoverStation={(station) => {
+            if (station) setHoverFocus({ kind: "station", loc: station, source: "travel" });
+            else clearHoverFocus();
+          }}
           onClearInfoFocus={clearInfoFocus}
           onPulseSuggestions={pulseSuggestionActions}
         />
@@ -555,7 +568,10 @@ function DockedView({ ship, world, loc, guidedPlan, hint, target, hintText, cueT
           pinnedGoods={pinnedMarketGoods}
           inTransit={inTransit}
           onSelectGood={(good) => togglePinnedFocus({ kind: "good", good, source: "market" })}
-          onHoverGood={(good) => setHoveredFocus(good ? { kind: "good", good, source: "market" } : null)}
+          onHoverGood={(good) => {
+            if (good) setHoverFocus({ kind: "good", good, source: "market" });
+            else clearHoverFocus();
+          }}
         />
         <InfoAreaCard
           ship={ship}
@@ -1433,7 +1449,6 @@ function StationExchangeCard({ ship, world, loc, target, hintText, cueText, sele
             title={marketsSuggested ? marketHintText : undefined}
           >
             Markets <span className="bridge-tab-count">{marketGoodsCount}</span>
-            <TabSuggestionCue show={marketsSuggested} hintText={marketHintText} />
           </button>
           <button
             className={`bridge-tab ${tab === "upgrades" ? "active" : ""} ${upgradesSuggested ? "has-suggestion" : ""}`}
@@ -1441,7 +1456,6 @@ function StationExchangeCard({ ship, world, loc, target, hintText, cueText, sele
             title={upgradesSuggested ? upgradeHintText : undefined}
           >
             Upgrades <span className="bridge-tab-count">{upgradeCount}</span>
-            <TabSuggestionCue show={upgradesSuggested} hintText={upgradeHintText} />
           </button>
           <button className={`bridge-tab ${tab === "offers" ? "active" : ""}`} onClick={() => setTab("offers")}>
             Offers <span className="bridge-tab-count">{offers.length}</span>
@@ -1452,7 +1466,6 @@ function StationExchangeCard({ ship, world, loc, target, hintText, cueText, sele
             title={contractsSuggested ? contractHintText : undefined}
           >
             Contracts <span className="bridge-tab-count">{contractCount}</span>
-            <TabSuggestionCue show={contractsSuggested} hintText={contractHintText} />
           </button>
         </div>
       </header>
@@ -1500,7 +1513,14 @@ function MarketTableBody({ ship, world, loc, target, hintText, cueText, selected
     !isUpgradeGood(gid) && ((market.stock[gid] ?? 0) > 0.001 || findCargoLot(ship, gid) != null)
   );
   return (
-    <>
+    <div
+      className="market-table-zone"
+      onMouseLeave={() => onHoverGood(null)}
+      onBlur={(event) => {
+        const next = event.relatedTarget;
+        if (!(next instanceof Node) || !event.currentTarget.contains(next)) onHoverGood(null);
+      }}
+    >
       <table className={`market-table ${!manualActions ? "market-table-readonly" : ""}`}>
         <colgroup>
           <col className="col-good" />
@@ -1538,9 +1558,7 @@ function MarketTableBody({ ship, world, loc, target, hintText, cueText, selected
                 aria-selected={selectedGood === gid}
                 tabIndex={0}
                 onMouseEnter={() => onHoverGood(gid)}
-                onMouseLeave={() => onHoverGood(null)}
                 onFocus={() => onHoverGood(gid)}
-                onBlur={() => onHoverGood(null)}
                 onClick={() => onSelectGood(gid)}
               >
                 <td>
@@ -1578,7 +1596,7 @@ function MarketTableBody({ ship, world, loc, target, hintText, cueText, selected
       <div className="market-footnote faint">
         * Net Sell = listed price minus 15% port tax. What you'd actually receive if you sold here.
       </div>
-    </>
+    </div>
   );
 }
 
@@ -2247,7 +2265,6 @@ function ShipCargoTabs({ ship, world, loc, groups, inTransit, target, hintText, 
         >
           Cargo
           <span className="bridge-tab-count">{cargoUsed.toFixed(0)}/{ship.capacity}</span>
-          <TabSuggestionCue show={cargoSuggested} hintText={cargoHintText} />
         </button>
         <button
           className={`bridge-tab ${tab === "upgrades" ? "active" : ""}`}
@@ -2675,7 +2692,6 @@ function modifiersText(mods: CrewModifiers): string {
 function CrewTab({ ship }: { ship: Trader }) {
   const fire = useStore((s) => s.fireCrew);
   const docked = ship.state === "idle";
-  const wage = totalCrewWage(ship);
   const roles: { role: CrewRole; label: string }[] = [
     { role: "captain",   label: "Pilot" },
     { role: "navigator", label: "Navigator" },
@@ -2685,6 +2701,7 @@ function CrewTab({ ship }: { ship: Trader }) {
   return (
     <table className="crew-table">
       <colgroup>
+        <col className="col-tier" />
         <col className="col-role" />
         <col />
         <col className="col-num" />
@@ -2692,10 +2709,11 @@ function CrewTab({ ship }: { ship: Trader }) {
       </colgroup>
       <thead>
         <tr>
+          <th>Tier</th>
           <th>Role</th>
           <th>Crew</th>
           <th className="numeric">Wage</th>
-          <th className="numeric">Ç{wage}/t</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
@@ -2704,12 +2722,12 @@ function CrewTab({ ship }: { ship: Trader }) {
           const mods = member ? modifiersText(member.modifiers) : "";
           return (
             <tr key={role} className="crew-row">
+              <td>{member ? <span className={`tier-badge tier-${tierClass(member.tier)}`}>T{member.tier}</span> : <span className="faint">—</span>}</td>
               <td className="dim">{label}</td>
               <td>
                 {member ? (
                   <>
                     <span className="crew-name">{member.name}</span>
-                    <span className="crew-tier mono"> {"★".repeat(member.tier)}</span>
                     {mods && <span className="crew-mods dim" title={mods}> · {mods}</span>}
                   </>
                 ) : (
