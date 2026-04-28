@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "sim": "tsx src/sim/scenarios/run.ts",
-    "bench": "tsx src/sim/scenarios/bench.ts"
+    "bench": "tsx src/sim/scenarios/bench.ts",
+    "art:coverage": "tsx src/tools/artCoverage.ts"
   },
   "dependencies": {
     "@tanstack/react-table": "^8.21.3",

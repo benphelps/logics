@@ -29,6 +29,7 @@ import { selectRefuelType } from "../../sim/traders";
 import { UPGRADE_SLOTS, installedUpgrade, isUpgradeGood, upgradeDef, upgradeEffectText } from "../../sim/upgrades";
 import type { CrewModifiers, CrewRole } from "../../sim/types";
 import type { GoodId, Job, JobId, LocationDef, LocationId, Trader, UpgradeSlot, World } from "../../sim/types";
+import { goodArtUrl, shipArtUrl, stationArtUrl, stationKind, stationKindLabel, stationScale, stationScaleLabel, stationSubtype, stationSubtypeLabel } from "../art";
 import "./PlayerView.css";
 
 const SHOW_DEV_SHIP_PLAN_PANEL = false;
@@ -797,28 +798,10 @@ function stationPopulation(loc: LocationDef): string {
   return loc.population >= 1000 ? `${(loc.population / 1000).toFixed(1)}k` : loc.population.toLocaleString();
 }
 
-type StationKind = "hub" | "mining" | "agri" | "frontier" | "research" | "station";
 type StationPressureTone = "short" | "surplus" | "";
 
-function stationKind(loc: LocationDef): StationKind {
-  const tags = loc.traits.tags;
-  if (tags.includes("trade-hub")) return "hub";
-  if (tags.includes("mining") || tags.includes("industrial")) return "mining";
-  if (tags.includes("agricultural")) return "agri";
-  if (tags.includes("frontier") || tags.includes("rim")) return "frontier";
-  if (tags.includes("research") || tags.includes("high-tech")) return "research";
-  return "station";
-}
-
-function stationKindLabel(kind: StationKind): string {
-  switch (kind) {
-    case "hub": return "Hub";
-    case "mining": return "Industrial";
-    case "agri": return "Agri";
-    case "frontier": return "Frontier";
-    case "research": return "Research";
-    default: return "Station";
-  }
+function artCardStyle(url: string): CSSProperties {
+  return { "--card-art": `url("${url}")` } as CSSProperties;
 }
 
 function stationCounts(world: World, id: LocationId) {
@@ -896,6 +879,8 @@ function StationTravelSummary({ loc, inTransit, selected, pinned, onHover, onCle
 function StationTradeHelperInfoContent({ loc, world }: { loc: LocationDef; world: World }) {
   const imports = stationImports(loc, world);
   const kind = stationKind(loc);
+  const subtype = stationSubtype(loc, kind);
+  const scale = stationScale(loc, kind);
   const counts = stationCounts(world, loc.id);
   const population = stationPopulation(loc);
   const marketRows = stationMarketRows(world, loc);
@@ -926,6 +911,8 @@ function StationTradeHelperInfoContent({ loc, world }: { loc: LocationDef; world
 
       <div className="trade-helper-meta station-info-tags">
         {loc.traits.faction && <span>{loc.traits.faction}</span>}
+        {subtype && <span>{stationSubtypeLabel(subtype)}</span>}
+        <span>{stationScaleLabel(scale)}</span>
         {loc.traits.tags.map(t => <span key={t}>{t}</span>)}
       </div>
 
@@ -1807,6 +1794,11 @@ function InfoAreaCard({ ship, world, loc, focus, pinnedFocuses, activePinnedKey,
 
   const renderedFocus = transition.renderedFocus;
   const stationLoc = renderedFocus?.kind === "station" ? world.locations[renderedFocus.loc] ?? loc : loc;
+  const infoArtUrl = renderedFocus == null
+    ? shipArtUrl(ship)
+    : renderedFocus.kind === "station"
+      ? stationArtUrl(stationLoc)
+      : goodArtUrl(world, renderedFocus.good);
   const phaseClass = transition.phase === "idle" ? "" : `is-${transition.phase}`;
   const handleInfoAnimationEnd = (event: AnimationEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget) return;
@@ -1830,7 +1822,10 @@ function InfoAreaCard({ ship, world, loc, focus, pinnedFocuses, activePinnedKey,
   };
 
   return (
-    <section className={`bridge-card trade-helper-card info-area-card ${renderedFocus == null || renderedFocus.kind === "station" ? "station-info-helper" : ""}`}>
+    <section
+      className={`bridge-card trade-helper-card info-area-card ${infoArtUrl ? "art-card" : ""} ${renderedFocus == null || renderedFocus.kind === "station" ? "station-info-helper" : ""}`}
+      style={infoArtUrl ? artCardStyle(infoArtUrl) : undefined}
+    >
       {pinnedFocuses.length > 0 && (
         <div
           className="bridge-card-tabs info-area-tabs"

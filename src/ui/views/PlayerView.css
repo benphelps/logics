@@ -92,6 +92,9 @@
   --bridge-card-pad-y: 14px;
   --bridge-table-pad-x: 28px;
   --bridge-table-bottom-gap: 14px;
+  --card-art-opacity: 0.32;
+  --card-art-position: center 34%;
+  --card-art-height: 44%;
   background: var(--ship-surface);
   border: 1px solid var(--ship-line);
   border-radius: 7px;
@@ -99,6 +102,32 @@
   position: relative;
   min-width: 0;
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
+}
+
+.art-card {
+  overflow: hidden;
+}
+
+.art-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: var(--card-art-height);
+  background-image:
+    linear-gradient(to bottom, rgba(21, 24, 29, 0.08), var(--ship-surface) 94%),
+    linear-gradient(90deg, rgba(21, 24, 29, 0.74), rgba(21, 24, 29, 0.26) 50%, rgba(21, 24, 29, 0.82)),
+    var(--card-art);
+  background-position: var(--card-art-position);
+  background-size: cover;
+  opacity: var(--card-art-opacity);
+  filter: saturate(0.78) contrast(0.95);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.art-card > * {
+  position: relative;
+  z-index: 1;
 }
 
 .bridge > .ship-card {
@@ -1554,6 +1583,20 @@
 
 .trade-helper-card {
   min-height: 0;
+}
+
+.info-area-card.art-card {
+  --card-art-opacity: 0.34;
+  --card-art-height: 62%;
+  --card-art-position: center 24%;
+}
+
+.info-area-card.art-card::before {
+  background-image:
+    linear-gradient(to bottom, rgba(21, 24, 29, 0.08), rgba(21, 24, 29, 0.34) 44%, rgba(21, 24, 29, 0.72) 74%, var(--ship-surface) 100%),
+    linear-gradient(90deg, rgba(21, 24, 29, 0.56), rgba(21, 24, 29, 0.22) 50%, rgba(21, 24, 29, 0.68)),
+    var(--card-art);
+  filter: saturate(0.96) contrast(1.02);
 }
 
 .info-area-tabs {

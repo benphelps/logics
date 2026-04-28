@@ -54,6 +54,9 @@ const SUFFIXES: Record<ArchetypeName, readonly string[]> = {
   "research-station":   RESEARCH_SUFFIX,
 };
 
+export const STATION_NAME_ROOTS = ROOTS;
+export const STATION_NAME_SUFFIXES = SUFFIXES;
+
 export function generateName(rng: Rng, archetype: ArchetypeName, used: Set<string>): { name: string; id: string } {
   for (let attempt = 0; attempt < 50; attempt++) {
     const prefix = rng() < 0.4 ? `${pick(rng, PREFIXES)} ` : "";
@@ -92,6 +95,9 @@ const SHIP_DESIGNATORS = [
   "Mk1", "Mk2", "Mk3", "Mk4",
   "Alpha", "Beta", "Gamma", "Delta", "Sigma",
 ];
+
+export const SHIP_NAME_ROOTS = SHIP_PREFIXES;
+export const SHIP_NAME_DESIGNATORS = SHIP_DESIGNATORS;
 
 export function generateShipName(rng: Rng, used: Set<string>): { name: string; id: string } {
   for (let attempt = 0; attempt < 50; attempt++) {
