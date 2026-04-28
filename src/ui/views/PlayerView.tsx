@@ -11,7 +11,6 @@ import {
   GiFuelTank,
   GiPathDistance,
   GiRadarSweep,
-  GiShipWheel,
   GiSpeedometer,
   GiTrade,
 } from "react-icons/gi";
@@ -42,6 +41,7 @@ const INFO_HOVER_CLEAR_DELAY_MS = 90;
 export function PlayerView() {
   const world = useStore((s) => s.world);
   useStore((s) => s.tickEpoch);
+  const selectedTrader = useStore((s) => s.selectedTrader);
   const lastError = useStore((s) => s.lastError);
   const clearError = useStore((s) => s.clearError);
 
@@ -56,6 +56,9 @@ export function PlayerView() {
   }
 
   const ships = player.shipIds.map((id) => world.traders[id]).filter(Boolean);
+  const selectedShip = selectedTrader && player.shipIds.includes(selectedTrader)
+    ? world.traders[selectedTrader] ?? ships[0] ?? null
+    : ships[0] ?? null;
 
   return (
     <section className="player-view">
@@ -64,9 +67,9 @@ export function PlayerView() {
           <span className="bad">⚠</span> {lastError} <span className="faint">(click to dismiss)</span>
         </div>
       )}
-      {ships.map((ship) => (
-        <ShipPanel key={ship.id} ship={ship} world={world} />
-      ))}
+      {selectedShip
+        ? <ShipPanel key={selectedShip.id} ship={selectedShip} world={world} />
+        : <p className="dim">No controlled ship available.</p>}
     </section>
   );
 }
@@ -1071,7 +1074,6 @@ function ShipCard({ ship, world, loc, guidedPlan, target, hintText, cueText, cri
   onSelectGood: (good: GoodId) => void;
   onHoverGood: (good: GoodId | null) => void;
 }) {
-  const setPilot = useStore((s) => s.setPilot);
   const repairShip = useStore((s) => s.repairShip);
   const mass = cargoMassFn(ship, world);
   const cargoPct = (mass / ship.capacity) * 100;
@@ -1079,7 +1081,6 @@ function ShipCard({ ship, world, loc, guidedPlan, target, hintText, cueText, cri
 
   const debt = ship.maintenanceDebt ?? 0;
   const canRepair = debt > 0 && ship.state === "idle";
-  const autoBlocked = !hasCrew(ship, "captain");
 
   return (
     <section className="bridge-card ship-card">
@@ -1087,22 +1088,6 @@ function ShipCard({ ship, world, loc, guidedPlan, target, hintText, cueText, cri
         <div className="bridge-card-title">
           <span className="bridge-card-eyebrow ship-eyebrow">Ship</span>
           <span className="ship-name">{ship.name}</span>
-        </div>
-        <div className="ship-pilot">
-          <button
-            className={ship.pilot === "manual" ? "primary" : ""}
-            onClick={() => setPilot(ship.id, "manual")}
-          >
-            <IconLabel icon={GiShipWheel}>Manual</IconLabel>
-          </button>
-          <button
-            className={ship.pilot === "auto" ? "primary" : ""}
-            onClick={() => setPilot(ship.id, "auto")}
-            disabled={autoBlocked}
-            title={autoBlocked ? "Hire a pilot to enable auto-play" : "Auto-play: pilot handles trading. Navigator unlocks guided hints."}
-          >
-            <IconLabel icon={GiRadarSweep}>Auto</IconLabel>
-          </button>
         </div>
       </header>
       <div className="ship-status-tabs bridge-card-tabs">

@@ -334,9 +334,11 @@ export type StockTradeResult =
   | { ok: true; shares: number; cashFlow: number; fee: number; realizedPnl?: number; settlementJobId?: string }
   | { ok: false; reason: string };
 
-function getPlayerShip(world: World) {
+function getPlayerShip(world: World, preferredShipId?: TraderId) {
   if (!world.player) return null;
-  const id = world.player.shipIds[0];
+  const id = preferredShipId && world.player.shipIds.includes(preferredShipId)
+    ? preferredShipId
+    : world.player.shipIds[0];
   return id ? world.traders[id] ?? null : null;
 }
 
@@ -452,12 +454,12 @@ function proximityBlockReason(world: World, eq: Equity, ship: NonNullable<TradeC
   return `Move within ${EXCHANGE_TRADE_MAX_HOPS} hops of ${stationName} to trade ${eq.ticker}.`;
 }
 
-function preflight(world: World, equityId: EquityId, shares: number): TradeContext | { ok: false; reason: string } {
+function preflight(world: World, equityId: EquityId, shares: number, shipId?: TraderId): TradeContext | { ok: false; reason: string } {
   if (!world.player) return { ok: false, reason: "No player." };
   if (shares <= 0 || !Number.isFinite(shares)) return { ok: false, reason: "Quantity must be positive." };
   const eq = world.equities[equityId];
   if (!eq) return { ok: false, reason: "Equity not listed." };
-  const ship = getPlayerShip(world);
+  const ship = getPlayerShip(world, shipId);
   if (!ship) return { ok: false, reason: "No anchor ship." };
   if (ship.state !== "idle") return { ok: false, reason: "Trade only while docked." };
   const proximityReason = proximityBlockReason(world, eq, ship);
@@ -466,8 +468,8 @@ function preflight(world: World, equityId: EquityId, shares: number): TradeConte
 }
 
 // Open or add to a long position.
-export function buyShares(world: World, equityId: EquityId, shares: number): StockTradeResult {
-  const ctx = preflight(world, equityId, shares);
+export function buyShares(world: World, equityId: EquityId, shares: number, shipId?: TraderId): StockTradeResult {
+  const ctx = preflight(world, equityId, shares, shipId);
   if ("ok" in ctx) return ctx;
   const { player, eq, ship } = ctx;
   const positions = ensurePositions(player);
@@ -514,8 +516,9 @@ export function sellShares(
   equityId: EquityId,
   shares: number,
   trigger?: TriggerKind,
+  shipId?: TraderId,
 ): StockTradeResult {
-  const ctx = preflight(world, equityId, shares);
+  const ctx = preflight(world, equityId, shares, shipId);
   if ("ok" in ctx) return ctx;
   const { player, eq, ship } = ctx;
   const positions = ensurePositions(player);
@@ -572,8 +575,8 @@ export function maxShortableShares(world: World, eq: Equity): number {
 // Open or add to a short position. Borrows shares and immediately sells them
 // at the current price. Player receives the cash (minus fee). Future cover
 // re-buys the shares; profit if price falls, loss if it rises.
-export function shortShares(world: World, equityId: EquityId, shares: number): StockTradeResult {
-  const ctx = preflight(world, equityId, shares);
+export function shortShares(world: World, equityId: EquityId, shares: number, shipId?: TraderId): StockTradeResult {
+  const ctx = preflight(world, equityId, shares, shipId);
   if ("ok" in ctx) return ctx;
   const { player, eq, ship } = ctx;
   const positions = ensurePositions(player);
@@ -630,8 +633,9 @@ export function coverShares(
   equityId: EquityId,
   shares: number,
   trigger?: TriggerKind,
+  shipId?: TraderId,
 ): StockTradeResult {
-  const ctx = preflight(world, equityId, shares);
+  const ctx = preflight(world, equityId, shares, shipId);
   if ("ok" in ctx) return ctx;
   const { player, eq, ship } = ctx;
   const positions = ensurePositions(player);
@@ -676,11 +680,11 @@ export function coverShares(
 // is notionally absorbed by the equity's underlying.
 export const ABANDON_PENALTY_RATE = 0.05;     // 5% extra hit on top of mark-to-market
 
-export function abandonPosition(world: World, equityId: EquityId, trigger?: TriggerKind): StockTradeResult {
+export function abandonPosition(world: World, equityId: EquityId, trigger?: TriggerKind, shipId?: TraderId): StockTradeResult {
   if (!world.player) return { ok: false, reason: "No player." };
   const eq = world.equities[equityId];
   if (!eq) return { ok: false, reason: "Equity not listed." };
-  const ship = getPlayerShip(world);
+  const ship = getPlayerShip(world, shipId);
   if (!ship) return { ok: false, reason: "No anchor ship." };
   const positions = ensurePositions(world.player);
   const pos = positions[equityId];

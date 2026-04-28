@@ -53,6 +53,7 @@ export function StockMarketView() {
   const setTakeProfit = useStore((s) => s.setTakeProfit);
   const lastError = useStore((s) => s.lastError);
   const clearError = useStore((s) => s.clearError);
+  const selectedTrader = useStore((s) => s.selectedTrader);
   const tickEpoch = useStore((s) => s.tickEpoch);
 
   // When a position row is clicked, focus on it: the Positions panel
@@ -64,13 +65,17 @@ export function StockMarketView() {
   const [activePanel, setActivePanel] = useState<"tape" | "positions" | "trades">("tape");
 
   const rows = useMemo(() => buildRows(world), [world, tickEpoch]);
-  const tapeRows = useMemo(() => splitRowsByAccess(world, rows), [world, rows]);
+  const playerShipIds = world.player?.shipIds ?? [];
+  const playerShip = selectedTrader && playerShipIds.includes(selectedTrader)
+    ? world.traders[selectedTrader] ?? playerShipIds.map(id => world.traders[id]).find(Boolean) ?? null
+    : playerShipIds.map(id => world.traders[id]).find(Boolean) ?? null;
+  const playerShipId = playerShip?.id;
+  const tapeRows = useMemo(() => splitRowsByAccess(world, rows, playerShipId), [world, rows, playerShipId]);
   const selectedId = selected && rows.some(r => r.equity.id === selected)
     ? selected
     : tapeRows.reachable[0]?.equity.id ?? rows[0]?.equity.id ?? null;
   const detail = selectedId ? rows.find(r => r.equity.id === selectedId) ?? null : null;
 
-  const playerShip = world.player ? world.traders[world.player.shipIds[0]] : null;
   const docked = !!playerShip && playerShip.state === "idle";
   const cash = playerShip?.funds ?? 0;
   const portfolio = portfolioValue(world);
@@ -188,6 +193,7 @@ export function StockMarketView() {
               <PositionsPanel
                 positions={positions}
                 world={world}
+                shipId={playerShipId}
                 focusedId={focusedPositionId}
                 cash={cash}
                 docked={docked}
@@ -234,6 +240,7 @@ export function StockMarketView() {
             <CompanyPane
               row={detail}
               world={world}
+              shipId={playerShipId}
               cash={cash}
               docked={docked}
               hasOpposite={detail.position?.kind === "short"}
@@ -332,6 +339,7 @@ function StockRowsTable({ rows, selectedId, onSelect, outOfRange = false }: {
 interface CompanyPaneProps {
   row: EquityRow;
   world: World;
+  shipId?: string;
   cash: number;
   docked: boolean;
   hasOpposite: boolean;   // currently short → can't open long; (parity flag)
@@ -340,12 +348,12 @@ interface CompanyPaneProps {
   onShort: (qty: number) => void;
 }
 
-function CompanyPane({ row, world, cash, docked, hasOpposite, hasLong, onBuy, onShort }: CompanyPaneProps) {
+function CompanyPane({ row, world, shipId, cash, docked, hasOpposite, hasLong, onBuy, onShort }: CompanyPaneProps) {
   const eq = row.equity;
   const pos = row.position;
   const [buyQty, setBuyQty] = useState<number>(10);
   const [shortQty, setShortQty] = useState<number>(10);
-  const access = exchangeAccess(world, eq);
+  const access = exchangeAccess(world, eq, shipId);
 
   const buyCost = buyQty * eq.price * (1 + BROKER_FEE_RATE);
   const shortProceeds = shortQty * eq.price * (1 - BROKER_FEE_RATE);
@@ -557,6 +565,7 @@ function TradeSide({ label, qty, setQty, max, costLabel, disabled, disabledReaso
 interface PositionsPanelProps {
   positions: StockPosition[];
   world: World;
+  shipId?: string;
   focusedId: string | null;
   cash: number;
   docked: boolean;
@@ -568,7 +577,7 @@ interface PositionsPanelProps {
   onSetTakeProfit: (eqId: string, price: number | null) => void;
 }
 
-function PositionsPanel({ positions, world, focusedId, cash, docked, onSelect, onSell, onCover, onAbandon, onSetStopLoss, onSetTakeProfit }: PositionsPanelProps) {
+function PositionsPanel({ positions, world, shipId, focusedId, cash, docked, onSelect, onSell, onCover, onAbandon, onSetStopLoss, onSetTakeProfit }: PositionsPanelProps) {
   if (positions.length === 0) {
     return <div className="stocks-detail-empty dim">No open positions.</div>;
   }
@@ -596,7 +605,7 @@ function PositionsPanel({ positions, world, focusedId, cash, docked, onSelect, o
             const pnl = unrealizedPnl(world, pos);
             const cls = pnl > 0 ? "stock-pnl-up" : pnl < 0 ? "stock-pnl-down" : "";
             const isFocused = focused?.equityId === pos.equityId;
-            const access = exchangeAccess(world, eq);
+            const access = exchangeAccess(world, eq, shipId);
             return (
               <PositionRowFragment
                 key={pos.equityId}
@@ -1028,21 +1037,22 @@ function buildRows(world: World): EquityRow[] {
   });
 }
 
-function splitRowsByAccess(world: World, rows: EquityRow[]): { reachable: EquityRow[]; far: EquityRow[] } {
+function splitRowsByAccess(world: World, rows: EquityRow[], shipId?: string): { reachable: EquityRow[]; far: EquityRow[] } {
   const reachable: EquityRow[] = [];
   const far: EquityRow[] = [];
   for (const row of rows) {
-    if (exchangeAccess(world, row.equity).ok) reachable.push(row);
+    if (exchangeAccess(world, row.equity, shipId).ok) reachable.push(row);
     else far.push(row);
   }
   return { reachable, far };
 }
 
-function exchangeAccess(world: World, eq: Equity): { ok: boolean; label: string; reason: string } {
+function exchangeAccess(world: World, eq: Equity, shipId?: string): { ok: boolean; label: string; reason: string } {
   const station = equityTradeStation(eq);
   if (!station) return { ok: true, label: "Syndicate book: network access", reason: "" };
-  const shipId = world.player?.shipIds[0];
-  const ship = shipId ? world.traders[shipId] : null;
+  const fallbackShipId = world.player?.shipIds[0];
+  const activeShipId = shipId && world.player?.shipIds.includes(shipId) ? shipId : fallbackShipId;
+  const ship = activeShipId ? world.traders[activeShipId] : null;
   const stationName = world.locations[station]?.name ?? station;
   if (!ship) return { ok: false, label: `${stationName}: no anchor ship`, reason: "No anchor ship." };
   const hops = equityTradeHopDistance(world, eq, ship.location);

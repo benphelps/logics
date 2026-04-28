@@ -64,10 +64,14 @@ export function LocationsView() {
   const world = useStore((s) => s.world);
   const selectedLocation = useStore((s) => s.selectedLocation);
   const selectLocation = useStore((s) => s.selectLocation);
+  const selectedTrader = useStore((s) => s.selectedTrader);
   useStore((s) => s.tickEpoch);
 
   const locations = Object.values(world.locations);
-  const playerShip = world.player?.shipIds.map(id => world.traders[id]).find(Boolean) ?? null;
+  const playerShipIds = world.player?.shipIds ?? [];
+  const playerShip = selectedTrader && playerShipIds.includes(selectedTrader)
+    ? world.traders[selectedTrader] ?? playerShipIds.map(id => world.traders[id]).find(Boolean) ?? null
+    : playerShipIds.map(id => world.traders[id]).find(Boolean) ?? null;
   const selectedId = selectedLocation && world.locations[selectedLocation]
     ? selectedLocation
     : playerShip?.location ?? locations[0]?.id ?? null;

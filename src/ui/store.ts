@@ -48,6 +48,13 @@ function playerShip(world: World) {
   return id ? world.traders[id] ?? null : null;
 }
 
+function selectedPlayerShipId(world: World, selectedTrader: TraderId | null): TraderId | undefined {
+  const ids = world.player?.shipIds ?? [];
+  return selectedTrader && ids.includes(selectedTrader) && world.traders[selectedTrader]
+    ? selectedTrader
+    : ids[0];
+}
+
 function devCrew(role: CrewRole, name: string, tier: number, modifiers: CrewMember["modifiers"]): CrewMember {
   return {
     id: `dev-${role}`,
@@ -361,27 +368,27 @@ export const useStore = create<UiState>((set, get) => {
     selectEquity: (id) => set({ selectedEquity: id }),
     buyShares: (equityId, qty) => {
       const w = get().world;
-      const r = buyShares(w, equityId, qty);
+      const r = buyShares(w, equityId, qty, selectedPlayerShipId(w, get().selectedTrader));
       persistCurrentGame({ lastError: r.ok ? null : r.reason });
     },
     sellShares: (equityId, qty) => {
       const w = get().world;
-      const r = sellShares(w, equityId, qty);
+      const r = sellShares(w, equityId, qty, undefined, selectedPlayerShipId(w, get().selectedTrader));
       persistCurrentGame({ lastError: r.ok ? null : r.reason });
     },
     shortShares: (equityId, qty) => {
       const w = get().world;
-      const r = shortShares(w, equityId, qty);
+      const r = shortShares(w, equityId, qty, selectedPlayerShipId(w, get().selectedTrader));
       persistCurrentGame({ lastError: r.ok ? null : r.reason });
     },
     coverShares: (equityId, qty) => {
       const w = get().world;
-      const r = coverShares(w, equityId, qty);
+      const r = coverShares(w, equityId, qty, undefined, selectedPlayerShipId(w, get().selectedTrader));
       persistCurrentGame({ lastError: r.ok ? null : r.reason });
     },
     abandonPosition: (equityId) => {
       const w = get().world;
-      const r = abandonPosition(w, equityId);
+      const r = abandonPosition(w, equityId, undefined, selectedPlayerShipId(w, get().selectedTrader));
       persistCurrentGame({ lastError: r.ok ? null : r.reason });
     },
     setStopLoss: (equityId, price) => {
