@@ -1699,48 +1699,7 @@
 
 .contracts-tab {
   display: grid;
-  gap: 14px;
-}
-
-.contract-split-group {
-  display: grid;
   gap: 0;
-}
-
-.contract-split-group + .contract-split-group {
-  margin-top: 2px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.contract-split-head {
-  position: relative;
-  z-index: 4;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin: 0 calc(var(--bridge-card-pad-x) * -1);
-  padding: 10px var(--bridge-card-pad-x);
-  background: var(--ship-surface);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
-}
-
-.contract-split-title {
-  display: block;
-  color: var(--accent);
-  font-size: 10px;
-  font-weight: 750;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.contract-split-head .dim {
-  font-size: 11px;
-}
-
-.contract-split-group .jobs-table {
-  margin-top: 0;
 }
 
 .exchange-section-title {

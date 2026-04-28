@@ -666,65 +666,59 @@ function ContractsTab({ ship, world, loc, target, hintText, cueText, interaction
 
   return (
     <div className="contracts-tab">
-      <section className="contract-split-group">
-        <div className="contract-split-head">
-          <span className="contract-split-title">Local</span>
-          <span className="dim">{jobs.length} contract{jobs.length === 1 ? "" : "s"} posted for {loc.name}</span>
-        </div>
-        {jobs.length === 0 ? (
-          <div className="contract-empty">No open contracts here.</div>
-        ) : (
-          <table className="jobs-table contract-table available-contracts-table">
-            <colgroup>
-              <col className="col-tier" />
-              <col />
-              <col className="col-dest" />
-              <col className="col-num" />
-              <col className="col-held" />
-              <col className="col-money" />
-              <col className="col-money" />
-              <col className="col-expires" />
-              {manualActions && <col className="col-action" />}
-            </colgroup>
-            <thead>
-              <tr>
-                <th>Tier</th>
-                <th>Contract</th>
-                <th>Route</th>
-                <th className="numeric">Qty</th>
-                <th className="numeric">Held</th>
-                <th className="numeric">Reward</th>
-                <th className="numeric">Penalty</th>
-                <th className="numeric">Expires</th>
-                {manualActions && <th></th>}
-              </tr>
-            </thead>
-            <tbody>
-              {jobs.map((j) => (
-                <LocalJobRow
-                  key={j.id}
-                  job={j}
-                  world={world}
-                  ship={ship}
-                  suggested={target.acceptJobId === j.id || target.acceptJobIds?.includes(j.id) === true}
-                  hintText={cueText.acceptJobs[j.id] ?? hintText}
-                  showAction={manualActions}
-                  interactionLocked={interactionLocked}
-                  onAccept={() => acceptJob(j.id, ship.id)}
-                />
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
+      {jobs.length === 0 ? (
+        <div className="contract-empty">No open contracts here.</div>
+      ) : (
+        <table className="jobs-table contract-table available-contracts-table">
+          <colgroup>
+            <col className="col-tier" />
+            <col />
+            <col className="col-dest" />
+            <col className="col-num" />
+            <col className="col-held" />
+            <col className="col-money" />
+            <col className="col-money" />
+            <col className="col-expires" />
+            {manualActions && <col className="col-action" />}
+          </colgroup>
+          <thead>
+            <tr>
+              <th>Tier</th>
+              <th>Contract</th>
+              <th>Route</th>
+              <th className="numeric">Qty</th>
+              <th className="numeric">Held</th>
+              <th className="numeric">Reward</th>
+              <th className="numeric">Penalty</th>
+              <th className="numeric">Expires</th>
+              {manualActions && <th></th>}
+            </tr>
+          </thead>
+          <tbody>
+            {jobs.map((j) => (
+              <LocalJobRow
+                key={j.id}
+                job={j}
+                world={world}
+                ship={ship}
+                suggested={target.acceptJobId === j.id || target.acceptJobIds?.includes(j.id) === true}
+                hintText={cueText.acceptJobs[j.id] ?? hintText}
+                showAction={manualActions}
+                interactionLocked={interactionLocked}
+                onAccept={() => acceptJob(j.id, ship.id)}
+              />
+            ))}
+          </tbody>
+        </table>
+      )}
       {activeJobs.length > 0 && (
-        <section className="contract-split-group">
-          <div className="contract-split-head">
-            <span className="contract-split-title">Active</span>
-            <span className="dim">{activeJobs.length} contract{activeJobs.length === 1 ? "" : "s"} assigned to {ship.name}</span>
-          </div>
+        <>
+          <SectionIntro
+            title="Active"
+            subtitle={`${activeJobs.length} contract${activeJobs.length === 1 ? "" : "s"} assigned to ${ship.name}`}
+          />
           <ActiveContractsTab ship={ship} world={world} jobs={activeJobs} target={target} cueText={cueText} hintText={hintText} />
-        </section>
+        </>
       )}
     </div>
   );
@@ -1426,14 +1420,14 @@ function StationExchangeCard({ ship, world, loc, target, hintText, cueText, sele
   const manualActions = ship.pilot !== "auto";
   const market = world.markets[loc.id];
   const offers = listHiresAt(world, loc.id);
+  const localContractCount = listLocalJobs(world, loc.id).length;
+  const activeContractCount = Object.values(world.jobs).filter(j => j.acceptedBy === ship.id).length;
   const marketGoodsCount = Object.keys(world.goods).filter(gid =>
     !isUpgradeGood(gid)
     && ((market.stock[gid] ?? 0) > 0.001 || findCargoLot(ship, gid) != null)
   ).length;
   const upgradeCount = Object.keys(world.goods).filter(gid => isUpgradeGood(gid) && (market.stock[gid] ?? 0) >= 1).length;
-  const contractCount = Object.values(world.jobs).filter(j =>
-    j.acceptedBy === ship.id || (j.acceptedBy == null && j.destination === loc.id)
-  ).length;
+  const contractCount = localContractCount + activeContractCount;
   const marketsSuggested = manualActions && targetSuggestsMarketAction(target);
   const upgradesSuggested = manualActions && targetSuggestsUpgradeBuy(target);
   const contractsSuggested = manualActions && targetSuggestsContracts(target);
@@ -1456,8 +1450,8 @@ function StationExchangeCard({ ship, world, loc, target, hintText, cueText, sele
             subtitle: `${offers.length} posted hire offer${offers.length === 1 ? "" : "s"}`,
           }
         : {
-            title: "Contracts board",
-            subtitle: `${contractCount} available or active contract${contractCount === 1 ? "" : "s"}`,
+            title: "Local",
+            subtitle: `${localContractCount} contract${localContractCount === 1 ? "" : "s"} posted for ${loc.name}`,
           };
 
   return (
