@@ -431,16 +431,17 @@ function infoFocusLabel(focus: InfoFocus, world: World): string {
   return world.locations[focus.loc]?.name ?? focus.loc;
 }
 
-function SingleTabHeader({ label, count, suggested, hintText, trailing }: {
-  label: string; count?: number; suggested?: boolean; hintText?: string; trailing?: ReactNode;
+function SectionIntro({ title, subtitle, trailing }: {
+  title: string;
+  subtitle?: string;
+  trailing?: ReactNode;
 }) {
   return (
-    <div className={`bridge-card-tabs single-tab-header ${trailing ? "" : "bridge-card-tabs-static"}`}>
-      <span className={`bridge-tab single-tab-main active ${suggested ? "has-suggestion" : ""}`} title={suggested ? hintText : undefined}>
-        {label}
-        {count != null && <span className="bridge-tab-count">{count}</span>}
-      </span>
-      {trailing && <span className="bridge-tab-spacer" aria-hidden="true" />}
+    <div className="bridge-section-intro">
+      <div>
+        <span className="bridge-section-title">{title}</span>
+        {subtitle && <span className="bridge-section-subtitle">{subtitle}</span>}
+      </div>
       {trailing}
     </div>
   );
@@ -570,7 +571,6 @@ function DockedView({ ship, world, loc, guidedPlan, hint, target, hintText, cueT
             if (station) setHoverFocus({ kind: "station", loc: station, source: "travel" });
             else clearHoverFocus();
           }}
-          onClearInfoFocus={clearInfoFocus}
           onPulseSuggestions={pulseSuggestionActions}
         />
       </div>
@@ -893,37 +893,6 @@ function goodsList(world: World, goods: GoodId[], max = 5): string {
   return shown.length > 0 ? `${shown.join(", ")}${more}` : "None listed";
 }
 
-function StationTravelSummary({ loc, inTransit, selected, pinned, onHover, onClear }: {
-  loc: LocationDef;
-  inTransit?: boolean;
-  selected?: boolean;
-  pinned?: boolean;
-  onHover?: (loc: LocationId | null) => void;
-  onClear?: () => void;
-}) {
-  const interactive = onHover != null;
-  return (
-    <div
-      className={`station-summary station-summary-compact ${interactive ? "station-summary-interactive" : ""} ${selected ? "selected" : ""} ${inTransit ? "station-summary-incoming" : ""}`}
-      tabIndex={interactive ? 0 : undefined}
-      aria-selected={selected}
-      onMouseEnter={() => onHover?.(loc.id)}
-      onMouseLeave={() => onHover?.(null)}
-      onFocus={() => onHover?.(loc.id)}
-      onBlur={() => onHover?.(null)}
-      onClick={interactive ? onClear : undefined}
-    >
-      <div className="bridge-card-title">
-        <span className="bridge-card-eyebrow station-eyebrow">{inTransit ? "Approaching" : "Station"}</span>
-        <span className="station-name station-name-with-pin">
-          <span>{loc.name}</span>
-          {pinned && <MdPushPin className="ui-icon row-pin-icon" aria-hidden="true" focusable="false" />}
-        </span>
-      </div>
-    </div>
-  );
-}
-
 function StationTradeHelperInfoContent({ loc, world }: { loc: LocationDef; world: World }) {
   const imports = stationImports(loc, world);
   const kind = stationKind(loc);
@@ -1084,12 +1053,6 @@ function ShipCard({ ship, world, loc, guidedPlan, target, hintText, cueText, cri
 
   return (
     <section className="bridge-card ship-card">
-      <header className="bridge-card-head">
-        <div className="bridge-card-title">
-          <span className="bridge-card-eyebrow ship-eyebrow">Ship</span>
-          <span className="ship-name">{ship.name}</span>
-        </div>
-      </header>
       <div className="ship-status-tabs bridge-card-tabs">
         <ShipFuelStatusEntry ship={ship} world={world} target={target} hintText={cueText.refuel ?? hintText} critical={critical} inTransit={inTransit} />
         <ShipMaintenanceStatusEntry debt={debt} canRepair={canRepair} onRepair={() => repairShip(ship.id)} />
@@ -1465,37 +1428,55 @@ function StationExchangeCard({ ship, world, loc, target, hintText, cueText, sele
   const marketHintText = cueText.sections.market ?? hintText;
   const upgradeHintText = cueText.sections.upgrades ?? hintText;
   const contractHintText = cueText.sections.contracts ?? hintText;
+  const sectionIntro = tab === "markets"
+    ? {
+        title: "Station goods",
+        subtitle: `${marketGoodsCount} tradable good${marketGoodsCount === 1 ? "" : "s"} at ${loc.name}`,
+      }
+    : tab === "upgrades"
+      ? {
+          title: "Station modules",
+          subtitle: `${upgradeCount} upgrade module${upgradeCount === 1 ? "" : "s"} stocked`,
+        }
+      : tab === "offers"
+        ? {
+            title: "Crew board",
+            subtitle: `${offers.length} posted hire offer${offers.length === 1 ? "" : "s"}`,
+          }
+        : {
+            title: "Local contracts",
+            subtitle: `${contractCount} available or active contract${contractCount === 1 ? "" : "s"}`,
+          };
 
   return (
     <section className={`bridge-card market-card exchange-card ${inTransit ? "transit-preview-card" : ""}`}>
-      <header className="bridge-card-head">
-        <div className="bridge-card-tabs">
-          <button
-            className={`bridge-tab ${tab === "markets" ? "active" : ""} ${marketsSuggested ? "has-suggestion" : ""}`}
-            onClick={() => setTab("markets")}
-            title={marketsSuggested ? marketHintText : undefined}
-          >
-            Markets <span className="bridge-tab-count">{marketGoodsCount}</span>
-          </button>
-          <button
-            className={`bridge-tab ${tab === "upgrades" ? "active" : ""} ${upgradesSuggested ? "has-suggestion" : ""}`}
-            onClick={() => setTab("upgrades")}
-            title={upgradesSuggested ? upgradeHintText : undefined}
-          >
-            Upgrades <span className="bridge-tab-count">{upgradeCount}</span>
-          </button>
-          <button className={`bridge-tab ${tab === "offers" ? "active" : ""}`} onClick={() => setTab("offers")}>
-            Offers <span className="bridge-tab-count">{offers.length}</span>
-          </button>
-          <button
-            className={`bridge-tab ${tab === "contracts" ? "active" : ""} ${contractsSuggested ? "has-suggestion" : ""}`}
-            onClick={() => setTab("contracts")}
-            title={contractsSuggested ? contractHintText : undefined}
-          >
-            Contracts <span className="bridge-tab-count">{contractCount}</span>
-          </button>
-        </div>
-      </header>
+      <div className="bridge-card-tabs">
+        <button
+          className={`bridge-tab ${tab === "markets" ? "active" : ""} ${marketsSuggested ? "has-suggestion" : ""}`}
+          onClick={() => setTab("markets")}
+          title={marketsSuggested ? marketHintText : undefined}
+        >
+          Markets <span className="bridge-tab-count">{marketGoodsCount}</span>
+        </button>
+        <button
+          className={`bridge-tab ${tab === "upgrades" ? "active" : ""} ${upgradesSuggested ? "has-suggestion" : ""}`}
+          onClick={() => setTab("upgrades")}
+          title={upgradesSuggested ? upgradeHintText : undefined}
+        >
+          Upgrades <span className="bridge-tab-count">{upgradeCount}</span>
+        </button>
+        <button className={`bridge-tab ${tab === "offers" ? "active" : ""}`} onClick={() => setTab("offers")}>
+          Offers <span className="bridge-tab-count">{offers.length}</span>
+        </button>
+        <button
+          className={`bridge-tab ${tab === "contracts" ? "active" : ""} ${contractsSuggested ? "has-suggestion" : ""}`}
+          onClick={() => setTab("contracts")}
+          title={contractsSuggested ? contractHintText : undefined}
+        >
+          Contracts <span className="bridge-tab-count">{contractCount}</span>
+        </button>
+      </div>
+      <SectionIntro {...sectionIntro} />
       <div className={inTransit ? "transit-preview-content" : undefined}>
         {tab === "markets" && (
           <MarketTableBody
@@ -1583,16 +1564,21 @@ function MarketTableBody({ ship, world, loc, target, hintText, cueText, selected
               <tr
                 key={gid}
                 aria-selected={selectedGood === gid}
-                tabIndex={0}
-                onMouseEnter={() => onHoverGood(gid)}
-                onFocus={() => onHoverGood(gid)}
-                onClick={() => onSelectGood(gid)}
               >
                 <td>
-                  <span className="row-title-with-pin">
+                  <button
+                    type="button"
+                    className="row-title-with-pin info-focus-trigger"
+                    aria-pressed={pinned}
+                    onMouseEnter={() => onHoverGood(gid)}
+                    onMouseLeave={() => onHoverGood(null)}
+                    onFocus={() => onHoverGood(gid)}
+                    onBlur={() => onHoverGood(null)}
+                    onClick={() => onSelectGood(gid)}
+                  >
                     <span className="good-name">{world.goods[gid].name}</span>
                     {pinned && <MdPushPin className="ui-icon row-pin-icon" aria-hidden="true" focusable="false" />}
-                  </span>
+                  </button>
                   {isFuel && <span className="row-meta-pill muted">fuel</span>}
                 </td>
                 <td className="numeric mono">{stock.toFixed(0)}</td>
@@ -2657,18 +2643,21 @@ function CargoRow({ group, ship, world, refLocId, inTransit, suggested, hintText
     <tr
       className="cargo-row"
       aria-selected={selected}
-      tabIndex={0}
-      onMouseEnter={() => onHover(group.good)}
-      onMouseLeave={() => onHover(null)}
-      onFocus={() => onHover(group.good)}
-      onBlur={() => onHover(null)}
-      onClick={onSelect}
     >
       <td>
-        <span className="row-title-with-pin">
+        <button
+          type="button"
+          className="row-title-with-pin info-focus-trigger"
+          aria-pressed={pinned}
+          onMouseEnter={() => onHover(group.good)}
+          onMouseLeave={() => onHover(null)}
+          onFocus={() => onHover(group.good)}
+          onBlur={() => onHover(null)}
+          onClick={onSelect}
+        >
           <span className="cargo-row-name">{good.name}</span>
           {pinned && <MdPushPin className="ui-icon row-pin-icon" aria-hidden="true" focusable="false" />}
-        </span>
+        </button>
         {group.lots.length > 1 && <span className="row-meta-pill cargo-row-lots">{group.lots.length} lots</span>}
       </td>
       <td className="numeric mono">{group.totalQty.toFixed(0)}</td>
@@ -2977,7 +2966,7 @@ function tierClass(tier: number): "high" | "medium" | "low" {
   return tier >= 3 ? "high" : tier === 2 ? "medium" : "low";
 }
 
-function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedStation, pinnedStations, inTransit, onSelectStation, onHoverStation, onClearInfoFocus, onPulseSuggestions }: {
+function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedStation, pinnedStations, inTransit, onSelectStation, onHoverStation, onPulseSuggestions }: {
   ship: Trader;
   world: World;
   loc: LocationDef;
@@ -2989,7 +2978,6 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
   inTransit: boolean;
   onSelectStation: (station: LocationId) => void;
   onHoverStation: (station: LocationId | null) => void;
-  onClearInfoFocus: () => void;
   onPulseSuggestions: () => void;
 }) {
   const travel = useStore((s) => s.travel);
@@ -3035,29 +3023,26 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
   const travelHintText = target.travelTo ? cueText.travel[target.travelTo] ?? cueText.sections.travel ?? hintText : hintText;
   const quickTravelTab = inTransit && manualActions ? (
     <button
-      className="bridge-tab travel-quick-tab"
+      className="travel-panel-action"
       onClick={() => stepN(ship.ticksRemaining)}
       title={`Advance ${ship.ticksRemaining} ticks until arrival`}
     >
       Quick Travel <span className="bridge-tab-count">{ship.ticksRemaining}t</span>
     </button>
   ) : null;
+  const travelTitle = inTransit ? "Arrival route" : "Stations";
+  const travelSubtitle = inTransit
+    ? `In transit to ${world.locations[ship.destination ?? loc.id]?.name ?? loc.name} / ${ship.ticksRemaining} tick${ship.ticksRemaining === 1 ? "" : "s"} remaining`
+    : `${dests.length} reachable station${dests.length === 1 ? "" : "s"}, departing ${world.locations[routeFrom]?.name ?? loc.name}`;
 
   return (
     <section className="bridge-card travel-card">
-      <StationTravelSummary
-        loc={loc}
-        inTransit={inTransit}
-        selected={selectedStation === loc.id}
-        pinned={pinnedStations.has(loc.id)}
-        onHover={onHoverStation}
-        onClear={() => {
-          if (pinnedStations.has(loc.id)) onSelectStation(loc.id);
-          else onClearInfoFocus();
-        }}
-      />
-      <header className="bridge-card-head">
-        <SingleTabHeader label="Travel" suggested={travelSuggested} hintText={travelHintText} trailing={quickTravelTab} />
+      <header className={`travel-panel-head ${travelSuggested ? "has-suggestion" : ""}`} title={travelSuggested ? travelHintText : undefined}>
+        <div>
+          <span className="travel-panel-label">{travelTitle}</span>
+          <span className="travel-panel-subtitle dim">{travelSubtitle}</span>
+        </div>
+        {quickTravelTab}
       </header>
       <table className={`travel-table ${!manualActions ? "travel-table-readonly" : ""} ${inTransit ? "transit-preview-content" : ""}`}>
         <colgroup>
@@ -3089,19 +3074,22 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
                 key={d.to}
                 className={destinationJobs.length > 0 ? "travel-has-contract" : ""}
                 aria-selected={selectedStation === d.to}
-                tabIndex={0}
-                onMouseEnter={() => onHoverStation(d.to)}
-                onMouseLeave={() => onHoverStation(null)}
-                onFocus={() => onHoverStation(d.to)}
-                onBlur={() => onHoverStation(null)}
-                onClick={() => onSelectStation(d.to)}
               >
                 <td>
                   <div className="travel-dest-cell">
-                    <span className="row-title-with-pin travel-dest-title">
+                    <button
+                      type="button"
+                      className="row-title-with-pin travel-dest-title info-focus-trigger"
+                      aria-pressed={pinned}
+                      onMouseEnter={() => onHoverStation(d.to)}
+                      onMouseLeave={() => onHoverStation(null)}
+                      onFocus={() => onHoverStation(d.to)}
+                      onBlur={() => onHoverStation(null)}
+                      onClick={() => onSelectStation(d.to)}
+                    >
                       <span className="travel-dest-name">{d.name}</span>
                       {pinned && <MdPushPin className="ui-icon row-pin-icon" aria-hidden="true" focusable="false" />}
-                    </span>
+                    </button>
                     {(travelLabel || destinationJobs.length > 0) && (
                       <span className="travel-contract-line">
                         {travelLabel && <span className="travel-contract-pill">{travelLabel}</span>}
