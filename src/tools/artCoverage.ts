@@ -206,6 +206,7 @@ function main(): void {
       summarize("Ship name roots", shipRows.length, shipRows.filter(row => row[4] === "covered").length).slice(2, -2).split(" | "),
       summarize("Station default universe", worldStationRows.length, worldStationRows.filter(row => row[4] === "covered").length).slice(2, -2).split(" | "),
       summarize("Trade goods", goodRows.length, goodRows.filter(row => row[5] === "covered").length).slice(2, -2).split(" | "),
+      summarize("Trade goods exact art", goodRows.length, goodRows.filter(row => row[3] === "exact").length).slice(2, -2).split(" | "),
       summarize("Upgrade slots", upgradeRows.length, upgradeRows.filter(row => row[2] === "covered").length).slice(2, -2).split(" | "),
     ]),
     "",

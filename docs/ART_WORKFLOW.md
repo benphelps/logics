@@ -90,8 +90,9 @@ When adding station name roots or suffixes:
 
 When adding goods:
 
-- add exact art for prominent goods
-- otherwise make sure their category has a good fallback in `GOOD_ART`
+- add exact art for every player-visible trade good
+- keep category and generic entries only as temporary fallbacks for newly added goods
+- rerun coverage and confirm `Trade goods exact art` remains 100%
 
 When adding upgrade slots:
 
