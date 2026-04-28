@@ -975,6 +975,30 @@
   color: var(--text-dim);
 }
 
+.single-tab-header {
+  width: 100%;
+}
+
+.single-tab-main {
+  cursor: default;
+}
+
+.single-tab-main:hover {
+  color: var(--text);
+  background: var(--ship-surface-raised);
+}
+
+.bridge-tab-spacer {
+  flex: 1 1 auto;
+  min-width: 8px;
+}
+
+.travel-quick-tab {
+  flex: 0 0 auto;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
 .bridge-card-tabs-static .bridge-tab {
   cursor: default;
 }
@@ -1442,7 +1466,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 8px 4px;
+  padding: 8px 0;
 }
 
 .transit-progress-meta {
@@ -1460,11 +1484,14 @@
   height: 6px;             /* slightly taller than vital-bars (3px) since it's the focal element */
 }
 
-.transit-placeholder-body {
-  padding: 24px 14px;
-  text-align: center;
-  font-style: italic;
-  font-size: 12px;
+.transit-preview-content {
+  opacity: 0.42;
+  transition: opacity 0.18s ease;
+}
+
+.transit-preview-content .btn-action,
+.transit-preview-content .bridge-tab {
+  cursor: default;
 }
 
 /* ---- cargo lot tooltip styles (used inside the cargo bridge card) ---- */
@@ -2445,13 +2472,6 @@
 }
 
 /* ---- cargo bridge card ---- */
-
-.btn-header-inline {
-  width: auto;
-  min-width: 0;
-  padding: 0 10px;
-  flex-shrink: 0;
-}
 
 .cargo-table {
   width: 100%;

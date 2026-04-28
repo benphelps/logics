@@ -405,16 +405,18 @@ function TabSuggestionCue({ show, hintText }: { show?: boolean; hintText?: strin
   );
 }
 
-function SingleTabHeader({ label, count, icon, suggested, hintText }: {
-  label: string; count?: number; icon?: IconType; suggested?: boolean; hintText?: string;
+function SingleTabHeader({ label, count, icon, suggested, hintText, trailing }: {
+  label: string; count?: number; icon?: IconType; suggested?: boolean; hintText?: string; trailing?: ReactNode;
 }) {
   return (
-    <div className="bridge-card-tabs bridge-card-tabs-static">
-      <span className={`bridge-tab active ${suggested ? "has-suggestion" : ""}`} title={suggested ? hintText : undefined}>
+    <div className={`bridge-card-tabs single-tab-header ${trailing ? "" : "bridge-card-tabs-static"}`}>
+      <span className={`bridge-tab single-tab-main active ${suggested ? "has-suggestion" : ""}`} title={suggested ? hintText : undefined}>
         {icon ? <IconLabel icon={icon}>{label}</IconLabel> : label}
         {count != null && <span className="bridge-tab-count">{count}</span>}
         <TabSuggestionCue show={suggested} hintText={hintText} />
       </span>
+      {trailing && <span className="bridge-tab-spacer" aria-hidden="true" />}
+      {trailing}
     </div>
   );
 }
@@ -505,56 +507,50 @@ function DockedView({ ship, world, loc, guidedPlan, hint, target, hintText, cueT
           onSelectGood={(good) => togglePinnedFocus({ kind: "good", good, source: "cargo" })}
           onHoverGood={(good) => setHoveredFocus(good ? { kind: "good", good, source: "cargo" } : null)}
         />
-        {inTransit
-          ? <TransitCard ship={ship} world={world} loc={loc} />
-          : (
-            <TravelOptions
-              ship={ship}
-              world={world}
-              loc={loc}
-              target={target}
-              hintText={hintText}
-              cueText={cueText}
-              selectedStation={activeFocus?.kind === "station" ? activeFocus.loc : null}
-              pinnedStations={pinnedStations}
-              onSelectStation={(station) => togglePinnedFocus({ kind: "station", loc: station, source: "travel" })}
-              onHoverStation={(station) => setHoveredFocus(station ? { kind: "station", loc: station, source: "travel" } : null)}
-              onClearInfoFocus={clearInfoFocus}
-              onPulseSuggestions={pulseSuggestionActions}
-            />
-          )}
+        <TravelOptions
+          ship={ship}
+          world={world}
+          loc={loc}
+          target={target}
+          hintText={hintText}
+          cueText={cueText}
+          selectedStation={activeFocus?.kind === "station" ? activeFocus.loc : null}
+          pinnedStations={pinnedStations}
+          inTransit={inTransit}
+          onSelectStation={(station) => togglePinnedFocus({ kind: "station", loc: station, source: "travel" })}
+          onHoverStation={(station) => setHoveredFocus(station ? { kind: "station", loc: station, source: "travel" } : null)}
+          onClearInfoFocus={clearInfoFocus}
+          onPulseSuggestions={pulseSuggestionActions}
+        />
       </div>
-      {inTransit
-        ? <TransitMarketPlaceholder destName={loc.name} ticksRemaining={ship.ticksRemaining} />
-        : (
-          <div className="bridge-split">
-            <StationExchangeCard
-              ship={ship}
-              world={world}
-              loc={loc}
-              target={target}
-              hintText={hintText}
-              cueText={cueText}
-              selectedGood={activeFocus?.kind === "good" && activeFocus.source === "market" ? activeFocus.good : null}
-              pinnedGoods={pinnedMarketGoods}
-              onSelectGood={(good) => togglePinnedFocus({ kind: "good", good, source: "market" })}
-              onHoverGood={(good) => setHoveredFocus(good ? { kind: "good", good, source: "market" } : null)}
-            />
-            <InfoAreaCard
-              ship={ship}
-              world={world}
-              loc={loc}
-              focus={activeFocus}
-              pinnedFocuses={pinnedFocuses}
-              activePinnedKey={activePinnedKey}
-              onSelectPinned={setActivePinnedKey}
-              onClosePinned={closePinnedFocus}
-              onClearFocus={clearInfoFocus}
-              target={target}
-              hint={hint}
-            />
-          </div>
-        )}
+      <div className="bridge-split">
+        <StationExchangeCard
+          ship={ship}
+          world={world}
+          loc={loc}
+          target={target}
+          hintText={hintText}
+          cueText={cueText}
+          selectedGood={activeFocus?.kind === "good" && activeFocus.source === "market" ? activeFocus.good : null}
+          pinnedGoods={pinnedMarketGoods}
+          inTransit={inTransit}
+          onSelectGood={(good) => togglePinnedFocus({ kind: "good", good, source: "market" })}
+          onHoverGood={(good) => setHoveredFocus(good ? { kind: "good", good, source: "market" } : null)}
+        />
+        <InfoAreaCard
+          ship={ship}
+          world={world}
+          loc={loc}
+          focus={activeFocus}
+          pinnedFocuses={pinnedFocuses}
+          activePinnedKey={activePinnedKey}
+          onSelectPinned={setActivePinnedKey}
+          onClosePinned={closePinnedFocus}
+          onClearFocus={clearInfoFocus}
+          target={target}
+          hint={hint}
+        />
+      </div>
       <ShipLogCard ship={ship} />
     </div>
   );
@@ -590,8 +586,8 @@ function ShipLogCard({ ship }: { ship: Trader }) {
   );
 }
 
-function ContractsTab({ ship, world, loc, target, hintText, cueText }: {
-  ship: Trader; world: World; loc: LocationDef; target: HintTarget; hintText: string; cueText: CueTextMap;
+function ContractsTab({ ship, world, loc, target, hintText, cueText, interactionLocked }: {
+  ship: Trader; world: World; loc: LocationDef; target: HintTarget; hintText: string; cueText: CueTextMap; interactionLocked: boolean;
 }) {
   const acceptJob = useStore((s) => s.acceptJob);
   const manualActions = ship.pilot !== "auto";
@@ -637,6 +633,7 @@ function ContractsTab({ ship, world, loc, target, hintText, cueText }: {
                 suggested={target.acceptJobId === j.id || target.acceptJobIds?.includes(j.id) === true}
                 hintText={cueText.acceptJobs[j.id] ?? hintText}
                 showAction={manualActions}
+                interactionLocked={interactionLocked}
                 onAccept={() => acceptJob(j.id, ship.id)}
               />
             ))}
@@ -653,8 +650,8 @@ function localJobSort(a: Job, b: Job): number {
   return t !== 0 ? t : a.expiresAt - b.expiresAt;
 }
 
-function LocalJobRow({ job, world, ship, suggested, hintText, showAction, onAccept }: {
-  job: Job; world: World; ship: Trader; suggested: boolean; hintText: string; showAction: boolean; onAccept: () => void;
+function LocalJobRow({ job, world, ship, suggested, hintText, showAction, interactionLocked, onAccept }: {
+  job: Job; world: World; ship: Trader; suggested: boolean; hintText: string; showAction: boolean; interactionLocked: boolean; onAccept: () => void;
 }) {
   const good = world.goods[job.good]?.name ?? job.good;
   const ticksLeft = Math.max(0, job.expiresAt - world.tick);
@@ -689,7 +686,12 @@ function LocalJobRow({ job, world, ship, suggested, hintText, showAction, onAcce
       {showAction && (
         <div className="contract-actions">
           <ActionCell suggested={suggested} hintText={hintText}>
-            <button className={`btn-action ${suggested ? "btn-suggested" : "primary"}`} onClick={onAccept}>
+            <button
+              className={`btn-action ${suggested ? "btn-suggested" : "primary"}`}
+              onClick={onAccept}
+              disabled={interactionLocked}
+              title={interactionLocked ? "Arrive before accepting contracts" : undefined}
+            >
               <span className="btn-label">Accept</span>
             </button>
           </ActionCell>
@@ -708,59 +710,28 @@ function ContractMetric({ label, value, tone }: { label: string; value: string; 
   );
 }
 
-function TransitCard({ ship, world, loc }: { ship: Trader; world: World; loc: LocationDef }) {
-  const stepN = useStore((s) => s.stepN);
-  const manualActions = ship.pilot !== "auto";
-  // Recover total trip ticks from origin/destination distance — same math the
-  // sim used on departure (ship.location is still the ORIGIN until arrival).
-  const tripDist = distance(world, ship.location, ship.destination!);
+function TransitProgress({ ship, world }: { ship: Trader; world: World }) {
+  if (ship.state !== "transit" || ship.destination == null) return null;
+  // Recover total trip ticks from origin/destination distance; fuel was burned
+  // on departure, but location remains the origin until arrival resolves.
+  const tripDist = distance(world, ship.location, ship.destination);
   const totalTicks = Math.max(1, Math.ceil(tripDist / ship.speed));
-  const elapsed = totalTicks - ship.ticksRemaining;
+  const elapsed = Math.max(0, totalTicks - ship.ticksRemaining);
   const pct = Math.max(0, Math.min(100, (elapsed / totalTicks) * 100));
 
   return (
-    <section className="bridge-card travel-card">
-      <StationTravelSummary loc={loc} inTransit />
-      <header className="bridge-card-head">
-        <SingleTabHeader label="Travel" icon={GiPathDistance} />
-        {manualActions && (
-          <button
-            className="btn-action btn-header-inline"
-            onClick={() => stepN(ship.ticksRemaining)}
-            title={`Advance ${ship.ticksRemaining} ticks until arrival`}
-          >
-            <span className="btn-label">Quick Travel</span>
-          </button>
-        )}
-      </header>
-      <div className="transit-progress">
-        <div className="transit-progress-meta mono">
-          <span className="dim">tick</span>
-          <span>{elapsed} / {totalTicks}</span>
-          <span className="transit-progress-spacer" />
-          <span className="dim">remaining</span>
-          <span>{ship.ticksRemaining}t</span>
-        </div>
-        <div className="vital-bar transit-progress-bar">
-          <div className="vital-bar-fill" style={{ width: `${pct}%` }} />
-        </div>
+    <div className="transit-progress">
+      <div className="transit-progress-meta mono">
+        <span className="dim">tick</span>
+        <span>{elapsed} / {totalTicks}</span>
+        <span className="transit-progress-spacer" />
+        <span className="dim">remaining</span>
+        <span>{ship.ticksRemaining}t</span>
       </div>
-    </section>
-  );
-}
-
-function TransitMarketPlaceholder({ destName, ticksRemaining }: { destName: string; ticksRemaining: number }) {
-  return (
-    <section className="bridge-card market-card transit-placeholder">
-      <header className="bridge-card-head">
-        <div className="bridge-card-title">
-          <span className="bridge-card-eyebrow station-eyebrow">Market</span>
-        </div>
-      </header>
-      <div className="transit-placeholder-body dim">
-        No market while in transit. Arriving at {destName} in {ticksRemaining} ticks.
+      <div className="vital-bar transit-progress-bar">
+        <div className="vital-bar-fill" style={{ width: `${pct}%` }} />
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -1388,7 +1359,7 @@ function shouldGuardDepartureForSuggestions(target: HintTarget, destination: Loc
   return hasLocalSuggestedAction || suggestedDifferentDestination;
 }
 
-function StationExchangeCard({ ship, world, loc, target, hintText, cueText, selectedGood, pinnedGoods, onSelectGood, onHoverGood }: {
+function StationExchangeCard({ ship, world, loc, target, hintText, cueText, selectedGood, pinnedGoods, inTransit, onSelectGood, onHoverGood }: {
   ship: Trader;
   world: World;
   loc: LocationDef;
@@ -1397,13 +1368,14 @@ function StationExchangeCard({ ship, world, loc, target, hintText, cueText, sele
   cueText: CueTextMap;
   selectedGood: GoodId | null;
   pinnedGoods: Set<GoodId>;
+  inTransit: boolean;
   onSelectGood: (good: GoodId) => void;
   onHoverGood: (good: GoodId | null) => void;
 }) {
   const [tab, setTab] = useState<"markets" | "upgrades" | "offers" | "contracts">("markets");
   const manualActions = ship.pilot !== "auto";
   const market = world.markets[loc.id];
-  const offers = listHiresAt(world, ship.location);
+  const offers = listHiresAt(world, loc.id);
   const marketGoodsCount = Object.keys(world.goods).filter(gid =>
     !isUpgradeGood(gid)
     && ((market.stock[gid] ?? 0) > 0.001 || findCargoLot(ship, gid) != null)
@@ -1420,7 +1392,7 @@ function StationExchangeCard({ ship, world, loc, target, hintText, cueText, sele
   const contractHintText = cueText.sections.contracts ?? hintText;
 
   return (
-    <section className="bridge-card market-card exchange-card">
+    <section className={`bridge-card market-card exchange-card ${inTransit ? "transit-preview-card" : ""}`}>
       <header className="bridge-card-head">
         <div className="bridge-card-tabs">
           <button
@@ -1452,28 +1424,31 @@ function StationExchangeCard({ ship, world, loc, target, hintText, cueText, sele
           </button>
         </div>
       </header>
-      {tab === "markets" && (
-        <MarketTableBody
-          ship={ship}
-          world={world}
-          loc={loc}
-          target={target}
-          hintText={hintText}
-          cueText={cueText}
-          selectedGood={selectedGood}
-          pinnedGoods={pinnedGoods}
-          onSelectGood={onSelectGood}
-          onHoverGood={onHoverGood}
-        />
-      )}
-      {tab === "upgrades" && <StationUpgradePurchaseTab ship={ship} world={world} target={target} hintText={hintText} cueText={cueText} />}
-      {tab === "offers" && <HireOffersTab ship={ship} world={world} />}
-      {tab === "contracts" && <ContractsTab ship={ship} world={world} loc={loc} target={target} hintText={hintText} cueText={cueText} />}
+      <div className={inTransit ? "transit-preview-content" : undefined}>
+        {tab === "markets" && (
+          <MarketTableBody
+            ship={ship}
+            world={world}
+            loc={loc}
+            target={target}
+            hintText={hintText}
+            cueText={cueText}
+            selectedGood={selectedGood}
+            pinnedGoods={pinnedGoods}
+            interactionLocked={inTransit}
+            onSelectGood={onSelectGood}
+            onHoverGood={onHoverGood}
+          />
+        )}
+        {tab === "upgrades" && <StationUpgradePurchaseTab ship={ship} world={world} loc={loc} target={target} hintText={hintText} cueText={cueText} interactionLocked={inTransit} />}
+        {tab === "offers" && <HireOffersTab ship={ship} world={world} loc={loc} interactionLocked={inTransit} />}
+        {tab === "contracts" && <ContractsTab ship={ship} world={world} loc={loc} target={target} hintText={hintText} cueText={cueText} interactionLocked={inTransit} />}
+      </div>
     </section>
   );
 }
 
-function MarketTableBody({ ship, world, loc, target, hintText, cueText, selectedGood, pinnedGoods, onSelectGood, onHoverGood }: {
+function MarketTableBody({ ship, world, loc, target, hintText, cueText, selectedGood, pinnedGoods, interactionLocked, onSelectGood, onHoverGood }: {
   ship: Trader;
   world: World;
   loc: LocationDef;
@@ -1482,6 +1457,7 @@ function MarketTableBody({ ship, world, loc, target, hintText, cueText, selected
   cueText: CueTextMap;
   selectedGood: GoodId | null;
   pinnedGoods: Set<GoodId>;
+  interactionLocked: boolean;
   onSelectGood: (good: GoodId) => void;
   onHoverGood: (good: GoodId | null) => void;
 }) {
@@ -1557,6 +1533,7 @@ function MarketTableBody({ ship, world, loc, target, hintText, cueText, selected
                       suggestedBuy={isBuyTarget}
                       hintText={cueText.buyGoods[gid] ?? hintText}
                       recommendedBuyQty={suggestedBuyQty}
+                      disabledReason={interactionLocked ? "Arrive before trading" : undefined}
                       onBuy={(qty) => buy(ship.id, gid, qty)}
                     />
                   </td>
@@ -1574,12 +1551,13 @@ function MarketTableBody({ ship, world, loc, target, hintText, cueText, selected
 }
 
 function BuyControls({
-  ship, world, goodId, stock, price, suggestedBuy, hintText, suggestionLabel, recommendedBuyQty, onBuy,
+  ship, world, goodId, stock, price, suggestedBuy, hintText, suggestionLabel, recommendedBuyQty, disabledReason, onBuy,
 }: {
   ship: Trader; world: World; goodId: string; stock: number; price: number;
   suggestedBuy: boolean; hintText: string;
   suggestionLabel?: string;
   recommendedBuyQty?: number;
+  disabledReason?: string;
   onBuy: (qty: number) => void;
 }) {
   const good = world.goods[goodId];
@@ -1589,11 +1567,12 @@ function BuyControls({
   const maxByFunds = price > 0 ? Math.floor(ship.funds / price) : 0;
   const maxBuy = Math.max(0, Math.min(maxByRoom, maxByFunds, Math.floor(stock)));
 
-  const canBuy10 = maxBuy >= 10;
-  const canBuyMax = maxBuy >= 1;
+  const canBuy10 = disabledReason == null && maxBuy >= 10;
+  const canBuyMax = disabledReason == null && maxBuy >= 1;
 
   let buyTitle = "";
-  if (stock < 1) buyTitle = "Out of stock here";
+  if (disabledReason) buyTitle = disabledReason;
+  else if (stock < 1) buyTitle = "Out of stock here";
   else if (maxByRoom < 1) buyTitle = "Cargo bay full";
   else if (maxByFunds < 1) buyTitle = "Insufficient funds";
 
@@ -1807,6 +1786,8 @@ function ShipInfoPanelContent({ ship, world }: { ship: Trader; world: World }) {
         <span>{locationName}</span>
         <span>{fuelName}</span>
       </div>
+
+      {ship.state === "transit" && <TransitProgress ship={ship} world={world} />}
 
       <dl className="trade-helper-grid station-info-grid">
         <Stat label="wallet" value={`Ç${Math.round(ship.funds).toLocaleString()}`} />
@@ -2332,12 +2313,12 @@ function ShipUpgradesTab({ ship }: { ship: Trader }) {
   );
 }
 
-function StationUpgradePurchaseTab({ ship, world, target, hintText, cueText }: {
-  ship: Trader; world: World; target: HintTarget; hintText: string; cueText: CueTextMap;
+function StationUpgradePurchaseTab({ ship, world, loc, target, hintText, cueText, interactionLocked }: {
+  ship: Trader; world: World; loc: LocationDef; target: HintTarget; hintText: string; cueText: CueTextMap; interactionLocked: boolean;
 }) {
   const buy = useStore((s) => s.buy);
-  const docked = ship.state === "idle";
-  const market = docked ? world.markets[ship.location] : null;
+  const docked = ship.state === "idle" && ship.location === loc.id && !interactionLocked;
+  const market = world.markets[loc.id];
   const stationUpgradeIds = market
     ? Object.keys(world.goods)
       .filter(g => isUpgradeGood(g) && (market.stock[g] ?? 0) >= 1)
@@ -2370,7 +2351,7 @@ function StationUpgradePurchaseTab({ ship, world, target, hintText, cueText }: {
           {stationUpgradeIds.length === 0 ? (
             <tr>
               <td colSpan={5} className="upgrade-row-empty">
-                {docked ? "No upgrade modules stocked at this station." : "Dock to browse station upgrades."}
+                No upgrade modules stocked at this station.
               </td>
             </tr>
           ) : (
@@ -2378,7 +2359,7 @@ function StationUpgradePurchaseTab({ ship, world, target, hintText, cueText }: {
               const def = upgradeDef(goodId)!;
               const Icon = UPGRADE_SLOT_ICONS[def.slot];
               const good = world.goods[goodId];
-              const price = market ? marketQuote(world, ship.location, goodId) : good.basePrice;
+              const price = market ? marketQuote(world, loc.id, goodId) : good.basePrice;
               const stock = market?.stock[goodId] ?? 0;
               const canAfford = ship.funds >= price;
               const fits = roomMass >= good.weight;
@@ -2707,10 +2688,10 @@ function ActiveContractsTab({ ship, world, jobs }: { ship: Trader; world: World;
 // "Hire offers" sits next to Market in the bottom split — same tabbed pattern
 // as Cargo|Crew above. Lists posted offers at the docked station with their
 // expiry countdown; rows are sorted tier asc / cost asc by listHiresAt.
-function HireOffersTab({ ship, world }: { ship: Trader; world: World }) {
+function HireOffersTab({ ship, world, loc, interactionLocked }: { ship: Trader; world: World; loc: LocationDef; interactionLocked: boolean }) {
   const hire = useStore((s) => s.hireCrew);
-  const offers = listHiresAt(world, ship.location);
-  const docked = ship.state === "idle";
+  const offers = listHiresAt(world, loc.id);
+  const docked = ship.state === "idle" && ship.location === loc.id && !interactionLocked;
 
   return (
     <table className="jobs-table">
@@ -2736,7 +2717,7 @@ function HireOffersTab({ ship, world }: { ship: Trader; world: World }) {
       </thead>
       <tbody>
         {offers.length === 0 ? (
-          <tr><td colSpan={7} className="jobs-row-empty">No crew posted at {world.locations[ship.location]?.name ?? ship.location}.</td></tr>
+          <tr><td colSpan={7} className="jobs-row-empty">No crew posted at {loc.name}.</td></tr>
         ) : offers.map((h) => {
           const ticksLeft = Math.max(0, h.expiresAt - world.tick);
           const expiringSoon = ticksLeft <= 15;
@@ -2780,7 +2761,7 @@ function tierClass(tier: number): "high" | "medium" | "low" {
   return tier >= 3 ? "high" : tier === 2 ? "medium" : "low";
 }
 
-function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedStation, pinnedStations, onSelectStation, onHoverStation, onClearInfoFocus, onPulseSuggestions }: {
+function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedStation, pinnedStations, inTransit, onSelectStation, onHoverStation, onClearInfoFocus, onPulseSuggestions }: {
   ship: Trader;
   world: World;
   loc: LocationDef;
@@ -2789,12 +2770,14 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
   cueText: CueTextMap;
   selectedStation: LocationId | null;
   pinnedStations: Set<LocationId>;
+  inTransit: boolean;
   onSelectStation: (station: LocationId) => void;
   onHoverStation: (station: LocationId | null) => void;
   onClearInfoFocus: () => void;
   onPulseSuggestions: () => void;
 }) {
   const travel = useStore((s) => s.travel);
+  const stepN = useStore((s) => s.stepN);
   const [armedDepart, setArmedDepart] = useState<LocationId | null>(null);
   const departGuardTimer = useRef<number | null>(null);
   useEffect(() => () => {
@@ -2803,7 +2786,8 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
   const manualActions = ship.pilot !== "auto";
   const ft = ship.fuelTypes.find(f => f.good === ship.currentFuel?.good);
   const fuel = ship.currentFuel?.qty ?? 0;
-  const market = world.markets[ship.location];
+  const routeFrom = inTransit ? loc.id : ship.location;
+  const market = world.markets[routeFrom];
   const activeJobsByDestination = new Map<string, Job[]>();
   for (const job of Object.values(world.jobs)) {
     if (job.acceptedBy !== ship.id) continue;
@@ -2817,7 +2801,7 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
     return `${jobs.length} active: ${first.join(", ")}${more}`;
   };
 
-  const dests = reachableNeighbors(world, ship.location)
+  const dests = reachableNeighbors(world, routeFrom)
     .map(({ to, dist }) => {
       const dst = world.locations[to];
       const fuelNeeded = ft ? dist * effectivePerDistance(ship, ft.perDistance) : 0;
@@ -2827,13 +2811,23 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
       return { to, name: dst?.name ?? to, dist, fuelNeeded, fuelCost, travelTicks, canFly };
     })
     .sort((a, b) => a.dist - b.dist);
-  const travelSuggested = manualActions && dests.some(d => target.travelTo === d.to && d.canFly);
+  const travelSuggested = !inTransit && manualActions && dests.some(d => target.travelTo === d.to && d.canFly);
   const travelHintText = target.travelTo ? cueText.travel[target.travelTo] ?? cueText.sections.travel ?? hintText : hintText;
+  const quickTravelTab = inTransit && manualActions ? (
+    <button
+      className="bridge-tab travel-quick-tab"
+      onClick={() => stepN(ship.ticksRemaining)}
+      title={`Advance ${ship.ticksRemaining} ticks until arrival`}
+    >
+      Quick Travel <span className="bridge-tab-count">{ship.ticksRemaining}t</span>
+    </button>
+  ) : null;
 
   return (
     <section className="bridge-card travel-card">
       <StationTravelSummary
         loc={loc}
+        inTransit={inTransit}
         selected={selectedStation === loc.id}
         pinned={pinnedStations.has(loc.id)}
         onHover={onHoverStation}
@@ -2843,9 +2837,9 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
         }}
       />
       <header className="bridge-card-head">
-        <SingleTabHeader label="Travel" icon={GiPathDistance} suggested={travelSuggested} hintText={travelHintText} />
+        <SingleTabHeader label="Travel" icon={GiPathDistance} suggested={travelSuggested} hintText={travelHintText} trailing={quickTravelTab} />
       </header>
-      <table className={`travel-table ${!manualActions ? "travel-table-readonly" : ""}`}>
+      <table className={`travel-table ${!manualActions ? "travel-table-readonly" : ""} ${inTransit ? "transit-preview-content" : ""}`}>
         <colgroup>
           <col className="col-dest" />
           <col className="col-num" />
@@ -2868,7 +2862,7 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
             const destinationJobs = activeJobsByDestination.get(d.to) ?? [];
             const travelLabel = suggested ? target.travelLabel : undefined;
             const pinned = pinnedStations.has(d.to);
-            const departGuarded = d.canFly && shouldGuardDepartureForSuggestions(target, d.to, ship);
+            const departGuarded = !inTransit && d.canFly && shouldGuardDepartureForSuggestions(target, d.to, ship);
             const departArmed = armedDepart === d.to;
             return (
               <tr
@@ -2901,7 +2895,7 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
                 <td className="numeric mono">{d.travelTicks}t</td>
                 {manualActions && (
                   <td>
-                    <ActionCell suggested={suggested && d.canFly} hintText={cueText.travel[d.to] ?? hintText}>
+                    <ActionCell suggested={!inTransit && suggested && d.canFly} hintText={cueText.travel[d.to] ?? hintText}>
                       <button
                         onClick={(event) => {
                           event.stopPropagation();
@@ -2922,9 +2916,9 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
                           setArmedDepart(null);
                           travel(ship.id, d.to);
                         }}
-                        disabled={!d.canFly}
-                        className={`btn-action ${suggested && d.canFly ? "btn-suggested" : ""} ${departArmed ? "depart-armed" : ""}`}
-                        title={d.canFly ? departArmed ? "Click again to depart with suggested actions still pending" : "" : "Insufficient fuel for this trip"}
+                        disabled={inTransit || !d.canFly}
+                        className={`btn-action ${!inTransit && suggested && d.canFly ? "btn-suggested" : ""} ${departArmed ? "depart-armed" : ""}`}
+                        title={inTransit ? "Arrive before plotting another trip" : d.canFly ? departArmed ? "Click again to depart with suggested actions still pending" : "" : "Insufficient fuel for this trip"}
                       >
                         <span className="btn-label">{departArmed ? "Confirm" : "Depart"}</span>
                       </button>
