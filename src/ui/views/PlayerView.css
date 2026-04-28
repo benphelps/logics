@@ -377,7 +377,7 @@
   flex: 0 0 auto;
   flex-direction: column;
   min-height: auto;
-  margin-top: 10px;
+  margin-top: 0;
 }
 
 .ship-cargo-tabs {
@@ -385,9 +385,8 @@
   width: auto;
   margin: 0 calc(var(--bridge-card-pad-x) * -1);
   border-color: rgba(255, 255, 255, 0.08);
-  border-right: 0;
-  border-left: 0;
-  border-radius: 0;
+  border-width: 0 0 1px;
+  border-radius: 0 0 6px 6px;
 }
 
 .ship-status-tabs .ship-meter-tab {
@@ -406,12 +405,17 @@
   width: 100%;
 }
 
+.ship-status-tabs .bridge-tab {
+  border-radius: 4px 4px 0 0;
+}
+
 .ship-cargo-tabs .bridge-tab {
   flex: 1 1 0;
   justify-content: center;
   min-width: 0;
   min-height: 0;
   padding: 7px 10px;
+  border-radius: 0 0 4px 4px;
 }
 
 .ship-meter-tab {
@@ -441,6 +445,14 @@
   width: var(--meter-pct, 0%);
   background: rgba(79, 182, 255, 0.16);
   transition: width 0.2s ease;
+}
+
+.cargo-meter-tab::before {
+  background: rgba(96, 106, 118, 0.12);
+}
+
+.cargo-meter-tab.active::before {
+  background: rgba(112, 124, 136, 0.12);
 }
 
 .ship-meter-tab.warn::before {
@@ -954,6 +966,18 @@
 .ship-cargo-tabs,
 .exchange-card > .bridge-card-tabs {
   background: var(--ship-surface-soft);
+}
+
+.ship-card > .ship-status-tabs.bridge-card-tabs {
+  border-color: rgba(255, 255, 255, 0.08);
+  border-width: 0 0 1px;
+  border-radius: 6px 6px 0 0;
+}
+
+.ship-card .ship-cargo-tabs.bridge-card-tabs {
+  border-color: rgba(255, 255, 255, 0.08);
+  border-width: 0 0 1px;
+  border-radius: 0 0 6px 6px;
 }
 
 .ship-card > .bridge-card-tabs,
