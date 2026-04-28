@@ -59,7 +59,13 @@ export function pushTraderEvent(world: World, ship: Trader, ev: TraderEvent): vo
 // --- job-flavored entries -------------------------------------------------
 
 function jobBlurb(world: World, job: Job): string {
-  const goodName = world.goods[job.good]?.name ?? job.good;
+  if (job.kind === "trade") {
+    const dst = world.locations[job.destination]?.name ?? job.destination;
+    const ticker = job.trade?.ticker ?? "trade";
+    const kind = job.trade?.settlementKind === "loss_forgiveness" ? "Loss review" : "Profit settlement";
+    return `${kind}: ${ticker} at ${dst}`;
+  }
+  const goodName = job.good ? world.goods[job.good]?.name ?? job.good : "Unknown";
   const dst = world.locations[job.destination]?.name ?? job.destination;
   return `${job.kind === "rescue" ? "Rescue" : "Contract"}: ${job.qty} ${goodName} → ${dst}`;
 }
@@ -69,7 +75,9 @@ export function pushJobAccepted(world: World, ship: Trader, job: Job): void {
     tick: world.tick,
     kind: "job_accepted",
     tone: "info",
-    message: `Accepted ${job.tier}-tier ${jobBlurb(world, job)} (Ç${job.reward.toLocaleString()} reward)`,
+    message: job.kind === "trade"
+      ? `Settlement posted for ${jobBlurb(world, job)} (Ç${job.reward.toLocaleString()} pending)`
+      : `Accepted ${job.tier}-tier ${jobBlurb(world, job)} (Ç${job.reward.toLocaleString()} reward)`,
   });
 }
 

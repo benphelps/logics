@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import type { IconType } from "react-icons";
 import { GiBank, GiCargoCrate, GiTrade, GiWallet } from "react-icons/gi";
 import { MdArrowDropDown, MdArrowDropUp, MdRemove } from "react-icons/md";
@@ -7,6 +7,9 @@ import type { Equity, EquityKind, StockPosition, TradeRecord, World } from "../.
 import {
   BROKER_FEE_RATE,
   DIVIDEND_INTERVAL,
+  EXCHANGE_TRADE_MAX_HOPS,
+  equityTradeHopDistance,
+  equityTradeStation,
   listEquities,
   listPositions,
   listTradeRecords,
@@ -16,6 +19,7 @@ import {
   totalUnrealizedPnl,
   unrealizedPnl,
 } from "../../sim/stock";
+import { shipArtUrl, stationArtUrl, stationKind, stationKindLabel, stationScale, stationScaleLabel, stationSubtype, stationSubtypeLabel } from "../art";
 import "./StockMarketView.css";
 
 interface EquityRow {
@@ -57,9 +61,13 @@ export function StockMarketView() {
   // position is closed (manual sell, cover, abandon, or auto-trigger), the
   // useEffect below clears the focus so we naturally fall back to the list.
   const [focusedPositionId, setFocusedPositionId] = useState<string | null>(null);
+  const [activePanel, setActivePanel] = useState<"tape" | "positions" | "trades">("tape");
 
   const rows = useMemo(() => buildRows(world), [world, tickEpoch]);
-  const selectedId = selected && rows.some(r => r.equity.id === selected) ? selected : rows[0]?.equity.id ?? null;
+  const tapeRows = useMemo(() => splitRowsByAccess(world, rows), [world, rows]);
+  const selectedId = selected && rows.some(r => r.equity.id === selected)
+    ? selected
+    : tapeRows.reachable[0]?.equity.id ?? rows[0]?.equity.id ?? null;
   const detail = selectedId ? rows.find(r => r.equity.id === selectedId) ?? null : null;
 
   const playerShip = world.player ? world.traders[world.player.shipIds[0]] : null;
@@ -71,6 +79,7 @@ export function StockMarketView() {
   const trades = useMemo(() => listTradeRecords(world, 100), [world, tickEpoch]);
   const longCount = positions.filter(p => p.kind === "long").length;
   const shortCount = positions.filter(p => p.kind === "short").length;
+  const detailArtUrl = detail ? equityArtUrl(world, detail.equity) : null;
 
   // If the focused position closed (sold / covered / abandoned / auto-fired
   // stop or take), drop focus so the Positions panel falls back to the full
@@ -112,153 +121,115 @@ export function StockMarketView() {
 
       <div className="stocks-layout">
         <div className={`stocks-left ${focusedPositionId ? "has-focus" : ""}`}>
-          <section className="stocks-board">
-            <div className="stocks-panel-head">
-              <div>
-                <span className="stocks-panel-label">Tape</span>
-                <span className="dim">Live equity quotes — click to inspect</span>
-              </div>
-              <div className="stocks-legend">
-                <span><span className="stock-dot up" /> up tick</span>
-                <span><span className="stock-dot down" /> down tick</span>
-                <span><span className="stock-dot owned" /> long</span>
-                <span><span className="stock-dot shorted" /> short</span>
-              </div>
+          <section className="stocks-main-panel">
+            <div className="stocks-card-tabs stocks-main-tabs">
+              <button className={`stock-main-tab ${activePanel === "tape" ? "active" : ""}`} onClick={() => setActivePanel("tape")}>
+                Tape <span className="stock-tab-count">{rows.length}</span>
+              </button>
+              <button className={`stock-main-tab ${activePanel === "positions" ? "active" : ""}`} onClick={() => setActivePanel("positions")}>
+                Positions <span className="stock-tab-count">{positions.length}</span>
+              </button>
+              <button className={`stock-main-tab ${activePanel === "trades" ? "active" : ""}`} onClick={() => setActivePanel("trades")}>
+                Trades <span className="stock-tab-count">{trades.length}</span>
+              </button>
             </div>
-            <div className="stocks-scroll">
-              <table className="stocks-table">
-                <colgroup>
-                  <col className="col-ticker" />
-                  <col className="col-name" />
-                  <col className="col-kind" />
-                  <col className="col-price" />
-                  <col className="col-change" />
-                  <col className="col-anchor" />
-                  <col className="col-health" />
-                  <col className="col-yield" />
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th>Ticker</th>
-                    <th>Listing</th>
-                    <th>Kind</th>
-                    <th>Price</th>
-                    <th>Δ</th>
-                    <th>vs IPO</th>
-                    <th>Health</th>
-                    <th>Last Div</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map(row => (
-                    <tr
-                      key={row.equity.id}
-                      className={[
-                        selectedId === row.equity.id ? "active" : "",
-                        row.changePct > 0.0005 ? "up" : row.changePct < -0.0005 ? "down" : "",
-                        row.position?.kind === "long" ? "owned" : "",
-                        row.position?.kind === "short" ? "shorted" : "",
-                      ].filter(Boolean).join(" ")}
-                      onClick={() => select(row.equity.id)}
-                    >
-                      <td><span className="ticker mono">{row.equity.ticker}</span></td>
-                      <td>
-                        <span className="stock-name-cell">
-                          <span className="stock-name">{row.equity.name}</span>
-                          <span className="stock-id dim">{row.equity.id}</span>
-                        </span>
-                      </td>
-                      <td><span className={`kind-pill kind-${row.equity.kind}`}>{row.kindLabel}</span></td>
-                      <td>
-                        <span className="stock-stack">
-                          <span className="mono price">Ç{fmtPrice(row.equity.price)}</span>
-                          <span className="mono dim">{row.ratioToAnchor.toFixed(2)}× anchor</span>
-                        </span>
-                      </td>
-                      <td><ChangeCell pct={row.changePct} /></td>
-                      <td><span className="mono dim">Ç{fmtPrice(row.equity.anchorPrice)}</span></td>
-                      <td><HealthBar value={row.underlyingHealth} label={row.underlyingHealthLabel} /></td>
-                      <td>
-                        {row.lastDividendPerShare > 0 ? (
-                          <span className="stock-stack">
-                            <span className="mono">Ç{row.lastDividendPerShare.toFixed(2)}/sh</span>
-                            <span className="mono dim">{row.ticksUntilDividend}t to next</span>
-                          </span>
-                        ) : (
-                          <span className="dim">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
 
-          <section className={`stocks-positions-panel ${focusedPositionId ? "focused" : ""}`}>
-            <div className="stocks-panel-head">
-              <div>
-                <span className="stocks-panel-label">Positions</span>
-                <span className="dim">
-                  {focusedPositionId
-                    ? "managing one position"
-                    : `${longCount} long · ${shortCount} short · click to manage`}
-                </span>
-              </div>
-              <div className="stocks-panel-head-right">
-                {focusedPositionId && (
-                  <button className="stocks-panel-back" onClick={() => setFocusedPositionId(null)}>
-                    ← Show all
-                  </button>
-                )}
-                <div className="dim mono">
-                  Unrealized:&nbsp;
-                  <span className={unrealizedTotal > 0 ? "stock-pnl-up" : unrealizedTotal < 0 ? "stock-pnl-down" : ""}>
-                    {unrealizedTotal >= 0 ? "+" : ""}Ç{Math.round(unrealizedTotal).toLocaleString()}
-                  </span>
+            <section className={`stocks-board stocks-tab-panel ${activePanel !== "tape" ? "stocks-panel-hidden" : ""}`}>
+              <div className="stocks-panel-head">
+                <div>
+                  <span className="stocks-panel-label">Tape</span>
+                  <span className="dim">{tapeRows.reachable.length} reachable · {tapeRows.far.length} out of range</span>
+                </div>
+                <div className="stocks-legend">
+                  <span><span className="stock-dot up" /> up tick</span>
+                  <span><span className="stock-dot down" /> down tick</span>
+                  <span><span className="stock-dot owned" /> long</span>
+                  <span><span className="stock-dot shorted" /> short</span>
                 </div>
               </div>
-            </div>
-            <PositionsPanel
-              positions={positions}
-              world={world}
-              focusedId={focusedPositionId}
-              cash={cash}
-              docked={docked}
-              onSelect={(eqId) => {
-                select(eqId);
-                // Toggle: clicking the focused row again returns to the
-                // full positions list.
-                setFocusedPositionId(prev => prev === eqId ? null : eqId);
-              }}
-              onSell={(eqId, qty) => sellShares(eqId, qty)}
-              onCover={(eqId, qty) => coverShares(eqId, qty)}
-              onAbandon={(eqId) => {
-                const pos = positions.find(p => p.equityId === eqId);
-                const shares = pos?.shares ?? 0;
-                const ticker = world.equities[eqId]?.ticker ?? eqId;
-                if (confirm(`Abandon ${shares} shares of ${ticker}? Settles at the current mark with a 5% penalty.`)) {
-                  abandonPosition(eqId);
-                  setFocusedPositionId(null);
-                }
-              }}
-              onSetStopLoss={(eqId, price) => setStopLoss(eqId, price)}
-              onSetTakeProfit={(eqId, price) => setTakeProfit(eqId, price)}
-            />
-          </section>
-
-          <section className="stocks-trades-panel">
-            <div className="stocks-panel-head">
-              <div>
-                <span className="stocks-panel-label">Trades</span>
-                <span className="dim">most recent first ({trades.length} entries)</span>
+              <div className="stocks-scroll">
+                <StockRowsTable rows={tapeRows.reachable} selectedId={selectedId} onSelect={select} />
+                {tapeRows.far.length > 0 && (
+                  <section className="stocks-distance-group">
+                    <div className="stocks-distance-head">
+                      <span className="stocks-panel-label">Out of range</span>
+                      <span className="dim mono">{tapeRows.far.length} station listing{tapeRows.far.length === 1 ? "" : "s"} beyond {EXCHANGE_TRADE_MAX_HOPS} hops</span>
+                    </div>
+                    <StockRowsTable rows={tapeRows.far} selectedId={selectedId} onSelect={select} outOfRange />
+                  </section>
+                )}
               </div>
-            </div>
-            <TradesList trades={trades} onSelect={(eqId) => select(eqId)} />
+            </section>
+
+            <section className={`stocks-positions-panel stocks-tab-panel ${focusedPositionId ? "focused" : ""} ${activePanel !== "positions" ? "stocks-panel-hidden" : ""}`}>
+              <div className="stocks-panel-head">
+                <div>
+                  <span className="stocks-panel-label">Positions</span>
+                  <span className="dim">
+                    {focusedPositionId
+                      ? "managing one position"
+                      : `${longCount} long · ${shortCount} short · click to manage`}
+                  </span>
+                </div>
+                <div className="stocks-panel-head-right">
+                  {focusedPositionId && (
+                    <button className="stocks-panel-back" onClick={() => setFocusedPositionId(null)}>
+                      ← Show all
+                    </button>
+                  )}
+                  <div className="dim mono">
+                    Unrealized:&nbsp;
+                    <span className={unrealizedTotal > 0 ? "stock-pnl-up" : unrealizedTotal < 0 ? "stock-pnl-down" : ""}>
+                      {unrealizedTotal >= 0 ? "+" : ""}Ç{Math.round(unrealizedTotal).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <PositionsPanel
+                positions={positions}
+                world={world}
+                focusedId={focusedPositionId}
+                cash={cash}
+                docked={docked}
+                onSelect={(eqId) => {
+                  select(eqId);
+                  setActivePanel("positions");
+                  // Toggle: clicking the focused row again returns to the
+                  // full positions list.
+                  setFocusedPositionId(prev => prev === eqId ? null : eqId);
+                }}
+                onSell={(eqId, qty) => sellShares(eqId, qty)}
+                onCover={(eqId, qty) => coverShares(eqId, qty)}
+                onAbandon={(eqId) => {
+                  const pos = positions.find(p => p.equityId === eqId);
+                  const shares = pos?.shares ?? 0;
+                  const ticker = world.equities[eqId]?.ticker ?? eqId;
+                  if (confirm(`Abandon ${shares} shares of ${ticker}? Settles at the current mark with a 5% penalty.`)) {
+                    abandonPosition(eqId);
+                    setFocusedPositionId(null);
+                  }
+                }}
+                onSetStopLoss={(eqId, price) => setStopLoss(eqId, price)}
+                onSetTakeProfit={(eqId, price) => setTakeProfit(eqId, price)}
+              />
+            </section>
+
+            <section className={`stocks-trades-panel stocks-tab-panel ${activePanel !== "trades" ? "stocks-panel-hidden" : ""}`}>
+              <div className="stocks-panel-head">
+                <div>
+                  <span className="stocks-panel-label">Trades</span>
+                  <span className="dim">most recent first ({trades.length} entries)</span>
+                </div>
+              </div>
+              <TradesList trades={trades} onSelect={(eqId) => select(eqId)} />
+            </section>
           </section>
         </div>
 
-        <aside className="stocks-sidebar">
+        <aside
+          className={`stocks-sidebar ${detailArtUrl ? "stocks-info-card" : ""}`}
+          style={detailArtUrl ? artCardStyle(detailArtUrl) : undefined}
+        >
           {detail ? (
             <CompanyPane
               row={detail}
@@ -276,6 +247,80 @@ export function StockMarketView() {
         </aside>
       </div>
     </section>
+  );
+}
+
+function StockRowsTable({ rows, selectedId, onSelect, outOfRange = false }: {
+  rows: EquityRow[];
+  selectedId: string | null;
+  onSelect: (equityId: string) => void;
+  outOfRange?: boolean;
+}) {
+  if (rows.length === 0) {
+    return <div className="stocks-detail-empty dim">No reachable listings.</div>;
+  }
+  return (
+    <table className={`stocks-table ${outOfRange ? "out-of-range" : ""}`}>
+      <colgroup>
+        <col className="col-ticker" />
+        <col className="col-name" />
+        <col className="col-kind" />
+        <col className="col-price" />
+        <col className="col-change" />
+        <col className="col-health" />
+        <col className="col-yield" />
+      </colgroup>
+      <thead>
+        <tr>
+          <th>Ticker</th>
+          <th>Listing</th>
+          <th>Kind</th>
+          <th>Price</th>
+          <th>Δ</th>
+          <th>Health</th>
+          <th>Last Div</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(row => (
+          <tr
+            key={row.equity.id}
+            className={[
+              selectedId === row.equity.id ? "active" : "",
+              row.changePct > 0.0005 ? "up" : row.changePct < -0.0005 ? "down" : "",
+              row.position?.kind === "long" ? "owned" : "",
+              row.position?.kind === "short" ? "shorted" : "",
+              outOfRange ? "out-of-range" : "",
+            ].filter(Boolean).join(" ")}
+            onClick={() => onSelect(row.equity.id)}
+          >
+            <td><span className="ticker mono">{row.equity.ticker}</span></td>
+            <td>
+              <span className="stock-name-cell">
+                <span className="stock-name">{row.equity.name}</span>
+              </span>
+            </td>
+            <td><span className={`kind-pill kind-${row.equity.kind}`}>{row.kindLabel}</span></td>
+            <td>
+              <span className="stock-stack">
+                <span className="mono price">Ç{fmtPrice(row.equity.price)}</span>
+              </span>
+            </td>
+            <td><ChangeCell pct={row.changePct} /></td>
+            <td><HealthBar value={row.underlyingHealth} label={row.underlyingHealthLabel} /></td>
+            <td>
+              {row.lastDividendPerShare > 0 ? (
+                <span className="mono" title={`${row.ticksUntilDividend}t to next dividend`}>
+                  Ç{row.lastDividendPerShare.toFixed(2)}/sh
+                </span>
+              ) : (
+                <span className="dim">—</span>
+              )}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
@@ -300,77 +345,120 @@ function CompanyPane({ row, world, cash, docked, hasOpposite, hasLong, onBuy, on
   const pos = row.position;
   const [buyQty, setBuyQty] = useState<number>(10);
   const [shortQty, setShortQty] = useState<number>(10);
+  const access = exchangeAccess(world, eq);
 
   const buyCost = buyQty * eq.price * (1 + BROKER_FEE_RATE);
   const shortProceeds = shortQty * eq.price * (1 - BROKER_FEE_RATE);
+  const dividend = eq.lastDividend?.perShare ?? 0;
 
-  const maxBuy = hasOpposite ? 0 : Math.max(0, Math.min(
+  const maxBuy = hasOpposite || !access.ok ? 0 : Math.max(0, Math.min(
     Math.floor(cash / Math.max(0.0001, eq.price * (1 + BROKER_FEE_RATE))),
     eq.sharesOutstanding - (pos?.shares ?? 0),
   ));
-  const maxShort = hasLong ? 0 : Math.max(0, Math.min(
+  const maxShort = hasLong || !access.ok ? 0 : Math.max(0, Math.min(
     eq.sharesOutstanding - (pos?.shares ?? 0),
     maxShortableShares(world, eq),
   ));
 
   return (
-    <>
-      <PaneHeader row={row} />
-      <Sparkline equity={eq} position={pos} />
-      <CompanyUnderlying eq={eq} world={world} />
-
-      <div className="stocks-trade-grid">
-        <TradeSide
-          label={pos?.kind === "long" ? "Buy more" : "Buy"}
-          qty={buyQty}
-          setQty={setBuyQty}
-          max={maxBuy}
-          costLabel={maxBuy <= 0 ? (hasOpposite ? "Cover the short first" : "—") : `Ç${Math.round(buyCost).toLocaleString()}`}
-          disabled={!docked || maxBuy <= 0}
-          disabledReason={hasOpposite ? "Cover the short first (in the Positions panel)." : maxBuy <= 0 ? "Insufficient cash." : ""}
-          actionLabel="Buy"
-          action="primary"
-          onAction={() => onBuy(buyQty)}
-        />
-        <TradeSide
-          label={pos?.kind === "short" ? "Short more" : "Short"}
-          qty={shortQty}
-          setQty={setShortQty}
-          max={maxShort}
-          costLabel={maxShort <= 0 ? (hasLong ? "Sell the long first" : "Underlying book empty") : `+Ç${Math.round(shortProceeds).toLocaleString()} · max ${maxShort.toLocaleString()}`}
-          disabled={!docked || maxShort <= 0}
-          disabledReason={hasLong ? "Sell the long first (in the Positions panel)." : maxShort <= 0 ? `${eq.ticker}'s book is too thin.` : ""}
-          actionLabel="Short"
-          action="warning"
-          onAction={() => onShort(shortQty)}
-        />
+    <div className="stocks-info-frame">
+      <div className="stocks-info-fixed">
+        <EquityInfoHeader row={row} world={world} access={access} />
       </div>
 
-      {!docked && <div className="stocks-warning dim">Equity trades only execute while docked.</div>}
-      {eq.lastDividend && (
-        <div className="stocks-dividend-history">
-          <div className="stocks-section-title">Last dividend</div>
-          <div className="dim mono">tick {eq.lastDividend.tick.toLocaleString()} · Ç{eq.lastDividend.perShare.toFixed(2)}/share</div>
-          <div className="dim mono">Next window in {row.ticksUntilDividend} ticks (every {DIVIDEND_INTERVAL}).</div>
+      <div className="stocks-info-scroll">
+        <Sparkline equity={eq} position={pos} />
+
+        <dl className="stocks-info-grid">
+          <InfoStat label="quote" value={`Ç${fmtPrice(eq.price)}`} />
+          <InfoStat label="delta" value={fmtPct(row.changePct)} tone={row.changePct > 0 ? "good" : row.changePct < 0 ? "bad" : ""} />
+          <InfoStat label="vs IPO" value={`${row.ratioToAnchor.toFixed(2)}x`} />
+          <InfoStat label="shares" value={eq.sharesOutstanding.toLocaleString()} />
+          <InfoStat label="dividend" value={dividend > 0 ? `Ç${dividend.toFixed(2)}/sh` : "none"} />
+          <InfoStat label="next window" value={`${row.ticksUntilDividend}t`} />
+        </dl>
+
+        <CompanyUnderlying eq={eq} world={world} />
+
+        <div className="stocks-info-section">
+          <div className="stocks-info-section-title">Access</div>
+          <div className={`stocks-info-line ${access.ok ? "" : "blocked"}`}>
+            <span>Status</span>
+            <span className="mono">{access.label}</span>
+          </div>
+          {!access.ok && <div className="stocks-info-note">{access.reason}</div>}
         </div>
-      )}
-    </>
+
+        <div className="stocks-info-section">
+          <div className="stocks-info-section-title">Orders</div>
+          <div className="stocks-trade-grid">
+            <TradeSide
+              label={pos?.kind === "long" ? "Buy more" : "Buy"}
+              qty={buyQty}
+              setQty={setBuyQty}
+              max={maxBuy}
+              costLabel={maxBuy <= 0 ? (hasOpposite ? "Cover the short first" : "—") : `Ç${Math.round(buyCost).toLocaleString()}`}
+              disabled={!docked || maxBuy <= 0}
+              disabledReason={!access.ok ? access.reason : hasOpposite ? "Cover the short first (in the Positions panel)." : maxBuy <= 0 ? "Insufficient cash." : ""}
+              actionLabel="Buy"
+              action="primary"
+              onAction={() => onBuy(buyQty)}
+            />
+            <TradeSide
+              label={pos?.kind === "short" ? "Short more" : "Short"}
+              qty={shortQty}
+              setQty={setShortQty}
+              max={maxShort}
+              costLabel={maxShort <= 0 ? (hasLong ? "Sell the long first" : "Underlying book empty") : `+Ç${Math.round(shortProceeds).toLocaleString()} · max ${maxShort.toLocaleString()}`}
+              disabled={!docked || maxShort <= 0}
+              disabledReason={!access.ok ? access.reason : hasLong ? "Sell the long first (in the Positions panel)." : maxShort <= 0 ? `${eq.ticker}'s book is too thin.` : ""}
+              actionLabel="Short"
+              action="warning"
+              onAction={() => onShort(shortQty)}
+            />
+          </div>
+
+          {!docked && <div className="stocks-warning dim">Equity trades only execute while docked.</div>}
+          {eq.lastDividend && (
+            <div className="stocks-info-note">
+              Last dividend paid at tick {eq.lastDividend.tick.toLocaleString()}.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
-function PaneHeader({ row }: { row: EquityRow }) {
+function EquityInfoHeader({ row, world, access }: { row: EquityRow; world: World; access: { ok: boolean; label: string } }) {
+  const eq = row.equity;
+  const loc = eq.kind === "station" ? world.locations[eq.underlyingId] : null;
+  const synd = eq.kind === "syndicate" ? world.syndicates[eq.underlyingId] : null;
+  const kind = loc ? stationKind(loc) : null;
+  const subtype = loc && kind ? stationSubtype(loc, kind) : null;
+  const scale = loc && kind ? stationScale(loc, kind) : null;
+
   return (
-    <div className="stocks-detail-head">
-      <div>
-        <span className="stocks-panel-label">{row.equity.kind === "station" ? "Station" : "Syndicate"}</span>
-        <h3>{row.equity.name}</h3>
-        <span className="dim mono">{row.equity.ticker}</span>
+    <>
+      <header className="stocks-info-head">
+        <div className="stocks-info-title">
+          <span className="stocks-info-eyebrow">{eq.kind === "station" ? "Listed station" : "Listed company"}</span>
+          <span className="stocks-info-name">{eq.name}</span>
+        </div>
+        <span className={`station-kind-pill ${kind ? `station-kind-${kind}` : "stocks-kind-syndicate"}`}>
+          {loc && kind ? stationKindLabel(kind) : "Syndicate"}
+        </span>
+      </header>
+
+      <div className="stocks-info-meta">
+        <span>{eq.ticker}</span>
+        <span>{access.ok ? "reachable" : "out of range"}</span>
+        {loc?.traits.faction && <span>{loc.traits.faction}</span>}
+        {subtype && <span>{stationSubtypeLabel(subtype)}</span>}
+        {scale && <span>{stationScaleLabel(scale)}</span>}
+        {synd && <span>{synd.memberShipIds.length} ships</span>}
       </div>
-      <div className="stocks-price-block">
-        <span className="mono price big">Ç{fmtPrice(row.equity.price)}</span>
-        <ChangeCell pct={row.changePct} big />
-      </div>
-    </div>
+    </>
   );
 }
 
@@ -379,30 +467,44 @@ function CompanyUnderlying({ eq, world }: { eq: Equity; world: World }) {
     const market = world.markets[eq.underlyingId];
     const loc = world.locations[eq.underlyingId];
     if (!market || !loc) return null;
+    const exports = goodsList(world, loc.primaryExports);
+    const imports = goodsList(world, loc.primaryImports);
     return (
-      <div className="stocks-underlying">
-        <div className="stocks-section-title">Underlying — {loc.name}</div>
-        <div className="stocks-underlying-grid">
-          <UnderlyingMetric label="Treasury" value={`Ç${fmtBig(market.treasury)}`} />
-          <UnderlyingMetric label="Target" value={`Ç${fmtBig(market.treasuryTarget)}`} />
-          <UnderlyingMetric label="Pop" value={loc.population.toLocaleString()} />
-          <UnderlyingMetric label="Tech" value={loc.traits.techLevel.toString()} />
+      <div className="stocks-info-section">
+        <div className="stocks-info-section-title">Underlying</div>
+        <div className="stocks-info-line">
+          <span>Treasury</span>
+          <span className="mono">Ç{fmtBig(market.treasury)} / Ç{fmtBig(market.treasuryTarget)}</span>
         </div>
+        <div className="stocks-info-line">
+          <span>Population</span>
+          <span className="mono">{loc.population.toLocaleString()} · tech L{loc.traits.techLevel}</span>
+        </div>
+        <div className="stocks-info-line"><span>Exports</span><span>{exports}</span></div>
+        <div className="stocks-info-line"><span>Imports</span><span>{imports}</span></div>
       </div>
     );
   }
   const synd = world.syndicates[eq.underlyingId];
   if (!synd) return null;
   const memberWealth = synd.memberShipIds.reduce((s, id) => s + (world.traders[id]?.funds ?? 0), 0);
+  const lead = synd.memberShipIds.map(id => world.traders[id]).find(Boolean);
   return (
-    <div className="stocks-underlying">
-      <div className="stocks-section-title">Underlying — {synd.name}</div>
-      <div className="stocks-underlying-grid">
-        <UnderlyingMetric label="Members" value={synd.memberShipIds.length.toString()} />
-        <UnderlyingMetric label="Treasury" value={`Ç${fmtBig(synd.treasury)}`} />
-        <UnderlyingMetric label="Fleet" value={`Ç${fmtBig(memberWealth)}`} />
-        <UnderlyingMetric label="Revenue" value={`Ç${fmtBig(synd.recentRevenue)}`} />
-      </div>
+    <div className="stocks-info-section">
+      <div className="stocks-info-section-title">Underlying</div>
+      <div className="stocks-info-line"><span>Fleet</span><span>{synd.memberShipIds.length.toLocaleString()} ships · Ç{fmtBig(memberWealth)}</span></div>
+      <div className="stocks-info-line"><span>Treasury</span><span className="mono">Ç{fmtBig(synd.treasury)}</span></div>
+      <div className="stocks-info-line"><span>Recent revenue</span><span className="mono">Ç{fmtBig(synd.recentRevenue)}</span></div>
+      <div className="stocks-info-line"><span>Lead ship</span><span>{lead?.name ?? "Unassigned"}</span></div>
+    </div>
+  );
+}
+
+function InfoStat({ label, value, tone = "" }: { label: string; value: string; tone?: "good" | "bad" | "" }) {
+  return (
+    <div className="stocks-info-stat">
+      <dt>{label}</dt>
+      <dd className={`mono ${tone}`}>{value}</dd>
     </div>
   );
 }
@@ -494,6 +596,7 @@ function PositionsPanel({ positions, world, focusedId, cash, docked, onSelect, o
             const pnl = unrealizedPnl(world, pos);
             const cls = pnl > 0 ? "stock-pnl-up" : pnl < 0 ? "stock-pnl-down" : "";
             const isFocused = focused?.equityId === pos.equityId;
+            const access = exchangeAccess(world, eq);
             return (
               <PositionRowFragment
                 key={pos.equityId}
@@ -504,6 +607,8 @@ function PositionsPanel({ positions, world, focusedId, cash, docked, onSelect, o
                 isFocused={isFocused}
                 cash={cash}
                 docked={docked}
+                accessOk={access.ok}
+                accessReason={access.reason}
                 onSelect={() => onSelect(pos.equityId)}
                 onSell={(qty) => onSell(pos.equityId, qty)}
                 onCover={(qty) => onCover(pos.equityId, qty)}
@@ -527,6 +632,8 @@ interface PositionRowFragmentProps {
   isFocused: boolean;
   cash: number;
   docked: boolean;
+  accessOk: boolean;
+  accessReason: string;
   onSelect: () => void;
   onSell: (qty: number) => void;
   onCover: (qty: number) => void;
@@ -535,7 +642,7 @@ interface PositionRowFragmentProps {
   onSetTakeProfit: (price: number | null) => void;
 }
 
-function PositionRowFragment({ pos, eq, pnl, pnlClass, isFocused, cash, docked, onSelect, onSell, onCover, onAbandon, onSetStopLoss, onSetTakeProfit }: PositionRowFragmentProps) {
+function PositionRowFragment({ pos, eq, pnl, pnlClass, isFocused, cash, docked, accessOk, accessReason, onSelect, onSell, onCover, onAbandon, onSetStopLoss, onSetTakeProfit }: PositionRowFragmentProps) {
   const isLong = pos.kind === "long";
   const [closeQty, setCloseQty] = useState<number>(Math.min(10, pos.shares));
   const closeProceeds = closeQty * eq.price * (1 - BROKER_FEE_RATE);
@@ -575,8 +682,8 @@ function PositionRowFragment({ pos, eq, pnl, pnlClass, isFocused, cash, docked, 
                     setQty={setCloseQty}
                     max={pos.shares}
                     costLabel={`+Ç${Math.round(closeProceeds).toLocaleString()} after fee`}
-                    disabled={!docked}
-                    disabledReason={docked ? "" : "Dock first."}
+                    disabled={!docked || !accessOk}
+                    disabledReason={!docked ? "Dock first." : !accessOk ? accessReason : ""}
                     actionLabel="Sell"
                     action="secondary"
                     onAction={() => onSell(closeQty)}
@@ -588,8 +695,8 @@ function PositionRowFragment({ pos, eq, pnl, pnlClass, isFocused, cash, docked, 
                     setQty={setCloseQty}
                     max={maxCover}
                     costLabel={maxCover <= 0 ? "Need cash for at least one share" : `Ç${Math.round(closeCost).toLocaleString()} · max ${maxCover.toLocaleString()}`}
-                    disabled={!docked || maxCover <= 0}
-                    disabledReason={!docked ? "Dock first." : maxCover <= 0 ? "Need cash to cover." : ""}
+                    disabled={!docked || !accessOk || maxCover <= 0}
+                    disabledReason={!docked ? "Dock first." : !accessOk ? accessReason : maxCover <= 0 ? "Need cash to cover." : ""}
                     actionLabel="Cover"
                     action="secondary"
                     onAction={() => onCover(closeQty)}
@@ -850,15 +957,6 @@ function Sparkline({ equity, position }: { equity: Equity; position: StockPositi
   );
 }
 
-function UnderlyingMetric({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="stocks-underlying-metric">
-      <span className="dim">{label}</span>
-      <span className="mono">{value}</span>
-    </div>
-  );
-}
-
 function Stat({ icon: Icon, label, value }: { icon: IconType; label: string; value: ReactNode }) {
   return (
     <span className="stocks-summary-item">
@@ -869,6 +967,20 @@ function Stat({ icon: Icon, label, value }: { icon: IconType; label: string; val
       </span>
     </span>
   );
+}
+
+function artCardStyle(url: string): CSSProperties {
+  return { "--card-art": `url("${url}")` } as CSSProperties;
+}
+
+function equityArtUrl(world: World, eq: Equity): string | null {
+  if (eq.kind === "station") {
+    const loc = world.locations[eq.underlyingId];
+    return loc ? stationArtUrl(loc) : null;
+  }
+  const synd = world.syndicates[eq.underlyingId];
+  const leadShip = synd?.memberShipIds.map(id => world.traders[id]).find(Boolean);
+  return leadShip ? shipArtUrl(leadShip) : null;
 }
 
 function buildRows(world: World): EquityRow[] {
@@ -916,14 +1028,53 @@ function buildRows(world: World): EquityRow[] {
   });
 }
 
+function splitRowsByAccess(world: World, rows: EquityRow[]): { reachable: EquityRow[]; far: EquityRow[] } {
+  const reachable: EquityRow[] = [];
+  const far: EquityRow[] = [];
+  for (const row of rows) {
+    if (exchangeAccess(world, row.equity).ok) reachable.push(row);
+    else far.push(row);
+  }
+  return { reachable, far };
+}
+
+function exchangeAccess(world: World, eq: Equity): { ok: boolean; label: string; reason: string } {
+  const station = equityTradeStation(eq);
+  if (!station) return { ok: true, label: "Syndicate book: network access", reason: "" };
+  const shipId = world.player?.shipIds[0];
+  const ship = shipId ? world.traders[shipId] : null;
+  const stationName = world.locations[station]?.name ?? station;
+  if (!ship) return { ok: false, label: `${stationName}: no anchor ship`, reason: "No anchor ship." };
+  const hops = equityTradeHopDistance(world, eq, ship.location);
+  if (hops != null && hops <= EXCHANGE_TRADE_MAX_HOPS) {
+    const hopLabel = hops === 0 ? "local" : `${hops} hop${hops === 1 ? "" : "s"} away`;
+    return { ok: true, label: `${stationName}: ${hopLabel}`, reason: "" };
+  }
+  return {
+    ok: false,
+    label: `${stationName}: out of range`,
+    reason: `Move within ${EXCHANGE_TRADE_MAX_HOPS} hops of ${stationName} to trade ${eq.ticker}.`,
+  };
+}
+
 function fmtPrice(n: number): string {
   if (n >= 1000) return n.toFixed(0);
   if (n >= 100) return n.toFixed(1);
   return n.toFixed(2);
 }
 
+function fmtPct(n: number): string {
+  return `${n >= 0 ? "+" : ""}${(n * 100).toFixed(2)}%`;
+}
+
 function fmtBig(n: number): string {
   if (Math.abs(n) >= 1_000_000) return (n / 1_000_000).toFixed(2) + "M";
   if (Math.abs(n) >= 1_000) return (n / 1_000).toFixed(1) + "k";
   return n.toFixed(0);
+}
+
+function goodsList(world: World, ids: string[], max = 4): string {
+  const shown = ids.slice(0, max).map(id => world.goods[id]?.name ?? id);
+  const more = ids.length > shown.length ? ` +${ids.length - shown.length}` : "";
+  return shown.length > 0 ? `${shown.join(", ")}${more}` : "None listed";
 }

@@ -13,7 +13,7 @@ import {
   travelTo,
   type TradeOption,
 } from "../sim/traders";
-import { abandonJob, acceptJob } from "../sim/jobs";
+import { abandonJob, acceptJob, collectTradeJob } from "../sim/jobs";
 import { fireCrew, hireCrew, recomputeShipStats } from "../sim/crew";
 import { abandonPosition, buyShares, coverShares, sellShares, setStopLoss, setTakeProfit, shortShares } from "../sim/stock";
 import {
@@ -123,6 +123,7 @@ interface UiState {
   refuel: (traderId: TraderId, qty?: number) => void;
   travel: (traderId: TraderId, dst: LocationId) => void;
   acceptJob: (jobId: JobId, traderId: TraderId) => void;
+  collectJob: (jobId: JobId, traderId: TraderId) => void;
   abandonJob: (jobId: JobId) => void;
   hireCrew: (traderId: TraderId, candidateId: string) => void;
   fireCrew: (traderId: TraderId, role: CrewRole) => void;
@@ -315,6 +316,11 @@ export const useStore = create<UiState>((set, get) => {
     acceptJob: (jobId, traderId) => {
       const w = get().world;
       const r = acceptJob(w, jobId, traderId);
+      persistCurrentGame({ lastError: r.ok ? null : r.reason });
+    },
+    collectJob: (jobId, traderId) => {
+      const w = get().world;
+      const r = collectTradeJob(w, jobId, traderId);
       persistCurrentGame({ lastError: r.ok ? null : r.reason });
     },
     abandonJob: (jobId) => {

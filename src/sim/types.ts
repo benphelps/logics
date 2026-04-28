@@ -298,15 +298,24 @@ export interface Syndicate {
   recentRevenue: number;
 }
 
-export type JobKind = "shortage" | "rescue";
+export type JobKind = "shortage" | "rescue" | "trade";
 export type JobTier = "low" | "medium" | "high";
 export type JobId = string;
+
+export interface TradeJobMeta {
+  equityId: EquityId;
+  ticker: string;
+  action: Extract<TradeAction, "close_long" | "cover_short">;
+  shares: number;
+  realizedPnl: number;
+  settlementKind: "profit" | "loss_forgiveness";
+}
 
 export interface Job {
   id: JobId;
   kind: JobKind;
   tier: JobTier;
-  good: GoodId;
+  good?: GoodId;
   qty: number;
   destination: LocationId;
   reward: number;
@@ -316,6 +325,7 @@ export interface Job {
   acceptedBy: TraderId | null;
   delivered: number;        // running tally of delivered qty (for partial deliveries)
   rescueTarget?: TraderId;  // for rescue jobs only — informational
+  trade?: TradeJobMeta;     // for exchange settlement jobs only
 }
 
 export interface World {

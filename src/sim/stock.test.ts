@@ -24,7 +24,9 @@ import {
   DIVIDEND_INTERVAL,
   SHORT_BORROW_RATE_PER_TICK,
   TRADE_LEDGER_MAX,
+  EXCHANGE_TRADE_MAX_HOPS,
 } from "./stock";
+import { collectTradeJob, exchangeLossForgiveness } from "./jobs";
 
 describe("stock market — initialization", () => {
   it("createWorld initializes a stock market with stations and syndicates", () => {
@@ -163,6 +165,70 @@ describe("stock market — player trading", () => {
     // Treasury gains the principal (broker fee is destroyed)
     const principal = 100 * eq.price;
     expect(market.treasury - treasuryBefore).toBeCloseTo(principal, 5);
+  });
+
+  it("station-equity sell profit posts a local settlement job instead of paying profit immediately", () => {
+    const w = createWorld();
+    const ship = w.traders[w.player!.shipIds[0]];
+    ship.funds = 1_000_000;
+    const eq = listEquities(w).find(e => e.kind === "station" && e.underlyingId === ship.location)!;
+    const shares = 20;
+    expect(buyShares(w, eq.id, shares).ok).toBe(true);
+    const entry = w.player!.positions![eq.id].avgEntryPrice;
+    eq.price = entry * 1.5;
+
+    const fundsBeforeSell = ship.funds;
+    const result = sellShares(w, eq.id, shares);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const settlement = Object.values(w.jobs).find(j => j.kind === "trade" && j.trade?.equityId === eq.id);
+    expect(settlement).toBeDefined();
+    expect(settlement!.destination).toBe(eq.underlyingId);
+    expect(settlement!.trade?.settlementKind).toBe("profit");
+    expect(result.settlementJobId).toBe(settlement!.id);
+    expect(ship.funds).toBeCloseTo(fundsBeforeSell + entry * shares, 5);
+
+    const fundsBeforeCollect = ship.funds;
+    expect(collectTradeJob(w, settlement!.id, ship.id).ok).toBe(true);
+    expect(ship.funds).toBe(fundsBeforeCollect + settlement!.reward);
+  });
+
+  it("station-equity sell loss posts only partial forgiveness", () => {
+    const w = createWorld();
+    const ship = w.traders[w.player!.shipIds[0]];
+    ship.funds = 1_000_000;
+    const eq = listEquities(w).find(e => e.kind === "station" && e.underlyingId === ship.location)!;
+    const shares = 50;
+    expect(buyShares(w, eq.id, shares).ok).toBe(true);
+    const entry = w.player!.positions![eq.id].avgEntryPrice;
+    eq.price = entry * 0.5;
+
+    const result = sellShares(w, eq.id, shares);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.realizedPnl).toBeLessThan(0);
+    const settlement = Object.values(w.jobs).find(j => j.kind === "trade" && j.trade?.equityId === eq.id);
+    expect(settlement).toBeDefined();
+    const loss = -(result.realizedPnl ?? 0);
+    expect(settlement!.trade?.settlementKind).toBe("loss_forgiveness");
+    expect(settlement!.reward).toBe(exchangeLossForgiveness(loss));
+    expect(settlement!.reward).toBeGreaterThan(0);
+    expect(settlement!.reward).toBeLessThan(loss);
+  });
+
+  it("station-equity trades require proximity to the listed station", () => {
+    const w = createWorld();
+    const ship = w.traders[w.player!.shipIds[0]];
+    ship.funds = 1_000_000;
+    w.lanes = { haven: { ironhold: 1 }, ironhold: { haven: 1 }, saffron: {} };
+    const remote = listEquities(w).find(e => e.kind === "station" && e.underlyingId === "saffron")!;
+
+    const result = buyShares(w, remote.id, 1);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toContain(`within ${EXCHANGE_TRADE_MAX_HOPS} hops`);
   });
 });
 

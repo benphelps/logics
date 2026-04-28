@@ -28,6 +28,7 @@
 import type {
   Equity,
   EquityId,
+  LocationId,
   Player,
   StockPosition,
   Syndicate,
@@ -40,6 +41,7 @@ import type {
 } from "./types";
 import { mulberry32 } from "./gen/rng";
 import { depositToTreasury } from "./economy";
+import { createTradeJob, exchangeLossForgiveness } from "./jobs";
 
 // --- tunables --------------------------------------------------------------
 
@@ -66,6 +68,7 @@ export const SHARE_PRICE_HISTORY_MAX = 60;     // capped history per equity
 // holds don't bleed out, but enough that infinitely-held shorts aren't free.
 export const SHORT_BORROW_RATE_PER_TICK = 0.0001;
 export const TRADE_LEDGER_MAX = 200;
+export const EXCHANGE_TRADE_MAX_HOPS = 3;
 
 // --- equity construction --------------------------------------------------
 
@@ -328,7 +331,7 @@ export function payoutDividends(world: World): void {
 // --- player trading actions ------------------------------------------------
 
 export type StockTradeResult =
-  | { ok: true; shares: number; cashFlow: number; fee: number; realizedPnl?: number }
+  | { ok: true; shares: number; cashFlow: number; fee: number; realizedPnl?: number; settlementJobId?: string }
   | { ok: false; reason: string };
 
 function getPlayerShip(world: World) {
@@ -383,10 +386,70 @@ function recordTrade(
   return entry;
 }
 
+function createStationTradeSettlement(
+  world: World,
+  shipId: TraderId,
+  eq: Equity,
+  action: Extract<TradeAction, "close_long" | "cover_short">,
+  shares: number,
+  realizedPnl: number,
+): string | undefined {
+  const destination = equityTradeStation(eq);
+  if (!destination) return undefined;
+  const settlementKind = realizedPnl >= 0 ? "profit" : "loss_forgiveness";
+  const reward = realizedPnl >= 0 ? realizedPnl : exchangeLossForgiveness(-realizedPnl);
+  if (reward <= 0) return undefined;
+  return createTradeJob(world, {
+    traderId: shipId,
+    destination,
+    equityId: eq.id,
+    ticker: eq.ticker,
+    action,
+    shares,
+    realizedPnl,
+    reward,
+    settlementKind,
+  })?.id;
+}
+
 interface TradeContext {
   player: Player;
   eq: Equity;
   ship: ReturnType<typeof getPlayerShip>;
+}
+
+export function equityTradeStation(eq: Equity): LocationId | null {
+  return eq.kind === "station" ? eq.underlyingId : null;
+}
+
+export function equityTradeHopDistance(world: World, eq: Equity, from: LocationId): number | null {
+  const station = equityTradeStation(eq);
+  if (!station) return 0;
+  if (from === station) return 0;
+  const hasRouteNetwork = Object.values(world.lanes).some(edges => Object.keys(edges).length > 0);
+  if (!hasRouteNetwork) return 1;
+  const seen = new Set<LocationId>([from]);
+  const queue: { id: LocationId; hops: number }[] = [{ id: from, hops: 0 }];
+  for (let i = 0; i < queue.length; i++) {
+    const current = queue[i];
+    if (current.hops >= EXCHANGE_TRADE_MAX_HOPS) continue;
+    for (const next of Object.keys(world.lanes[current.id] ?? {}) as LocationId[]) {
+      if (seen.has(next)) continue;
+      if (next === station) return current.hops + 1;
+      seen.add(next);
+      queue.push({ id: next, hops: current.hops + 1 });
+    }
+  }
+  return null;
+}
+
+function proximityBlockReason(world: World, eq: Equity, ship: NonNullable<TradeContext["ship"]>): string | null {
+  const station = equityTradeStation(eq);
+  if (!station) return null;
+  const hops = equityTradeHopDistance(world, eq, ship.location);
+  if (hops != null && hops <= EXCHANGE_TRADE_MAX_HOPS) return null;
+  const stationName = world.locations[station]?.name ?? station;
+  return `Move within ${EXCHANGE_TRADE_MAX_HOPS} hops of ${stationName} to trade ${eq.ticker}.`;
 }
 
 function preflight(world: World, equityId: EquityId, shares: number): TradeContext | { ok: false; reason: string } {
@@ -397,6 +460,8 @@ function preflight(world: World, equityId: EquityId, shares: number): TradeConte
   const ship = getPlayerShip(world);
   if (!ship) return { ok: false, reason: "No anchor ship." };
   if (ship.state !== "idle") return { ok: false, reason: "Trade only while docked." };
+  const proximityReason = proximityBlockReason(world, eq, ship);
+  if (proximityReason) return { ok: false, reason: proximityReason };
   return { player: world.player, eq, ship };
 }
 
@@ -464,15 +529,24 @@ export function sellShares(
   const realized = drawShareCashFlow(world, eq, proceedsWanted);
   const fee = realized * BROKER_FEE_RATE;
   const net = realized - fee;
-  ship!.funds += net;
 
-  // Realized P&L = (sale price - avg entry) × shares (using gross price; fee
-  // is bookkept separately for transparency).
-  const realizedPnl = (eq.price - current.avgEntryPrice) * shares - fee;
+  const basis = current.avgEntryPrice * shares;
+  const realizedPnl = net - basis;
+  let immediateCashFlow = net;
+  let settlementJobId: string | undefined;
+  if (eq.kind === "station") {
+    if (realizedPnl > 0) {
+      // Return capital now; station-side profit clears only when collected.
+      immediateCashFlow = Math.min(net, basis);
+    }
+    settlementJobId = createStationTradeSettlement(world, ship!.id, eq, "close_long", shares, realizedPnl);
+  }
+  ship!.funds += immediateCashFlow;
+
   current.shares -= shares;
   if (current.shares <= 0.0001) delete positions[equityId];
-  recordTrade(world, player, eq, "close_long", shares, eq.price, fee, net, realizedPnl, trigger);
-  return { ok: true, shares, cashFlow: net, fee, realizedPnl };
+  recordTrade(world, player, eq, "close_long", shares, eq.price, fee, immediateCashFlow, realizedPnl, trigger);
+  return { ok: true, shares, cashFlow: immediateCashFlow, fee, realizedPnl, settlementJobId };
 }
 
 // Returns the maximum cash the equity's underlying can actually pay out to a
@@ -578,10 +652,20 @@ export function coverShares(
 
   // Realized P&L for a short: (entry price - cover price) × shares - fee.
   const realizedPnl = (current.avgEntryPrice - eq.price) * shares - fee;
+  let immediateCashFlow = -total;
+  let settlementJobId: string | undefined;
+  if (eq.kind === "station") {
+    if (realizedPnl > 0) {
+      const holdback = Math.min(realizedPnl, ship!.funds);
+      ship!.funds -= holdback;
+      immediateCashFlow -= holdback;
+    }
+    settlementJobId = createStationTradeSettlement(world, ship!.id, eq, "cover_short", shares, realizedPnl);
+  }
   current.shares -= shares;
   if (current.shares <= 0.0001) delete positions[equityId];
-  recordTrade(world, player, eq, "cover_short", shares, eq.price, fee, -total, realizedPnl, trigger);
-  return { ok: true, shares, cashFlow: -total, fee, realizedPnl };
+  recordTrade(world, player, eq, "cover_short", shares, eq.price, fee, immediateCashFlow, realizedPnl, trigger);
+  return { ok: true, shares, cashFlow: immediateCashFlow, fee, realizedPnl, settlementJobId };
 }
 
 // Walk away from a position regardless of cash. Records realized P&L at the
@@ -684,12 +768,18 @@ export function checkPositionTriggers(world: World): void {
     let result: StockTradeResult;
     if (pos.kind === "long") {
       result = sellShares(world, eqId, pos.shares, trigger);
-      if (!result.ok) result = abandonPosition(world, eqId, trigger);
+      if (!result.ok && shouldAbandonAfterTriggerMiss(result.reason)) result = abandonPosition(world, eqId, trigger);
     } else {
       result = coverShares(world, eqId, pos.shares, trigger);
-      if (!result.ok) result = abandonPosition(world, eqId, trigger);
+      if (!result.ok && shouldAbandonAfterTriggerMiss(result.reason)) result = abandonPosition(world, eqId, trigger);
     }
   }
+}
+
+function shouldAbandonAfterTriggerMiss(reason: string): boolean {
+  if (reason === "Trade only while docked.") return false;
+  if (reason.startsWith("Move within ")) return false;
+  return true;
 }
 
 function triggerHit(pos: StockPosition, price: number): TriggerKind | null {

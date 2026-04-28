@@ -189,6 +189,7 @@ function targetFromGuidedPlan(guidedPlan: GuidedPlan): HintTarget {
   const buyGoods: Partial<Record<GoodId, number>> = {};
   const sellGoods = new Set<GoodId>();
   const acceptJobIds = new Set<NonNullable<HintTarget["acceptJobId"]>>();
+  const collectJobIds = new Set<JobId>();
 
   for (const hint of guidedPlan.hints) {
     const stepTarget = hintTarget(hint);
@@ -210,6 +211,7 @@ function targetFromGuidedPlan(guidedPlan: GuidedPlan): HintTarget {
     if (stepTarget.critical) target.critical = true;
     if (stepTarget.acceptJobId) acceptJobIds.add(stepTarget.acceptJobId);
     for (const jobId of stepTarget.acceptJobIds ?? []) acceptJobIds.add(jobId);
+    if (stepTarget.collectJobId) collectJobIds.add(stepTarget.collectJobId);
   }
 
   const buyEntries = (Object.keys(buyGoods) as GoodId[]).flatMap((good): [GoodId, number][] => {
@@ -237,6 +239,9 @@ function targetFromGuidedPlan(guidedPlan: GuidedPlan): HintTarget {
     if (jobList.length === 1) target.acceptJobId = jobList[0];
   }
 
+  const collectList = [...collectJobIds];
+  if (collectList.length > 0) target.collectJobId = collectList[0];
+
   return target;
 }
 
@@ -247,6 +252,7 @@ type CueTextMap = {
   sellGoods: Partial<Record<GoodId, string>>;
   travel: Partial<Record<LocationId, string>>;
   acceptJobs: Partial<Record<JobId, string>>;
+  collectJobs: Partial<Record<JobId, string>>;
   sections: {
     market?: string;
     upgrades?: string;
@@ -263,6 +269,7 @@ function emptyCueText(fallback: string): CueTextMap {
     sellGoods: {},
     travel: {},
     acceptJobs: {},
+    collectJobs: {},
     sections: {},
   };
 }
@@ -311,6 +318,11 @@ function cueTextFromGuidedPlan(guidedPlan: GuidedPlan, world: World): CueTextMap
       const text = contractCueText(planHint, jobId, world, desc);
       set(cue.acceptJobs, jobId, text);
       cue.sections.contracts ??= text;
+    }
+
+    if (stepTarget.collectJobId) {
+      set(cue.collectJobs, stepTarget.collectJobId, desc);
+      cue.sections.contracts ??= desc;
     }
   }
 
@@ -361,6 +373,7 @@ function travelCueText(hint: GuidedHint, world: World, fallback: string): string
     case "buy_for_route":
     case "route_plan":
     case "travel_to_sell":
+    case "travel_to_collect_trade_job":
       return `Travel to ${world.locations[hint.dst]?.name ?? hint.dst}. ${fallback}`;
     case "speculate":
       return `Reposition to ${world.locations[hint.via]?.name ?? hint.via}.`;
@@ -372,6 +385,7 @@ function travelCueText(hint: GuidedHint, world: World, fallback: string): string
 function contractCueText(_hint: GuidedHint, jobId: JobId, world: World, fallback: string): string {
   const job = world.jobs[jobId];
   if (!job) return fallback;
+  if (job.kind === "trade" || !job.good) return fallback;
   const goodName = world.goods[job.good]?.name ?? job.good;
   const dst = world.locations[job.destination]?.name ?? job.destination;
   return `Accept ${job.tier} ${goodName} contract to ${dst}.`;
@@ -652,7 +666,7 @@ function ContractsTab({ ship, world, loc, target, hintText, cueText, interaction
       {activeJobs.length > 0 && (
         <div className="contract-section">
           <div className="exchange-section-title">Active</div>
-          <ActiveContractsTab ship={ship} world={world} jobs={activeJobs} />
+          <ActiveContractsTab ship={ship} world={world} jobs={activeJobs} target={target} cueText={cueText} hintText={hintText} />
         </div>
       )}
       <div className="contract-section">
@@ -715,10 +729,10 @@ function localJobSort(a: Job, b: Job): number {
 function LocalJobRow({ job, world, ship, suggested, hintText, showAction, interactionLocked, onAccept }: {
   job: Job; world: World; ship: Trader; suggested: boolean; hintText: string; showAction: boolean; interactionLocked: boolean; onAccept: () => void;
 }) {
-  const good = world.goods[job.good]?.name ?? job.good;
+  const good = job.good ? world.goods[job.good]?.name ?? job.good : "Contract";
   const ticksLeft = Math.max(0, job.expiresAt - world.tick);
   const expiringSoon = ticksLeft <= 10;
-  const onHand = ship.cargo.filter(l => l.good === job.good).reduce((s, l) => s + l.qty, 0);
+  const onHand = job.good ? ship.cargo.filter(l => l.good === job.good).reduce((s, l) => s + l.qty, 0) : 0;
   const onHandTone = onHand >= job.qty ? "good" : onHand > 0 ? "warn" : "faint";
   const dst = world.locations[job.destination]?.name ?? job.destination;
   const remote = job.destination !== ship.location;
@@ -1402,7 +1416,19 @@ function targetSuggestsMarketAction(target: HintTarget): boolean {
 }
 
 function targetSuggestsContracts(target: HintTarget): boolean {
-  return target.acceptJobId != null || (target.acceptJobIds?.length ?? 0) > 0;
+  return target.acceptJobId != null || (target.acceptJobIds?.length ?? 0) > 0 || target.collectJobId != null;
+}
+
+function targetSuggestsLocalContracts(world: World, target: HintTarget, ship: Trader): boolean {
+  if (target.collectJobId) {
+    const job = world.jobs[target.collectJobId];
+    if (job?.destination === ship.location) return true;
+  }
+  const acceptIds = [
+    ...(target.acceptJobId ? [target.acceptJobId] : []),
+    ...(target.acceptJobIds ?? []),
+  ];
+  return acceptIds.some(jobId => world.jobs[jobId]?.destination === ship.location);
 }
 
 function targetSuggestsCargoAction(target: HintTarget): boolean {
@@ -1411,12 +1437,12 @@ function targetSuggestsCargoAction(target: HintTarget): boolean {
     .some(good => !isUpgradeGood(good));
 }
 
-function shouldGuardDepartureForSuggestions(target: HintTarget, destination: LocationId, ship: Trader): boolean {
+function shouldGuardDepartureForSuggestions(world: World, target: HintTarget, destination: LocationId, ship: Trader): boolean {
   const hasLocalSuggestedAction =
     targetBuyGoods(target).length > 0
     || target.sellGood != null
     || (target.sellGoods?.length ?? 0) > 0
-    || targetSuggestsContracts(target)
+    || targetSuggestsLocalContracts(world, target, ship)
     || target.refuel === true
     || (ship.maintenanceDebt ?? 0) >= MAINTENANCE_DEBT_TRAVEL_BLOCK;
   const suggestedDifferentDestination = target.travelTo != null && target.travelTo !== destination;
@@ -2777,11 +2803,16 @@ function CrewTab({ ship }: { ship: Trader }) {
 // Accepted-contract list for this ship — lives in the Cargo|Crew|Active tab
 // strip rather than in the Jobs sidebar tab. Per-ship view lets the player
 // see at-a-glance what their currently-focused ship is committed to.
-function ActiveContractsTab({ ship, world, jobs }: { ship: Trader; world: World; jobs: Job[] }) {
+function ActiveContractsTab({ ship, world, jobs, target, cueText, hintText }: {
+  ship: Trader; world: World; jobs: Job[]; target: HintTarget; cueText: CueTextMap; hintText: string;
+}) {
   const abandonJob = useStore((s) => s.abandonJob);
+  const collectJob = useStore((s) => s.collectJob);
   const sorted = [...jobs].sort((a, b) => {
     const tierRank: Record<typeof a.tier, number> = { high: 0, medium: 1, low: 2 };
-    return tierRank[a.tier] - tierRank[b.tier] || a.expiresAt - b.expiresAt;
+    return Number(b.kind === "trade") - Number(a.kind === "trade")
+      || tierRank[a.tier] - tierRank[b.tier]
+      || a.expiresAt - b.expiresAt;
   });
   return (
     <>
@@ -2816,9 +2847,13 @@ function ActiveContractsTab({ ship, world, jobs }: { ship: Trader; world: World;
               const ticksLeft = Math.max(0, j.expiresAt - world.tick);
               const expiringSoon = ticksLeft <= 10;
               const dst = world.locations[j.destination]?.name ?? j.destination;
-              const good = world.goods[j.good]?.name ?? j.good;
+              const isTradeJob = j.kind === "trade";
+              const good = isTradeJob
+                ? `${j.trade?.ticker ?? "Trade"} settlement`
+                : j.good ? world.goods[j.good]?.name ?? j.good : "Contract";
               const away = j.destination !== ship.location;
               const pct = j.qty > 0 ? Math.max(0, Math.min(100, (j.delivered / j.qty) * 100)) : 0;
+              const suggestedCollect = target.collectJobId === j.id && j.destination === ship.location;
               return (
                 <tr key={j.id} className={`contract-row contract-tier-${j.tier}`}>
                   <td><span className={`tier-badge tier-${j.tier}`}>{j.tier.toUpperCase()}</span></td>
@@ -2826,28 +2861,50 @@ function ActiveContractsTab({ ship, world, jobs }: { ship: Trader; world: World;
                     <span className="contract-title-row">
                       <span className="contract-good">{good}</span>
                       {j.kind === "rescue" && <span className="job-kind-tag">rescue</span>}
+                      {isTradeJob && (
+                        <span className="job-kind-tag">
+                          {j.trade?.settlementKind === "loss_forgiveness" ? "loss review" : "trade"}
+                        </span>
+                      )}
                     </span>
                   </td>
                   <td className="dim mono">{away ? `to ${dst}` : "here"}</td>
                   <td>
-                    <div className="contract-progress">
-                      <div className="contract-progress-bar">
-                        <div className="contract-progress-fill" style={{ width: `${pct}%` }} />
+                    {isTradeJob ? (
+                      <span className={`mono ${away ? "dim" : "good"}`}>{away ? "travel" : "ready"}</span>
+                    ) : (
+                      <div className="contract-progress">
+                        <div className="contract-progress-bar">
+                          <div className="contract-progress-fill" style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className="mono dim">{j.delivered.toFixed(0)}/{j.qty}</span>
                       </div>
-                      <span className="mono dim">{j.delivered.toFixed(0)}/{j.qty}</span>
-                    </div>
+                    )}
                   </td>
                   <td className="numeric mono good">Ç{j.reward.toLocaleString()}</td>
                   <td className={`numeric mono ${j.penalty > 0 ? "bad" : "faint"}`}>{j.penalty > 0 ? `Ç${j.penalty.toLocaleString()}` : "—"}</td>
                   <td className={`numeric mono ${expiringSoon ? "warn" : "dim"}`}>{ticksLeft}t</td>
                   <td>
-                    <button
-                      className="btn-action"
-                      onClick={() => abandonJob(j.id)}
-                      title={j.penalty > 0 ? `Abandoning costs Ç${j.penalty.toLocaleString()}` : "Abandon (no penalty)"}
-                    >
-                      <span className="btn-label">Abandon</span>
-                    </button>
+                    {isTradeJob ? (
+                      <ActionCell suggested={suggestedCollect} hintText={cueText.collectJobs[j.id] ?? hintText} label="Collect">
+                        <button
+                          className={`btn-action ${suggestedCollect ? "btn-suggested" : "primary"}`}
+                          onClick={() => collectJob(j.id, ship.id)}
+                          disabled={away}
+                          title={away ? `Collect at ${dst}` : undefined}
+                        >
+                          <span className="btn-label">Collect</span>
+                        </button>
+                      </ActionCell>
+                    ) : (
+                      <button
+                        className="btn-action"
+                        onClick={() => abandonJob(j.id)}
+                        title={j.penalty > 0 ? `Abandoning costs Ç${j.penalty.toLocaleString()}` : "Abandon (no penalty)"}
+                      >
+                        <span className="btn-label">Abandon</span>
+                      </button>
+                    )}
                   </td>
                 </tr>
               );
@@ -2970,7 +3027,11 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
     activeJobsByDestination.set(job.destination, jobs);
   }
   const contractLine = (jobs: Job[]) => {
-    const first = jobs.slice(0, 2).map(j => `${world.goods[j.good]?.name ?? j.good} ${Math.max(0, j.qty - j.delivered).toFixed(0)}`);
+    const first = jobs.slice(0, 2).map(j => {
+      if (j.kind === "trade") return `${j.trade?.ticker ?? "Trade"} settlement`;
+      const name = j.good ? world.goods[j.good]?.name ?? j.good : "Contract";
+      return `${name} ${Math.max(0, j.qty - j.delivered).toFixed(0)}`;
+    });
     const more = jobs.length > 2 ? ` +${jobs.length - 2}` : "";
     return `${jobs.length} active: ${first.join(", ")}${more}`;
   };
@@ -3036,7 +3097,7 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
             const destinationJobs = activeJobsByDestination.get(d.to) ?? [];
             const travelLabel = suggested ? target.travelLabel : undefined;
             const pinned = pinnedStations.has(d.to);
-            const departGuarded = !inTransit && d.canFly && shouldGuardDepartureForSuggestions(target, d.to, ship);
+            const departGuarded = !inTransit && d.canFly && shouldGuardDepartureForSuggestions(world, target, d.to, ship);
             const departArmed = armedDepart === d.to;
             return (
               <tr

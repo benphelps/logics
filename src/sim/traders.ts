@@ -11,7 +11,7 @@ import {
   settleSale,
   withdrawFromTreasury,
 } from "./economy";
-import { acceptJob, creditJobOnDelivery, type JobCompletionEvent } from "./jobs";
+import { acceptJob, collectTradeJob, creditJobOnDelivery, type JobCompletionEvent } from "./jobs";
 import { noteSyndicateRevenue } from "./stock";
 import { pushNote, pushTraderEvent } from "./log";
 import { effectivePerDistance, hasCrew, MAINTENANCE_DEBT_TRAVEL_BLOCK, recomputeShipStats } from "./crew";
@@ -243,6 +243,7 @@ export function listTradeOptions(
   const willRealizeUnaccepted = canUseContractCargoPlanning(world, trader);
   const jobBonusMap = new Map<string, RouteJobBonus[]>();
   for (const j of Object.values(world.jobs)) {
+    if (j.kind === "trade" || !j.good) continue;
     if (j.acceptedBy === trader.id) {
       const remaining = j.qty - j.delivered;
       if (remaining <= 0) continue;
@@ -287,6 +288,7 @@ export function listTradeOptions(
   const reservedMassByDest = new Map<LocationId, Map<GoodId, number>>();
   if (canUseContractCargoPlanning(world, trader)) {
     for (const j of Object.values(world.jobs)) {
+      if (j.kind === "trade" || !j.good) continue;
       if (j.acceptedBy !== trader.id) continue;
       const remaining = j.qty - j.delivered;
       if (remaining <= 0) continue;
@@ -595,6 +597,74 @@ function departForReposition(trader: Trader, to: LocationId, fuelNeeded: number,
   events.push({ trader: trader.id, kind: "depart", from: here, to });
 }
 
+function acceptedTradeJobs(world: World, trader: Trader) {
+  return Object.values(world.jobs)
+    .filter(j => j.kind === "trade" && j.acceptedBy === trader.id)
+    .sort((a, b) =>
+      a.expiresAt - b.expiresAt
+      || b.reward - a.reward
+      || a.destination.localeCompare(b.destination),
+    );
+}
+
+function nextHopToward(world: World, from: LocationId, dst: LocationId): { to: LocationId; dist: number } | null {
+  if (from === dst) return null;
+  const hasRouteNetwork = Object.values(world.lanes).some(edges => Object.keys(edges).length > 0);
+  if (!hasRouteNetwork) {
+    const dist = routeDistance(world, from, dst);
+    return dist == null ? null : { to: dst, dist };
+  }
+  const seen = new Set<LocationId>([from]);
+  const queue: { id: LocationId; first: LocationId | null }[] = [{ id: from, first: null }];
+  for (let i = 0; i < queue.length; i++) {
+    const current = queue[i];
+    const neighbors = Object.entries(world.lanes[current.id] ?? {})
+      .sort(([a], [b]) => a.localeCompare(b)) as [LocationId, number][];
+    for (const [to] of neighbors) {
+      if (seen.has(to)) continue;
+      const first = current.first ?? to;
+      if (to === dst) {
+        const dist = world.lanes[from]?.[first];
+        return dist == null ? null : { to: first, dist };
+      }
+      seen.add(to);
+      queue.push({ id: to, first });
+    }
+  }
+  return null;
+}
+
+function serviceTradeSettlementJob(world: World, trader: Trader, events: TraderEvent[]): boolean {
+  const jobs = acceptedTradeJobs(world, trader);
+  const job = jobs.find(j => j.destination === trader.location) ?? jobs[0];
+  if (!job) return false;
+
+  if (job.destination === trader.location) {
+    collectTradeJob(world, job.id, trader.id);
+    return true;
+  }
+
+  const ft = activeFuelType(trader);
+  const fuel = trader.currentFuel;
+  if (!ft || !fuel) {
+    events.push({ trader: trader.id, kind: isStuck(world, trader) ? "stuck" : "idle" });
+    return true;
+  }
+  const hop = nextHopToward(world, trader.location, job.destination);
+  if (!hop) {
+    events.push({ trader: trader.id, kind: "idle" });
+    return true;
+  }
+  const fuelNeeded = hop.dist * effectivePerDistance(trader, ft.perDistance);
+  if (fuelNeeded > fuel.qty + 0.001) {
+    events.push({ trader: trader.id, kind: isStuck(world, trader) ? "stuck" : "idle" });
+    return true;
+  }
+  const travelTicks = Math.max(1, Math.ceil(hop.dist / trader.speed));
+  departForReposition(trader, hop.to, fuelNeeded, travelTicks, events);
+  return true;
+}
+
 function stepTrader(world: World, trader: Trader, events: TraderEvent[], inflight: Map<string, number>): void {
   if (trader.state === "transit") {
     trader.ticksRemaining -= 1;
@@ -620,6 +690,7 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
           if (job.acceptedBy != null) continue;
           if (job.kind !== "shortage") continue;
           if (job.destination !== dst) continue;
+          if (!job.good) continue;
           if (!cargoGoods.has(job.good)) continue;
           acceptJob(world, job.id, trader.id);
         }
@@ -670,8 +741,20 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
     return;
   }
 
+  if (acceptedTradeJobs(world, trader).some(j => j.destination === trader.location)) {
+    trader.noOpportunityTicks = 0;
+    serviceTradeSettlementJob(world, trader, events);
+    return;
+  }
+
   tryRefuel(world, trader, events);
   restoreNpcOperatingFloat(world, trader);
+
+  if (acceptedTradeJobs(world, trader).length > 0) {
+    trader.noOpportunityTicks = 0;
+    serviceTradeSettlementJob(world, trader, events);
+    return;
+  }
 
   const choice = evaluateOptions(world, trader, inflight);
   if (!choice) {
@@ -720,9 +803,10 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
   let fundsLeft = trader.funds;
   if (canPreloadContracts) {
     const accs = Object.values(world.jobs)
-      .filter(j => j.acceptedBy === trader.id && j.destination === choice.to && j.good !== choice.good)
+      .filter(j => j.kind !== "trade" && j.good != null && j.acceptedBy === trader.id && j.destination === choice.to && j.good !== choice.good)
       .sort((a, b) => tierRank[a.tier] - tierRank[b.tier]);
     for (const c of accs) {
+      if (!c.good) continue;
       const remaining = c.qty - c.delivered;
       if (remaining <= 0) continue;
       const g = world.goods[c.good];

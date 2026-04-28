@@ -4,6 +4,7 @@ import { getGuidedHint, getGuidedPlan, hintTarget } from "./suggestions";
 import { MAINTENANCE_DEBT_TRAVEL_BLOCK } from "./crew";
 import { buyAtLocation } from "./traders";
 import { acceptJob } from "./jobs";
+import { buyShares, listEquities, sellShares } from "./stock";
 import { tickWorld } from "./tick";
 import type { CrewMember } from "./types";
 
@@ -443,5 +444,46 @@ describe("suggestion engine edge cases", () => {
     }
     const target = hintTarget(hint);
     expect(target.acceptJobIds?.sort()).toEqual(["j_polymer", "j_protein"]);
+  });
+
+  it("prioritizes pending exchange settlement jobs over normal trading", () => {
+    const w = createWorld();
+    const ship = playerShip(w);
+    ship.funds = 1_000_000;
+    ship.currentFuel = { good: "plasma", qty: ship.fuelCapacity };
+    const eq = listEquities(w).find(e => e.kind === "station" && e.underlyingId === "ironhold")!;
+    expect(buyShares(w, eq.id, 10).ok).toBe(true);
+    const entry = w.player!.positions![eq.id].avgEntryPrice;
+    eq.price = entry * 1.5;
+    expect(sellShares(w, eq.id, 10).ok).toBe(true);
+
+    const hint = getGuidedHint(w, ship);
+
+    expect(hint.kind).toBe("travel_to_collect_trade_job");
+    if (hint.kind === "travel_to_collect_trade_job") {
+      expect(hint.dst).toBe("ironhold");
+    }
+    const target = hintTarget(hint);
+    expect(target.travelTo).toBe("ironhold");
+    expect(target.collectJobId).toBeUndefined();
+  });
+
+  it("auto-pilot departs for exchange settlement jobs before taking other work", () => {
+    const w = createWorld();
+    const ship = playerShip(w);
+    ship.funds = 1_000_000;
+    ship.currentFuel = { good: "plasma", qty: ship.fuelCapacity };
+    assignAutoCrew(ship);
+    ship.pilot = "auto";
+    const eq = listEquities(w).find(e => e.kind === "station" && e.underlyingId === "ironhold")!;
+    expect(buyShares(w, eq.id, 10).ok).toBe(true);
+    const entry = w.player!.positions![eq.id].avgEntryPrice;
+    eq.price = entry * 1.5;
+    expect(sellShares(w, eq.id, 10).ok).toBe(true);
+
+    const report = tickWorld(w);
+    const depart = report.traderEvents.find(e => e.trader === ship.id && e.kind === "depart");
+
+    expect(depart?.to).toBe("ironhold");
   });
 });

@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import type { IconType } from "react-icons";
 import { GiCargoCrate, GiFactory, GiReceiveMoney, GiTrade, GiUpgrade, GiWallet } from "react-icons/gi";
 import { useStore } from "../store";
@@ -48,16 +48,35 @@ const CATEGORY_LABEL: Record<GoodCategory, string> = {
   upgrade: "Upgrade",
 };
 
+type CommodityTab = GoodCategory | "all";
+
+const COMMODITY_TABS: { id: CommodityTab; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "food", label: "Food" },
+  { id: "raw", label: "Raw" },
+  { id: "intermediate", label: "Parts" },
+  { id: "fuel", label: "Fuel" },
+  { id: "advanced", label: "Advanced" },
+  { id: "luxury", label: "Luxury" },
+  { id: "upgrade", label: "Upgrades" },
+];
+
 export function MarketsView() {
   const world = useStore((s) => s.world);
   const selectedGood = useStore((s) => s.selectedGood);
   const selectGood = useStore((s) => s.selectGood);
-  useStore((s) => s.tickEpoch);
+  const tickEpoch = useStore((s) => s.tickEpoch);
+  const [activeCategory, setActiveCategory] = useState<CommodityTab>("all");
 
-  const rows = useMemo(() => commodityRows(world), [world]);
-  const selectedId = selectedGood && world.goods[selectedGood] ? selectedGood : rows[0]?.good.id ?? null;
+  const allRows = useMemo(() => commodityRows(world), [world, tickEpoch]);
+  const rows = useMemo(
+    () => activeCategory === "all" ? allRows : allRows.filter(row => row.category === activeCategory),
+    [activeCategory, allRows],
+  );
+  const selectedId = selectedGood && rows.some(row => row.good.id === selectedGood) ? selectedGood : rows[0]?.good.id ?? null;
   const selected = selectedId ? rows.find(row => row.good.id === selectedId) ?? null : null;
-  const stats = useMemo(() => marketStats(rows), [rows]);
+  const stats = useMemo(() => marketStats(allRows), [allRows]);
+  const tabCounts = useMemo(() => commodityTabCounts(allRows), [allRows]);
 
   return (
     <section className="markets-view">
@@ -77,10 +96,21 @@ export function MarketsView() {
 
       <div className="markets-layout">
         <section className="commodity-board">
+          <div className="markets-card-tabs commodity-tabs">
+            {COMMODITY_TABS.map(tab => (
+              <button
+                key={tab.id}
+                className={`commodity-tab ${activeCategory === tab.id ? "active" : ""}`}
+                onClick={() => setActiveCategory(tab.id)}
+              >
+                {tab.label} <span className="commodity-tab-count">{tabCounts[tab.id]}</span>
+              </button>
+            ))}
+          </div>
           <div className="markets-panel-head">
             <div>
               <span className="markets-panel-label">Board</span>
-              <span className="dim">Aggregate sector stock, demand, and station quotes</span>
+              <span className="dim">{activeCategory === "all" ? "Aggregate sector stock, demand, and station quotes" : `${CATEGORY_LABEL[activeCategory]} quotes across every station`}</span>
             </div>
             <div className="markets-legend">
               <span><span className="market-dot short" /> short</span>
@@ -298,6 +328,13 @@ function marketStats(rows: CommodityRow[]) {
     short: rows.filter(row => row.tone === "short").length,
     upgrades: rows.filter(row => row.category === "upgrade").length,
   };
+}
+
+function commodityTabCounts(rows: CommodityRow[]): Record<CommodityTab, number> {
+  const counts = Object.fromEntries(COMMODITY_TABS.map(tab => [tab.id, 0])) as Record<CommodityTab, number>;
+  counts.all = rows.length;
+  for (const row of rows) counts[row.category] += 1;
+  return counts;
 }
 
 function formatQty(value: number): string {

@@ -1,4 +1,4 @@
-import type { GoodId, Job, JobId, JobTier, LocationId, Trader, TraderId, World } from "./types";
+import type { EquityId, GoodId, Job, JobId, JobTier, LocationId, TradeAction, Trader, TraderId, World } from "./types";
 import { pushJobAbandoned, pushJobAccepted, pushJobCompleted, pushJobExpired } from "./log";
 
 // --- tunables --------------------------------------------------------------
@@ -25,6 +25,9 @@ export const PENALTY_FRACTION_BY_TIER: Record<JobTier, number> = { low: 0, mediu
 
 // Expiry window from time of posting (ticks). High-tier jobs are urgent; low can sit.
 export const EXPIRY_TICKS_BY_TIER: Record<JobTier, number> = { low: 120, medium: 60, high: 30 };
+export const TRADE_JOB_EXPIRY_TICKS = 90;
+export const EXCHANGE_LOSS_FORGIVENESS_RATE = 0.20;
+export const EXCHANGE_LOSS_FORGIVENESS_MAX = 5_000;
 
 // Quantity = SHORTAGE_QTY_FRACTION * (target - currentStock), capped at SHORTAGE_QTY_MAX
 export const SHORTAGE_QTY_FRACTION = 0.5;
@@ -64,7 +67,7 @@ function tierForRescue(stuckTicks: number): JobTier {
 
 function buildJobIndex(world: World): Set<string> {
   const set = new Set<string>();
-  for (const j of Object.values(world.jobs)) set.add(`${j.kind}|${j.destination}|${j.good}`);
+  for (const j of Object.values(world.jobs)) set.add(`${j.kind}|${j.destination}|${j.good ?? j.id}`);
   return set;
 }
 
@@ -142,6 +145,58 @@ function sortRescueCandidates(candidates: RescueCandidate[]): RescueCandidate[] 
     || b.stuckTicks - a.stuckTicks
     || a.location.localeCompare(b.location),
   );
+}
+
+function tierForTradeReward(reward: number): JobTier {
+  if (reward >= 5_000) return "high";
+  if (reward >= 1_000) return "medium";
+  return "low";
+}
+
+export function exchangeLossForgiveness(loss: number): number {
+  if (loss <= 0) return 0;
+  return Math.round(Math.min(loss * EXCHANGE_LOSS_FORGIVENESS_RATE, EXCHANGE_LOSS_FORGIVENESS_MAX));
+}
+
+export function createTradeJob(world: World, opts: {
+  traderId: TraderId;
+  destination: LocationId;
+  equityId: EquityId;
+  ticker: string;
+  action: Extract<TradeAction, "close_long" | "cover_short">;
+  shares: number;
+  realizedPnl: number;
+  reward: number;
+  settlementKind: "profit" | "loss_forgiveness";
+}): Job | null {
+  const reward = Math.round(opts.reward);
+  if (reward <= 0 || !world.locations[opts.destination]) return null;
+  const ship = world.traders[opts.traderId];
+  if (!ship || !isPlayerShip(world, opts.traderId)) return null;
+  const job: Job = {
+    id: makeJobId(world),
+    kind: "trade",
+    tier: tierForTradeReward(reward),
+    qty: opts.shares,
+    destination: opts.destination,
+    reward,
+    penalty: 0,
+    postedTick: world.tick,
+    expiresAt: world.tick + TRADE_JOB_EXPIRY_TICKS,
+    acceptedBy: opts.traderId,
+    delivered: 0,
+    trade: {
+      equityId: opts.equityId,
+      ticker: opts.ticker,
+      action: opts.action,
+      shares: opts.shares,
+      realizedPnl: opts.realizedPnl,
+      settlementKind: opts.settlementKind,
+    },
+  };
+  world.jobs[job.id] = job;
+  pushJobAccepted(world, ship, job);
+  return job;
 }
 
 // --- generation ------------------------------------------------------------
@@ -320,12 +375,32 @@ export type JobActionResult = { ok: true } | { ok: false; reason: string };
 export function acceptJob(world: World, jobId: JobId, traderId: TraderId): JobActionResult {
   const job = world.jobs[jobId];
   if (!job) return { ok: false, reason: "Job no longer available." };
+  if (job.kind === "trade") return { ok: false, reason: "Trade settlements are assigned automatically." };
   if (job.acceptedBy != null) return { ok: false, reason: "Job already accepted." };
   const ship = world.traders[traderId];
   if (!ship) return { ok: false, reason: "Unknown ship." };
   if (!isPlayerShip(world, traderId)) return { ok: false, reason: "Only player ships can accept jobs." };
   job.acceptedBy = traderId;
   pushJobAccepted(world, ship, job);
+  return { ok: true };
+}
+
+export function collectTradeJob(world: World, jobId: JobId, traderId: TraderId): JobActionResult {
+  const job = world.jobs[jobId];
+  if (!job) return { ok: false, reason: "Settlement no longer available." };
+  if (job.kind !== "trade") return { ok: false, reason: "That job is not an exchange settlement." };
+  const ship = world.traders[traderId];
+  if (!ship) return { ok: false, reason: "Unknown ship." };
+  if (!isPlayerShip(world, traderId)) return { ok: false, reason: "Only player ships can collect exchange settlements." };
+  if (job.acceptedBy !== traderId) return { ok: false, reason: "Settlement is assigned to another ship." };
+  if (ship.state !== "idle") return { ok: false, reason: "Dock before collecting the settlement." };
+  if (ship.location !== job.destination) {
+    const dst = world.locations[job.destination]?.name ?? job.destination;
+    return { ok: false, reason: `Collect this settlement at ${dst}.` };
+  }
+  ship.funds += job.reward;
+  pushJobCompleted(world, ship, { reward: job.reward, partial: false }, job);
+  delete world.jobs[job.id];
   return { ok: true };
 }
 
@@ -372,7 +447,7 @@ export function creditJobOnDelivery(
   // first) so big urgent jobs get credited before small idle ones.
   const tierOrder: Record<JobTier, number> = { high: 0, medium: 1, low: 2 };
   const matching = Object.values(world.jobs)
-    .filter(j => j.acceptedBy === traderId && j.destination === location && j.good === good)
+    .filter(j => j.kind !== "trade" && j.good === good && j.acceptedBy === traderId && j.destination === location)
     .sort((a, b) => tierOrder[a.tier] - tierOrder[b.tier]);
 
   const ship = world.traders[traderId];

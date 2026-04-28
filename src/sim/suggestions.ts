@@ -2,7 +2,7 @@ import type { GoodId, Job, JobId, LocationId, Trader, World } from "./types";
 import { reachableNeighbors, routeDistance } from "./geometry";
 import { marketQuote, priceFor } from "./pricing";
 import { activeFuelType, listSpeculativeOptions, listTradeOptions, maintenanceTravelBlockReason, refuelManual, selectRefuelType, sellAtLocation, type TradeOption } from "./traders";
-import { acceptJob, listAvailableRescueJobs, listLocalJobs } from "./jobs";
+import { acceptJob, collectTradeJob, listAvailableRescueJobs, listLocalJobs } from "./jobs";
 import { effectivePerDistance, hasCrew } from "./crew";
 import { DOCKING_FEE_PER_CAPACITY, MAINTENANCE_PER_CAPACITY, SALES_TAX_RATE } from "./economy";
 
@@ -24,6 +24,8 @@ export type GuidedHint =
   | { kind: "refuel"; critical: boolean; reason: string }
   | { kind: "speculate"; via: LocationId; thenBuy: GoodId; thenSellAt: LocationId; netProfit: number; ticks: number }
   | { kind: "accept_job"; jobId: JobId; reason: string; expectedNet: number; ticks: number }
+  | { kind: "collect_trade_job"; jobId: JobId; reward: number; reason: string }
+  | { kind: "travel_to_collect_trade_job"; jobId: JobId; dst: LocationId; reward: number; ticks: number; reason: string }
   | { kind: "route_plan"; dst: LocationId; buys: PlannedBuy[]; acceptJobIds: JobId[]; expectedNet: number; ticks: number; reason: string; futureBuys?: PlannedBuy[]; loaded?: PlannedSell[] }
   | { kind: "job_plan"; acceptJobIds: JobId[]; sells: PlannedSell[]; expectedNet: number; ticks: number; reason: string }
   | { kind: "wait"; reason: string };
@@ -37,6 +39,7 @@ const JOB_TIER_PRIORITY = { high: 0, medium: 1, low: 2 } as const;
 
 type Candidate = { value: number; hint: GuidedHint };
 type GuidedHintMode = "advisory" | "actual";
+type CargoJob = Job & { good: GoodId };
 
 export interface GuidedPlan {
   current: GuidedHint;
@@ -55,6 +58,10 @@ function isPlayerShip(world: World, ship: Trader): boolean {
   return world.player?.shipIds.includes(ship.id) ?? false;
 }
 
+function hasJobGood(job: Job): job is CargoJob {
+  return job.kind !== "trade" && job.good != null;
+}
+
 function canRealizeUnacceptedContracts(world: World, ship: Trader): boolean {
   return isPlayerShip(world, ship)
     && (ship.pilot === "manual" || (ship.pilot === "auto" && hasCrew(ship, "captain")));
@@ -71,6 +78,89 @@ function canAffordRefuelHere(world: World, ship: Trader): boolean {
   const room = Math.max(0, ship.fuelCapacity - currentQty);
   const affordable = price > 0 ? ship.funds / price : 0;
   return Math.min(room, stock, affordable) > 0.001;
+}
+
+function acceptedTradeJobsForShip(world: World, ship: Trader): Job[] {
+  return Object.values(world.jobs)
+    .filter(j => j.kind === "trade" && j.acceptedBy === ship.id)
+    .sort((a, b) =>
+      a.expiresAt - b.expiresAt
+      || b.reward - a.reward
+      || a.destination.localeCompare(b.destination),
+    );
+}
+
+function nextHopToward(world: World, from: LocationId, dst: LocationId): { to: LocationId; dist: number } | null {
+  if (from === dst) return null;
+  const hasRouteNetwork = Object.values(world.lanes).some(edges => Object.keys(edges).length > 0);
+  if (!hasRouteNetwork) {
+    const dist = routeDistance(world, from, dst);
+    return dist == null ? null : { to: dst, dist };
+  }
+  const seen = new Set<LocationId>([from]);
+  const queue: { id: LocationId; first: LocationId | null }[] = [{ id: from, first: null }];
+  for (let i = 0; i < queue.length; i++) {
+    const current = queue[i];
+    const neighbors = Object.entries(world.lanes[current.id] ?? {})
+      .sort(([a], [b]) => a.localeCompare(b)) as [LocationId, number][];
+    for (const [to] of neighbors) {
+      if (seen.has(to)) continue;
+      const first = current.first ?? to;
+      if (to === dst) {
+        const dist = world.lanes[from]?.[first];
+        return dist == null ? null : { to: first, dist };
+      }
+      seen.add(to);
+      queue.push({ id: to, first });
+    }
+  }
+  return null;
+}
+
+function tradeSettlementHint(world: World, ship: Trader, canRefuelHere: boolean): GuidedHint | null {
+  const jobs = acceptedTradeJobsForShip(world, ship);
+  const job = jobs.find(j => j.destination === ship.location) ?? jobs[0];
+  if (!job) return null;
+  const stationName = world.locations[job.destination]?.name ?? job.destination;
+  const ticker = job.trade?.ticker ?? "trade";
+  const reward = job.reward;
+  if (ship.location === job.destination) {
+    return {
+      kind: "collect_trade_job",
+      jobId: job.id,
+      reward,
+      reason: `Collect ${ticker} exchange settlement at ${stationName} for Ç${reward.toLocaleString()}.`,
+    };
+  }
+
+  const blocked = maintenanceTravelBlockReason(ship);
+  if (blocked) return { kind: "wait", reason: blocked };
+
+  const ft = activeFuelType(ship);
+  const fuel = ship.currentFuel;
+  if (!ft || !fuel) {
+    return { kind: "wait", reason: `Exchange settlement waiting at ${stationName}, but this ship has no compatible fuel loaded.` };
+  }
+
+  const hop = nextHopToward(world, ship.location, job.destination);
+  if (!hop) return { kind: "wait", reason: `No plotted route to ${stationName} for the pending exchange settlement.` };
+  const fuelNeeded = hop.dist * effectivePerDistance(ship, ft.perDistance);
+  if (fuelNeeded > fuel.qty + 0.001) {
+    if (canRefuelHere) return { kind: "refuel", critical: true, reason: `Refuel to reach the pending ${ticker} settlement at ${stationName}.` };
+    return { kind: "wait", reason: `Pending ${ticker} settlement at ${stationName}, but fuel is too low for the next hop.` };
+  }
+  const hopName = world.locations[hop.to]?.name ?? hop.to;
+  const ticks = Math.max(1, Math.ceil(hop.dist / ship.speed));
+  return {
+    kind: "travel_to_collect_trade_job",
+    jobId: job.id,
+    dst: hop.to,
+    reward,
+    ticks,
+    reason: hop.to === job.destination
+      ? `Travel to ${stationName} and collect the ${ticker} exchange settlement for Ç${reward.toLocaleString()}.`
+      : `Travel toward ${stationName} via ${hopName} to collect the ${ticker} exchange settlement for Ç${reward.toLocaleString()}.`,
+  };
 }
 
 function buyHintFromTradeOption(option: TradeOption, acceptedJob?: Job): GuidedHint {
@@ -103,6 +193,9 @@ export function getGuidedHint(
   const canRefuelHere = canAffordRefuelHere(world, advisoryShip);
   const travelBlocked = maintenanceTravelBlockReason(advisoryShip);
 
+  const settlementHint = tradeSettlementHint(world, advisoryShip, canRefuelHere);
+  if (settlementHint) return settlementHint;
+
   // Critical fuel + fuel for sale here → refuel right now (override everything)
   if (fuel && ft) {
     const fraction = fuel.qty / advisoryShip.fuelCapacity;
@@ -127,7 +220,7 @@ export function getGuidedHint(
   // Pre-index the player's accepted jobs by (destination|good) for quick
   // lookup when scoring trade candidates. Jobs reward routes they target.
   const acceptedJobs = advisoryShip.pilot === "manual"
-    ? Object.values(world.jobs).filter(j => j.acceptedBy === advisoryShip.id)
+    ? Object.values(world.jobs).filter((j): j is CargoJob => hasJobGood(j) && j.acceptedBy === advisoryShip.id)
     : [];
   const jobByKey = new Map<string, typeof acceptedJobs[number]>();
   for (const j of acceptedJobs) jobByKey.set(`${j.destination}|${j.good}`, j);
@@ -305,6 +398,7 @@ export function getGuidedPlan(
 
 function canExpandPlanAfter(hint: GuidedHint): boolean {
   return hint.kind === "sell_here"
+    || hint.kind === "collect_trade_job"
     || hint.kind === "job_plan"
     || hint.kind === "accept_job"
     || hint.kind === "refuel";
@@ -315,6 +409,8 @@ function planHintKey(hint: GuidedHint): string {
     case "sell_here": return `${hint.kind}|${hint.good}|${Math.round(hint.qty)}`;
     case "job_plan": return `${hint.kind}|${hint.acceptJobIds.join(",")}|${hint.sells.map(s => `${s.good}:${Math.round(s.qty)}`).join(",")}`;
     case "accept_job": return `${hint.kind}|${hint.jobId}`;
+    case "collect_trade_job": return `${hint.kind}|${hint.jobId}`;
+    case "travel_to_collect_trade_job": return `${hint.kind}|${hint.jobId}|${hint.dst}`;
     case "refuel": return `${hint.kind}|${hint.critical}`;
     case "buy_for_route": return `${hint.kind}|${hint.good}|${hint.dst}|${Math.round(hint.qty)}`;
     case "travel_to_sell": return `${hint.kind}|${hint.good}|${hint.dst}|${Math.round(hint.qty)}`;
@@ -342,6 +438,8 @@ function applyPlanHint(world: World, ship: Trader, hint: GuidedHint): boolean {
     }
     case "accept_job":
       return acceptJob(world, hint.jobId, ship.id).ok;
+    case "collect_trade_job":
+      return collectTradeJob(world, hint.jobId, ship.id).ok;
     case "refuel":
       return refuelManual(world, ship).ok;
     default:
@@ -396,6 +494,8 @@ function travelFuelIntent(world: World, ship: Trader, hint: GuidedHint, buyOptio
     dst = hint.dst;
     plannedFuelNeeded = buyOptions.find(o => o.good === hint.good && o.to === hint.dst)?.fuelNeeded ?? null;
   } else if (hint.kind === "travel_to_sell") {
+    dst = hint.dst;
+  } else if (hint.kind === "travel_to_collect_trade_job") {
     dst = hint.dst;
   } else if (hint.kind === "route_plan") {
     dst = hint.dst;
@@ -485,8 +585,9 @@ function destinationLoadoutPlanCandidates(world: World, ship: Trader, drawFracti
     const spendStock = (good: GoodId, qty: number) => stockLeft.set(good, Math.max(0, stockFor(good) - qty));
 
     const jobs = Object.values(world.jobs)
-      .filter(j =>
-        j.destination === dstId
+      .filter((j): j is CargoJob =>
+        hasJobGood(j)
+        && j.destination === dstId
         && (j.acceptedBy === ship.id || (j.acceptedBy == null && j.kind === "rescue" && visibleRescues.includes(j)))
       )
       .sort((a, b) =>
@@ -606,9 +707,10 @@ function destinationLoadoutPlanCandidates(world: World, ship: Trader, drawFracti
 }
 
 function localJobPlanCandidates(world: World, ship: Trader): Candidate[] {
-  const openJobs = listLocalJobs(world, ship.location);
-  const acceptedJobs = Object.values(world.jobs).filter(j =>
-    j.acceptedBy === ship.id
+  const openJobs = listLocalJobs(world, ship.location).filter(hasJobGood);
+  const acceptedJobs = Object.values(world.jobs).filter((j): j is CargoJob =>
+    hasJobGood(j)
+    && j.acceptedBy === ship.id
     && j.destination === ship.location
   );
   const jobs = [...acceptedJobs, ...openJobs];
@@ -747,7 +849,7 @@ function localJobPlanCandidates(world: World, ship: Trader): Candidate[] {
 //      reachable neighbor and use that as the accept_job's value.
 function localJobAcceptCandidates(world: World, ship: Trader): { value: number; hint: GuidedHint }[] {
   const out: { value: number; hint: GuidedHint }[] = [];
-  const jobs = listLocalJobs(world, ship.location);
+  const jobs = listLocalJobs(world, ship.location).filter(hasJobGood);
   if (jobs.length === 0) return out;
   const hereMarket = world.markets[ship.location];
   const ft = activeFuelType(ship);
@@ -862,6 +964,7 @@ function localJobAcceptCandidates(world: World, ship: Trader): { value: number; 
     for (const job of Object.values(world.jobs)) {
       if (job.acceptedBy != null) continue;
       if (job.kind !== "shortage") continue;
+      if (!job.good) continue;
       if (job.destination === here) continue;            // local — already handled above
       const onHand = ship.cargo.filter(l => l.good === job.good).reduce((s, l) => s + l.qty, 0);
       if (onHand <= 0) continue;
@@ -912,6 +1015,7 @@ function cargoLoadedCandidates(world: World, ship: Trader): { value: number; hin
   if (canRealizeUnacceptedContracts(world, ship)) {
     for (const j of Object.values(world.jobs)) {
       if (j.acceptedBy != null || j.kind !== "shortage") continue;
+      if (!j.good) continue;
       unacceptedBonus.set(`${j.destination}|${j.good}`, {
         perUnit: j.reward / j.qty,
         remaining: j.qty,
@@ -1027,6 +1131,10 @@ export function describeHint(hint: GuidedHint, world: World): string {
     }
     case "accept_job":
       return hint.reason;
+    case "collect_trade_job":
+      return hint.reason;
+    case "travel_to_collect_trade_job":
+      return hint.reason;
     case "route_plan":
       return hint.reason;
     case "job_plan":
@@ -1051,6 +1159,7 @@ export interface HintTarget {
   critical?: boolean;
   acceptJobId?: JobId;
   acceptJobIds?: JobId[];
+  collectJobId?: JobId;
 }
 
 export function hintTarget(hint: GuidedHint): HintTarget {
@@ -1067,6 +1176,10 @@ export function hintTarget(hint: GuidedHint): HintTarget {
       return { travelTo: hint.via };
     case "accept_job":
       return { acceptJobId: hint.jobId };
+    case "collect_trade_job":
+      return { collectJobId: hint.jobId };
+    case "travel_to_collect_trade_job":
+      return { travelTo: hint.dst, travelLabel: "Trade settlement" };
     case "route_plan": {
       const buyGoods: Partial<Record<GoodId, number>> = {};
       for (const buy of hint.buys) buyGoods[buy.good] = (buyGoods[buy.good] ?? 0) + buy.qty;
