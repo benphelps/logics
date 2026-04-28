@@ -32,6 +32,7 @@ import type { GoodId, Job, JobId, LocationDef, LocationId, Trader, UpgradeSlot, 
 import "./PlayerView.css";
 
 const SHOW_DEV_SHIP_PLAN_PANEL = false;
+const SHOW_DEV_SHIP_LOG_PANEL = false;
 const GUIDANCE_LOCKED_TEXT = "Hire a navigator for guided suggestions.";
 const DEPART_SUGGESTION_GUARD_MS = 1800;
 const SUGGESTION_PULSE_MS = 3700;
@@ -570,7 +571,7 @@ function DockedView({ ship, world, loc, guidedPlan, hint, target, hintText, cueT
           hint={hint}
         />
       </div>
-      <ShipLogCard ship={ship} />
+      {SHOW_DEV_SHIP_LOG_PANEL && <ShipLogCard ship={ship} />}
     </div>
   );
 }
