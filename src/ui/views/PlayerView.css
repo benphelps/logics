@@ -1586,27 +1586,87 @@
 }
 
 .info-area-card.art-card {
-  --card-art-opacity: 0.34;
-  --card-art-height: 62%;
-  --card-art-position: center 24%;
+  --card-art-opacity: 1;
+  --card-art-height: 152px;
+  --card-art-position: center 12%;
 }
 
 .info-area-card.art-card::before {
   background-image:
-    linear-gradient(to bottom, rgba(21, 24, 29, 0.08), rgba(21, 24, 29, 0.34) 44%, rgba(21, 24, 29, 0.72) 74%, var(--ship-surface) 100%),
-    linear-gradient(90deg, rgba(21, 24, 29, 0.56), rgba(21, 24, 29, 0.22) 50%, rgba(21, 24, 29, 0.68)),
+    linear-gradient(to bottom, rgba(12, 15, 20, 0.14), rgba(12, 15, 20, 0.34) 56%, rgba(21, 24, 29, 0.88) 100%),
+    linear-gradient(90deg, rgba(12, 15, 20, 0.70), rgba(12, 15, 20, 0.24) 52%, rgba(12, 15, 20, 0.76)),
     var(--card-art);
-  filter: saturate(0.96) contrast(1.02);
+  box-shadow: inset 0 -1px rgba(138, 158, 178, 0.22), 0 1px 0 rgba(0, 0, 0, 0.28);
+  filter: saturate(1.12) contrast(1.04);
+}
+
+.info-area-card.art-card.is-entering::before {
+  animation: info-area-art-enter 105ms ease-out both;
+}
+
+.info-area-card.art-card.is-exiting::before {
+  animation: info-area-art-exit 70ms ease-in both;
+}
+
+.info-area-card.art-card .bridge-card-head {
+  min-height: 42px;
+  margin-bottom: 12px;
+}
+
+.info-area-card.art-card .bridge-card-eyebrow,
+.info-area-card.art-card .trade-helper-good,
+.info-area-card.art-card .trade-helper-meta span,
+.info-area-card.art-card .station-kind-pill,
+.info-area-card.art-card .trade-helper-suggested {
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.82), 0 0 1px rgba(0, 0, 0, 0.9);
+}
+
+.info-area-card.art-card .trade-helper-good {
+  color: #eef6ff;
+}
+
+.info-area-card.art-card .station-kind-pill,
+.info-area-card.art-card .trade-helper-suggested,
+.info-area-card.art-card .trade-helper-meta span {
+  background: transparent;
+  border-color: rgba(220, 235, 250, 0.34);
+  color: rgba(228, 238, 248, 0.86);
+}
+
+.info-area-card.art-card .trade-helper-meta {
+  min-height: 34px;
+  align-content: flex-start;
+  margin: 0 0 16px;
+  padding-bottom: 14px;
 }
 
 .info-area-tabs {
   display: flex;
   flex-wrap: wrap;
+  flex: 0 0 auto;
   gap: 2px;
+  align-items: stretch;
   box-sizing: border-box;
   width: 100%;
+  min-height: 35.2px;
   min-width: 0;
   margin: 0 0 12px;
+}
+
+.info-area-tabs.empty {
+  align-items: center;
+  opacity: 0.72;
+}
+
+.info-area-tabs-empty {
+  pointer-events: none;
+  margin-left: 8px;
+  color: rgba(142, 154, 174, 0.68);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
 }
 
 .info-area-tab {
@@ -1661,28 +1721,55 @@
   flex: 1 1 auto;
   isolation: isolate;
   min-height: 0;
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+.info-area-content.is-entering {
+  animation: info-area-panel-enter 105ms ease-out both;
+}
+
+.info-area-content.is-exiting {
+  animation: info-area-panel-exit 70ms ease-in both;
+}
+
+.info-area-values {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+}
+
+.info-area-detail {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.info-panel-frame {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.info-panel-fixed {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 auto;
+}
+
+.info-panel-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding-right: 2px;
   scrollbar-gutter: stable;
-}
-
-.info-area-content.is-entering {
-  animation: info-area-panel-enter 120ms ease-out both;
-}
-
-.info-area-content.is-exiting {
-  animation: info-area-panel-exit 80ms ease-in both;
-}
-
-.info-area-values {
-  position: relative;
-}
-
-.info-area-detail {
-  position: relative;
-  z-index: 1;
 }
 
 .info-area-values :is(
@@ -1716,7 +1803,7 @@
   .trade-helper-market-table tbody,
   .transit-progress-meta span:not(.dim):not(.transit-progress-spacer)
 ) {
-  animation: info-area-value-enter 145ms 85ms ease-out both;
+  animation: info-area-value-enter 130ms 65ms ease-out both;
 }
 
 .info-area-content.is-exiting .info-area-values :is(
@@ -1745,7 +1832,17 @@
 
 .info-area-content.is-entering .trade-helper-bar-fill,
 .info-area-content.is-entering .vital-bar-fill {
-  animation: info-area-bar-enter 210ms 75ms ease-out both;
+  animation: info-area-bar-enter 185ms 60ms ease-out both;
+}
+
+@keyframes info-area-art-enter {
+  from { opacity: 0.48; }
+  to { opacity: var(--card-art-opacity); }
+}
+
+@keyframes info-area-art-exit {
+  from { opacity: var(--card-art-opacity); }
+  to { opacity: 0.24; }
 }
 
 @keyframes info-area-panel-enter {

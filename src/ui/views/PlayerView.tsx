@@ -804,6 +804,37 @@ function artCardStyle(url: string): CSSProperties {
   return { "--card-art": `url("${url}")` } as CSSProperties;
 }
 
+function InfoPanelFrame({ eyebrow, title, badge, meta, metaClassName = "", children }: {
+  eyebrow: string;
+  title: string;
+  badge?: ReactNode;
+  meta: ReactNode;
+  metaClassName?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="info-panel-frame">
+      <div className="info-panel-fixed">
+        <header className="bridge-card-head">
+          <div className="bridge-card-title">
+            <span className="bridge-card-eyebrow station-eyebrow">{eyebrow}</span>
+            <span className="trade-helper-good">{title}</span>
+          </div>
+          {badge}
+        </header>
+
+        <div className={`trade-helper-meta ${metaClassName}`}>
+          {meta}
+        </div>
+      </div>
+
+      <div className="info-panel-scroll">
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function stationCounts(world: World, id: LocationId) {
   const traders = Object.values(world.traders);
   return {
@@ -900,22 +931,20 @@ function StationTradeHelperInfoContent({ loc, world }: { loc: LocationDef; world
     .slice(0, 5);
 
   return (
-    <>
-      <header className="bridge-card-head">
-        <div className="bridge-card-title">
-          <span className="bridge-card-eyebrow station-eyebrow">Station info</span>
-          <span className="trade-helper-good">{loc.name}</span>
-        </div>
-        <span className={`station-kind-pill station-kind-${kind}`}>{stationKindLabel(kind)}</span>
-      </header>
-
-      <div className="trade-helper-meta station-info-tags">
-        {loc.traits.faction && <span>{loc.traits.faction}</span>}
-        {subtype && <span>{stationSubtypeLabel(subtype)}</span>}
-        <span>{stationScaleLabel(scale)}</span>
-        {loc.traits.tags.map(t => <span key={t}>{t}</span>)}
-      </div>
-
+    <InfoPanelFrame
+      eyebrow="Station info"
+      title={loc.name}
+      badge={<span className={`station-kind-pill station-kind-${kind}`}>{stationKindLabel(kind)}</span>}
+      metaClassName="station-info-tags"
+      meta={(
+        <>
+          {loc.traits.faction && <span>{loc.traits.faction}</span>}
+          {subtype && <span>{stationSubtypeLabel(subtype)}</span>}
+          <span>{stationScaleLabel(scale)}</span>
+          {loc.traits.tags.map(t => <span key={t}>{t}</span>)}
+        </>
+      )}
+    >
       <dl className="trade-helper-grid station-info-grid">
         <Stat label="tech" value={`L${loc.traits.techLevel}`} />
         <Stat label="population" value={population} />
@@ -1009,7 +1038,7 @@ function StationTradeHelperInfoContent({ loc, world }: { loc: LocationDef; world
           </table>
         )}
       </div>
-    </>
+    </InfoPanelFrame>
   );
 }
 
@@ -1823,47 +1852,47 @@ function InfoAreaCard({ ship, world, loc, focus, pinnedFocuses, activePinnedKey,
 
   return (
     <section
-      className={`bridge-card trade-helper-card info-area-card ${infoArtUrl ? "art-card" : ""} ${renderedFocus == null || renderedFocus.kind === "station" ? "station-info-helper" : ""}`}
+      className={`bridge-card trade-helper-card info-area-card ${infoArtUrl ? "art-card" : ""} ${phaseClass} ${renderedFocus == null || renderedFocus.kind === "station" ? "station-info-helper" : ""}`}
       style={infoArtUrl ? artCardStyle(infoArtUrl) : undefined}
     >
-      {pinnedFocuses.length > 0 && (
-        <div
-          className="bridge-card-tabs info-area-tabs"
-          aria-label="Pinned info"
-          onClick={(event) => {
-            if (event.target === event.currentTarget) onClearFocus();
-          }}
-        >
-          {pinnedFocuses.map(pinned => {
-            const key = infoFocusKey(pinned);
-            const active = requestedKey === key || (!focus && activePinnedKey === key);
-            return (
-              <div
-                key={key}
-                className={`bridge-tab info-area-tab ${active ? "active" : ""}`}
-                title={infoFocusLabel(pinned, world)}
+      <div
+        className={`bridge-card-tabs info-area-tabs ${pinnedFocuses.length === 0 ? "empty" : ""}`}
+        aria-label="Pinned info"
+        onClick={(event) => {
+          if (event.target === event.currentTarget) onClearFocus();
+        }}
+      >
+        {pinnedFocuses.length === 0 ? (
+          <span className="info-area-tabs-empty">Click an entry to pin it</span>
+        ) : pinnedFocuses.map(pinned => {
+          const key = infoFocusKey(pinned);
+          const active = requestedKey === key || (!focus && activePinnedKey === key);
+          return (
+            <div
+              key={key}
+              className={`bridge-tab info-area-tab ${active ? "active" : ""}`}
+              title={infoFocusLabel(pinned, world)}
+            >
+              <button
+                className="info-area-tab-main"
+                onClick={() => onSelectPinned(key)}
               >
-                <button
-                  className="info-area-tab-main"
-                  onClick={() => onSelectPinned(key)}
-                >
-                  <span>{infoFocusLabel(pinned, world)}</span>
-                </button>
-                <button
-                  className="info-area-tab-close"
-                  aria-label={`Close ${infoFocusLabel(pinned, world)}`}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onClosePinned(key);
-                  }}
-                >
-                  x
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      )}
+                <span>{infoFocusLabel(pinned, world)}</span>
+              </button>
+              <button
+                className="info-area-tab-close"
+                aria-label={`Close ${infoFocusLabel(pinned, world)}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onClosePinned(key);
+                }}
+              >
+                x
+              </button>
+            </div>
+          );
+        })}
+      </div>
       <div className={`info-area-content ${phaseClass}`} onAnimationEnd={handleInfoAnimationEnd}>
         <div key={transition.renderedKey} className="info-area-values">
           <div className="info-area-detail">
@@ -1895,21 +1924,19 @@ function ShipInfoPanelContent({ ship, world }: { ship: Trader; world: World }) {
   const wage = totalCrewWage(ship);
 
   return (
-    <>
-      <header className="bridge-card-head">
-        <div className="bridge-card-title">
-          <span className="bridge-card-eyebrow station-eyebrow">Ship info</span>
-          <span className="trade-helper-good">{ship.name}</span>
-        </div>
-        <span className="station-kind-pill station-kind-frontier">{ship.pilot}</span>
-      </header>
-
-      <div className="trade-helper-meta station-info-tags">
-        <span>{ship.state}</span>
-        <span>{locationName}</span>
-        <span>{fuelName}</span>
-      </div>
-
+    <InfoPanelFrame
+      eyebrow="Ship info"
+      title={ship.name}
+      badge={<span className="station-kind-pill station-kind-frontier">{ship.pilot}</span>}
+      metaClassName="station-info-tags"
+      meta={(
+        <>
+          <span>{ship.state}</span>
+          <span>{locationName}</span>
+          <span>{fuelName}</span>
+        </>
+      )}
+    >
       {ship.state === "transit" && <TransitProgress ship={ship} world={world} />}
 
       <dl className="trade-helper-grid station-info-grid">
@@ -1948,7 +1975,7 @@ function ShipInfoPanelContent({ ship, world }: { ship: Trader; world: World }) {
           <span className="mono">Ç{Math.round(wage).toLocaleString()}/t</span>
         </div>
       </div>
-    </>
+    </InfoPanelFrame>
   );
 }
 
@@ -2040,21 +2067,18 @@ function TradeGoodInfoContent({ ship, world, loc, focus, target, hint }: {
   const lotRows = cargo ? [...cargo.lots].sort((a, b) => a.purchasedAt - b.purchasedAt).slice(0, 4) : [];
 
   return (
-    <>
-      <header className="bridge-card-head">
-        <div className="bridge-card-title">
-          <span className="bridge-card-eyebrow station-eyebrow">Trade helper</span>
-          <span className="trade-helper-good">{good.name}</span>
-        </div>
-        {isSuggested && <span className="trade-helper-suggested">suggested</span>}
-      </header>
-
-      <div className="trade-helper-meta">
-        <span>{good.category}</span>
-        <span>{good.weight.toFixed(1)} mass/u</span>
-        <span>{cargoFocused ? "cargo lot" : hint.kind.replace(/_/g, " ")}</span>
-      </div>
-
+    <InfoPanelFrame
+      eyebrow="Trade helper"
+      title={good.name}
+      badge={isSuggested ? <span className="trade-helper-suggested">suggested</span> : null}
+      meta={(
+        <>
+          <span>{good.category}</span>
+          <span>{good.weight.toFixed(1)} mass/u</span>
+          <span>{cargoFocused ? "cargo lot" : hint.kind.replace(/_/g, " ")}</span>
+        </>
+      )}
+    >
       <div className="trade-helper-stock">
         <div className="trade-helper-stock-head">
           <span>Station stock</span>
@@ -2222,7 +2246,7 @@ function TradeGoodInfoContent({ ship, world, loc, focus, target, hint }: {
           </div>
         )}
       </div>
-    </>
+    </InfoPanelFrame>
   );
 }
 
