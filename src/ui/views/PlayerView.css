@@ -2587,11 +2587,28 @@
   color: var(--text);
 }
 
+.travel-table tbody tr.travel-current-location {
+  background: rgba(31, 111, 168, 0.018);
+}
+
+.travel-table tbody tr.travel-is-poi {
+  background: rgba(31, 111, 168, 0.045);
+}
+
+.travel-table tbody tr.travel-is-poi td:first-child {
+  box-shadow: inset 3px 0 0 rgba(157, 215, 255, 0.42);
+}
+
 .travel-dest-cell {
   display: flex;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+}
+
+.travel-dest-title-poi {
+  color: #d8efff;
+  text-decoration-color: rgba(157, 215, 255, 0.78);
 }
 
 .travel-dest-name {
@@ -2612,20 +2629,51 @@
   text-overflow: ellipsis;
 }
 
-.travel-contract-pill {
+.travel-poi-label,
+.travel-current-label {
   display: inline-flex;
   align-items: center;
+  gap: 5px;
   height: 16px;
-  padding: 0 6px;
-  border: 1px solid rgba(79, 182, 255, 0.32);
-  border-radius: 999px;
-  background: rgba(79, 182, 255, 0.08);
+  min-width: 0;
   color: #9dd7ff;
   font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-weight: 750;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   flex-shrink: 0;
+}
+
+.travel-poi-label::before,
+.travel-current-label::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 8px rgba(157, 215, 255, 0.44);
+}
+
+.travel-current-label {
+  color: var(--text-faint);
+}
+
+.travel-current-label::before {
+  box-shadow: none;
+}
+
+.travel-current-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 26px;
+  color: var(--text-faint);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  text-transform: uppercase;
 }
 
 .travel-table td:last-child {

@@ -3015,16 +3015,32 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
     return `${jobs.length} active: ${first.join(", ")}${more}`;
   };
 
-  const dests = reachableNeighbors(world, routeFrom)
+  const neighborDests = reachableNeighbors(world, routeFrom)
     .map(({ to, dist }) => {
       const dst = world.locations[to];
       const fuelNeeded = ft ? dist * effectivePerDistance(ship, ft.perDistance) : 0;
       const fuelCost = ft ? fuelNeeded * (market.prices[ft.good] ?? 0) : 0;
       const travelTicks = Math.max(1, Math.ceil(dist / ship.speed));
       const canFly = ft != null && fuel >= fuelNeeded;
-      return { to, name: dst?.name ?? to, dist, fuelNeeded, fuelCost, travelTicks, canFly };
+      return { to, name: dst?.name ?? to, dist, fuelNeeded, fuelCost, travelTicks, canFly, isCurrent: false };
     })
     .sort((a, b) => a.dist - b.dist);
+  const currentLocation = world.locations[routeFrom];
+  const dests = currentLocation
+    ? [
+        {
+          to: routeFrom,
+          name: currentLocation.name,
+          dist: 0,
+          fuelNeeded: 0,
+          fuelCost: 0,
+          travelTicks: 0,
+          canFly: false,
+          isCurrent: true,
+        },
+        ...neighborDests,
+      ]
+    : neighborDests;
   const travelSuggested = !inTransit && manualActions && dests.some(d => target.travelTo === d.to && d.canFly);
   const travelHintText = target.travelTo ? cueText.travel[target.travelTo] ?? cueText.sections.travel ?? hintText : hintText;
   const quickTravelTab = inTransit && manualActions ? (
@@ -3039,7 +3055,7 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
   const travelTitle = inTransit ? "Arrival route" : "Stations";
   const travelSubtitle = inTransit
     ? `In transit to ${world.locations[ship.destination ?? loc.id]?.name ?? loc.name} / ${ship.ticksRemaining} tick${ship.ticksRemaining === 1 ? "" : "s"} remaining`
-    : `${dests.length} reachable station${dests.length === 1 ? "" : "s"}, departing ${world.locations[routeFrom]?.name ?? loc.name}`;
+    : `${neighborDests.length} reachable station${neighborDests.length === 1 ? "" : "s"}, departing ${world.locations[routeFrom]?.name ?? loc.name}`;
 
   return (
     <section className="bridge-card travel-card">
@@ -3073,19 +3089,21 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
             const destinationJobs = activeJobsByDestination.get(d.to) ?? [];
             const travelLabel = suggested ? target.travelLabel : undefined;
             const pinned = pinnedStations.has(d.to);
-            const departGuarded = !inTransit && d.canFly && shouldGuardDepartureForSuggestions(world, target, d.to, ship);
+            const isCurrent = d.isCurrent === true;
+            const isPoi = travelLabel != null;
+            const departGuarded = !isCurrent && !inTransit && d.canFly && shouldGuardDepartureForSuggestions(world, target, d.to, ship);
             const departArmed = armedDepart === d.to;
             return (
               <tr
                 key={d.to}
-                className={destinationJobs.length > 0 ? "travel-has-contract" : ""}
+                className={`${isCurrent ? "travel-current-location" : ""} ${isPoi ? "travel-is-poi" : ""} ${destinationJobs.length > 0 ? "travel-has-contract" : ""}`}
                 aria-selected={selectedStation === d.to}
               >
                 <td>
                   <div className="travel-dest-cell">
                     <button
                       type="button"
-                      className="row-title-with-pin travel-dest-title info-focus-trigger"
+                      className={`row-title-with-pin travel-dest-title info-focus-trigger ${isPoi ? "travel-dest-title-poi" : ""}`}
                       aria-pressed={pinned}
                       onMouseEnter={() => onHoverStation(d.to)}
                       onMouseLeave={() => onHoverStation(null)}
@@ -3096,47 +3114,52 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
                       <span className="travel-dest-name">{d.name}</span>
                       {pinned && <MdPushPin className="ui-icon row-pin-icon" aria-hidden="true" focusable="false" />}
                     </button>
-                    {(travelLabel || destinationJobs.length > 0) && (
+                    {(isCurrent || travelLabel || destinationJobs.length > 0) && (
                       <span className="travel-contract-line">
-                        {travelLabel && <span className="travel-contract-pill">{travelLabel}</span>}
+                        {isCurrent && <span className="travel-current-label">Current location</span>}
+                        {travelLabel && <span className="travel-poi-label">{travelLabel}</span>}
                         {destinationJobs.length > 0 && <span>{contractLine(destinationJobs)}</span>}
                       </span>
                     )}
                   </div>
                 </td>
                 <td className="numeric mono">{d.dist.toFixed(1)}</td>
-                <td className={`numeric mono ${d.canFly ? "" : "bad"}`}>{d.fuelNeeded.toFixed(1)}</td>
-                <td className="numeric mono">{d.travelTicks}t</td>
+                <td className={`numeric mono ${!isCurrent && !d.canFly ? "bad" : isCurrent ? "dim" : ""}`}>{isCurrent ? "—" : d.fuelNeeded.toFixed(1)}</td>
+                <td className={`numeric mono ${isCurrent ? "dim" : ""}`}>{isCurrent ? "now" : `${d.travelTicks}t`}</td>
                 {manualActions && (
                   <td>
-                    <ActionCell suggested={!inTransit && suggested && d.canFly} hintText={cueText.travel[d.to] ?? hintText}>
-                      <button
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          if (departGuarded && !departArmed) {
-                            setArmedDepart(d.to);
-                            onPulseSuggestions();
-                            if (departGuardTimer.current != null) window.clearTimeout(departGuardTimer.current);
-                            departGuardTimer.current = window.setTimeout(() => {
-                              setArmedDepart(current => current === d.to ? null : current);
+                    {isCurrent ? (
+                      <span className="travel-current-badge">Here</span>
+                    ) : (
+                      <ActionCell suggested={!inTransit && suggested && d.canFly} hintText={cueText.travel[d.to] ?? hintText}>
+                        <button
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            if (departGuarded && !departArmed) {
+                              setArmedDepart(d.to);
+                              onPulseSuggestions();
+                              if (departGuardTimer.current != null) window.clearTimeout(departGuardTimer.current);
+                              departGuardTimer.current = window.setTimeout(() => {
+                                setArmedDepart(current => current === d.to ? null : current);
+                                departGuardTimer.current = null;
+                              }, DEPART_SUGGESTION_GUARD_MS);
+                              return;
+                            }
+                            if (departGuardTimer.current != null) {
+                              window.clearTimeout(departGuardTimer.current);
                               departGuardTimer.current = null;
-                            }, DEPART_SUGGESTION_GUARD_MS);
-                            return;
-                          }
-                          if (departGuardTimer.current != null) {
-                            window.clearTimeout(departGuardTimer.current);
-                            departGuardTimer.current = null;
-                          }
-                          setArmedDepart(null);
-                          travel(ship.id, d.to);
-                        }}
-                        disabled={inTransit || !d.canFly}
-                        className={`btn-action ${!inTransit && suggested && d.canFly ? "btn-suggested" : ""} ${departArmed ? "depart-armed" : ""}`}
-                        title={inTransit ? "Arrive before plotting another trip" : d.canFly ? departArmed ? "Click again to depart with suggested actions still pending" : "" : "Insufficient fuel for this trip"}
-                      >
-                        <span className="btn-label">{departArmed ? "Confirm" : "Depart"}</span>
-                      </button>
-                    </ActionCell>
+                            }
+                            setArmedDepart(null);
+                            travel(ship.id, d.to);
+                          }}
+                          disabled={inTransit || !d.canFly}
+                          className={`btn-action ${!inTransit && suggested && d.canFly ? "btn-suggested" : ""} ${departArmed ? "depart-armed" : ""}`}
+                          title={inTransit ? "Arrive before plotting another trip" : d.canFly ? departArmed ? "Click again to depart with suggested actions still pending" : "" : "Insufficient fuel for this trip"}
+                        >
+                          <span className="btn-label">{departArmed ? "Confirm" : "Depart"}</span>
+                        </button>
+                      </ActionCell>
+                    )}
                   </td>
                 )}
               </tr>
