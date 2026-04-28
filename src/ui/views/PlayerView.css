@@ -1030,6 +1030,8 @@
 }
 
 .upgrade-table .col-source { width: 72px; }
+.upgrade-table .col-tier { width: 56px; }
+.upgrade-table .col-role { width: 112px; }
 .upgrade-table .col-action { width: 118px; }
 
 .upgrade-table th {
@@ -1059,12 +1061,11 @@
 
 .upgrade-table .icon-label {
   max-width: 100%;
+  white-space: nowrap;
 }
 
-.upgrade-slots-table td:nth-child(2),
-.upgrade-slots-table td:nth-child(3),
-.upgrade-offers-table td:nth-child(2),
-.upgrade-offers-table td:nth-child(3) {
+.upgrade-name,
+.upgrade-effect {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1089,10 +1090,9 @@
   font-weight: 550;
 }
 
-.upgrade-stars {
-  color: var(--warn);
-  font-size: 10px;
-  letter-spacing: 0;
+.upgrade-effect {
+  color: var(--text-dim);
+  font-size: 11px;
 }
 
 .upgrade-offer-title {
@@ -1242,10 +1242,6 @@
 .jobs-table .col-dest { width: auto; }
 .jobs-table .col-progress { width: 56px; }
 
-.job-row.tier-high   td:first-child { box-shadow: inset 3px 0 0 #d04848; }
-.job-row.tier-medium td:first-child { box-shadow: inset 3px 0 0 #c8a23a; }
-.job-row.tier-low    td:first-child { box-shadow: inset 3px 0 0 #406070; }
-
 .job-row.job-row-active {
   background: rgba(80, 160, 220, 0.04);
 }
@@ -1296,16 +1292,8 @@
 .jobs-table.contract-table .col-action { width: 96px; }
 .jobs-table.contract-table .col-progress { width: 118px; }
 
-.contract-row.contract-tier-high td:first-child {
-  box-shadow: inset 3px 0 0 #d04848;
-}
-
-.contract-row.contract-tier-medium td:first-child {
-  box-shadow: inset 3px 0 0 #c8a23a;
-}
-
-.contract-row.contract-tier-low td:first-child {
-  box-shadow: inset 3px 0 0 #406070;
+.jobs-table.contract-table {
+  margin-top: 0;
 }
 
 .contract-title-row {

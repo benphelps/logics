@@ -26,7 +26,7 @@ import { effectivePerDistance, hasCrew, totalCrewWage } from "../../sim/crew";
 import { MAINTENANCE_DEBT_TRAVEL_BLOCK } from "../../sim/crew";
 import { listHiresAt } from "../../sim/hires";
 import { selectRefuelType } from "../../sim/traders";
-import { UPGRADE_SLOTS, installedUpgrade, isUpgradeGood, upgradeDef, upgradeEffectText, upgradeStars } from "../../sim/upgrades";
+import { UPGRADE_SLOTS, installedUpgrade, isUpgradeGood, upgradeDef, upgradeEffectText } from "../../sim/upgrades";
 import type { CrewModifiers, CrewRole } from "../../sim/types";
 import type { GoodId, Job, JobId, LocationDef, LocationId, Trader, UpgradeSlot, World } from "../../sim/types";
 import "./PlayerView.css";
@@ -405,13 +405,13 @@ function TabSuggestionCue({ show, hintText }: { show?: boolean; hintText?: strin
   );
 }
 
-function SingleTabHeader({ label, count, icon, suggested, hintText, trailing }: {
-  label: string; count?: number; icon?: IconType; suggested?: boolean; hintText?: string; trailing?: ReactNode;
+function SingleTabHeader({ label, count, suggested, hintText, trailing }: {
+  label: string; count?: number; suggested?: boolean; hintText?: string; trailing?: ReactNode;
 }) {
   return (
     <div className={`bridge-card-tabs single-tab-header ${trailing ? "" : "bridge-card-tabs-static"}`}>
       <span className={`bridge-tab single-tab-main active ${suggested ? "has-suggestion" : ""}`} title={suggested ? hintText : undefined}>
-        {icon ? <IconLabel icon={icon}>{label}</IconLabel> : label}
+        {label}
         {count != null && <span className="bridge-tab-count">{count}</span>}
         <TabSuggestionCue show={suggested} hintText={hintText} />
       </span>
@@ -1412,7 +1412,7 @@ function StationExchangeCard({ ship, world, loc, target, hintText, cueText, sele
             onClick={() => setTab("markets")}
             title={marketsSuggested ? marketHintText : undefined}
           >
-            <IconLabel icon={GiTrade}>Markets</IconLabel> <span className="bridge-tab-count">{marketGoodsCount}</span>
+            Markets <span className="bridge-tab-count">{marketGoodsCount}</span>
             <TabSuggestionCue show={marketsSuggested} hintText={marketHintText} />
           </button>
           <button
@@ -1420,18 +1420,18 @@ function StationExchangeCard({ ship, world, loc, target, hintText, cueText, sele
             onClick={() => setTab("upgrades")}
             title={upgradesSuggested ? upgradeHintText : undefined}
           >
-            <IconLabel icon={GiAutoRepair}>Upgrades</IconLabel> <span className="bridge-tab-count">{upgradeCount}</span>
+            Upgrades <span className="bridge-tab-count">{upgradeCount}</span>
             <TabSuggestionCue show={upgradesSuggested} hintText={upgradeHintText} />
           </button>
           <button className={`bridge-tab ${tab === "offers" ? "active" : ""}`} onClick={() => setTab("offers")}>
-            <IconLabel icon={GiAstronautHelmet}>Offers</IconLabel> <span className="bridge-tab-count">{offers.length}</span>
+            Offers <span className="bridge-tab-count">{offers.length}</span>
           </button>
           <button
             className={`bridge-tab ${tab === "contracts" ? "active" : ""} ${contractsSuggested ? "has-suggestion" : ""}`}
             onClick={() => setTab("contracts")}
             title={contractsSuggested ? contractHintText : undefined}
           >
-            <IconLabel icon={GiContract}>Contracts</IconLabel> <span className="bridge-tab-count">{contractCount}</span>
+            Contracts <span className="bridge-tab-count">{contractCount}</span>
             <TabSuggestionCue show={contractsSuggested} hintText={contractHintText} />
           </button>
         </div>
@@ -2147,7 +2147,7 @@ function ShipCargoTabs({ ship, world, loc, groups, inTransit, target, hintText, 
           onClick={() => setTab("cargo")}
           title={cargoSuggested ? cargoHintText : `${cargoPct.toFixed(0)}% cargo capacity used`}
         >
-          <IconLabel icon={GiCargoCrate}>Cargo</IconLabel>
+          Cargo
           <span className="bridge-tab-count">{cargoUsed.toFixed(0)}/{ship.capacity}</span>
           <TabSuggestionCue show={cargoSuggested} hintText={cargoHintText} />
         </button>
@@ -2155,13 +2155,13 @@ function ShipCargoTabs({ ship, world, loc, groups, inTransit, target, hintText, 
           className={`bridge-tab ${tab === "upgrades" ? "active" : ""}`}
           onClick={() => setTab("upgrades")}
         >
-          <IconLabel icon={GiAutoRepair}>Upgrades</IconLabel> <span className="bridge-tab-count">{installedCount}/5</span>
+          Upgrades <span className="bridge-tab-count">{installedCount}/5</span>
         </button>
         <button
           className={`bridge-tab ${tab === "crew" ? "active" : ""}`}
           onClick={() => setTab("crew")}
         >
-          <IconLabel icon={GiAstronautHelmet}>Crew</IconLabel> <span className="bridge-tab-count">{crewCount}/3</span>
+          Crew <span className="bridge-tab-count">{crewCount}/3</span>
         </button>
       </div>
       {tab === "cargo" && (
@@ -2206,8 +2206,8 @@ function compareUpgradeGoods(a: string, b: string): number {
   const da = upgradeDef(a);
   const db = upgradeDef(b);
   if (!da || !db) return a.localeCompare(b);
-  return UPGRADE_SLOT_RANK[da.slot] - UPGRADE_SLOT_RANK[db.slot]
-    || da.tier - db.tier
+  return da.tier - db.tier
+    || UPGRADE_SLOT_RANK[da.slot] - UPGRADE_SLOT_RANK[db.slot]
     || da.name.localeCompare(db.name);
 }
 
@@ -2222,12 +2222,14 @@ function ShipUpgradesTab({ ship }: { ship: Trader }) {
     <div className="upgrades-tab">
       <table className="upgrade-table upgrade-slots-table">
         <colgroup>
+          <col className="col-tier" />
           <col className="col-role" />
           <col />
           <col />
         </colgroup>
         <thead>
           <tr>
+            <th>Tier</th>
             <th>Slot</th>
             <th>Installed</th>
             <th>Effect</th>
@@ -2239,18 +2241,16 @@ function ShipUpgradesTab({ ship }: { ship: Trader }) {
             const Icon = UPGRADE_SLOT_ICONS[slot];
             return (
               <tr key={slot} className="upgrade-slot-row">
+                <td>{def ? <span className={`tier-badge tier-${tierClass(def.tier)}`}>T{def.tier}</span> : <span className="faint">—</span>}</td>
                 <td className="dim"><IconLabel icon={Icon}>{label}</IconLabel></td>
                 <td>
                   {def ? (
-                    <>
-                      <span className="upgrade-name">{def.name}</span>
-                      <span className="upgrade-stars mono"> {upgradeStars(def.tier)}</span>
-                    </>
+                    <span className="upgrade-name">{def.name}</span>
                   ) : (
                     <span className="faint">open</span>
                   )}
                 </td>
-                <td className="dim">{def ? upgradeEffectText(def) : "No modifier"}</td>
+                <td className="dim upgrade-effect">{def ? upgradeEffectText(def) : "No modifier"}</td>
               </tr>
             );
           })}
@@ -2260,25 +2260,29 @@ function ShipUpgradesTab({ ship }: { ship: Trader }) {
       <div className="upgrade-offer-title dim">Cargo modules</div>
       <table className="upgrade-table upgrade-offers-table">
         <colgroup>
+          <col className="col-tier" />
           <col className="col-source" />
           <col />
           <col className="col-role" />
+          <col />
           <col className="col-num" />
           <col className="col-action" />
         </colgroup>
         <thead>
           <tr>
+            <th>Tier</th>
             <th>Source</th>
             <th>Module</th>
             <th>Slot</th>
-            <th className="numeric">Cost</th>
+            <th>Effect</th>
+            <th className="numeric">Qty</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
           {cargoUpgrades.length === 0 ? (
             <tr>
-              <td colSpan={5} className="upgrade-row-empty">
+              <td colSpan={7} className="upgrade-row-empty">
                 No upgrade modules in cargo.
               </td>
             </tr>
@@ -2296,13 +2300,13 @@ function ShipUpgradesTab({ ship }: { ship: Trader }) {
                     : `Install ${def.name} from cargo`;
                 return (
                   <tr key={`cargo-${group.good}`} className="upgrade-offer-row">
+                    <td><span className={`tier-badge tier-${tierClass(def.tier)}`}>T{def.tier}</span></td>
                     <td><span className="upgrade-source-pill">Cargo</span></td>
                     <td>
                       <span className="upgrade-name">{def.name}</span>
-                      <span className="upgrade-stars mono"> {upgradeStars(def.tier)}</span>
-                      <span className="dim"> · {upgradeEffectText(def)}</span>
                     </td>
                     <td className="dim"><IconLabel icon={Icon}>{UPGRADE_SLOTS.find(s => s.slot === def.slot)?.label ?? def.slot}</IconLabel></td>
+                    <td className="dim upgrade-effect">{upgradeEffectText(def)}</td>
                     <td className="numeric mono dim">x{group.totalQty.toFixed(0)}</td>
                     <td>
                       <button
@@ -2342,16 +2346,20 @@ function StationUpgradePurchaseTab({ ship, world, loc, target, hintText, cueText
   return (
     <table className="upgrade-table upgrade-offers-table">
         <colgroup>
+          <col className="col-tier" />
           <col />
           <col className="col-role" />
+          <col />
           <col className="col-num" />
           <col className="col-num" />
           <col className="col-action" />
         </colgroup>
         <thead>
           <tr>
+            <th>Tier</th>
             <th>Module</th>
             <th>Slot</th>
+            <th>Effect</th>
             <th className="numeric">Stock</th>
             <th className="numeric">Cost</th>
             <th></th>
@@ -2360,7 +2368,7 @@ function StationUpgradePurchaseTab({ ship, world, loc, target, hintText, cueText
         <tbody>
           {stationUpgradeIds.length === 0 ? (
             <tr>
-              <td colSpan={5} className="upgrade-row-empty">
+              <td colSpan={7} className="upgrade-row-empty">
                 No upgrade modules stocked at this station.
               </td>
             </tr>
@@ -2386,12 +2394,12 @@ function StationUpgradePurchaseTab({ ship, world, loc, target, hintText, cueText
                       : `Buy ${def.name} into cargo`;
               return (
                 <tr key={goodId} className="upgrade-offer-row">
+                  <td><span className={`tier-badge tier-${tierClass(def.tier)}`}>T{def.tier}</span></td>
                   <td>
                     <span className="upgrade-name">{def.name}</span>
-                    <span className="upgrade-stars mono"> {upgradeStars(def.tier)}</span>
-                    <span className="dim"> · {upgradeEffectText(def)}</span>
                   </td>
                   <td className="dim"><IconLabel icon={Icon}>{UPGRADE_SLOTS.find(s => s.slot === def.slot)?.label ?? def.slot}</IconLabel></td>
+                  <td className="dim upgrade-effect">{upgradeEffectText(def)}</td>
                   <td className="numeric mono">{stock.toFixed(0)}</td>
                   <td className="numeric mono">Ç{Math.round(price).toLocaleString()}</td>
                   <td>
@@ -2868,7 +2876,7 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
         }}
       />
       <header className="bridge-card-head">
-        <SingleTabHeader label="Travel" icon={GiPathDistance} suggested={travelSuggested} hintText={travelHintText} trailing={quickTravelTab} />
+        <SingleTabHeader label="Travel" suggested={travelSuggested} hintText={travelHintText} trailing={quickTravelTab} />
       </header>
       <table className={`travel-table ${!manualActions ? "travel-table-readonly" : ""} ${inTransit ? "transit-preview-content" : ""}`}>
         <colgroup>
