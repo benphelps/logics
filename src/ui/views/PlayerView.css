@@ -1621,6 +1621,158 @@
   color: var(--text);
 }
 
+.info-area-content {
+  position: relative;
+  isolation: isolate;
+}
+
+.info-area-content.is-entering {
+  animation: info-area-panel-enter 120ms ease-out both;
+}
+
+.info-area-content.is-exiting {
+  animation: info-area-panel-exit 80ms ease-in both;
+}
+
+.info-area-values {
+  position: relative;
+}
+
+.info-area-detail {
+  position: relative;
+  z-index: 1;
+}
+
+.info-area-values :is(
+  .trade-helper-good,
+  .trade-helper-suggested,
+  .trade-helper-meta span,
+  .cargo-stat dd,
+  .trade-helper-stock-head span:last-child,
+  .trade-helper-line > span:last-child,
+  .trade-helper-flow span,
+  .station-flow-pills span,
+  .trade-helper-contract,
+  .trade-helper-note,
+  .trade-helper-market-table tbody,
+  .transit-progress-meta span:not(.dim):not(.transit-progress-spacer)
+) {
+  animation: info-area-value-refresh 95ms ease-out both;
+}
+
+.info-area-content.is-entering .info-area-values :is(
+  .trade-helper-good,
+  .trade-helper-suggested,
+  .trade-helper-meta span,
+  .cargo-stat dd,
+  .trade-helper-stock-head span:last-child,
+  .trade-helper-line > span:last-child,
+  .trade-helper-flow span,
+  .station-flow-pills span,
+  .trade-helper-contract,
+  .trade-helper-note,
+  .trade-helper-market-table tbody,
+  .transit-progress-meta span:not(.dim):not(.transit-progress-spacer)
+) {
+  animation: info-area-value-enter 145ms 85ms ease-out both;
+}
+
+.info-area-content.is-exiting .info-area-values :is(
+  .trade-helper-good,
+  .trade-helper-suggested,
+  .trade-helper-meta span,
+  .cargo-stat dd,
+  .trade-helper-stock-head span:last-child,
+  .trade-helper-line > span:last-child,
+  .trade-helper-flow span,
+  .station-flow-pills span,
+  .trade-helper-contract,
+  .trade-helper-note,
+  .trade-helper-market-table tbody,
+  .transit-progress-meta span:not(.dim):not(.transit-progress-spacer)
+) {
+  animation: none;
+}
+
+.info-area-values .trade-helper-bar-fill,
+.info-area-values .vital-bar-fill {
+  transform-origin: left center;
+  transition: width 180ms ease-out;
+  animation: info-area-bar-refresh 140ms ease-out both;
+}
+
+.info-area-content.is-entering .trade-helper-bar-fill,
+.info-area-content.is-entering .vital-bar-fill {
+  animation: info-area-bar-enter 210ms 75ms ease-out both;
+}
+
+@keyframes info-area-panel-enter {
+  from { opacity: 0.78; }
+  to { opacity: 1; }
+}
+
+@keyframes info-area-panel-exit {
+  from { opacity: 1; }
+  to { opacity: 0.32; }
+}
+
+@keyframes info-area-value-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes info-area-value-refresh {
+  from { opacity: 0.52; }
+  to { opacity: 1; }
+}
+
+@keyframes info-area-bar-enter {
+  from {
+    opacity: 0;
+    transform: scaleX(0);
+  }
+  to {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+@keyframes info-area-bar-refresh {
+  from {
+    opacity: 0.55;
+    transform: scaleX(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .info-area-content.is-entering,
+  .info-area-content.is-exiting,
+  .info-area-values :is(
+    .trade-helper-good,
+    .trade-helper-suggested,
+    .trade-helper-meta span,
+    .cargo-stat dd,
+    .trade-helper-stock-head span:last-child,
+    .trade-helper-line > span:last-child,
+    .trade-helper-flow span,
+    .station-flow-pills span,
+    .trade-helper-contract,
+    .trade-helper-note,
+    .trade-helper-market-table tbody,
+    .transit-progress-meta span:not(.dim):not(.transit-progress-spacer)
+  ),
+  .info-area-values .trade-helper-bar-fill,
+  .info-area-values .vital-bar-fill {
+    animation-delay: 0ms;
+    animation-duration: 1ms;
+    transition-duration: 1ms;
+  }
+}
+
 .trade-helper-good {
   min-width: 0;
   overflow: hidden;

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type AnimationEvent, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { IconType } from "react-icons";
 import { MdPushPin } from "react-icons/md";
@@ -377,11 +377,30 @@ function contractCueText(_hint: GuidedHint, jobId: JobId, world: World, fallback
 type GoodInfoFocus = { kind: "good"; good: GoodId; source: "market" | "cargo" };
 type StationInfoFocus = { kind: "station"; loc: LocationId; source: "station" | "travel" };
 type InfoFocus = GoodInfoFocus | StationInfoFocus;
+type InfoPanelKind = "ship" | "station" | "good";
+type InfoPanelPhase = "idle" | "exiting" | "entering";
+type InfoPanelTransition = {
+  renderedFocus: InfoFocus | null;
+  renderedKey: string;
+  renderedKind: InfoPanelKind;
+  pendingFocus: InfoFocus | null;
+  pendingKey: string | null;
+  pendingKind: InfoPanelKind | null;
+  phase: InfoPanelPhase;
+};
 
 function infoFocusKey(focus: InfoFocus): string {
   return focus.kind === "good"
     ? `good:${focus.source}:${focus.good}`
     : `station:${focus.loc}`;
+}
+
+function infoPanelKind(focus: InfoFocus | null): InfoPanelKind {
+  return focus == null ? "ship" : focus.kind;
+}
+
+function infoPanelKey(focus: InfoFocus | null): string {
+  return focus ? infoFocusKey(focus) : "ship-info";
 }
 
 function infoFocusLabel(focus: InfoFocus, world: World): string {
@@ -425,7 +444,7 @@ function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="cargo-stat">
       <dt className="dim">{label}</dt>
-      <dd className="mono">{value}</dd>
+      <dd key={value} className="mono info-value">{value}</dd>
     </div>
   );
 }
@@ -1716,11 +1735,83 @@ function InfoAreaCard({ ship, world, loc, focus, pinnedFocuses, activePinnedKey,
   target: HintTarget;
   hint: GuidedHint;
 }) {
-  const displayKey = focus ? infoFocusKey(focus) : "ship-info";
-  const stationLoc = focus?.kind === "station" ? world.locations[focus.loc] ?? loc : loc;
+  const requestedKey = infoPanelKey(focus);
+  const requestedKind = infoPanelKind(focus);
+  const [transition, setTransition] = useState<InfoPanelTransition>(() => ({
+    renderedFocus: focus,
+    renderedKey: requestedKey,
+    renderedKind: requestedKind,
+    pendingFocus: null,
+    pendingKey: null,
+    pendingKind: null,
+    phase: "entering",
+  }));
+
+  if (transition.phase === "exiting") {
+    if (requestedKind === transition.renderedKind) {
+      setTransition({
+        renderedFocus: focus,
+        renderedKey: requestedKey,
+        renderedKind: requestedKind,
+        pendingFocus: null,
+        pendingKey: null,
+        pendingKind: null,
+        phase: "idle",
+      });
+    } else if (requestedKey !== transition.pendingKey || requestedKind !== transition.pendingKind) {
+      setTransition({
+        ...transition,
+        pendingFocus: focus,
+        pendingKey: requestedKey,
+        pendingKind: requestedKind,
+      });
+    }
+  } else if (requestedKind !== transition.renderedKind) {
+    setTransition({
+      ...transition,
+      pendingFocus: focus,
+      pendingKey: requestedKey,
+      pendingKind: requestedKind,
+      phase: "exiting",
+    });
+  } else if (requestedKey !== transition.renderedKey) {
+    setTransition({
+      renderedFocus: focus,
+      renderedKey: requestedKey,
+      renderedKind: requestedKind,
+      pendingFocus: null,
+      pendingKey: null,
+      pendingKind: null,
+      phase: "idle",
+    });
+  }
+
+  const renderedFocus = transition.renderedFocus;
+  const stationLoc = renderedFocus?.kind === "station" ? world.locations[renderedFocus.loc] ?? loc : loc;
+  const phaseClass = transition.phase === "idle" ? "" : `is-${transition.phase}`;
+  const handleInfoAnimationEnd = (event: AnimationEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget) return;
+    setTransition(prev => {
+      if (prev.phase === "exiting" && prev.pendingKey != null && prev.pendingKind != null) {
+        return {
+          renderedFocus: prev.pendingFocus,
+          renderedKey: prev.pendingKey,
+          renderedKind: prev.pendingKind,
+          pendingFocus: null,
+          pendingKey: null,
+          pendingKind: null,
+          phase: "entering",
+        };
+      }
+      if (prev.phase === "entering") {
+        return { ...prev, phase: "idle" };
+      }
+      return prev;
+    });
+  };
 
   return (
-    <section className={`bridge-card trade-helper-card info-area-card ${focus == null || focus.kind === "station" ? "station-info-helper" : ""}`}>
+    <section className={`bridge-card trade-helper-card info-area-card ${renderedFocus == null || renderedFocus.kind === "station" ? "station-info-helper" : ""}`}>
       {pinnedFocuses.length > 0 && (
         <div
           className="bridge-card-tabs info-area-tabs"
@@ -1731,7 +1822,7 @@ function InfoAreaCard({ ship, world, loc, focus, pinnedFocuses, activePinnedKey,
         >
           {pinnedFocuses.map(pinned => {
             const key = infoFocusKey(pinned);
-            const active = displayKey === key || (!focus && activePinnedKey === key);
+            const active = requestedKey === key || (!focus && activePinnedKey === key);
             return (
               <div
                 key={key}
@@ -1759,13 +1850,19 @@ function InfoAreaCard({ ship, world, loc, focus, pinnedFocuses, activePinnedKey,
           })}
         </div>
       )}
-      {focus == null ? (
-        <ShipInfoPanelContent ship={ship} world={world} />
-      ) : focus.kind === "station" ? (
-        <StationTradeHelperInfoContent loc={stationLoc} world={world} />
-      ) : (
-        <TradeGoodInfoContent ship={ship} world={world} loc={loc} focus={focus} target={target} hint={hint} />
-      )}
+      <div className={`info-area-content ${phaseClass}`} onAnimationEnd={handleInfoAnimationEnd}>
+        <div key={transition.renderedKey} className="info-area-values">
+          <div className="info-area-detail">
+            {renderedFocus == null ? (
+              <ShipInfoPanelContent ship={ship} world={world} />
+            ) : renderedFocus.kind === "station" ? (
+              <StationTradeHelperInfoContent loc={stationLoc} world={world} />
+            ) : (
+              <TradeGoodInfoContent ship={ship} world={world} loc={loc} focus={renderedFocus} target={target} hint={hint} />
+            )}
+          </div>
+        </div>
+      </div>
     </section>
   );
 }
