@@ -1,24 +1,26 @@
 .sidebar {
-  width: 160px;
-  background: var(--bg-1);
-  border-right: 1px solid var(--border);
+  width: 150px;
+  background: #090f14;
+  border-right: 1px solid #1c2834;
   flex-shrink: 0;
 }
 
 .sidebar-nav {
   display: flex;
   flex-direction: column;
-  padding: 8px 0;
+  gap: 1px;
+  padding: 12px 0;
 }
 
 .sidebar-tab {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  min-height: 36px;
   background: transparent;
-  border: none;
+  border: 0;
   border-left: 2px solid transparent;
-  padding: 7px 14px;
+  padding: 0 14px 0 12px;
   text-align: left;
   font-size: 13px;
   color: var(--text-dim);
@@ -27,14 +29,14 @@
 }
 
 .sidebar-tab:hover {
-  background: var(--bg-2);
+  background: rgba(255, 255, 255, 0.04);
   color: var(--text);
 }
 
 .sidebar-tab.active {
-  background: var(--bg-2);
+  border-left-color: #4fb6ff;
+  background: rgba(79, 182, 255, 0.08);
   color: var(--text);
-  border-left-color: var(--accent);
 }
 
 .sidebar-tab-hint {
