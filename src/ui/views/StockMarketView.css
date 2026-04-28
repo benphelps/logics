@@ -1,6 +1,7 @@
 .stocks-view {
   --stock-surface: #15191f;
   --stock-surface-soft: #101419;
+  --stock-surface-raised: #1b2026;
   --stock-line: rgba(255, 255, 255, 0.08);
   --stock-up: #6cd99a;
   --stock-down: #ef6f7d;
@@ -190,12 +191,12 @@
 
 .stock-main-tab:hover {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.045);
+  background: var(--stock-surface-raised);
 }
 
 .stock-main-tab.active {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--stock-surface-raised);
 }
 
 .stock-tab-count {

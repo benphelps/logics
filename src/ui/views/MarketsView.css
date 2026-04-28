@@ -1,6 +1,7 @@
 .markets-view {
   --market-surface: #15191f;
   --market-surface-soft: #101419;
+  --market-surface-raised: #1b2026;
   --market-line: rgba(255, 255, 255, 0.08);
   --market-food: #7bcf98;
   --market-raw: #e5b86b;
@@ -168,12 +169,12 @@
 
 .commodity-tab:hover {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.045);
+  background: var(--market-surface-raised);
 }
 
 .commodity-tab.active {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--market-surface-raised);
 }
 
 .commodity-tab-count {

@@ -449,7 +449,7 @@
   inset: 0 auto 0 0;
   z-index: 0;
   width: var(--meter-pct, 0%);
-  background: rgba(79, 182, 255, 0.16);
+  background: rgba(96, 106, 118, 0.12);
   transition: width 0.2s ease;
 }
 
@@ -462,23 +462,23 @@
 }
 
 .ship-meter-tab.warn::before {
-  background: rgba(251, 191, 36, 0.18);
+  background: rgba(112, 124, 136, 0.14);
 }
 
 .ship-meter-tab.bad::before {
-  background: rgba(248, 113, 113, 0.20);
+  background: rgba(112, 124, 136, 0.17);
 }
 
 .ship-maintenance-entry::before {
-  background: rgba(151, 193, 151, 0.15);
+  background: rgba(96, 106, 118, 0.12);
 }
 
 .ship-maintenance-entry.warn::before {
-  background: rgba(251, 191, 36, 0.18);
+  background: rgba(112, 124, 136, 0.14);
 }
 
 .ship-maintenance-entry.bad::before {
-  background: rgba(248, 113, 113, 0.20);
+  background: rgba(112, 124, 136, 0.17);
 }
 
 .ship-meter-tab > * {
@@ -493,6 +493,23 @@
   line-height: 1;
 }
 
+.ship-status-entry.attention .ship-meter-label {
+  animation: ship-meter-title-pulse 1.35s ease-in-out infinite;
+}
+
+@keyframes ship-meter-title-pulse {
+  0%,
+  100% {
+    color: rgba(226, 232, 240, 0.76);
+    text-shadow: none;
+  }
+
+  50% {
+    color: rgba(245, 248, 250, 0.98);
+    text-shadow: 0 0 8px rgba(226, 232, 240, 0.24);
+  }
+}
+
 .ship-meter-label .icon-label {
   max-width: 100%;
   line-height: 1;
@@ -504,6 +521,13 @@
 
 .ship-status-entry .ui-icon {
   transform: translateY(-0.5px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ship-status-entry.attention .ship-meter-label {
+    animation: none;
+    color: rgba(245, 248, 250, 0.94);
+  }
 }
 
 .ship-meter-percent {
@@ -614,13 +638,13 @@
 }
 
 .ship-fuel-panel {
-  background: linear-gradient(90deg, rgba(79, 182, 255, 0.10), rgba(255, 255, 255, 0.025));
-  border: 1px solid rgba(79, 182, 255, 0.20);
+  background: linear-gradient(90deg, rgba(96, 106, 118, 0.075), rgba(255, 255, 255, 0.025));
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .ship-maintenance-panel {
-  background: linear-gradient(90deg, rgba(151, 193, 151, 0.085), rgba(255, 255, 255, 0.025));
-  border: 1px solid rgba(151, 193, 151, 0.18);
+  background: linear-gradient(90deg, rgba(96, 106, 118, 0.075), rgba(255, 255, 255, 0.025));
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .ship-cargo-panel.warn,
@@ -690,18 +714,18 @@
 .ship-fuel-meter-fill,
 .ship-maintenance-meter-fill {
   height: 100%;
-  background: rgba(79, 182, 255, 0.34);
+  background: rgba(112, 124, 136, 0.24);
   border-radius: inherit;
   transition: width 0.2s ease;
 }
 
 .ship-system-meter-fill.warn,
-.ship-fuel-meter-fill.warn { background: rgba(251, 191, 36, 0.42); }
+.ship-fuel-meter-fill.warn { background: rgba(112, 124, 136, 0.28); }
 .ship-system-meter-fill.bad,
-.ship-fuel-meter-fill.bad  { background: rgba(248, 113, 113, 0.44); }
-.ship-maintenance-meter-fill { background: rgba(151, 193, 151, 0.34); }
-.ship-maintenance-meter-fill.warn { background: rgba(251, 191, 36, 0.42); }
-.ship-maintenance-meter-fill.bad  { background: rgba(248, 113, 113, 0.44); }
+.ship-fuel-meter-fill.bad  { background: rgba(112, 124, 136, 0.32); }
+.ship-maintenance-meter-fill { background: rgba(112, 124, 136, 0.24); }
+.ship-maintenance-meter-fill.warn { background: rgba(112, 124, 136, 0.28); }
+.ship-maintenance-meter-fill.bad  { background: rgba(112, 124, 136, 0.32); }
 
 .ship-system-meter-value {
   position: absolute;
@@ -1673,14 +1697,50 @@
   padding-right: 8px;
 }
 
-.contracts-tab,
-.contract-section {
+.contracts-tab {
   display: grid;
-  gap: 8px;
+  gap: 14px;
 }
 
-.contracts-tab {
-  gap: 14px;
+.contract-split-group {
+  display: grid;
+  gap: 0;
+}
+
+.contract-split-group + .contract-split-group {
+  margin-top: 2px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.contract-split-head {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 calc(var(--bridge-card-pad-x) * -1);
+  padding: 10px var(--bridge-card-pad-x);
+  background: var(--ship-surface);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+}
+
+.contract-split-title {
+  display: block;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.contract-split-head .dim {
+  font-size: 11px;
+}
+
+.contract-split-group .jobs-table {
+  margin-top: 0;
 }
 
 .exchange-section-title {
@@ -2670,17 +2730,29 @@
 }
 
 .btn-suggested-critical {
-  background: var(--bad) !important;
-  color: white !important;
-  border-color: var(--bad) !important;
+  background: #7f2f35 !important;
+  color: #fff5f5 !important;
+  border-color: rgba(248, 113, 113, 0.72) !important;
   font-weight: 600;
-  box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.30);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.38);
+  box-shadow: 0 0 0 2px rgba(127, 47, 53, 0.38);
 }
 
 .btn-suggested-critical:hover:not(:disabled) {
-  background: #fa8585 !important;
-  border-color: #fa8585 !important;
-  box-shadow: 0 0 0 2px rgba(250, 133, 133, 0.40);
+  background: #913942 !important;
+  border-color: rgba(255, 151, 151, 0.82) !important;
+  box-shadow: 0 0 0 2px rgba(145, 57, 66, 0.44);
+}
+
+.btn-suggested-critical .ship-meter-label {
+  color: #fff7f7;
+}
+
+.btn-suggested-critical .ship-meter-percent {
+  background: rgba(20, 10, 12, 0.38);
+  border-color: rgba(255, 245, 245, 0.30);
+  color: #fff7f7;
+  text-shadow: none;
 }
 
 .btn-action.depart-armed {

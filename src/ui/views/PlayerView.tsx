@@ -666,13 +666,11 @@ function ContractsTab({ ship, world, loc, target, hintText, cueText, interaction
 
   return (
     <div className="contracts-tab">
-      {activeJobs.length > 0 && (
-        <div className="contract-section">
-          <div className="exchange-section-title">Active</div>
-          <ActiveContractsTab ship={ship} world={world} jobs={activeJobs} target={target} cueText={cueText} hintText={hintText} />
+      <section className="contract-split-group">
+        <div className="contract-split-head">
+          <span className="contract-split-title">Local</span>
+          <span className="dim">{jobs.length} contract{jobs.length === 1 ? "" : "s"} posted for {loc.name}</span>
         </div>
-      )}
-      <div className="contract-section">
         {jobs.length === 0 ? (
           <div className="contract-empty">No open contracts here.</div>
         ) : (
@@ -718,7 +716,16 @@ function ContractsTab({ ship, world, loc, target, hintText, cueText, interaction
             </tbody>
           </table>
         )}
-      </div>
+      </section>
+      {activeJobs.length > 0 && (
+        <section className="contract-split-group">
+          <div className="contract-split-head">
+            <span className="contract-split-title">Active</span>
+            <span className="dim">{activeJobs.length} contract{activeJobs.length === 1 ? "" : "s"} assigned to {ship.name}</span>
+          </div>
+          <ActiveContractsTab ship={ship} world={world} jobs={activeJobs} target={target} cueText={cueText} hintText={hintText} />
+        </section>
+      )}
     </div>
   );
 }
@@ -1090,9 +1097,17 @@ function ShipFuelStatusEntry({ ship, world, target, hintText, critical, inTransi
   const fuel = ship.currentFuel;
   const fuelQty = fuel?.qty ?? 0;
   const fuelPct = ship.fuelCapacity > 0 ? (fuelQty / ship.fuelCapacity) * 100 : 0;
-  const tone = fuelPct < 25 ? "bad" : fuelPct < 50 ? "warn" : "";
+  const tone = fuelPct < 15 ? "bad" : fuelPct < 50 ? "warn" : "";
   const tankGood = fuel ? world.goods[fuel.good]?.name ?? fuel.good : "No fuel";
-  const tankLabel = tankGood.replace(/\s+(Fuel|Cell)$/u, "");
+  const fuelKind = fuel ? tankGood.replace(/\s+(Fuel|Cell)$/u, "") : "Plasma";
+  const fuelLabel = fuelPct < 15
+    ? `Critical ${fuelKind}`
+    : fuelPct <= 30
+      ? `Low ${fuelKind}`
+      : fuelPct < 50
+        ? `${fuelKind} Draining`
+        : fuelKind;
+  const attention = fuelPct <= 30;
   const refuelType = inTransit ? null : selectRefuelType(world, ship);
   const market = refuelType ? world.markets[ship.location] : null;
   const stationFuel = refuelType ? world.goods[refuelType.good]?.name ?? refuelType.good : null;
@@ -1122,15 +1137,13 @@ function ShipFuelStatusEntry({ ship, world, target, hintText, critical, inTransi
   return (
     <ActionCell suggested={suggested} hintText={hintText} critical={critical}>
       <button
-        className={`bridge-tab ship-meter-tab ship-status-entry ship-fuel-entry ${tone} ${suggested ? "has-suggestion" : ""} ${critical ? "btn-suggested-critical" : suggested ? "btn-suggested" : ""}`}
+        className={`bridge-tab ship-meter-tab ship-status-entry ship-fuel-entry ${tone} ${attention ? "attention" : ""} ${suggested ? "has-suggestion" : ""} ${critical ? "btn-suggested-critical" : suggested ? "btn-suggested" : ""}`}
         style={meterTabStyle(fuelPct)}
         onClick={() => refuel(ship.id)}
         disabled={!canRefuel}
         title={`${status} · ${actionTitle}`}
       >
-        <span className="ship-meter-label">
-          <IconLabel icon={GiFuelTank}>{tankLabel}</IconLabel>
-        </span>
+        <span className="ship-meter-label">{fuelLabel}</span>
         <span className="ship-meter-percent">{percentText}</span>
       </button>
     </ActionCell>
@@ -1138,31 +1151,30 @@ function ShipFuelStatusEntry({ ship, world, target, hintText, critical, inTransi
 }
 
 function ShipMaintenanceStatusEntry({ debt, canRepair, onRepair }: { debt: number; canRepair: boolean; onRepair: () => void }) {
-  const debtPct = Math.max(0, Math.min(100, (debt / MAINTENANCE_DEBT_TRAVEL_BLOCK) * 100));
-  const conditionPct = Math.max(0, 100 - debtPct);
+  const damagePct = Math.max(0, Math.min(100, (debt / MAINTENANCE_DEBT_TRAVEL_BLOCK) * 100));
+  const conditionPct = Math.max(0, 100 - damagePct);
   const grounded = debt >= MAINTENANCE_DEBT_TRAVEL_BLOCK;
   const tone = grounded ? "bad" : conditionPct <= 30 ? "warn" : "";
+  const attention = conditionPct <= 30;
   const hasDebt = debt > 0.001;
-  const percentText = `${Math.round(conditionPct)}%`;
+  const percentText = `${Math.round(damagePct)}%`;
   const status = grounded
-    ? `Grounded · debt Ç${Math.round(debt).toLocaleString()}`
+    ? `Grounded · hull damage Ç${Math.round(debt).toLocaleString()}`
     : hasDebt
-      ? `Maintenance debt Ç${Math.round(debt).toLocaleString()}`
-      : "Maintenance clear";
+      ? `Hull damage Ç${Math.round(debt).toLocaleString()}`
+      : "Hull clear";
   const clickable = hasDebt && canRepair;
 
   return (
-    <ActionCell suggested={grounded} hintText="Repair maintenance before travel." critical>
+    <ActionCell suggested={grounded} hintText="Repair hull damage before travel." critical>
       <button
-        className={`bridge-tab ship-meter-tab ship-status-entry ship-maintenance-entry ${tone} ${grounded ? "has-suggestion btn-suggested-critical" : ""}`}
-        style={meterTabStyle(conditionPct)}
+        className={`bridge-tab ship-meter-tab ship-status-entry ship-maintenance-entry ${tone} ${attention ? "attention" : ""} ${grounded ? "has-suggestion btn-suggested-critical" : ""}`}
+        style={meterTabStyle(damagePct)}
         onClick={onRepair}
         disabled={!clickable}
         title={`${status}${hasDebt ? canRepair ? " · Repair ship" : " · Dock to repair" : ""}`}
       >
-        <span className="ship-meter-label">
-          <IconLabel icon={GiAutoRepair}>Maintenance</IconLabel>
-        </span>
+        <span className="ship-meter-label">Hull Damage</span>
         <span className="ship-meter-percent">{percentText}</span>
       </button>
     </ActionCell>
@@ -1444,7 +1456,7 @@ function StationExchangeCard({ ship, world, loc, target, hintText, cueText, sele
             subtitle: `${offers.length} posted hire offer${offers.length === 1 ? "" : "s"}`,
           }
         : {
-            title: "Local contracts",
+            title: "Contracts board",
             subtitle: `${contractCount} available or active contract${contractCount === 1 ? "" : "s"}`,
           };
 
@@ -1914,7 +1926,7 @@ function ShipInfoPanelContent({ ship, world }: { ship: Trader; world: World }) {
   const fuelQty = ship.currentFuel?.qty ?? 0;
   const fuelName = ship.currentFuel ? world.goods[ship.currentFuel.good]?.name ?? ship.currentFuel.good : "No fuel";
   const debt = ship.maintenanceDebt ?? 0;
-  const maintenancePct = Math.max(0, 100 - Math.min(100, (debt / MAINTENANCE_DEBT_TRAVEL_BLOCK) * 100));
+  const hullDamagePct = Math.max(0, Math.min(100, (debt / MAINTENANCE_DEBT_TRAVEL_BLOCK) * 100));
   const locationName = ship.state === "transit"
     ? world.locations[ship.destination!]?.name ?? ship.destination
     : world.locations[ship.location]?.name ?? ship.location;
@@ -1940,7 +1952,7 @@ function ShipInfoPanelContent({ ship, world }: { ship: Trader; world: World }) {
         <Stat label="wallet" value={`Ç${Math.round(ship.funds).toLocaleString()}`} />
         <Stat label="cargo" value={`${cargoUsed.toFixed(0)} / ${ship.capacity}`} />
         <Stat label="fuel" value={`${fuelQty.toFixed(0)} / ${ship.fuelCapacity}`} />
-        <Stat label="maintenance" value={`${Math.round(maintenancePct)}%`} />
+        <Stat label="hull damage" value={`${Math.round(hullDamagePct)}%`} />
         <Stat label="speed" value={ship.speed.toLocaleString()} />
         <Stat label="hull" value={(ship.hull ?? ship.baseHull ?? 1).toLocaleString()} />
       </dl>
