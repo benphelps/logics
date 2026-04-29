@@ -66,6 +66,7 @@ export const SYNDICATE_REVENUE_DECAY = 0.95;   // per-tick decay on recent reven
 export const SYNDICATE_PRICE_REVENUE_WEIGHT = 0.0001; // how much revenue tilts price
 
 export const SHARE_PRICE_HISTORY_MAX = 60;     // capped history per equity
+export const RECENT_TRADES_MAX = 100;          // capped tape per equity (T&S + volume window)
 
 // Per-tick borrow fee on a short position's notional value. A real cost
 // (in real markets, paid to whoever lent the shares). Kept small so daily
@@ -481,6 +482,15 @@ interface BookExecution {
 
 interface BookExecutionEmpty { ok: false; reason: string }
 
+function recordRecentTrades(eq: Equity, trades: BookTrade[]): void {
+  if (trades.length === 0) return;
+  if (!eq.recentTrades) eq.recentTrades = [];
+  eq.recentTrades.push(...trades);
+  if (eq.recentTrades.length > RECENT_TRADES_MAX) {
+    eq.recentTrades.splice(0, eq.recentTrades.length - RECENT_TRADES_MAX);
+  }
+}
+
 function executeAgainstBook(
   world: World,
   eq: Equity,
@@ -503,6 +513,7 @@ function executeAgainstBook(
   const lastPrice = result.trades[result.trades.length - 1].price;
   eq.prevPrice = eq.price;
   eq.price = clampSharePrice(eq, lastPrice);
+  recordRecentTrades(eq, result.trades);
   return {
     ok: true,
     filled: result.filled,
@@ -999,7 +1010,8 @@ export function tickStockMarket(world: World): void {
   // settle every tick.
   tickMarketMakers(world);
   for (const eq of Object.values(world.equities)) {
-    matchBook(ensureOrderBook(world, eq.id), world.tick);
+    const matched = matchBook(ensureOrderBook(world, eq.id), world.tick);
+    if (matched.length > 0) recordRecentTrades(eq, matched);
   }
 
   // EMA toward fundamental — fallback movement when no trades printed this

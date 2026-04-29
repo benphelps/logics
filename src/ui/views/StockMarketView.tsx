@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { MdArrowDropDown, MdArrowDropUp, MdRemove } from "react-icons/md";
 import { useStore } from "../store";
-import type { Equity, EquityKind, StockPosition, TradeRecord, World } from "../../sim/types";
+import type { BookTrade, Equity, EquityKind, Order, OrderBook, StockPosition, TradeRecord, World } from "../../sim/types";
 import {
   BROKER_FEE_RATE,
   DIVIDEND_INTERVAL,
@@ -360,6 +360,10 @@ function CompanyPane({ row, world, shipId, cash, docked, hasOpposite, hasLong, o
           <InfoStat label="dividend" value={dividend > 0 ? `Ç${dividend.toFixed(2)}/sh` : "none"} />
           <InfoStat label="next window" value={`${row.ticksUntilDividend}t`} />
         </dl>
+
+        <OrderBookPanel equity={eq} world={world} />
+        <TimeAndSalesPanel equity={eq} />
+        <VolumePanel equity={eq} world={world} />
 
         <CompanyUnderlying eq={eq} world={world} />
 
@@ -901,10 +905,16 @@ function HealthBar({ value, label }: { value: number; label: string }) {
   );
 }
 
+// Two-panel chart: price line (top) + volume bars (bottom). Stretches to
+// fill the now-wider sidebar. Volume bins per tick are signed (net buy /
+// net sell) using the same convention as VolumePanel — green up from the
+// centerline for net buy pressure, red down for net sell. Position
+// reference lines (entry, stop, take) overlay the price panel.
 function Sparkline({ equity, position }: { equity: Equity; position: StockPosition | null }) {
   const history = equity.history ?? [];
   const points = history.slice(-40);
   if (points.length < 2) return <div className="stocks-sparkline-empty dim">Building price history…</div>;
+
   const prices = points.map(p => p.price);
   const extras: number[] = [];
   if (position?.stopLoss != null) extras.push(position.stopLoss);
@@ -914,30 +924,262 @@ function Sparkline({ equity, position }: { equity: Equity; position: StockPositi
   const min = Math.min(...all);
   const max = Math.max(...all);
   const range = max - min || 1;
-  const w = 320;
-  const h = 80;
-  const stride = w / (points.length - 1);
-  const yFor = (p: number) => h - ((p - min) / range) * (h - 4) - 2;
+
+  // Layout: top price panel + small gap + bottom volume panel. viewBox stays
+  // fixed; CSS scales the SVG to the container width.
+  const W = 600;
+  const PRICE_H = 140;
+  const GAP = 8;
+  const VOL_H = 44;
+  const H = PRICE_H + GAP + VOL_H;
+  const VOL_TOP = PRICE_H + GAP;
+  const VOL_MID = VOL_TOP + VOL_H / 2;
+
+  const minTick = points[0].tick;
+  const maxTick = points[points.length - 1].tick;
+  const tickSpan = Math.max(1, maxTick - minTick);
+  const xFor = (tick: number) => ((tick - minTick) / tickSpan) * W;
+  const yPrice = (p: number) => 2 + (1 - (p - min) / range) * (PRICE_H - 4);
+
   const path = points
-    .map((p, i) => `${i === 0 ? "M" : "L"}${(i * stride).toFixed(1)},${yFor(p.price).toFixed(1)}`)
+    .map((p, i) => `${i === 0 ? "M" : "L"}${xFor(p.tick).toFixed(1)},${yPrice(p.price).toFixed(1)}`)
     .join(" ");
+  const areaPath = `${path} L${xFor(maxTick).toFixed(1)},${PRICE_H} L${xFor(minTick).toFixed(1)},${PRICE_H} Z`;
   const lastUp = points[points.length - 1].price >= points[0].price;
+
+  // Per-tick volume bins from the recent-trades window, restricted to the
+  // ticks visible in the price panel.
+  const trades = equity.recentTrades ?? [];
+  const buyVol: Record<number, number> = {};
+  const sellVol: Record<number, number> = {};
+  for (const t of trades) {
+    if (t.tick < minTick || t.tick > maxTick) continue;
+    if (t.takerSide === "bid") buyVol[t.tick] = (buyVol[t.tick] ?? 0) + t.qty;
+    else sellVol[t.tick] = (sellVol[t.tick] ?? 0) + t.qty;
+  }
+  const peakVol = Math.max(1, ...Object.values(buyVol), ...Object.values(sellVol));
+  const barW = Math.max(2, (W / Math.max(1, points.length)) * 0.7);
+
   return (
-    <svg className="stocks-sparkline" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
-      <line x1={0} y1={h - 2} x2={w} y2={h - 2} className="stocks-sparkline-axis" />
+    <svg className="stocks-sparkline" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+      {/* price panel background line */}
+      <line x1={0} y1={PRICE_H - 0.5} x2={W} y2={PRICE_H - 0.5} className="stocks-sparkline-axis" />
+
+      {/* price area + line */}
+      <path d={areaPath} className={lastUp ? "spark-area up" : "spark-area down"} />
+      <path d={path} className={lastUp ? "spark up" : "spark down"} />
+
+      {/* position reference lines */}
       {position && (
-        <line x1={0} y1={yFor(position.avgEntryPrice)} x2={w} y2={yFor(position.avgEntryPrice)} className="spark-entry-line" />
+        <line x1={0} y1={yPrice(position.avgEntryPrice)} x2={W} y2={yPrice(position.avgEntryPrice)} className="spark-entry-line" />
       )}
       {position?.stopLoss != null && (
-        <line x1={0} y1={yFor(position.stopLoss)} x2={w} y2={yFor(position.stopLoss)} className="spark-stop-line" />
+        <line x1={0} y1={yPrice(position.stopLoss)} x2={W} y2={yPrice(position.stopLoss)} className="spark-stop-line" />
       )}
       {position?.takeProfit != null && (
-        <line x1={0} y1={yFor(position.takeProfit)} x2={w} y2={yFor(position.takeProfit)} className="spark-take-line" />
+        <line x1={0} y1={yPrice(position.takeProfit)} x2={W} y2={yPrice(position.takeProfit)} className="spark-take-line" />
       )}
-      <path d={path} className={lastUp ? "spark up" : "spark down"} />
+
+      {/* min/max labels in price panel corners */}
       <text x={4} y={12} className="spark-label">{`Ç${fmtPrice(max)}`}</text>
-      <text x={4} y={h - 6} className="spark-label">{`Ç${fmtPrice(min)}`}</text>
+      <text x={4} y={PRICE_H - 6} className="spark-label">{`Ç${fmtPrice(min)}`}</text>
+
+      {/* volume centerline + bars */}
+      <line x1={0} y1={VOL_MID} x2={W} y2={VOL_MID} className="stocks-sparkline-axis" />
+      {points.map(p => {
+        const buy = buyVol[p.tick] ?? 0;
+        const sell = sellVol[p.tick] ?? 0;
+        const x = xFor(p.tick) - barW / 2;
+        const buyH = (buy / peakVol) * (VOL_H / 2);
+        const sellH = (sell / peakVol) * (VOL_H / 2);
+        return (
+          <g key={p.tick}>
+            {buy > 0 && (
+              <rect
+                x={x}
+                y={VOL_MID - buyH}
+                width={barW}
+                height={buyH}
+                className="vol-bar up"
+              />
+            )}
+            {sell > 0 && (
+              <rect
+                x={x}
+                y={VOL_MID}
+                width={barW}
+                height={sellH}
+                className="vol-bar down"
+              />
+            )}
+          </g>
+        );
+      })}
+
+      {/* tick-range label in volume panel */}
+      <text x={4} y={H - 4} className="spark-label">{`t${minTick}–${maxTick}`}</text>
     </svg>
+  );
+}
+
+// --- T&S / order book / volume panels -----------------------------------
+
+const ORDER_BOOK_LEVELS = 5;
+const TS_TAPE_ROWS = 18;
+const VOLUME_HISTOGRAM_TICKS = 18;
+
+// Order book — top N bid + ask levels with depth bars. Reads
+// world.orderBooks[eq.id] live; bars are sized to the largest qty in view so
+// relative depth across levels is visible. Phase 1 only has the synthetic
+// MM as counterparty so typically there's just one level per side, but the
+// component is sized for Phase 2's deeper books.
+function OrderBookPanel({ equity, world }: { equity: Equity; world: World }) {
+  const book: OrderBook | undefined = world.orderBooks?.[equity.id];
+  const bids = (book?.bids ?? []).slice(0, ORDER_BOOK_LEVELS);
+  const asks = (book?.asks ?? []).slice(0, ORDER_BOOK_LEVELS);
+  // Largest visible qty across either side — used to scale the depth bars
+  // so a glance reveals which level is heaviest.
+  const maxQty = Math.max(
+    1,
+    ...bids.map(o => o.qty),
+    ...asks.map(o => o.qty),
+  );
+  const bestBid = bids[0]?.limitPrice;
+  const bestAsk = asks[0]?.limitPrice;
+  const spread = bestBid != null && bestAsk != null ? bestAsk - bestBid : null;
+  const spreadPct = bestBid != null && bestAsk != null && bestBid > 0
+    ? ((bestAsk - bestBid) / ((bestAsk + bestBid) / 2)) * 100
+    : null;
+
+  return (
+    <section className="stocks-info-section stocks-orderbook">
+      <div className="stocks-info-section-title">Order book</div>
+      <div className="stocks-orderbook-head">
+        <span>Bid</span>
+        <span>Size</span>
+        <span>Ask</span>
+        <span>Size</span>
+      </div>
+      {Array.from({ length: ORDER_BOOK_LEVELS }).map((_, i) => {
+        const b = bids[i];
+        const a = asks[i];
+        return (
+          <div key={i} className="stocks-orderbook-row">
+            <BookCell order={b} side="bid" maxQty={maxQty} />
+            <BookCell order={a} side="ask" maxQty={maxQty} />
+          </div>
+        );
+      })}
+      {spread != null && spreadPct != null && (
+        <div className="stocks-orderbook-spread">
+          <span>spread</span>
+          <span className="mono">Ç{fmtPrice(spread)} · {spreadPct.toFixed(2)}%</span>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function BookCell({ order, side, maxQty }: { order?: Order; side: "bid" | "ask"; maxQty: number }) {
+  if (!order) {
+    return <div className={`stocks-orderbook-cell empty ${side}`}><span /><span className="dim mono">—</span></div>;
+  }
+  const widthPct = Math.max(2, Math.min(100, (order.qty / maxQty) * 100));
+  return (
+    <div className={`stocks-orderbook-cell ${side}`}>
+      <span className="stocks-orderbook-bar" style={{ width: `${widthPct}%` }} />
+      <span className="stocks-orderbook-price mono">Ç{fmtPrice(order.limitPrice)}</span>
+      <span className="stocks-orderbook-qty mono dim">{Math.round(order.qty).toLocaleString()}</span>
+    </div>
+  );
+}
+
+// Time & sales tape — the most recent fills against this equity, newest
+// first. Color cues on side: a buyer-aggressed trade (taker took the ask)
+// prints in green; seller-aggressed (taker hit the bid) in red. Mirrors
+// the convention on real T&S panels.
+function TimeAndSalesPanel({ equity }: { equity: Equity }) {
+  const trades = (equity.recentTrades ?? []).slice(-TS_TAPE_ROWS).reverse();
+  return (
+    <section className="stocks-info-section stocks-tape">
+      <div className="stocks-info-section-title">Time &amp; sales</div>
+      {trades.length === 0 ? (
+        <div className="stocks-tape-empty dim">No trades yet.</div>
+      ) : (
+        <div className="stocks-tape-rows">
+          <div className="stocks-tape-head">
+            <span>Tick</span>
+            <span className="numeric">Price</span>
+            <span className="numeric">Qty</span>
+            <span>Side</span>
+          </div>
+          {trades.map((t, i) => (
+            <TapeRow key={`${t.tick}-${i}`} trade={t} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function TapeRow({ trade }: { trade: BookTrade }) {
+  const tone = trade.takerSide === "bid" ? "up" : "down";
+  return (
+    <div className={`stocks-tape-row ${tone}`}>
+      <span className="dim mono">{trade.tick.toLocaleString()}</span>
+      <span className="numeric mono">Ç{fmtPrice(trade.price)}</span>
+      <span className="numeric mono">{Math.round(trade.qty).toLocaleString()}</span>
+      <span className="mono">{trade.takerSide === "bid" ? "▲ buy" : "▼ sell"}</span>
+    </div>
+  );
+}
+
+// Volume summary — totals across the recent-trades window plus a tiny
+// per-tick histogram. Buy and sell volume are shown separately so the
+// tape's pressure direction is readable at a glance.
+function VolumePanel({ equity, world }: { equity: Equity; world: World }) {
+  const trades = equity.recentTrades ?? [];
+  let buyQty = 0;
+  let sellQty = 0;
+  for (const t of trades) {
+    if (t.takerSide === "bid") buyQty += t.qty;
+    else sellQty += t.qty;
+  }
+  const totalQty = buyQty + sellQty;
+
+  // Per-tick histogram: the most recent VOLUME_HISTOGRAM_TICKS ticks ending
+  // at the current tick. Each bar is signed (buy minus sell), drawn from
+  // the centerline up (net buy) or down (net sell).
+  const startTick = world.tick - VOLUME_HISTOGRAM_TICKS + 1;
+  const bins: number[] = Array.from({ length: VOLUME_HISTOGRAM_TICKS }, () => 0);
+  for (const t of trades) {
+    const idx = t.tick - startTick;
+    if (idx < 0 || idx >= VOLUME_HISTOGRAM_TICKS) continue;
+    bins[idx] += (t.takerSide === "bid" ? 1 : -1) * t.qty;
+  }
+  const peak = Math.max(1, ...bins.map(v => Math.abs(v)));
+
+  return (
+    <section className="stocks-info-section stocks-volume">
+      <div className="stocks-info-section-title">Volume</div>
+      <dl className="stocks-volume-grid">
+        <InfoStat label="window" value={`${trades.length} trades`} />
+        <InfoStat label="total" value={Math.round(totalQty).toLocaleString()} />
+        <InfoStat label="buy" value={Math.round(buyQty).toLocaleString()} tone="good" />
+        <InfoStat label="sell" value={Math.round(sellQty).toLocaleString()} tone="bad" />
+      </dl>
+      <div className="stocks-volume-histogram" aria-hidden="true">
+        {bins.map((v, i) => {
+          const heightPct = Math.min(48, (Math.abs(v) / peak) * 48);
+          const tone = v > 0 ? "up" : v < 0 ? "down" : "flat";
+          return (
+            <div key={i} className={`stocks-volume-bar ${tone}`}>
+              <span style={{ height: `${heightPct}%` }} />
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 

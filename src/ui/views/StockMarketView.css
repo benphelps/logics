@@ -122,12 +122,13 @@
   opacity: 0.6;
 }
 
-/* layout: dashboard panels on the left, narrow sidebar on the right. The
-   sidebar's content swaps based on what's selected — company info for an
-   equity with no position, position controls when a position is open. */
+/* layout: dashboard panels on the left, expanded info sidebar on the right.
+   The sidebar holds company/position info plus order book, T&S tape, and
+   volume — sized at ~40% of the layout so a real trading view fits. Roughly
+   matches the fleet view's right-column ratio (1.35fr of 3.45fr ≈ 39%). */
 .stocks-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-columns: minmax(0, 1.5fr) minmax(440px, 1fr);
   gap: 14px;
   flex: 1;
   min-height: 0;
@@ -763,7 +764,10 @@
 .stocks-sparkline,
 .stocks-sparkline-empty {
   width: 100%;
-  height: 80px;
+  /* Two-panel chart now: price on top + volume bars on bottom. Taller so the
+     volume panel reads at a glance and the price panel has room for axis
+     labels and position lines. */
+  height: 200px;
 }
 
 .stocks-sparkline {
@@ -1413,3 +1417,214 @@
   .stocks-layout { grid-template-columns: 1fr; }
   .col-yield { display: none; }
 }
+
+/* --- T&S / order book / volume panels --------------------------------- */
+
+.stocks-orderbook {
+  font-size: 11px;
+}
+
+.stocks-orderbook-head {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 12px;
+  color: var(--text-faint);
+  font-size: 8.5px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.stocks-orderbook-head > span:nth-child(1)::before,
+.stocks-orderbook-head > span:nth-child(3)::before {
+  content: "";
+}
+
+.stocks-orderbook-head {
+  /* 4 sub-cells: bid-price, bid-qty, ask-price, ask-qty */
+  grid-template-columns: 1fr 56px 1fr 56px;
+}
+
+.stocks-orderbook-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 12px;
+}
+
+.stocks-orderbook-cell {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 56px;
+  align-items: center;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.stocks-orderbook-cell.empty {
+  height: 22px;
+  opacity: 0.45;
+}
+
+.stocks-orderbook-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 3px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.stocks-orderbook-cell.bid .stocks-orderbook-bar {
+  right: 0;
+  background: rgba(108, 217, 154, 0.18);
+}
+
+.stocks-orderbook-cell.ask .stocks-orderbook-bar {
+  left: 0;
+  background: rgba(239, 111, 125, 0.18);
+}
+
+.stocks-orderbook-price {
+  position: relative;
+  z-index: 1;
+  font-size: 11px;
+}
+
+.stocks-orderbook-cell.bid .stocks-orderbook-price { color: var(--stock-up); }
+.stocks-orderbook-cell.ask .stocks-orderbook-price { color: var(--stock-down); }
+
+.stocks-orderbook-qty {
+  position: relative;
+  z-index: 1;
+  font-size: 10.5px;
+  text-align: right;
+}
+
+.stocks-orderbook-spread {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--stock-line);
+  color: var(--text-dim);
+  font-size: 10.5px;
+}
+
+/* T&S tape */
+.stocks-tape-rows {
+  display: grid;
+  gap: 1px;
+  font-size: 11px;
+}
+
+.stocks-tape-head,
+.stocks-tape-row {
+  display: grid;
+  grid-template-columns: 60px 1fr 1fr 60px;
+  column-gap: 8px;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.stocks-tape-head {
+  color: var(--text-faint);
+  font-size: 8.5px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--stock-line);
+}
+
+.stocks-tape-row.up {
+  background: rgba(108, 217, 154, 0.06);
+  color: var(--stock-up);
+}
+
+.stocks-tape-row.down {
+  background: rgba(239, 111, 125, 0.06);
+  color: var(--stock-down);
+}
+
+.stocks-tape-row .dim,
+.stocks-tape-head { color: var(--text-faint); }
+
+.stocks-tape-row .numeric {
+  text-align: right;
+}
+
+.stocks-tape-empty {
+  font-size: 11px;
+  padding: 4px 0;
+}
+
+/* Volume */
+.stocks-volume-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.stocks-volume-histogram {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  align-items: end;
+  gap: 2px;
+  height: 60px;
+  padding: 4px 0;
+  border-top: 1px dashed var(--stock-line);
+}
+
+.stocks-volume-bar {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: 100%;
+  position: relative;
+}
+
+/* Centerline split: net-buy bars grow up from middle, net-sell grow down. */
+.stocks-volume-bar > span {
+  display: block;
+  width: 100%;
+  border-radius: 1px 1px 0 0;
+}
+
+.stocks-volume-bar.up > span {
+  align-self: end;
+  background: var(--stock-up);
+}
+
+.stocks-volume-bar.down > span {
+  align-self: start;
+  border-radius: 0 0 1px 1px;
+  background: var(--stock-down);
+}
+
+.stocks-volume-bar.flat > span {
+  height: 1px !important;
+  background: var(--stock-line);
+}
+
+/* Filled area beneath the price line — accentuates direction at a glance. */
+.stocks-sparkline path.spark-area {
+  stroke: none;
+  opacity: 0.18;
+  vector-effect: non-scaling-stroke;
+}
+
+.stocks-sparkline path.spark-area.up { fill: var(--stock-up); }
+.stocks-sparkline path.spark-area.down { fill: var(--stock-down); }
+
+/* Volume bars under the price panel. */
+.stocks-sparkline rect.vol-bar {
+  vector-effect: non-scaling-stroke;
+}
+
+.stocks-sparkline rect.vol-bar.up { fill: var(--stock-up); opacity: 0.85; }
+.stocks-sparkline rect.vol-bar.down { fill: var(--stock-down); opacity: 0.85; }

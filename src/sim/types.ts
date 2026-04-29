@@ -283,6 +283,11 @@ export interface Equity {
   // Last dividend paid per share (tick stamped). Anchor for "yield"
   // calculations in the UI.
   lastDividend?: { tick: number; perShare: number };
+  // Recent fills against this equity's order book — capped sliding window
+  // used by the UI for the Time & Sales tape, volume summary, and per-tick
+  // volume histogram. Newest entries appended to the end; older entries
+  // dropped once the cap is hit.
+  recentTrades?: BookTrade[];
 }
 
 export type SyndicateId = string;
