@@ -47,6 +47,10 @@ Source data already on hand:
 - Lane traffic by direction (split the line into outbound vs inbound
   per ship, color-coded).
 - Filter chips (faction / kind / has-shortage) above the table.
+- Cleanup: remove dead CSS from the previous detail-panel design
+  (.atlas-stat-grid, .atlas-coords, .atlas-section, .atlas-market-list,
+  .atlas-market-row, .atlas-pressure, .atlas-summary*) and the unused
+  AtlasSummary card layout.
 
 ## Notes / decisions
 

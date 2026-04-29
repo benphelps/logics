@@ -1,11 +1,5 @@
-import { useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import type { IconType } from "react-icons";
-import {
-  GiCargoCrate,
-  GiFactory,
-  GiHabitatDome,
-  GiPathDistance,
-} from "react-icons/gi";
+import { useMemo, useRef, useState, type CSSProperties } from "react";
+import { GiCargoCrate } from "react-icons/gi";
 import { useStore } from "../store";
 import { reachableNeighbors, routeDistance, routeSegments } from "../../sim/geometry";
 import { netProductionRate } from "../../sim/locations";
@@ -69,6 +63,9 @@ interface StationPressure {
   surplus: number;
   focusGood: string;
   tone: PressureTone;
+  // Avg absolute price skew across pressure-flagged goods (price/base - 1
+  // averaged over short+surplus rows). Empty when no pressure rows.
+  avgSkew: number;
 }
 
 interface StationSheetRow {
@@ -127,18 +124,22 @@ export function LocationsView() {
                 <col className="col-profile" />
                 <col className="col-traffic" />
                 <col className="col-flow" />
-                <col className="col-flow" />
-                <col className="col-pressure" />
+                <col className="col-pressure-num" />
+                <col className="col-pressure-num" />
+                <col className="col-pressure-num" />
+                <col className="col-focus" />
               </colgroup>
               <thead>
                 <tr>
                   <th>Station</th>
                   <th>Class</th>
                   <th>Profile</th>
-                  <th>Traffic</th>
-                  <th>Exports</th>
-                  <th>Imports</th>
-                  <th>Pressure</th>
+                  <th>Activity</th>
+                  <th>Goods</th>
+                  <th className="numeric">Short</th>
+                  <th className="numeric">Surplus</th>
+                  <th className="numeric">Skew</th>
+                  <th>Focus</th>
                 </tr>
               </thead>
               <tbody>
@@ -168,18 +169,29 @@ export function LocationsView() {
                       </td>
                       <td>
                         <span className="atlas-stack">
-                          <span className="mono">{row.counts.routes} routes</span>
-                          <span className="mono dim">{row.counts.docked}+{row.counts.inbound} ships · {row.counts.jobs} jobs</span>
+                          <span className="mono">{row.counts.docked}+{row.counts.inbound} ships</span>
+                          <span className="mono dim">{row.counts.routes} routes · {row.counts.jobs} jobs</span>
                         </span>
                       </td>
-                      <td><FlowText world={world} loc={row.loc} goods={row.loc.primaryExports} /></td>
-                      <td><FlowText world={world} loc={row.loc} goods={row.loc.primaryImports} /></td>
                       <td>
-                        <span className={`atlas-pressure ${row.pressure.tone}`}>
-                          <span className="mono">{row.pressure.short} short</span>
-                          <span className="mono">{row.pressure.surplus} surplus</span>
-                          <span>{row.pressure.focusGood}</span>
+                        <span className="atlas-stack atlas-flow-stack">
+                          <FlowText world={world} loc={row.loc} goods={row.loc.primaryExports} />
+                          <FlowText world={world} loc={row.loc} goods={row.loc.primaryImports} />
                         </span>
+                      </td>
+                      <td className="numeric mono">
+                        <span className={row.pressure.short > 0 ? "bad" : "dim"}>{row.pressure.short}</span>
+                      </td>
+                      <td className="numeric mono">
+                        <span className={row.pressure.surplus > 0 ? "good" : "dim"}>{row.pressure.surplus}</span>
+                      </td>
+                      <td className="numeric mono">
+                        {row.pressure.avgSkew > 0
+                          ? <span className={row.pressure.tone}>{(row.pressure.avgSkew * 100).toFixed(1)}%</span>
+                          : <span className="dim">—</span>}
+                      </td>
+                      <td>
+                        <span className={`atlas-focus ${row.pressure.tone}`}>{row.pressure.focusGood}</span>
                       </td>
                     </tr>
                   );
@@ -213,46 +225,18 @@ export function LocationsView() {
             />
           </section>
 
-          <section
-            className={`atlas-detail-panel ${selected ? "atlas-info-card" : ""}`}
-            style={selected ? artCardStyle(stationArtUrl(selected)) : undefined}
-          >
+          <section className="atlas-detail-panel">
             {selected && (
-              <>
-                <div className="atlas-detail-head">
-                  <div>
-                    <span className="atlas-panel-label">Selected Port</span>
-                    <h3>{selected.name}</h3>
-                  </div>
-                  <span className={`atlas-kind atlas-kind-${stationKind(selected)}`}>{kindLabel(stationKind(selected))}</span>
-                </div>
-                <div className="atlas-tags">
-                  {selected.traits.faction && <span className="atlas-tag faction">{selected.traits.faction}</span>}
-                  {selected.traits.tags.map(tag => <span key={tag} className="atlas-tag">{tag}</span>)}
-                </div>
-                <div className="atlas-stat-grid">
-                  <AtlasSummary icon={GiFactory} label="Tech" value={`L${selected.traits.techLevel}`} />
-                  <AtlasSummary icon={GiHabitatDome} label="Pop" value={formatPopulation(selected.population)} />
-                  <AtlasSummary icon={GiPathDistance} label="Routes" value={selectedCounts.routes.toString()} />
-                  <AtlasSummary icon={GiPathDistance} label="Inbound" value={selectedCounts.inbound.toString()} />
-                </div>
-                <div className="atlas-coords mono dim">
-                  x {selected.position.x.toFixed(1)} / y {selected.position.y.toFixed(1)} / open contracts {selectedCounts.jobs}
-                </div>
-
-                <div className="atlas-section">
-                  <div className="atlas-section-title">Market Pressure</div>
-                  <div className="atlas-market-list">
-                    {selectedMarket.map(row => (
-                      <div key={row.good} className={`atlas-market-row ${row.tone}`}>
-                        <span className="atlas-market-good">{row.name}</span>
-                        <span className="mono">{row.stock.toFixed(0)} / {row.target.toFixed(0)}</span>
-                        <span className="mono">Ç{row.price.toFixed(1)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </>
+              <DetailPanel
+                world={world}
+                loc={selected}
+                counts={selectedCounts}
+                marketRowsTop={selectedMarket}
+                stationKind={stationKind(selected)}
+                ships={ships}
+                selectedTraderId={selectedTrader}
+                onSelectTrader={selectTrader}
+              />
             )}
           </section>
         </aside>
@@ -581,15 +565,152 @@ function buildLaneTraffic(world: World): Map<string, LaneTraffic> {
   return map;
 }
 
-function AtlasSummary({ icon: Icon, label, value }: { icon: IconType; label: string; value: ReactNode }) {
+// Detail panel for the focused station — uses the same fleet-card
+// patterns as the stock info column: art-backed panel head, KPI grid,
+// trade-helper-section blocks separated by tight section titles.
+function DetailPanel(props: {
+  world: World;
+  loc: LocationDef;
+  counts: ReturnType<typeof stationCounts>;
+  marketRowsTop: MarketRow[];
+  stationKind: StationKind;
+  ships: ShipMarker[];
+  selectedTraderId: TraderId | null;
+  onSelectTrader: (id: TraderId | null) => void;
+}) {
+  const { world, loc, counts, marketRowsTop, stationKind: kind, ships, selectedTraderId, onSelectTrader } = props;
+  const artUrl = stationArtUrl(loc);
+
+  // Ships parked at OR inbound to this station — used to populate the
+  // Traffic accordion and the right-of-head ship counter.
+  const docked = ships.filter(s => !s.isTransit && s.origin === loc.id);
+  const inbound = ships.filter(s => s.isTransit && s.destination === loc.id);
+  const trafficShips = [
+    ...docked.map(s => ({ marker: s, status: "docked" as const })),
+    ...inbound.map(s => ({ marker: s, status: "inbound" as const })),
+  ].sort((a, b) => a.marker.trader.name.localeCompare(b.marker.trader.name));
+
   return (
-    <span className="atlas-summary-item">
-      <Icon className="atlas-icon" aria-hidden="true" focusable="false" />
-      <span>
-        <span className="atlas-summary-label">{label}</span>
-        <span className="atlas-summary-value">{value}</span>
-      </span>
-    </span>
+    <>
+      <div
+        className={`atlas-panel-head art-panel-head ${artUrl ? "" : "no-art"}`}
+        style={artUrl ? artCardStyle(artUrl) : undefined}
+      >
+        <div className="atlas-detail-title">
+          <span className="atlas-detail-eyebrow">Selected port</span>
+          <span className="atlas-detail-name">{loc.name}</span>
+        </div>
+        <span className={`atlas-kind atlas-kind-${kind}`}>{kindLabel(kind)}</span>
+      </div>
+
+      <div className="atlas-detail-body">
+        <div className="atlas-tags">
+          {loc.traits.faction && <span className="atlas-tag faction">{loc.traits.faction}</span>}
+          {loc.traits.tags.map(tag => <span key={tag} className="atlas-tag">{tag}</span>)}
+        </div>
+
+        <dl className="trade-helper-grid station-info-grid">
+          <DetailStat label="tech" value={`L${loc.traits.techLevel}`} />
+          <DetailStat label="population" value={formatPopulation(loc.population)} />
+          <DetailStat label="routes" value={counts.routes.toLocaleString()} />
+          <DetailStat label="docked" value={counts.docked.toLocaleString()} />
+          <DetailStat label="inbound" value={counts.inbound.toLocaleString()} />
+          <DetailStat label="contracts" value={counts.jobs.toLocaleString()} />
+        </dl>
+
+        <section className="trade-helper-section">
+          <div className="exchange-section-title">Market pressure</div>
+          {marketRowsTop.length === 0 ? (
+            <div className="trade-helper-line muted"><span>Stock</span><span className="dim">balanced</span></div>
+          ) : (
+            marketRowsTop.map(row => (
+              <div key={row.good} className={`trade-helper-line atlas-market-line ${row.tone}`}>
+                <span>{row.name}</span>
+                <span className="mono">
+                  {row.stock.toFixed(0)} / {row.target.toFixed(0)}
+                  <span className="dim"> · Ç{row.price.toFixed(1)}</span>
+                </span>
+              </div>
+            ))
+          )}
+        </section>
+
+        <section className="trade-helper-section">
+          <div className="exchange-section-title">Traffic</div>
+          {trafficShips.length === 0 ? (
+            <div className="trade-helper-line muted"><span>Ships</span><span className="dim">none here</span></div>
+          ) : (
+            <TrafficList
+              world={world}
+              entries={trafficShips}
+              selectedTraderId={selectedTraderId}
+              onSelectTrader={onSelectTrader}
+            />
+          )}
+        </section>
+      </div>
+    </>
+  );
+}
+
+function DetailStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="cargo-stat">
+      <dt className="dim">{label}</dt>
+      <dd className="mono info-value">{value}</dd>
+    </div>
+  );
+}
+
+// Single-open accordion of ships at the focused station. Mirrors the
+// positions/orders accordions on the stock view: clicking a row toggles
+// the expansion (and any other open row collapses).
+function TrafficList(props: {
+  world: World;
+  entries: { marker: ShipMarker; status: "docked" | "inbound" }[];
+  selectedTraderId: TraderId | null;
+  onSelectTrader: (id: TraderId | null) => void;
+}) {
+  const [openId, setOpenId] = useState<TraderId | null>(null);
+  return (
+    <div className="atlas-traffic-list">
+      {props.entries.map(({ marker, status }) => {
+        const t = marker.trader;
+        const isOpen = openId === t.id;
+        const isSelected = props.selectedTraderId === t.id;
+        const dst = t.destination ? props.world.locations[t.destination]?.name ?? "—" : null;
+        const cargoQty = t.cargo.reduce((s, l) => s + l.qty, 0);
+        return (
+          <div key={t.id} className={`atlas-traffic-item ${status} ${isOpen ? "open" : ""} ${isSelected ? "selected" : ""}`}>
+            <button type="button" className="atlas-traffic-summary" onClick={() => {
+              setOpenId(isOpen ? null : t.id);
+              props.onSelectTrader(t.id);
+            }}>
+              <span className={`atlas-traffic-pill ${status}`}>{status === "docked" ? "DOCK" : "INB"}</span>
+              <span className="atlas-traffic-name">{t.name}</span>
+              <span className="numeric mono dim">
+                {status === "docked"
+                  ? `${cargoQty.toFixed(0)}/${t.capacity} cargo`
+                  : `ETA ${t.ticksRemaining}t`}
+              </span>
+            </button>
+            {isOpen && (
+              <div className="atlas-traffic-body">
+                <div className="trade-helper-line"><span>Pilot</span><span className="mono">{t.pilot}</span></div>
+                <div className="trade-helper-line"><span>Cargo</span><span className="mono">{cargoQty.toFixed(0)}/{t.capacity}</span></div>
+                <div className="trade-helper-line"><span>Funds</span><span className="mono">Ç{Math.round(t.funds).toLocaleString()}</span></div>
+                {status === "inbound" && dst && (
+                  <div className="trade-helper-line"><span>From</span><span className="mono">{props.world.locations[t.location]?.name ?? "—"}</span></div>
+                )}
+                {t.cargo.length > 0 && (
+                  <div className="trade-helper-line"><span>Holds</span><span className="mono">{t.cargo.map(l => `${props.world.goods[l.good]?.name ?? l.good} ×${Math.round(l.qty)}`).join(", ")}</span></div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -626,11 +747,16 @@ function stationPressure(world: World, loc: LocationDef): StationPressure {
   const shortRows = rows.filter(r => r.tone === "short");
   const surplusRows = rows.filter(r => r.tone === "surplus");
   const focus = shortRows[0] ?? surplusRows[0] ?? rows[0];
+  const flagged = [...shortRows, ...surplusRows];
+  const avgSkew = flagged.length === 0
+    ? 0
+    : flagged.reduce((s, r) => s + Math.abs((r.price / r.base) - 1), 0) / flagged.length;
   return {
     short: shortRows.length,
     surplus: surplusRows.length,
     focusGood: focus?.name ?? "balanced",
     tone: shortRows.length > 0 ? "short" : surplusRows.length > 0 ? "surplus" : "",
+    avgSkew,
   };
 }
 
