@@ -16,6 +16,7 @@ import { noteSyndicateRevenue } from "./stock";
 import { pushNote, pushTraderEvent } from "./log";
 import { effectivePerDistance, hasCrew, MAINTENANCE_DEBT_TRAVEL_BLOCK, recomputeShipStats } from "./crew";
 import { isUpgradeGood, upgradeDef } from "./upgrades";
+import { buildDestinationLoadoutPlans, buildLocalFetchPlans, type PlannedBuy, type RoutePlanCandidate } from "./loadoutPlans";
 
 export const MIN_PROFIT_PER_TICK = 0.05;
 export const MAX_DRAW_FRACTION = 0.5;
@@ -429,6 +430,27 @@ function evaluateOptions(world: World, trader: Trader, inflight: Map<string, num
   return opts[0] ?? null;
 }
 
+function canExecuteLoadoutPlans(world: World, trader: Trader): boolean {
+  return isPlayerShip(world, trader)
+    && trader.pilot === "auto"
+    && hasCrew(trader, "captain");
+}
+
+function bestAutoLoadoutPlan(world: World, trader: Trader): RoutePlanCandidate | null {
+  if (!canExecuteLoadoutPlans(world, trader)) return null;
+  const drawFraction = playerDrawFraction(world, trader) ?? MAX_DRAW_FRACTION;
+  const plans = [
+    ...buildDestinationLoadoutPlans(world, trader, drawFraction),
+    ...buildLocalFetchPlans(world, trader),
+  ];
+  plans.sort((a, b) =>
+    b.value - a.value
+    || b.buys.length - a.buys.length
+    || a.dst.localeCompare(b.dst),
+  );
+  return plans[0] ?? null;
+}
+
 export interface SpeculativeOption {
   via: LocationId;          // where to fly empty to
   thenBuy: GoodId;          // best good to buy at via
@@ -697,6 +719,69 @@ function serviceTradeSettlementJob(world: World, trader: Trader, events: TraderE
   return true;
 }
 
+function buyPlannedLoadout(world: World, trader: Trader, buys: PlannedBuy[], events: TraderEvent[]): number {
+  const here = trader.location;
+  const market = world.markets[here];
+  let bought = 0;
+
+  for (const buy of buys) {
+    const good = world.goods[buy.good];
+    if (!good) continue;
+    const stock = market.stock[buy.good] ?? 0;
+    const price = marketQuote(world, here, buy.good);
+    const freeMass = Math.max(0, trader.capacity - totalCargoMass(trader, world));
+    const maxByRoom = Math.floor(freeMass / good.weight);
+    const maxByStock = Math.floor(stock);
+    const maxByFunds = price > 0 ? Math.floor(trader.funds / price) : 0;
+    const qty = Math.max(0, Math.min(buy.qty, maxByRoom, maxByStock, maxByFunds));
+    if (qty < 1) continue;
+
+    market.stock[buy.good] = stock - qty;
+    const purchase = settlePurchase(market, price, qty);
+    trader.funds -= purchase.totalCost;
+    trader.cargo.push({ good: buy.good, qty, source: here, unitPrice: price, purchasedAt: world.tick });
+    events.push({ trader: trader.id, kind: "buy", good: buy.good, qty, unitPrice: price, from: here });
+    bought += qty;
+  }
+
+  return bought;
+}
+
+function executeAutoLoadoutPlan(
+  world: World,
+  trader: Trader,
+  plan: RoutePlanCandidate,
+  events: TraderEvent[],
+  inflight: Map<string, number>,
+): boolean {
+  const ft = activeFuelType(trader);
+  const fuel = trader.currentFuel;
+  if (!ft || !fuel) return false;
+  const dist = routeDistance(world, trader.location, plan.dst);
+  if (dist == null) return false;
+  const fuelNeeded = dist * effectivePerDistance(trader, ft.perDistance);
+  if (fuelNeeded > fuel.qty + 0.001) return false;
+
+  for (const jobId of plan.acceptJobIds) {
+    const job = world.jobs[jobId];
+    if (job?.acceptedBy == null) acceptJob(world, jobId, trader.id);
+  }
+
+  const bought = buyPlannedLoadout(world, trader, plan.buys, events);
+  const carryingCargo = trader.cargo.length > 0;
+  const hasFuturePickup = (plan.futureBuys?.length ?? 0) > 0;
+  if (plan.buys.length > 0 && bought < 1 && !carryingCargo) return false;
+  if (plan.buys.length === 0 && !hasFuturePickup && !carryingCargo) return false;
+
+  const travelTicks = Math.max(1, Math.ceil(dist / trader.speed));
+  departForReposition(trader, plan.dst, fuelNeeded, travelTicks, events);
+  for (const lot of trader.cargo) {
+    const key = `${plan.dst}|${lot.good}`;
+    inflight.set(key, (inflight.get(key) ?? 0) + lot.qty);
+  }
+  return true;
+}
+
 function stepTrader(world: World, trader: Trader, events: TraderEvent[], inflight: Map<string, number>): void {
   if (trader.state === "transit") {
     trader.ticksRemaining -= 1;
@@ -804,7 +889,12 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
     return;
   }
 
+  const loadoutPlan = bestAutoLoadoutPlan(world, trader);
   const choice = evaluateOptions(world, trader, inflight);
+  if (loadoutPlan && (!choice || loadoutPlan.value >= choice.totalProfit)) {
+    if (executeAutoLoadoutPlan(world, trader, loadoutPlan, events, inflight)) return;
+  }
+
   if (!choice) {
     // No direct trade — try speculative travel: empty trip to a station
     // where a profitable trade exists, even after positioning costs.

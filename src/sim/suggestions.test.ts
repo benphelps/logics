@@ -130,6 +130,41 @@ describe("suggestion engine edge cases", () => {
     expect(target.buyGoods?.protein).toBe(20);
   });
 
+  it("auto-pilot executes a multi-good route plan before departing", () => {
+    const w = createWorld();
+    const ship = playerShip(w);
+    ship.funds = 100_000;
+    ship.currentFuel = { good: "plasma", qty: ship.fuelCapacity };
+    assignAutoCrew(ship);
+    ship.pilot = "auto";
+
+    for (const market of Object.values(w.markets)) {
+      for (const gid of Object.keys(w.goods)) {
+        market.stock[gid] = 0;
+        market.prices[gid] = w.goods[gid].basePrice;
+      }
+    }
+    w.markets.haven.stock.grain = 20;
+    w.markets.haven.stock.protein = 20;
+    w.markets.haven.prices.grain = 2;
+    w.markets.haven.prices.protein = 2;
+    w.markets.haven.prices.plasma = 15;
+    w.markets.ironhold.stock.plasma = 100;
+    w.markets.ironhold.prices.grain = 100;
+    w.markets.ironhold.prices.protein = 100;
+
+    const hint = getGuidedHint(w, ship, { mode: "actual" });
+    expect(hint.kind).toBe("route_plan");
+    if (hint.kind !== "route_plan") return;
+    expect(hint.buys.map(b => b.good).sort()).toEqual(["grain", "protein"]);
+
+    const report = tickWorld(w);
+    const buys = report.traderEvents.filter(e => e.trader === ship.id && e.kind === "buy");
+    expect(buys.map(e => e.good).sort()).toEqual(["grain", "protein"]);
+    expect(ship.state).toBe("transit");
+    expect(ship.destination).toBe("ironhold");
+  });
+
   it("keeps a multi-good route plan visible after partial buys", () => {
     const w = createWorld();
     const ship = playerShip(w);
@@ -376,33 +411,29 @@ describe("suggestion engine edge cases", () => {
     const actualHint = getGuidedHint(w, ship, { mode: "actual" });
 
     expect(advisoryHint.kind).toBe("route_plan");
-    expect(actualHint.kind).toBe("speculate");
-    if (actualHint.kind !== "speculate") return;
+    expect(actualHint.kind).toBe("route_plan");
+    if (actualHint.kind !== "route_plan") return;
+    expect(actualHint.futureBuys?.map(b => b.good).sort()).toEqual(["grain", "polymer"]);
 
     const report = tickWorld(w);
     const event = report.traderEvents.find(e => e.trader === ship.id && e.kind === "depart");
-    expect(event?.to).toBe(actualHint.via);
+    expect(event?.to).toBe(actualHint.dst);
 
     while (w.traders[ship.id].state === "transit") tickWorld(w);
     const firstBuyHint = getGuidedHint(w, w.traders[ship.id], { mode: "actual" });
-    expect(firstBuyHint.kind).toBe("buy_for_route");
-    if (firstBuyHint.kind !== "buy_for_route") return;
+    expect(firstBuyHint.kind).toBe("route_plan");
+    if (firstBuyHint.kind !== "route_plan") return;
+    const hintedQty = new Map<string, number>();
+    for (const buy of firstBuyHint.buys) hintedQty.set(buy.good, (hintedQty.get(buy.good) ?? 0) + buy.qty);
+    expect([...hintedQty.keys()].sort()).toEqual(["grain", "polymer"]);
     const firstBuyReport = tickWorld(w);
-    const firstBuy = firstBuyReport.traderEvents.find(e => e.trader === ship.id && e.kind === "buy");
-    expect(firstBuy?.good).toBe(firstBuyHint.good);
-    expect(Math.round(firstBuy?.qty ?? 0)).toBe(firstBuyHint.qty);
-
-    while (w.traders[ship.id].state === "transit") tickWorld(w);
-    // After arrival the auto-pilot drips cargo over several ticks before
-    // re-evaluating; drain the unload before sampling the next plan.
-    while ((w.traders[ship.id].unloadingCargo?.length ?? 0) > 0) tickWorld(w);
-    const secondBuyHint = getGuidedHint(w, w.traders[ship.id], { mode: "actual" });
-    expect(secondBuyHint.kind).toBe("buy_for_route");
-    if (secondBuyHint.kind !== "buy_for_route") return;
-    const secondBuyReport = tickWorld(w);
-    const secondBuy = secondBuyReport.traderEvents.find(e => e.trader === ship.id && e.kind === "buy");
-    expect(secondBuy?.good).toBe(secondBuyHint.good);
-    expect(Math.round(secondBuy?.qty ?? 0)).toBe(secondBuyHint.qty);
+    const buys = firstBuyReport.traderEvents.filter(e => e.trader === ship.id && e.kind === "buy");
+    const boughtQty = new Map<string, number>();
+    for (const buy of buys) boughtQty.set(buy.good!, (boughtQty.get(buy.good!) ?? 0) + (buy.qty ?? 0));
+    expect([...boughtQty.keys()].sort()).toEqual(["grain", "polymer"]);
+    for (const [good, qty] of hintedQty) {
+      expect(Math.round(boughtQty.get(good) ?? 0)).toBe(qty);
+    }
   });
 
   it("keeps suggesting remaining local contracts after one grouped contract is accepted", () => {
