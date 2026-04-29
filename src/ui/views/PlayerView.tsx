@@ -2390,8 +2390,11 @@ function compareUpgradeGoods(a: string, b: string): number {
   const da = upgradeDef(a);
   const db = upgradeDef(b);
   if (!da || !db) return a.localeCompare(b);
-  return da.tier - db.tier
-    || UPGRADE_SLOT_RANK[da.slot] - UPGRADE_SLOT_RANK[db.slot]
+  // Slot first so variants of the same slot cluster — the rest of the
+  // UI groups by slot too. Tier ascending within a slot so basic
+  // options lead and exotics trail.
+  return UPGRADE_SLOT_RANK[da.slot] - UPGRADE_SLOT_RANK[db.slot]
+    || da.tier - db.tier
     || da.name.localeCompare(db.name);
 }
 
@@ -2454,6 +2457,7 @@ function ShipUpgradesTab({ ship }: { ship: Trader }) {
                 {def ? (
                   <>
                     <div className="upgrade-card-name">{def.name}</div>
+                    {def.description && <div className="upgrade-card-description">{def.description}</div>}
                     <div className="upgrade-card-bottom">
                       <UpgradeEffectPills text={upgradeEffectText(def)} />
                     </div>
@@ -2473,8 +2477,15 @@ function ShipUpgradesTab({ ship }: { ship: Trader }) {
       {cargoUpgrades.length === 0 ? (
         <div className="upgrade-empty-card">No upgrade modules in cargo.</div>
       ) : (
-        <div className="upgrade-offer-grid">
-          {cargoUpgrades.map((group) => {
+        <div className="upgrade-family-stack">
+          {UPGRADE_SLOTS.map(({ slot, label }) => {
+            const groupsForSlot = cargoUpgrades.filter(g => upgradeDef(g.good)?.slot === slot);
+            if (groupsForSlot.length === 0) return null;
+            return (
+              <section key={slot} className="upgrade-family-section">
+                <div className="upgrade-family-title">{label}</div>
+                <div className="upgrade-offer-grid">
+                  {groupsForSlot.map((group) => {
             const def = upgradeDef(group.good)!;
             const Icon = UPGRADE_SLOT_ICONS[def.slot];
             const installedInSlot = ship.upgrades?.[def.slot];
@@ -2510,8 +2521,12 @@ function ShipUpgradesTab({ ship }: { ship: Trader }) {
                 <div className="upgrade-card-main">
                   <div className="upgrade-card-top">
                     <span className="upgrade-slot-copy">{upgradeSlotLabel(def.slot)}</span>
+                    {replaceMode && replacedDef && (
+                      <span className="upgrade-replace-hint dim">replaces {replacedDef.name}</span>
+                    )}
                   </div>
                   <div className="upgrade-card-name">{def.name}</div>
+                  {def.description && <div className="upgrade-card-description">{def.description}</div>}
                   <div className="upgrade-card-bottom">
                     <UpgradeEffectPills text={upgradeEffectText(def)} />
                   </div>
@@ -2556,6 +2571,10 @@ function ShipUpgradesTab({ ship }: { ship: Trader }) {
                 </div>
               </article>
             );
+                  })}
+                </div>
+              </section>
+            );
           })}
         </div>
       )}
@@ -2582,8 +2601,15 @@ function StationUpgradePurchaseTab({ ship, world, loc, target, hintText, cueText
       {stationUpgradeIds.length === 0 ? (
         <div className="upgrade-empty-card">No upgrade modules stocked at this station.</div>
       ) : (
-        <div className="upgrade-offer-grid station-upgrade-grid">
-          {stationUpgradeIds.map((goodId) => {
+        <div className="upgrade-family-stack">
+          {UPGRADE_SLOTS.map(({ slot, label }) => {
+            const idsForSlot = stationUpgradeIds.filter(id => upgradeDef(id)?.slot === slot);
+            if (idsForSlot.length === 0) return null;
+            return (
+              <section key={slot} className="upgrade-family-section">
+                <div className="upgrade-family-title">{label}</div>
+                <div className="upgrade-offer-grid station-upgrade-grid">
+                  {idsForSlot.map((goodId) => {
             const def = upgradeDef(goodId)!;
             const Icon = UPGRADE_SLOT_ICONS[def.slot];
             const good = world.goods[goodId];
@@ -2610,6 +2636,7 @@ function StationUpgradePurchaseTab({ ship, world, loc, target, hintText, cueText
                     <span className="upgrade-slot-copy">{upgradeSlotLabel(def.slot)}</span>
                   </div>
                   <div className="upgrade-card-name">{def.name}</div>
+                  {def.description && <div className="upgrade-card-description">{def.description}</div>}
                   <div className="upgrade-card-bottom">
                     <UpgradeEffectPills text={upgradeEffectText(def)} />
                   </div>
@@ -2632,6 +2659,10 @@ function StationUpgradePurchaseTab({ ship, world, loc, target, hintText, cueText
                   </div>
                 </div>
               </article>
+            );
+                  })}
+                </div>
+              </section>
             );
           })}
         </div>

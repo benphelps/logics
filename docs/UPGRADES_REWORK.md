@@ -73,12 +73,24 @@ instead of the tier numeral.
 `routeReveal` deferred — it's a visibility/UI hook rather than a sim
 effect; better suited to phase C.
 
-## Phase C — UI
+## Phase C — UI (done)
 
-- Group upgrade variants by `(slot, tier)` family in the market /
-  upgrades panel so the player can compare side-by-side.
-- Render the `description` blurb on hover or expansion.
-- Show "currently installed" + "would replace" at-a-glance.
+- [x] Group upgrade cards by slot in both the cargo-modules section
+  (Ship Upgrades tab) and the station purchase tab — each slot gets
+  its own small-caps section title and grid of variants. Variants
+  within a slot sort by tier ascending.
+- [x] Render the `description` blurb on each card under the name
+  (italic, dim).
+- [x] Inline "replaces X" hint on cargo cards when installing would
+  displace an already-installed module — pairs with the existing
+  Replace button label so the player sees both before clicking.
+
+## Notes
+
+- `compareUpgradeGoods` was re-sorted to slot-first so the catalog
+  reads naturally regardless of which renderer consumes it.
+- `routeReveal` is still deferred — it would fit best in phase D as a
+  visibility unlock on the atlas/contracts views.
 
 ## Notes
 

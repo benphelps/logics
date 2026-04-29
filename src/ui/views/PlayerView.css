@@ -1577,6 +1577,53 @@
   gap: 7px;
 }
 
+/* Phase C: family-grouped layout — each slot gets its own section
+   with a small-caps header and the variant grid beneath. Sections
+   stack vertically so cargo/engine/fuel/etc. read top-to-bottom. */
+.upgrade-family-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.upgrade-family-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.upgrade-family-title {
+  color: var(--text-faint);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0 2px;
+}
+
+/* Optional flavor blurb under the upgrade name. Italic + dim so it
+   reads as supporting copy, not core info. */
+.upgrade-card-description {
+  margin-top: 2px;
+  color: var(--text-dim);
+  font-size: 10.5px;
+  font-style: italic;
+  line-height: 1.32;
+  /* Allow wrapping — these are short flavor lines, ~80 chars max. */
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+/* Inline "would replace X" hint shown on cargo cards when installing
+   would displace an already-installed variant. */
+.upgrade-replace-hint {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .upgrade-effect-pill,
 .crew-mod-pill {
   display: inline-flex;
