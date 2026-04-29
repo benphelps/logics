@@ -9,7 +9,7 @@ import {
   withdrawFromTreasury,
   TREASURY_HAIRCUT_FLOOR,
 } from "./economy";
-import { sellAtLocation, buyAtLocation } from "./traders";
+import { sellAtLocation, buyAtLocation, UNLOAD_TICKS } from "./traders";
 
 describe("treasuries — initialization", () => {
   it("createWorld initializes every market with a treasury at target", () => {
@@ -39,20 +39,20 @@ describe("treasuries — money flow", () => {
     expect(market.treasury - treasuryBefore).toBeCloseTo(fundsCost, 5);
   });
 
-  it("sell pays the trader from the city treasury (closed loop)", () => {
+  it("sell pays the trader (drip-settled) and empties the unloading buffer", () => {
     const w = createWorld();
     const ship = w.traders[w.player!.shipIds[0]];
-    const market = w.markets.haven;
     expect(buyAtLocation(w, ship, "protein", 5).ok).toBe(true);
-    const treasuryBefore = market.treasury;
     const fundsBefore = ship.funds;
 
     expect(sellAtLocation(w, ship, "protein").ok).toBe(true);
+    tickN(w, UNLOAD_TICKS);
 
-    const proceeds = ship.funds - fundsBefore;
-    expect(proceeds).toBeGreaterThan(0);
-    // Treasury is reduced by the trader's net proceeds
-    expect(treasuryBefore - market.treasury).toBeCloseTo(proceeds, 5);
+    // Closed-loop equality between proceeds and treasury delta is verified by
+    // the long-horizon stability tests (the drip runs alongside per-tick
+    // replenishment, so endpoint comparison here would conflate the two).
+    expect(ship.funds).toBeGreaterThan(fundsBefore);
+    expect(ship.unloadingCargo ?? []).toEqual([]);
   });
 });
 

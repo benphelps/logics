@@ -24,7 +24,7 @@ import { listLocalJobs } from "../../sim/jobs";
 import { effectivePerDistance, hasCrew, totalCrewWage } from "../../sim/crew";
 import { MAINTENANCE_DEBT_TRAVEL_BLOCK } from "../../sim/crew";
 import { listHiresAt } from "../../sim/hires";
-import { selectRefuelType } from "../../sim/traders";
+import { selectRefuelType, UNLOAD_TICKS } from "../../sim/traders";
 import { UPGRADE_SLOTS, installedUpgrade, isUpgradeGood, upgradeDef, upgradeEffectText } from "../../sim/upgrades";
 import type { CrewModifiers, CrewRole } from "../../sim/types";
 import type { GoodId, Job, JobId, LocationDef, LocationId, Trader, UpgradeSlot, World } from "../../sim/types";
@@ -1023,7 +1023,11 @@ function StationTradeHelperInfoContent({ loc, world }: { loc: LocationDef; world
                 const jobs = Object.values(world.jobs).filter(job => job.destination === row.to && job.acceptedBy == null).length;
                 return (
                   <tr key={row.to}>
-                    <td title={world.locations[row.to]?.name ?? row.to}>{world.locations[row.to]?.name ?? row.to}</td>
+                    <td>
+                      <span title={world.locations[row.to]?.name ?? row.to}>
+                        {world.locations[row.to]?.name ?? row.to}
+                      </span>
+                    </td>
                     <td className="numeric mono">{row.dist.toFixed(1)}</td>
                     <td className="numeric mono">{jobs}</td>
                   </tr>
@@ -1521,7 +1525,7 @@ function StationExchangeCard({ ship, world, loc, target, hintText, cueText, sele
         </button>
       </div>
       <SectionIntro {...sectionIntro} />
-      <div className={inTransit ? "transit-preview-content" : undefined}>
+      <div className={`exchange-card-tab-body ${inTransit ? "transit-preview-content" : ""}`}>
         {tab === "markets" && (
           <MarketTableBody
             ship={ship}
@@ -2617,46 +2621,48 @@ function CargoTab({ ship, world, loc, groups, inTransit, target, hintText, cueTe
   const manualActions = ship.pilot !== "auto";
 
   return (
-    <table className="cargo-table">
-      <colgroup>
-        <col />
-        <col className="col-num" />
-        <col className="cargo-col-pnl" />
-        {manualActions && <col className="cargo-col-action" />}
-      </colgroup>
-      <thead>
-        <tr>
-          <th>Good</th>
-          <th className="numeric">Qty</th>
-          <th className="numeric">P&amp;L <span className="dim">({inTransit ? "on arrival" : "here"})</span></th>
-          {manualActions && <th>Action</th>}
-        </tr>
-      </thead>
-      <tbody>
-        {groups.length === 0 ? (
-          <tr><td colSpan={manualActions ? 4 : 3} className="cargo-row-empty">Cargo bay empty</td></tr>
-        ) : (
-          groups.map((g) => (
-            <CargoRow
-              key={g.good}
-              group={g}
-              ship={ship}
-              world={world}
-              refLocId={loc.id}
-              inTransit={inTransit}
-              suggested={target.sellGood === g.good || target.sellGoods?.includes(g.good) === true}
-              hintText={cueText.sellGoods[g.good] ?? hintText}
-              selected={selectedGood === g.good}
-              pinned={pinnedGoods.has(g.good)}
-              showAction={manualActions}
-              onSelect={() => onSelectGood(g.good)}
-              onHover={(good) => onHoverGood(good)}
-              onSell={() => sell(ship.id, g.good, g.totalQty)}
-            />
-          ))
-        )}
-      </tbody>
-    </table>
+    <div className="cargo-table-zone">
+      <table className="cargo-table">
+        <colgroup>
+          <col />
+          <col className="col-num" />
+          <col className="cargo-col-pnl" />
+          {manualActions && <col className="cargo-col-action" />}
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Good</th>
+            <th className="numeric">Qty</th>
+            <th className="numeric">P&amp;L <span className="dim">({inTransit ? "on arrival" : "here"})</span></th>
+            {manualActions && <th>Action</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {groups.length === 0 ? (
+            <tr><td colSpan={manualActions ? 4 : 3} className="cargo-row-empty">Cargo bay empty</td></tr>
+          ) : (
+            groups.map((g) => (
+              <CargoRow
+                key={g.good}
+                group={g}
+                ship={ship}
+                world={world}
+                refLocId={loc.id}
+                inTransit={inTransit}
+                suggested={target.sellGood === g.good || target.sellGoods?.includes(g.good) === true}
+                hintText={cueText.sellGoods[g.good] ?? hintText}
+                selected={selectedGood === g.good}
+                pinned={pinnedGoods.has(g.good)}
+                showAction={manualActions}
+                onSelect={() => onSelectGood(g.good)}
+                onHover={(good) => onHoverGood(good)}
+                onSell={() => sell(ship.id, g.good, g.totalQty)}
+              />
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -2682,7 +2688,22 @@ function CargoRow({ group, ship, world, refLocId, inTransit, suggested, hintText
   const pnl = hereNetRevenue - group.totalCost;
   const pnlPct = group.totalCost > 0 ? (pnl / group.totalCost) * 100 : 0;
   const pnlTone = pnl > 0 ? "good" : pnl < 0 ? "bad" : "dim";
-  const canSell = ship.state === "idle" && group.totalQty > 0;
+  const totalOnShip = group.totalQty + group.unloadingQty;
+  const isUnloading = group.unloadingQty > 0;
+  const canSell = ship.state === "idle" && group.totalQty > 0 && !isUnloading;
+  // Drip progress: max ticks remaining across this good's unloading lots /
+  // UNLOAD_TICKS. With per-lot timers, a follow-up Sell click on the same good
+  // bumps the bar back up (newest lot starts at full) but earlier lots
+  // continue draining on their own schedule underneath.
+  let maxTicksLeft = 0;
+  for (const lot of ship.unloadingCargo ?? []) {
+    if (lot.good !== group.good) continue;
+    const t = lot.unloadTicksRemaining ?? 0;
+    if (t > maxTicksLeft) maxTicksLeft = t;
+  }
+  const remainingPct = isUnloading
+    ? Math.max(0, Math.min(100, (maxTicksLeft / UNLOAD_TICKS) * 100))
+    : 0;
 
   return (
     <tr
@@ -2705,7 +2726,7 @@ function CargoRow({ group, ship, world, refLocId, inTransit, suggested, hintText
         </button>
         {group.lots.length > 1 && <span className="row-meta-pill cargo-row-lots">{group.lots.length} lots</span>}
       </td>
-      <td className="numeric mono">{group.totalQty.toFixed(0)}</td>
+      <td className="numeric mono">{totalOnShip.toFixed(0)}</td>
       <td className={`numeric mono cargo-row-pnl ${pnlTone}`}>
         {pnl >= 0 ? "+" : ""}Ç{Math.round(pnl).toLocaleString()}
         <span className="dim"> ({pnl >= 0 ? "+" : ""}{pnlPct.toFixed(0)}%)</span>
@@ -2713,18 +2734,30 @@ function CargoRow({ group, ship, world, refLocId, inTransit, suggested, hintText
       {showAction && (
         <td>
           <ActionCell suggested={suggested} hintText={hintText}>
-            <button
-              className={`btn-action cargo-sell-action ${suggested ? "btn-suggested" : ""}`}
-              onClick={(event) => {
-                event.stopPropagation();
-                onSell();
-              }}
-              disabled={!canSell}
-              title={canSell ? `Sell ${group.totalQty.toFixed(0)} ${good.name}` : inTransit ? "Dock to sell cargo" : "No cargo to sell"}
-            >
-              <span className="btn-label">Sell</span>
-              <span className="btn-count">{group.totalQty.toFixed(0)}</span>
-            </button>
+            {isUnloading ? (
+              <button
+                className="btn-action cargo-sell-action primary cargo-sell-progress"
+                disabled
+                title={`Unloading ${group.unloadingQty.toFixed(0)} ${good.name} — ${Math.round(100 - remainingPct)}% delivered`}
+                style={{ ["--remaining" as string]: `${remainingPct}%` }}
+              >
+                <span className="btn-label">Unloading</span>
+                <span className="btn-count">{group.unloadingQty.toFixed(0)}</span>
+              </button>
+            ) : (
+              <button
+                className={`btn-action cargo-sell-action ${suggested ? "btn-suggested" : "primary"}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSell();
+                }}
+                disabled={!canSell}
+                title={canSell ? `Sell ${group.totalQty.toFixed(0)} ${good.name}` : inTransit ? "Dock to sell cargo" : "No cargo to sell"}
+              >
+                <span className="btn-label">Sell</span>
+                <span className="btn-count">{group.totalQty.toFixed(0)}</span>
+              </button>
+            )}
           </ActionCell>
         </td>
       )}
@@ -3111,6 +3144,7 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
         </div>
         {quickTravelTab}
       </header>
+      <div className="travel-table-zone">
       <table className={`travel-table ${!manualActions ? "travel-table-readonly" : ""} ${inTransit ? "transit-preview-content" : ""}`}>
         <colgroup>
           <col className="col-dest" />
@@ -3212,6 +3246,7 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
           })}
         </tbody>
       </table>
+      </div>
     </section>
   );
 }

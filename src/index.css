@@ -109,7 +109,12 @@ button:disabled {
 button.primary {
   background: var(--accent-dim);
   border-color: var(--accent);
+  /* White text on the medium-blue accent feels thin at default weight; bump
+     weight + add a subtle dark shadow to lift the glyphs off the background.
+     Applies to every .primary button site-wide (Buy/Sell/Accept/etc.). */
   color: white;
+  font-weight: 600;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
 }
 
 button.primary:hover:not(:disabled) {

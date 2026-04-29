@@ -393,6 +393,9 @@ describe("suggestion engine edge cases", () => {
     expect(Math.round(firstBuy?.qty ?? 0)).toBe(firstBuyHint.qty);
 
     while (w.traders[ship.id].state === "transit") tickWorld(w);
+    // After arrival the auto-pilot drips cargo over several ticks before
+    // re-evaluating; drain the unload before sampling the next plan.
+    while ((w.traders[ship.id].unloadingCargo?.length ?? 0) > 0) tickWorld(w);
     const secondBuyHint = getGuidedHint(w, w.traders[ship.id], { mode: "actual" });
     expect(secondBuyHint.kind).toBe("buy_for_route");
     if (secondBuyHint.kind !== "buy_for_route") return;

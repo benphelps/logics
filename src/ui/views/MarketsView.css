@@ -110,6 +110,10 @@
   flex: 1;
   display: grid;
   grid-template-columns: minmax(760px, 1fr) minmax(300px, 0.32fr);
+  /* Constrain the grid row to the layout's flex-allocated height. Without
+     this, the row defaults to `auto` and stretches with content — making
+     .commodity-scroll effectively unbounded so the table never scrolls. */
+  grid-template-rows: minmax(0, 1fr);
   gap: 14px;
   min-height: 0;
 }

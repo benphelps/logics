@@ -4,6 +4,12 @@ export const PRICE_ELASTICITY = 0.6;
 export const PRICE_FLOOR_MULT = 0.25;
 export const PRICE_CEILING_MULT = 5.0;
 export const PRICE_RESERVE_FRACTION = 0.08;
+// Per-tick EMA toward the elasticity-derived target. With 0.10 a 5× swing in
+// underlying scarcity halves itself in ~7 ticks, so single-tick stock jolts
+// (trader arrivals, production bursts) bleed in gradually instead of teleporting
+// the price. Initial market.prices entries are seeded at basePrice and stocks at
+// target, so the EMA starts coherent — no migration needed.
+export const GOODS_PRICE_SMOOTHING = 0.10;
 
 export function priceFor(
   basePrice: number,
@@ -34,10 +40,8 @@ export function recomputePrices(world: World, loc: LocationDef, market: MarketSt
       continue;
     }
     const target = loc.targetStock[goodId] ?? 0;
-    if (target <= 0) {
-      market.prices[goodId] = base;
-    } else {
-      market.prices[goodId] = priceFor(base, market.stock[goodId] ?? 0, target);
-    }
+    const resolved = target <= 0 ? base : priceFor(base, market.stock[goodId] ?? 0, target);
+    const prev = market.prices[goodId] ?? resolved;
+    market.prices[goodId] = prev + GOODS_PRICE_SMOOTHING * (resolved - prev);
   }
 }

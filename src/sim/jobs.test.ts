@@ -7,7 +7,7 @@ import {
   EXPIRY_TICKS_BY_TIER, MAX_OPEN_JOBS, PENALTY_FRACTION_BY_TIER, REWARD_MULT_BY_TIER,
   maxOpenJobs,
 } from "./jobs";
-import { sellAtLocation } from "./traders";
+import { sellAtLocation, UNLOAD_TICKS } from "./traders";
 import { generateWorld } from "./gen/world";
 
 describe("jobs: shortage generation", () => {
@@ -264,7 +264,7 @@ describe("jobs: accept / abandon / completion", () => {
     expect(ship.funds).toBe(fundsBefore + 500);
   });
 
-  it("sellAtLocation triggers job credit + reward on full delivery", () => {
+  it("sellAtLocation triggers job credit + reward after the drip completes", () => {
     const w = createWorld();
     const ship = w.traders[w.player!.shipIds[0]];
     ship.cargo = [{ good: "grain", qty: 8, source: "verdant", unitPrice: 5, purchasedAt: 0 }];
@@ -278,9 +278,12 @@ describe("jobs: accept / abandon / completion", () => {
     const fundsBefore = ship.funds;
     const r = sellAtLocation(w, ship, "grain");
     expect(r.ok).toBe(true);
-    if (r.ok) {
-      expect(r.jobCompletions?.[0].reward).toBe(800);
-    }
+
+    // Sell now drips: cargo moves to unloadingCargo, settles 1/N per tick.
+    // After UNLOAD_TICKS the job is fully credited and the reward paid.
+    tickN(w, UNLOAD_TICKS);
+    expect(ship.unloadingCargo ?? []).toEqual([]);
+    expect(w.jobs[jobId]).toBeUndefined();
     // Ship gets sale revenue + reward bonus.
     expect(ship.funds).toBeGreaterThan(fundsBefore + 800);
   });

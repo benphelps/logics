@@ -94,17 +94,16 @@
 }
 
 .bridge-card {
-  --bridge-card-pad-x: 16px;
-  --bridge-card-pad-y: 14px;
+  /* No outer padding: children sit at the card edges. Internal sections that
+     want a content indent declare their own padding (--bridge-table-pad-x is
+     the standard 28px indent for table cells and section labels). */
   --bridge-table-pad-x: 28px;
-  --bridge-table-bottom-gap: 14px;
   --card-art-opacity: 0.32;
   --card-art-position: center 34%;
   --card-art-height: 44%;
   background: var(--ship-surface);
   border: 1px solid var(--ship-line);
   border-radius: 7px;
-  padding: var(--bridge-card-pad-y) var(--bridge-card-pad-x);
   position: relative;
   min-width: 0;
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
@@ -141,14 +140,14 @@
   grid-row: 1;
   display: flex;
   flex-direction: column;
-  padding-top: 0;
   overflow: hidden;
 }
 
 .bridge > .travel-card {
   grid-column: 3;
   grid-row: 1;
-  padding-top: 0;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
@@ -372,7 +371,6 @@
 .ship-status-tabs {
   flex: 0 0 auto;
   width: auto;
-  margin: 0 calc(var(--bridge-card-pad-x) * -1);
   border-color: rgba(255, 255, 255, 0.08);
   border-width: 0 0 1px;
   border-radius: 6px 6px 0 0;
@@ -389,7 +387,6 @@
 .ship-cargo-tabs {
   flex: 0 0 auto;
   width: auto;
-  margin: 0 calc(var(--bridge-card-pad-x) * -1);
   border-color: rgba(255, 255, 255, 0.08);
   border-width: 0 0 1px;
   border-radius: 0 0 6px 6px;
@@ -1098,10 +1095,9 @@
 .bridge-section-intro {
   display: flex;
   flex: 0 0 auto;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin: 0 calc(var(--bridge-card-pad-x) * -1);
   padding: 12px 14px;
   border-bottom: 1px solid var(--ship-line-soft);
 }
@@ -1175,27 +1171,32 @@
   white-space: nowrap;
 }
 
-.bridge-tab.has-suggestion {
-  color: #e5f6ff;
-  background: rgba(79, 182, 255, 0.14);
-  box-shadow: inset 0 0 0 1px rgba(79, 182, 255, 0.52);
-}
-
-.bridge-tab.has-suggestion.active {
-  color: #e5f6ff;
-  background: rgba(79, 182, 255, 0.14);
-  box-shadow: inset 0 0 0 1px rgba(79, 182, 255, 0.52);
-}
-
-.bridge-tab.has-suggestion:hover:not(:disabled) {
-  color: #f2fbff;
-  background: rgba(79, 182, 255, 0.18);
-  box-shadow: inset 0 0 0 1px rgba(79, 182, 255, 0.62);
-}
-
+/* Tabs with suggested-action content keep their normal tab styling — only the
+   count number changes appearance, sitting in a colored pill callout that
+   pulses like the suggested-marker dot. The constant ring-pulse draws the eye
+   without dyeing the entire tab. The .active selector copy below ensures the
+   pill text stays white even when the host tab is the active one (the global
+   .bridge-tab.active .bridge-tab-count rule would otherwise re-dim it). */
 .bridge-tab.has-suggestion .bridge-tab-count,
 .bridge-tab.has-suggestion.active .bridge-tab-count {
-  color: #b9ddf2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  padding: 1px 6px;
+  /* Slightly translucent blue so the pill reads as "called out" without
+     glowing fluorescent against dark surfaces. */
+  background: rgba(63, 161, 230, 0.9);
+  border-radius: 999px;
+  color: #ffffff;
+  font-weight: 700;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+  animation: tab-suggestion-pulse 2.2s ease-in-out infinite;
+}
+
+@keyframes tab-suggestion-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(79, 182, 255, 0.6); }
+  50%      { box-shadow: 0 0 0 6px rgba(79, 182, 255, 0); }
 }
 
 .bridge-tab-count {
@@ -1259,7 +1260,7 @@
 .upgrade-table .col-source { width: 72px; }
 .upgrade-table .col-tier { width: 56px; }
 .upgrade-table .col-role { width: 112px; }
-.upgrade-table .col-action { width: 118px; }
+.upgrade-table .col-action { width: 132px; }
 
 .upgrade-table th {
   position: relative;
@@ -1323,7 +1324,7 @@
 }
 
 .upgrade-offer-title {
-  padding: 2px calc(var(--bridge-table-pad-x) - var(--bridge-card-pad-x)) 0;
+  padding: 2px var(--bridge-table-pad-x) 0;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -1561,7 +1562,12 @@
   white-space: nowrap;
 }
 
-.jobs-table.contract-table .btn-action {
+/* In-card action buttons (upgrades / jobs / contracts / offers): button fills
+   the action column instead of using its default 108px width, which was
+   wider than the col-action of these narrower tables and caused the rightmost
+   column to clip the button against the cell edge. */
+.upgrade-table .btn-action,
+.jobs-table .btn-action {
   width: 100%;
   min-width: 0;
   justify-content: center;
@@ -1773,8 +1779,62 @@
 
 .bridge-split > .exchange-card {
   grid-column: 1 / span 2;
-  padding-top: 0;
   overflow: hidden;
+  /* Flex column so the tab body below can claim leftover height and own its
+     own scroll, instead of overflowing the card silently. */
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.exchange-card-tab-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  /* Single shared scroll zone for whichever exchange tab is active
+     (Markets/Upgrades/Offers/Contracts). Sticky theads on each table reference
+     this as their scrolling ancestor, so column headers stay pinned. */
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Hover-tracking container for the markets table — no overflow of its own
+   anymore; scrolling is owned by .exchange-card-tab-body above. */
+.market-table-zone {
+  display: contents;
+}
+
+/* Cargo: cap at ~5 rows tall (~300px), scroll past that. Lives inside the
+   ship card alongside other panels, so a hard cap keeps it bounded. */
+.cargo-table-zone {
+  max-height: 300px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Travel: fills the remainder of the travel card after the panel header.
+   Scrolls when the destination list is long. The card is flex-column so this
+   zone can claim leftover height instead of stopping at content height. */
+.travel-table-zone {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Sticky theads — column headers stay pinned to the top of whichever scroll
+   ancestor each table sits in (cargo/travel zones, or .exchange-card-tab-body
+   for the in-card market/upgrade/jobs tables). */
+.cargo-table thead th,
+.travel-table thead th,
+.market-table thead th,
+.upgrade-table thead th,
+.jobs-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--ship-surface-soft);
 }
 
 .bridge-split > .trade-helper-card {
@@ -1789,8 +1849,7 @@
 .exchange-card .bridge-card-tabs {
   display: flex;
   flex: 0 0 auto;
-  width: calc(100% + (var(--bridge-card-pad-x) * 2));
-  margin: 0 calc(var(--bridge-card-pad-x) * -1);
+  width: 100%;
   border-color: rgba(255, 255, 255, 0.08);
   border-width: 0 0 1px;
   border-radius: 6px 6px 0 0;
@@ -1810,7 +1869,7 @@
 }
 
 .exchange-section-title {
-  padding: 2px calc(var(--bridge-table-pad-x) - var(--bridge-card-pad-x)) 0;
+  padding: 2px var(--bridge-table-pad-x) 0;
   color: var(--text-faint);
   font-size: 9px;
   font-weight: 750;
@@ -1878,7 +1937,6 @@
 }
 
 .info-area-card {
-  padding-top: 0;
   overflow: hidden;
 }
 
@@ -1892,7 +1950,7 @@
   width: auto;
   min-height: 35.2px;
   min-width: 0;
-  margin: 0 calc(var(--bridge-card-pad-x) * -1) 20px;
+  margin: 0 0 20px;
   background: rgba(16, 19, 23, 0.58);
   -webkit-backdrop-filter: blur(12px) saturate(1.08);
   backdrop-filter: blur(12px) saturate(1.08);
@@ -1968,6 +2026,10 @@
   flex: 1 1 auto;
   isolation: isolate;
   min-height: 0;
+  /* No padding — content reaches the card edges vertically. Horizontal
+     padding lives on .info-panel-fixed and .info-panel-scroll so the
+     scrollbar sits flush with the card edge while content stays indented. */
+  padding: 0;
   overflow: hidden;
   overscroll-behavior: contain;
 }
@@ -2007,6 +2069,8 @@
   position: relative;
   z-index: 2;
   flex: 0 0 auto;
+  /* Match the table-cell horizontal indent (28px) for the panel header. */
+  padding: 0 var(--bridge-table-pad-x);
 }
 
 .info-panel-scroll {
@@ -2015,7 +2079,12 @@
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding-right: 2px;
+  /* Indent content with table-cell padding on the left, plus the same on the
+     right to balance — but the scrollbar lives at the element's right edge
+     (which IS the card edge, since .info-area-content has no horizontal
+     padding now). So the scrollbar sits flush with the card while content
+     stays inset. */
+  padding: 0 var(--bridge-table-pad-x);
   scrollbar-gutter: stable;
 }
 
@@ -2509,15 +2578,9 @@
   table-layout: fixed;
 }
 
-.bridge-card :is(.market-table, .travel-table, .suggestions-table, .jobs-table, .upgrade-table, .crew-table, .cargo-table) {
-  width: calc(100% + (var(--bridge-card-pad-x) * 2));
-  margin-left: calc(var(--bridge-card-pad-x) * -1);
-  margin-right: calc(var(--bridge-card-pad-x) * -1);
-}
-
-.bridge-card :is(.market-table, .travel-table, .suggestions-table, .jobs-table, .upgrade-table, .crew-table, .cargo-table):last-child {
-  margin-bottom: calc((var(--bridge-card-pad-y) - var(--bridge-table-bottom-gap)) * -1);
-}
+/* Tables sit edge-to-edge inside bridge cards naturally now (the card has no
+   outer padding). Per-cell padding on first/last cells (var(--bridge-table-pad-x))
+   provides the visual content indent. */
 
 .col-good     { width: auto; }
 .col-dest     { width: auto; }
@@ -2527,7 +2590,7 @@
 .col-action   { width: 296px; }
 .market-table .col-action { width: 176px; }
 .travel-table .col-action { width: 132px; }
-.jobs-table   .col-action { width: 80px; }
+.jobs-table   .col-action { width: 100px; }
 .jobs-table   .col-num    { width: 54px; }
 
 .market-table th,
@@ -2641,7 +2704,6 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  margin: 0 calc(var(--bridge-card-pad-x) * -1);
   padding: 12px 14px;
   border-bottom: 1px solid var(--ship-line-soft);
 }
@@ -2711,6 +2773,10 @@
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+  /* Don't let children stretch to fill the cell — the dest-title button
+     should only be as wide as its text + pin so hover/focus triggers
+     don't fire over empty cell space. */
+  align-items: flex-start;
 }
 
 .travel-dest-title-poi {
@@ -2815,7 +2881,10 @@
 .suggestions-table tbody tr:hover,
 .jobs-table tbody tr:hover,
 .upgrade-table tbody tr:hover,
-.crew-table tbody tr:hover {
+.crew-table tbody tr:hover,
+.cargo-table tbody tr:hover,
+.market-table tbody tr:hover,
+.travel-table tbody tr:hover {
   background: rgba(255, 255, 255, 0.025);
 }
 
@@ -2834,6 +2903,7 @@
   color: white !important;
   border-color: var(--ship-action-blue-line) !important;
   font-weight: 600;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
   box-shadow: 0 0 0 2px rgba(31, 111, 168, 0.32);
 }
 
@@ -2882,26 +2952,23 @@
   box-shadow: 0 0 0 2px rgba(79, 182, 255, 0.32);
 }
 
-.suggestion-pulse-odd .bridge-tab.has-suggestion,
-.suggestion-pulse-even .bridge-tab.has-suggestion {
+/* When the player tries to depart with suggestions pending, override the
+   constant pill pulse with a brighter one-shot flash so the call-out is
+   unmissable. Returns to the default infinite pulse when the class clears. */
+.suggestion-pulse-odd .bridge-tab.has-suggestion .bridge-tab-count,
+.suggestion-pulse-even .bridge-tab.has-suggestion .bridge-tab-count {
   animation: depart-suggestion-pulse 3.7s ease-out;
 }
 
 @keyframes depart-suggestion-pulse {
   0% {
-    color: #e5f6ff;
-    background: rgba(79, 182, 255, 0.14);
-    box-shadow: inset 0 0 0 1px rgba(79, 182, 255, 0.52);
+    box-shadow: 0 0 0 0 rgba(79, 182, 255, 0);
   }
   5%, 82% {
-    color: #f2fbff;
-    background: rgba(83, 190, 255, 0.28);
-    box-shadow: inset 0 0 0 1px rgba(117, 207, 255, 0.92), 0 0 18px rgba(79, 182, 255, 0.30);
+    box-shadow: 0 0 0 4px rgba(117, 207, 255, 0.7), 0 0 18px rgba(79, 182, 255, 0.55);
   }
   100% {
-    color: #e5f6ff;
-    background: rgba(79, 182, 255, 0.14);
-    box-shadow: inset 0 0 0 1px rgba(79, 182, 255, 0.52);
+    box-shadow: 0 0 0 0 rgba(79, 182, 255, 0);
   }
 }
 
@@ -2913,7 +2980,7 @@
 .market-footnote {
   font-size: 10px;
   margin-top: 10px;
-  padding: 0 calc(var(--bridge-table-pad-x) - var(--bridge-card-pad-x));
+  padding: 0 var(--bridge-table-pad-x);
 }
 
 .row-meta-pill {
@@ -2969,6 +3036,66 @@
 .btn-action.btn-narrow {
   width: 52px;
   justify-content: center;
+}
+
+/* Disabled primary action buttons (Buy/Sell/etc. with nothing to act on) sit
+   in a deep dark state with strong contrast against the active blue. Overrides
+   the global opacity-only :disabled rule. The progress overlay reuses the same
+   color so the unloading button cycles between exactly two states: active blue
+   (drained) and this disabled dark (remaining). */
+:root {
+  --btn-disabled-bg: #0e151d;          /* very dark, slight blue cast — true disabled */
+  --btn-unloading-base: #1c4160;       /* half-bright blue: midway between active accent-dim and disabled */
+  --btn-unloading-bg: #1a2738;         /* sliding dark band overlay during unload */
+  --btn-disabled-border: rgba(79, 182, 255, 0.12);
+}
+
+/* Disabled (and not currently dripping) — deep dark state for strong contrast
+   against the active blue. The :not(.cargo-sell-progress) carve-out keeps this
+   rule from clobbering the progress button's gradient via !important. */
+.btn-action.primary:disabled:not(.cargo-sell-progress) {
+  opacity: 1;
+  background-color: var(--btn-disabled-bg);
+  background-image: none;
+  border-color: var(--btn-disabled-border);
+  color: var(--text-faint);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+.btn-action.primary:disabled:not(.cargo-sell-progress) .btn-count {
+  color: var(--text-faint);
+}
+
+/* Unloading state: the Sell button starts active blue and gradually "becomes
+   disabled" — the dark band grows from the left edge as cargo drips off-ship.
+   At unload start the button looks fully active; at unload end it's fully dark
+   (matching the disabled state). The remaining-blue portion = work still to do. */
+.btn-action.primary.cargo-sell-progress {
+  opacity: 1;
+  /* Half-bright blue base — reads as "busy, half-disabled" rather than fully
+     active. The dark band growing in over this still gives the progress cue.
+     Border drops to half-alpha accent so it matches the muted base. */
+  background-color: var(--btn-unloading-base);
+  border-color: rgba(79, 182, 255, 0.5);
+  color: white;
+  position: relative;
+  overflow: hidden;
+  cursor: progress;
+  background-image: linear-gradient(
+    to right,
+    transparent 0%,
+    transparent var(--remaining, 100%),
+    var(--btn-unloading-bg) var(--remaining, 100%),
+    var(--btn-unloading-bg) 100%
+  );
+  transition: background-image 0.4s linear;
+}
+
+.btn-action.cargo-sell-progress .btn-label,
+.btn-action.cargo-sell-progress .btn-count {
+  position: relative;
+  z-index: 1;
+  color: white;
 }
 
 /* Jobs tables use a single label-only Accept/Abandon button — tighter than

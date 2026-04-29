@@ -24,6 +24,37 @@ export const STRANDING_RESERVE = 0.3;         // require 30% reserve at arrival 
 export const INFLIGHT_WEIGHT = 1.0;
 export const MAX_NO_OPPORTUNITY_TICKS = 12;
 export const NPC_OPERATING_FLOAT = 5_000;
+// All sells (auto-arrival, NPC arrival, manual click) drip cargo into the
+// destination market across this many ticks instead of dumping it in one.
+// Each tick settles 1/N of every remaining lot in `unloadingCargo`, so stock
+// and treasury impact spread out and price EMAs don't see a cliff.
+export const UNLOAD_TICKS = 4;
+
+// Cargo + unloadingCargo both physically occupy the hold and count toward
+// capacity until the drip removes them.
+export function totalCargoMass(trader: Trader, world: World): number {
+  let m = 0;
+  for (const l of trader.cargo) m += l.qty * (world.goods[l.good]?.weight ?? 0);
+  for (const l of trader.unloadingCargo ?? []) m += l.qty * (world.goods[l.good]?.weight ?? 0);
+  return m;
+}
+
+export function isUnloading(trader: Trader): boolean {
+  return (trader.unloadingCargo?.length ?? 0) > 0;
+}
+
+// Max remaining ticks across all unloading lots — used by the UI to show a
+// single progress bar per good even when multiple lots of the same good are
+// dripping at different stages (e.g. successive Sell clicks).
+export function unloadTicksRemainingFor(trader: Trader, good?: GoodId): number {
+  let max = 0;
+  for (const lot of trader.unloadingCargo ?? []) {
+    if (good != null && lot.good !== good) continue;
+    const t = lot.unloadTicksRemaining ?? 0;
+    if (t > max) max = t;
+  }
+  return max;
+}
 
 // Re-exported for back-compat with consumers that imported it from here.
 export type { TraderEvent };
@@ -276,7 +307,8 @@ export function listTradeOptions(
   // Cargo space available for new buys = capacity - existing lot mass.
   // Lets the suggestion engine recommend "hedge" buys when the player has
   // partial cargo — without this, every buy was sized to full empty bay.
-  const usedMass = trader.cargo.reduce((s, l) => s + l.qty * world.goods[l.good].weight, 0);
+  // unloadingCargo also counts: it's still physically aboard until drip removes it.
+  const usedMass = totalCargoMass(trader, world);
   const freeMass = Math.max(0, trader.capacity - usedMass);
   const destinations = reachableNeighbors(world, here);
 
@@ -696,26 +728,42 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
         }
       }
 
-      const dstMarket = world.markets[dst];
-      for (const lot of trader.cargo) {
-        const { good, qty } = lot;
-        const unitPrice = marketQuote(world, dst, good);
-        dstMarket.stock[good] = (dstMarket.stock[good] ?? 0) + qty;
-        // Settle through the city treasury. If treasury is healthy, trader
-        // gets full price (post-tax). If poor, payout is haircut to whatever
-        // the city can pay — losses incurred here are real.
-        const settlement = settleSale(dstMarket, unitPrice, qty);
-        trader.funds += settlement.traderRevenue;
-        // Track revenue against the trader's syndicate (drives stock price)
-        noteSyndicateRevenue(world, trader.id, settlement.traderRevenue);
-        events.push({ trader: trader.id, kind: "sell", good, qty, unitPrice: settlement.effectiveUnitPrice, to: dst });
-        // Credit any matching accepted contracts (player ships only — the
-        // creditJobOnDelivery helper bails for non-player ids). Pays out the
-        // contract reward + emits a job_completed log entry.
-        creditJobOnDelivery(world, trader.id, dst, good, qty);
-      }
+      // Move all cargo to the unloading buffer and start each lot's drip timer.
+      // Lots are still physically aboard (count toward mass) until the drip
+      // moves each fraction off-ship over UNLOAD_TICKS subsequent ticks.
+      const movedLots = trader.cargo.map(l => ({ ...l, unloadTicksRemaining: UNLOAD_TICKS }));
+      trader.unloadingCargo = [...(trader.unloadingCargo ?? []), ...movedLots];
       trader.cargo = [];
     }
+    return;
+  }
+
+  // Drip-unload from a prior arrival or manual Sell click. Each lot tracks its
+  // own ticks remaining, so a fresh Sell click never resets the drain rate of
+  // already-unloading lots — the new lots get their own UNLOAD_TICKS window.
+  if (isUnloading(trader)) {
+    const dstMarket = world.markets[trader.location];
+    const buf = trader.unloadingCargo!;
+    for (const lot of buf) {
+      const ticksLeft = lot.unloadTicksRemaining ?? UNLOAD_TICKS;
+      if (ticksLeft <= 0) continue;
+      const dripQty = ticksLeft <= 1 ? lot.qty : lot.qty / ticksLeft;
+      if (dripQty <= 0) {
+        lot.unloadTicksRemaining = ticksLeft - 1;
+        continue;
+      }
+      const unitPrice = marketQuote(world, trader.location, lot.good);
+      dstMarket.stock[lot.good] = (dstMarket.stock[lot.good] ?? 0) + dripQty;
+      const settlement = settleSale(dstMarket, unitPrice, dripQty);
+      trader.funds += settlement.traderRevenue;
+      noteSyndicateRevenue(world, trader.id, settlement.traderRevenue);
+      events.push({ trader: trader.id, kind: "sell", good: lot.good, qty: dripQty, unitPrice: settlement.effectiveUnitPrice, to: trader.location });
+      creditJobOnDelivery(world, trader.id, trader.location, lot.good, dripQty);
+      lot.qty -= dripQty;
+      lot.unloadTicksRemaining = ticksLeft - 1;
+    }
+    trader.unloadingCargo = buf.filter(l => l.qty > 0.001 && (l.unloadTicksRemaining ?? 0) > 0);
+    if (trader.unloadingCargo.length === 0) trader.unloadingCargo = undefined;
     return;
   }
 
@@ -873,6 +921,7 @@ export type ExecuteResult =
 
 export function executeTrade(world: World, trader: Trader, choice: TradeOption): ExecuteResult {
   if (trader.state !== "idle") return { ok: false, reason: "Ship is in transit." };
+  if (isUnloading(trader)) return { ok: false, reason: "Wait for the current unload to finish before departing." };
   const blocked = maintenanceTravelBlockReason(trader);
   if (blocked) return { ok: false, reason: blocked };
 
@@ -891,7 +940,7 @@ export function executeTrade(world: World, trader: Trader, choice: TradeOption):
   if (stockHere < choice.qty) return { ok: false, reason: `Source has only ${stockHere.toFixed(0)} of ${choice.good}.` };
 
   const goodWeight = world.goods[choice.good].weight;
-  const currentMass = trader.cargo.reduce((s, l) => s + l.qty * world.goods[l.good].weight, 0);
+  const currentMass = totalCargoMass(trader, world);
   const addMass = choice.qty * goodWeight;
   if (currentMass + addMass > trader.capacity + 0.001) {
     return { ok: false, reason: "Not enough cargo space." };
@@ -1020,7 +1069,7 @@ function removeCargoUnit(trader: Trader, goodId: GoodId): boolean {
 }
 
 function currentCargoMass(trader: Trader, world: World): number {
-  return trader.cargo.reduce((s, l) => s + l.qty * (world.goods[l.good]?.weight ?? 0), 0);
+  return totalCargoMass(trader, world);
 }
 
 function replacedUpgradeCargoPrice(world: World, trader: Trader, goodId: GoodId): number {
@@ -1123,7 +1172,8 @@ export function buyAtLocation(world: World, trader: Trader, goodId: GoodId, qty:
   if (stock < qty) return { ok: false, reason: `Only ${stock.toFixed(0)} ${goodId} in stock here.` };
 
   // Sum of all existing lots' mass — multi-lot cargo means many goods may share the bay.
-  const currentMass = trader.cargo.reduce((s, l) => s + l.qty * world.goods[l.good].weight, 0);
+  // unloadingCargo also counts: still aboard until the drip moves it off.
+  const currentMass = totalCargoMass(trader, world);
   const addMass = qty * good.weight;
   if (currentMass + addMass > trader.capacity + 0.001) {
     const room = Math.max(0, (trader.capacity - currentMass) / good.weight);
@@ -1163,34 +1213,33 @@ export function sellAtLocation(world: World, trader: Trader, goodId: GoodId, qty
     return { ok: false, reason: `Only have ${totalAvailable} units of ${goodId}.` };
   }
 
-  const market = world.markets[trader.location];
-  const grossPrice = marketQuote(world, trader.location, goodId);
-  const settlement = settleSale(market, grossPrice, sellQty);
-  const netPrice = settlement.effectiveUnitPrice;
-
-  market.stock[goodId] = (market.stock[goodId] ?? 0) + sellQty;
-  trader.funds += settlement.traderRevenue;
-
-  // Drain matching lots FIFO until sellQty is satisfied. Remove emptied lots.
+  // Move sellQty FIFO from cargo into the unloading buffer. Each new lot gets
+  // its OWN UNLOAD_TICKS countdown, so chained Sell clicks never reset the
+  // drain rate of already-dripping lots — a click that follows an earlier sell
+  // adds fresh lots that drain on their own schedule alongside the existing
+  // ones. Mass stays counted until each fraction physically leaves the hold.
+  trader.unloadingCargo = trader.unloadingCargo ?? [];
   let remaining = sellQty;
   const toRemove: number[] = [];
   for (const { lot, idx } of matching) {
     if (remaining <= 0.001) break;
     const take = Math.min(lot.qty, remaining);
-    lot.qty -= take;
+    if (take >= lot.qty - 0.001) {
+      // Whole lot leaves the hold — annotate with its drain timer.
+      lot.unloadTicksRemaining = UNLOAD_TICKS;
+      trader.unloadingCargo.push(lot);
+      toRemove.push(idx);
+    } else {
+      // Split: shrink the in-hold lot, push a new lot into unloading with its
+      // own timer. The remaining cargo lot has no timer (still in the hold).
+      lot.qty -= take;
+      trader.unloadingCargo.push({ ...lot, qty: take, unloadTicksRemaining: UNLOAD_TICKS });
+    }
     remaining -= take;
-    if (lot.qty <= 0.001) toRemove.push(idx);
   }
-  // Remove emptied lots in reverse order so indices stay valid.
   toRemove.sort((a, b) => b - a).forEach(i => trader.cargo.splice(i, 1));
 
-  const jobCompletions = creditJobOnDelivery(world, trader.id, trader.location, goodId, sellQty);
-
-  const events: TraderEvent[] = [{ trader: trader.id, kind: "sell", good: goodId, qty: sellQty, unitPrice: netPrice, to: trader.location }];
-  for (const ev of events) pushTraderEvent(world, trader, ev);
-  // Job completion entries are pushed inside creditJobOnDelivery while it
-  // still has the live job object — nothing to do here.
-  return { ok: true, events, jobCompletions };
+  return { ok: true, events: [] };
 }
 
 export function refuelManual(world: World, trader: Trader, qty?: number): ExecuteResult {
@@ -1230,6 +1279,7 @@ export function travelTo(world: World, trader: Trader, dst: LocationId): Execute
   if (dst === trader.location) return { ok: false, reason: "Already at destination." };
   if (!world.locations[dst]) return { ok: false, reason: "Unknown destination." };
 
+  if (isUnloading(trader)) return { ok: false, reason: "Wait for the current unload to finish before departing." };
   const blocked = maintenanceTravelBlockReason(trader);
   if (blocked) return { ok: false, reason: blocked };
 

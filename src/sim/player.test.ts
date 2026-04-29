@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createWorld } from "./world";
 import { tickN } from "./tick";
-import { buyAtLocation, executeTrade, listTradeOptions, refuelManual, sellAtLocation, travelTo } from "./traders";
+import { buyAtLocation, executeTrade, listTradeOptions, refuelManual, sellAtLocation, travelTo, UNLOAD_TICKS } from "./traders";
 
 describe("player layer v1", () => {
   it("createWorld() defaults include a player with a manual ship", () => {
@@ -120,7 +120,12 @@ describe("player primitives — manual buy / sell / refuel / travel", () => {
     const fundsBefore = ship.funds;
     const r = sellAtLocation(w, ship, "protein");
     expect(r.ok).toBe(true);
+    // Cargo moves to the unloading buffer immediately; settlement drips over
+    // UNLOAD_TICKS subsequent ticks.
     expect(ship.cargo).toEqual([]);
+    expect(ship.unloadingCargo?.length).toBe(1);
+    tickN(w, UNLOAD_TICKS);
+    expect(ship.unloadingCargo ?? []).toEqual([]);
     expect(ship.funds).toBeGreaterThan(fundsBefore);
   });
 
@@ -193,7 +198,7 @@ describe("player primitives — manual buy / sell / refuel / travel", () => {
     expect(ship.funds).toBeLessThan(fundsBeforeTravel);
   });
 
-  it("NPC ship continues to auto-sell on arrival (sim throughput unchanged)", () => {
+  it("NPC ship auto-sells on arrival, dripping cargo over UNLOAD_TICKS", () => {
     const w = createWorld();
     const npc = Object.values(w.traders).find(t => t.pilot === "npc");
     expect(npc).toBeDefined();
@@ -204,11 +209,23 @@ describe("player primitives — manual buy / sell / refuel / travel", () => {
     npc.destination = "haven";
     npc.ticksRemaining = 1;
 
-    const havenGrainBefore = w.markets.haven.stock.grain;
+    // Arrival tick: cargo moves to unloadingCargo with each lot's own drip
+    // counter (per-lot timers replaced the single trader-wide counter).
     tickN(w, 1);
-
-    expect(npc.cargo).toEqual([]);
     expect(npc.location).toBe("haven");
-    expect(w.markets.haven.stock.grain).toBeGreaterThan(havenGrainBefore);
+    expect(npc.cargo).toEqual([]);
+    expect(npc.unloadingCargo?.length).toBe(1);
+    expect(npc.unloadingCargo?.[0]?.unloadTicksRemaining).toBe(UNLOAD_TICKS);
+
+    // Drip ticks: unloading buffer empties as drip completes and emits sell
+    // events summing to the original cargo qty.
+    const reports = tickN(w, UNLOAD_TICKS);
+    expect(npc.cargo).toEqual([]);
+    expect(npc.unloadingCargo ?? []).toEqual([]);
+    const sold = reports
+      .flatMap(r => r.traderEvents)
+      .filter(e => e.trader === npc.id && e.kind === "sell" && e.good === "grain")
+      .reduce((s, e) => s + (e.qty ?? 0), 0);
+    expect(sold).toBeCloseTo(10, 2);
   });
 });

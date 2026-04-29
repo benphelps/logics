@@ -76,6 +76,7 @@ export interface CargoLot {
   source: LocationId;       // where it was loaded (most recent for incremental adds)
   unitPrice: number;        // weighted-average cost basis per unit
   purchasedAt: number;      // tick of first purchase (oldest, for age calculations)
+  unloadTicksRemaining?: number; // only set for lots in trader.unloadingCargo — each lot drips on its own schedule
 }
 
 export type CrewRole = "captain" | "navigator" | "mechanic";    // captain is displayed as Pilot; mercenary reserved for combat-era
@@ -158,7 +159,8 @@ export interface Trader {
   funds: number;
   location: LocationId;
   state: TraderState;
-  cargo: CargoLot[];                // empty array = no cargo. Each lot is one good; per-good lots merge with weighted avg.
+  cargo: CargoLot[];                // active hold — what the player can sell, travel with, or display in the cargo card.
+  unloadingCargo?: CargoLot[];      // lots committed to the in-progress drip-unload at the current location. Counts toward mass like cargo, but can't be retrieved.
   destination: LocationId | null;
   ticksRemaining: number;
   pilot: PilotMode;

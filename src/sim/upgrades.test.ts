@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { recomputeShipStats } from "./crew";
-import { buyAtLocation, installUpgradeFromCargo, installUpgradeFromMarket, sellAtLocation } from "./traders";
+import { buyAtLocation, installUpgradeFromCargo, installUpgradeFromMarket, sellAtLocation, UNLOAD_TICKS } from "./traders";
+import { tickN } from "./tick";
 import { createWorld } from "./world";
 
 function playerShip(world: ReturnType<typeof createWorld>) {
@@ -38,6 +39,9 @@ describe("ship upgrades", () => {
     const fundsAfterBuy = ship.funds;
     expect(sellAtLocation(world, ship, "upg_engine_1").ok).toBe(true);
     expect(ship.cargo.some(l => l.good === "upg_engine_1")).toBe(false);
+    // Sale drips over UNLOAD_TICKS; payment lands by the time the buffer empties.
+    tickN(world, UNLOAD_TICKS);
+    expect(ship.unloadingCargo ?? []).toEqual([]);
     expect(ship.funds).toBeGreaterThan(fundsAfterBuy);
   });
 
