@@ -44,7 +44,8 @@ Trade settlement is per-fill:
 | **2** | Ship trading agents (value / momentum / contrarian / noise styles), P2P cash flow on agent-vs-agent trades, MM still present as a fallback. | **complete** |
 | **2.5** | MM removed entirely. Agents are the sole counterparty. Agents get a dedicated `stockWallet` + seeded share positions; `warmUpBook` populates two-sided depth at world creation; momentum + half of noise post aggressive (book-crossing) orders to drive volume. | **complete** |
 | **3** | Couple agents to ship lifecycle: docking edge on station equities, syndicate revenue exposure, bankruptcy liquidation. | **complete** |
-| **4** | Player limit-order UI; share-lend mechanic for shorts. | not started |
+| **4** | Player limit-order UI (place/cancel buy and sell limits with funds + share reservations). Share-lend mechanic for shorts deferred to a follow-up. | **complete** |
+| 5 | (Deferred) Explicit share-lend mechanic for shorts: name a specific lender (agent or treasury) at short open, route borrow fees to them, surface borrow availability per lender. Currently shorts work via implicit float adjustment with borrow fees flowing to treasury — fine in practice. | not started |
 
 ---
 
@@ -188,19 +189,38 @@ agent valuation distribution measurably.
 
 ---
 
-## Phase 4 — proposal (not started)
+### Phase 4 — player limit orders
 
-Player-facing UI improvements that the underlying simulation already supports.
+- **Sim API:** `placeLimitBuy`, `placeLimitSell`, `cancelPlayerLimit`,
+  `listPlayerLimits` exported from `stock.ts`. Buy limits debit
+  `qty × price × (1 + fee)` from `ship.funds` at placement (refunded on
+  cancel for unfilled qty). Sell limits track `Player.reservedShares` to
+  prevent double-sell of the same shares via market orders or other
+  limits.
+- **Per-tick fill settlement:** `settlePlayerLimitFills` runs in
+  `tickStockMarket` after `matchBook`. When a player limit fills, the
+  player's position grows (buys) or shrinks (sells), funds are credited
+  net of fee (sells), and `reservedShares` is decremented (sells).
+- **UI:** new `LimitOrderPanel` in `CompanyPane`. Side toggle (Buy / Sell),
+  qty + price inputs, summary line showing reserved funds (buy) or
+  expected net proceeds (sell), and an Open list below showing the
+  player's resting limits for that equity with cancel buttons.
+- **Share-lend deferred** to a future phase. Current shorts work via
+  implicit float adjustment (player short + counterparty long =
+  float-conserved) and the existing borrow-fee mechanism flows fees to
+  treasury. Making the lender explicit is a meaningful design exercise
+  that doesn't change gameplay materially, so we wait until Phase 4's
+  limit-order foundation has been used in play.
 
-- **Limit orders.** Player can place a limit order at any price; sits in the
-  book like an agent's. Internal `placeLimitOrder` already exists.
-- **Share-lend mechanic for shorts.** Currently the player can short against
-  an "implicit" pool. Phase 4 makes this explicit: shorts borrow from a
-  specific lender (an agent or the syndicate treasury), pay borrow fees to
-  that lender. Already partly modeled (borrow rate exists).
-- **Player limit-order UI**: an "Open Orders" panel showing the player's
-  resting limits, with cancel buttons.
-- **Maybe**: depth-chart visualization (cumulative depth at each price level).
+### Tests
+
+- 7 new player-limit tests in `stock.test.ts` (47 stock tests total):
+  buy reserves funds correctly; cancel refunds in full; sell reserves
+  shares; can't oversize a sell beyond `held - reserved`; cancel
+  decrements reservedShares; placing a buy limit above the current ask
+  fills via matchBook on the next tick and the position grows;
+  `listPlayerLimits` returns only the player's resting orders.
+- 287 total tests pass.
 
 ---
 

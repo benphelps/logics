@@ -4,13 +4,17 @@ import { tickN, tickWorld } from "./tick";
 import {
   abandonPosition,
   buyShares,
+  cancelPlayerLimit,
   checkPositionTriggers,
   coverShares,
   ensureStockMarket,
   listEquities,
+  listPlayerLimits,
   listPositions,
   listTradeRecords,
   maxShortableShares,
+  placeLimitBuy,
+  placeLimitSell,
   portfolioValue,
   priceChangePct,
   sellShares,
@@ -660,5 +664,121 @@ describe("stock market — trade ledger", () => {
     expect(buyShares(w, eq.id, 10).ok).toBe(true);
     expect(listPositions(w).length).toBe(1);
     expect(listPositions(w)[0].kind).toBe("long");
+  });
+});
+
+describe("stock market — Phase 4 player limit orders", () => {
+  it("placeLimitBuy reserves funds + posts order in the book", () => {
+    const w = createWorld();
+    const ship = w.traders[w.player!.shipIds[0]];
+    ship.funds = 1_000_000;
+    const eq = listEquities(w).find(e => e.kind === "syndicate")!;
+    const fundsBefore = ship.funds;
+
+    const r = placeLimitBuy(w, eq.id, 10, 100);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    // Funds should be debited gross + fee.
+    expect(ship.funds).toBeCloseTo(fundsBefore - 10 * 100 * (1 + BROKER_FEE_RATE), 5);
+    // Order should be in the book under this ship's id.
+    const limits = listPlayerLimits(w);
+    expect(limits.find(o => o.orderId === r.orderId)).toBeDefined();
+  });
+
+  it("placeLimitBuy fails when funds insufficient", () => {
+    const w = createWorld();
+    const ship = w.traders[w.player!.shipIds[0]];
+    ship.funds = 100;
+    const eq = listEquities(w).find(e => e.kind === "syndicate")!;
+    const r = placeLimitBuy(w, eq.id, 10, 1000);
+    expect(r.ok).toBe(false);
+  });
+
+  it("cancelPlayerLimit refunds reserved funds for a buy limit", () => {
+    const w = createWorld();
+    const ship = w.traders[w.player!.shipIds[0]];
+    ship.funds = 1_000_000;
+    const eq = listEquities(w).find(e => e.kind === "syndicate")!;
+
+    const place = placeLimitBuy(w, eq.id, 10, 100);
+    expect(place.ok).toBe(true);
+    if (!place.ok) return;
+    const fundsAfterPlace = ship.funds;
+
+    const cancel = cancelPlayerLimit(w, eq.id, place.orderId);
+    expect(cancel.ok).toBe(true);
+    if (!cancel.ok) return;
+    expect(cancel.refunded).toBeCloseTo(10 * 100 * (1 + BROKER_FEE_RATE), 5);
+    expect(ship.funds).toBeCloseTo(fundsAfterPlace + cancel.refunded, 5);
+  });
+
+  it("placeLimitSell reserves shares + posts ask", () => {
+    const w = createWorld();
+    const ship = w.traders[w.player!.shipIds[0]];
+    ship.funds = 1_000_000;
+    const eq = listEquities(w).find(e => e.kind === "syndicate")!;
+    expect(buyShares(w, eq.id, 20).ok).toBe(true);
+
+    const r = placeLimitSell(w, eq.id, 10, 500);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(w.player!.reservedShares?.[eq.id]).toBe(10);
+    // Can't post a second sell limit covering more than the unreserved 10.
+    const r2 = placeLimitSell(w, eq.id, 15, 500);
+    expect(r2.ok).toBe(false);
+  });
+
+  it("cancelPlayerLimit on a sell decrements reservedShares", () => {
+    const w = createWorld();
+    const ship = w.traders[w.player!.shipIds[0]];
+    ship.funds = 1_000_000;
+    const eq = listEquities(w).find(e => e.kind === "syndicate")!;
+    expect(buyShares(w, eq.id, 20).ok).toBe(true);
+
+    const place = placeLimitSell(w, eq.id, 10, 500);
+    expect(place.ok).toBe(true);
+    if (!place.ok) return;
+    expect(w.player!.reservedShares?.[eq.id]).toBe(10);
+
+    const cancel = cancelPlayerLimit(w, eq.id, place.orderId);
+    expect(cancel.ok).toBe(true);
+    expect(w.player!.reservedShares?.[eq.id]).toBe(0);
+  });
+
+  it("buy limit fills when an agent ask crosses, position grows correctly", () => {
+    const w = createWorld();
+    const ship = w.traders[w.player!.shipIds[0]];
+    ship.funds = 5_000_000;
+    const eq = listEquities(w).find(e => e.kind === "syndicate")!;
+    // Place a buy limit ABOVE the current best ask so it crosses on next tick.
+    // The book has agent asks around eq.price * 1.005-1.02; placing at
+    // eq.price * 1.05 should cross any of them.
+    const limitPrice = eq.price * 1.05;
+    const place = placeLimitBuy(w, eq.id, 50, limitPrice);
+    expect(place.ok).toBe(true);
+
+    // Tick a few times so matchBook fires and the limit gets crossed.
+    for (let i = 0; i < 4; i++) tickWorld(w);
+
+    // Position should have at least some long shares.
+    const pos = w.player!.positions?.[eq.id];
+    expect(pos).toBeDefined();
+    expect(pos!.kind).toBe("long");
+    expect(pos!.shares).toBeGreaterThan(0);
+  });
+
+  it("listPlayerLimits returns only the player's resting orders", () => {
+    const w = createWorld();
+    const ship = w.traders[w.player!.shipIds[0]];
+    ship.funds = 1_000_000;
+    const eq = listEquities(w).find(e => e.kind === "syndicate")!;
+
+    expect(listPlayerLimits(w).length).toBe(0);
+    placeLimitBuy(w, eq.id, 5, 100);
+    placeLimitBuy(w, eq.id, 3, 90);
+    const limits = listPlayerLimits(w);
+    expect(limits.length).toBe(2);
+    expect(limits.every(o => o.side === "bid")).toBe(true);
+    expect(limits.every(o => o.equityId === eq.id)).toBe(true);
   });
 });

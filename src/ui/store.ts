@@ -15,7 +15,7 @@ import {
 } from "../sim/traders";
 import { abandonJob, acceptJob, collectTradeJob } from "../sim/jobs";
 import { fireCrew, hireCrew, recomputeShipStats } from "../sim/crew";
-import { abandonPosition, buyShares, coverShares, sellShares, setStopLoss, setTakeProfit, shortShares } from "../sim/stock";
+import { abandonPosition, buyShares, cancelPlayerLimit, coverShares, placeLimitBuy, placeLimitSell, sellShares, setStopLoss, setTakeProfit, shortShares } from "../sim/stock";
 import {
   createGameSlot,
   deleteGameSlot,
@@ -145,6 +145,9 @@ interface UiState {
   abandonPosition: (equityId: EquityId) => void;
   setStopLoss: (equityId: EquityId, price: number | null) => void;
   setTakeProfit: (equityId: EquityId, price: number | null) => void;
+  placeLimitBuy: (equityId: EquityId, qty: number, limitPrice: number) => void;
+  placeLimitSell: (equityId: EquityId, qty: number, limitPrice: number) => void;
+  cancelLimit: (equityId: EquityId, orderId: string) => void;
 }
 
 export const useStore = create<UiState>((set, get) => {
@@ -399,6 +402,21 @@ export const useStore = create<UiState>((set, get) => {
     setTakeProfit: (equityId, price) => {
       const w = get().world;
       const r = setTakeProfit(w, equityId, price);
+      persistCurrentGame({ lastError: r.ok ? null : r.reason });
+    },
+    placeLimitBuy: (equityId, qty, limitPrice) => {
+      const w = get().world;
+      const r = placeLimitBuy(w, equityId, qty, limitPrice, selectedPlayerShipId(w, get().selectedTrader));
+      persistCurrentGame({ lastError: r.ok ? null : r.reason });
+    },
+    placeLimitSell: (equityId, qty, limitPrice) => {
+      const w = get().world;
+      const r = placeLimitSell(w, equityId, qty, limitPrice, selectedPlayerShipId(w, get().selectedTrader));
+      persistCurrentGame({ lastError: r.ok ? null : r.reason });
+    },
+    cancelLimit: (equityId, orderId) => {
+      const w = get().world;
+      const r = cancelPlayerLimit(w, equityId, orderId, selectedPlayerShipId(w, get().selectedTrader));
       persistCurrentGame({ lastError: r.ok ? null : r.reason });
     },
   };

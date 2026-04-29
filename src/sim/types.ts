@@ -235,6 +235,10 @@ export interface Player {
   // Trade ledger — chronological log of opens, adds, closes, covers, with
   // realized P&L on closes. Capped (oldest dropped) at TRADE_LEDGER_MAX.
   trades?: TradeRecord[];
+  // Phase 4 — shares reserved against open sell limits, per equity.
+  // sellableShares = position.shares − reservedShares[eqId]. Decrements on
+  // sell-limit fill or cancel.
+  reservedShares?: Record<EquityId, number>;
 }
 
 export type PositionKind = "long" | "short";

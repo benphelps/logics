@@ -44,7 +44,7 @@ import type {
 import { mulberry32 } from "./gen/rng";
 import { depositToTreasury } from "./economy";
 import { createTradeJob, exchangeLossForgiveness } from "./jobs";
-import { ensureOrderBook, executeMarketOrder, simulateMarketOrder, matchBook } from "./stock/orderbook";
+import { cancelOrder as cancelBookOrder, ensureOrderBook, executeMarketOrder, placeLimitOrder as placeBookLimit, simulateMarketOrder, matchBook } from "./stock/orderbook";
 import { SYNTHETIC_MM_AGENT_ID } from "./stock/market-maker";
 import { applyAgentFill, seedAgentPositions, stepStockAgents, warmUpBook } from "./stock/agents";
 
@@ -542,6 +542,65 @@ function settleAllNonPlayerSides(world: World, eq: Equity, trades: BookTrade[], 
   for (const t of trades) settleNonPlayerTradeSides(world, eq, t, playerShipId);
 }
 
+// Phase 4: when a player limit order fills inside matchBook, the player
+// side needs its own bookkeeping (settleNonPlayerTradeSides skips the
+// player). Buys: position grows by fill qty (funds were debited at
+// placement, no further funds change). Sells: ship.funds credited net of
+// fee, position shrinks, reservedShares decremented.
+function settlePlayerLimitFills(world: World, eq: Equity, trades: BookTrade[]): void {
+  const player = world.player;
+  if (!player) return;
+  const playerShipIds = new Set(player.shipIds);
+  const positions = ensurePositions(player);
+
+  for (const trade of trades) {
+    if (playerShipIds.has(trade.buyer)) {
+      // Player limit BUY filled. Funds were already debited (gross + fee).
+      // Just update the position with weighted-average entry price.
+      const ship = world.traders[trade.buyer];
+      const cur = positions[eq.id];
+      if (cur?.kind === "long") {
+        const totalShares = cur.shares + trade.qty;
+        cur.avgEntryPrice = (cur.avgEntryPrice * cur.shares + trade.price * trade.qty) / totalShares;
+        cur.shares = totalShares;
+      } else if (!cur) {
+        positions[eq.id] = {
+          equityId: eq.id, kind: "long", shares: trade.qty, avgEntryPrice: trade.price, openedAt: world.tick,
+        };
+      }
+      // Limit-order fee was already pre-paid at placement. Refund the
+      // unused-fee delta if the actual fill price was below the limit.
+      if (ship) {
+        const limitPriceUsed = trade.price; // resting limit's price
+        // Nothing to do here — the buyer paid (limit_price × (1+fee)) at
+        // placement; the leftover funds for unfilled qty stay reserved
+        // until cancel/expire.
+        void limitPriceUsed;
+      }
+      recordTrade(world, player, eq, "open_long", trade.qty, trade.price, 0, 0);
+    } else if (playerShipIds.has(trade.seller)) {
+      // Player limit SELL filled. Credit ship.funds (gross − fee), shrink
+      // position, decrement reservedShares.
+      const ship = world.traders[trade.seller];
+      if (ship) {
+        const gross = trade.qty * trade.price;
+        const fee = gross * BROKER_FEE_RATE;
+        ship.funds += gross - fee;
+      }
+      const cur = positions[eq.id];
+      if (cur?.kind === "long") {
+        cur.shares -= trade.qty;
+        if (cur.shares <= 0.0001) delete positions[eq.id];
+      }
+      const reserved = player.reservedShares?.[eq.id] ?? 0;
+      if (player.reservedShares) {
+        player.reservedShares[eq.id] = Math.max(0, reserved - trade.qty);
+      }
+      recordTrade(world, player, eq, "close_long", trade.qty, trade.price, trade.qty * trade.price * BROKER_FEE_RATE, trade.qty * trade.price * (1 - BROKER_FEE_RATE));
+    }
+  }
+}
+
 function executeAgainstBook(
   world: World,
   eq: Equity,
@@ -852,6 +911,177 @@ export function coverShares(
 // Walk away from a position regardless of cash. Records realized P&L at the
 // current mark, with a fixed walk-away penalty that bites — without it, this
 // is just "free close at any time" and breaks the cover-cost mechanic. Used
+// --- Phase 4: player limit orders ----------------------------------------
+//
+// Place a limit order that sits in the book at a specified price.
+//
+// BUY limits: deduct (qty × price × (1 + fee)) from ship.funds at placement.
+// On fill the funds were already debited; just credit the position. On
+// cancel of unfilled qty, refund the gross-plus-fee for that qty.
+//
+// SELL limits: reserve held shares via player.reservedShares so they can't
+// be double-sold via market orders or other limits. On fill, credit
+// ship.funds (qty × price × (1 − fee)) and decrement reservedShares + the
+// position. On cancel, just decrement reservedShares.
+
+export interface PlaceLimitResult {
+  ok: true;
+  orderId: string;
+  reservedFunds?: number;   // for buy limits — what was debited
+  reservedShares?: number;  // for sell limits — what was held
+}
+export interface PlaceLimitFailure { ok: false; reason: string }
+
+export function placeLimitBuy(
+  world: World,
+  equityId: EquityId,
+  shares: number,
+  limitPrice: number,
+  shipId?: TraderId,
+): PlaceLimitResult | PlaceLimitFailure {
+  if (!world.player) return { ok: false, reason: "No player." };
+  if (shares <= 0 || !Number.isFinite(shares)) return { ok: false, reason: "Quantity must be positive." };
+  if (limitPrice <= 0 || !Number.isFinite(limitPrice)) return { ok: false, reason: "Limit price must be positive." };
+  const eq = world.equities[equityId];
+  if (!eq) return { ok: false, reason: "Equity not listed." };
+  const ship = getPlayerShip(world, shipId);
+  if (!ship) return { ok: false, reason: "No anchor ship." };
+  const proximityReason = proximityBlockReason(world, eq, ship);
+  if (proximityReason) return { ok: false, reason: proximityReason };
+
+  const positions = ensurePositions(world.player);
+  const current = positions[equityId];
+  if (current?.kind === "short") {
+    return { ok: false, reason: `Currently short ${current.shares} ${eq.ticker}. Cover the short before going long.` };
+  }
+  // Float cap (long-side): outstanding minus what player already holds
+  // long minus shares already reserved by other open buy limits.
+  const owned = current?.shares ?? 0;
+  const openBuyShares = openLimitShares(world, eq.id, ship.id, "bid");
+  const maxBuyable = Math.max(0, eq.sharesOutstanding - owned - openBuyShares);
+  if (shares > maxBuyable) return { ok: false, reason: `Only ${maxBuyable} shares available on the float.` };
+
+  const reservedFunds = shares * limitPrice * (1 + BROKER_FEE_RATE);
+  if (ship.funds < reservedFunds) {
+    return { ok: false, reason: `Need Ç${Math.round(reservedFunds).toLocaleString()}, have Ç${Math.round(ship.funds).toLocaleString()}.` };
+  }
+
+  ship.funds -= reservedFunds;
+  const order = placeBookLimit(world, {
+    equityId: eq.id, side: "bid", qty: shares, limitPrice, agentId: ship.id,
+  });
+  return { ok: true, orderId: order.id, reservedFunds };
+}
+
+export function placeLimitSell(
+  world: World,
+  equityId: EquityId,
+  shares: number,
+  limitPrice: number,
+  shipId?: TraderId,
+): PlaceLimitResult | PlaceLimitFailure {
+  if (!world.player) return { ok: false, reason: "No player." };
+  if (shares <= 0 || !Number.isFinite(shares)) return { ok: false, reason: "Quantity must be positive." };
+  if (limitPrice <= 0 || !Number.isFinite(limitPrice)) return { ok: false, reason: "Limit price must be positive." };
+  const eq = world.equities[equityId];
+  if (!eq) return { ok: false, reason: "Equity not listed." };
+  const ship = getPlayerShip(world, shipId);
+  if (!ship) return { ok: false, reason: "No anchor ship." };
+  const proximityReason = proximityBlockReason(world, eq, ship);
+  if (proximityReason) return { ok: false, reason: proximityReason };
+
+  const positions = ensurePositions(world.player);
+  const current = positions[equityId];
+  if (!current || current.kind !== "long") {
+    return { ok: false, reason: `No long position in ${eq.ticker} to sell.` };
+  }
+  // Available shares = held − already reserved by other open sell limits.
+  const reserved = world.player.reservedShares?.[equityId] ?? 0;
+  const available = current.shares - reserved;
+  if (shares > available) {
+    return { ok: false, reason: `Only ${available} unreserved share${available === 1 ? "" : "s"} of ${eq.ticker}.` };
+  }
+
+  if (!world.player.reservedShares) world.player.reservedShares = {};
+  world.player.reservedShares[equityId] = reserved + shares;
+
+  const order = placeBookLimit(world, {
+    equityId: eq.id, side: "ask", qty: shares, limitPrice, agentId: ship.id,
+  });
+  return { ok: true, orderId: order.id, reservedShares: shares };
+}
+
+// Cancel an open player limit order. Refunds the unfilled portion of
+// reserved funds (for buy limits) or shares (for sell limits).
+export function cancelPlayerLimit(world: World, equityId: EquityId, orderId: string, shipId?: TraderId): { ok: true; refunded: number } | { ok: false; reason: string } {
+  const eq = world.equities[equityId];
+  if (!eq) return { ok: false, reason: "Equity not listed." };
+  const ship = getPlayerShip(world, shipId);
+  if (!ship) return { ok: false, reason: "No anchor ship." };
+  const book = world.orderBooks?.[equityId];
+  if (!book) return { ok: false, reason: "No book for that equity." };
+  const order = [...book.bids, ...book.asks].find(o => o.id === orderId && o.agentId === ship.id);
+  if (!order) return { ok: false, reason: "Order not found (already filled or cancelled)." };
+
+  let refunded = 0;
+  if (order.side === "bid") {
+    refunded = order.qty * order.limitPrice * (1 + BROKER_FEE_RATE);
+    ship.funds += refunded;
+  } else {
+    refunded = order.qty;
+    if (world.player) {
+      const cur = world.player.reservedShares?.[equityId] ?? 0;
+      world.player.reservedShares = world.player.reservedShares ?? {};
+      world.player.reservedShares[equityId] = Math.max(0, cur - order.qty);
+    }
+  }
+  cancelBookOrder(world, equityId, orderId);
+  return { ok: true, refunded };
+}
+
+export interface PlayerLimitView {
+  orderId: string;
+  equityId: EquityId;
+  ticker: string;
+  side: "bid" | "ask";
+  qty: number;
+  limitPrice: number;
+  postedAt: number;
+}
+
+export function listPlayerLimits(world: World, shipId?: TraderId): PlayerLimitView[] {
+  const ship = getPlayerShip(world, shipId);
+  if (!ship || !world.orderBooks) return [];
+  const out: PlayerLimitView[] = [];
+  for (const eqId of Object.keys(world.orderBooks)) {
+    const eq = world.equities[eqId];
+    if (!eq) continue;
+    const book = world.orderBooks[eqId];
+    for (const o of [...book.bids, ...book.asks]) {
+      if (o.agentId !== ship.id) continue;
+      out.push({
+        orderId: o.id,
+        equityId: eqId,
+        ticker: eq.ticker,
+        side: o.side,
+        qty: o.qty,
+        limitPrice: o.limitPrice,
+        postedAt: o.postedAt,
+      });
+    }
+  }
+  return out;
+}
+
+function openLimitShares(world: World, equityId: EquityId, shipId: TraderId, side: "bid" | "ask"): number {
+  const book = world.orderBooks?.[equityId];
+  if (!book) return 0;
+  const list = side === "bid" ? book.bids : book.asks;
+  let total = 0;
+  for (const o of list) if (o.agentId === shipId) total += o.qty;
+  return total;
+}
+
 // as the escape hatch for shorts the player can't afford to buy back, and
 // for longs they want to dump cleanly. The position vanishes; lender / buyer
 // is notionally absorbed by the equity's underlying.
@@ -1067,8 +1297,12 @@ export function tickStockMarket(world: World): void {
   for (const eq of Object.values(world.equities)) {
     const matched = matchBook(ensureOrderBook(world, eq.id), world.tick);
     if (matched.length === 0) continue;
-    // Limit-order crosses during tick: settle BOTH sides (no player aggressor).
+    // Limit-order crosses during tick: settle BOTH sides. Non-player sides
+    // (MM treasury / agent stockWallet + position) handled first; then any
+    // player limit-order fills get player-side bookkeeping (funds were
+    // debited at placement for buys; reservedShares decrements; etc.).
     settleAllNonPlayerSides(world, eq, matched);
+    settlePlayerLimitFills(world, eq, matched);
     recordRecentTrades(eq, matched);
     // eq.price snaps to the last matched trade's price.
     const last = matched[matched.length - 1];

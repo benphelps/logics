@@ -1641,3 +1641,118 @@
 
 .stocks-sparkline rect.vol-bar.up { fill: var(--stock-up); opacity: 0.85; }
 .stocks-sparkline rect.vol-bar.down { fill: var(--stock-down); opacity: 0.85; }
+
+/* --- Phase 4: limit-order panel + open orders --- */
+.stocks-limit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stocks-limit-side {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.stocks-limit-side-btn {
+  appearance: none;
+  height: 28px;
+  padding: 0 10px;
+  background: var(--stock-surface-soft);
+  color: var(--text-dim);
+  border: 1px solid var(--stock-line);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.stocks-limit-side-btn:hover {
+  background: var(--stock-surface-raised);
+  color: var(--text);
+}
+
+.stocks-limit-side-btn.active.bid {
+  background: rgba(108, 217, 154, 0.18);
+  border-color: var(--stock-up);
+  color: var(--stock-up);
+}
+
+.stocks-limit-side-btn.active.ask {
+  background: rgba(239, 111, 125, 0.18);
+  border-color: var(--stock-down);
+  color: var(--stock-down);
+}
+
+.stocks-limit-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.stocks-limit-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.stocks-limit-fields input {
+  appearance: none;
+  height: 28px;
+  padding: 0 8px;
+  background: var(--stock-surface-soft);
+  color: var(--text);
+  border: 1px solid var(--stock-line);
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 12px;
+  text-align: right;
+}
+
+.stocks-limit-summary {
+  font-size: 10.5px;
+  padding: 4px 0;
+}
+
+.stocks-limit-submit {
+  width: 100%;
+  height: 32px;
+  font-weight: 700;
+}
+
+.stocks-open-orders {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--stock-line);
+}
+
+.stocks-open-order {
+  display: grid;
+  grid-template-columns: 50px 1fr 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+.stocks-open-order.bid { color: var(--stock-up); background: rgba(108, 217, 154, 0.06); }
+.stocks-open-order.ask { color: var(--stock-down); background: rgba(239, 111, 125, 0.06); }
+
+.stocks-open-order .numeric { text-align: right; }
+
+.stocks-open-order .btn-action {
+  height: 22px;
+  font-size: 10px;
+  padding: 0 8px;
+}

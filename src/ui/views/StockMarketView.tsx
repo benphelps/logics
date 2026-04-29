@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { MdArrowDropDown, MdArrowDropUp, MdRemove } from "react-icons/md";
 import { useStore } from "../store";
 import type { BookTrade, Equity, EquityKind, Order, OrderBook, StockPosition, TradeRecord, World } from "../../sim/types";
@@ -412,6 +412,8 @@ function CompanyPane({ row, world, shipId, cash, docked, hasOpposite, hasLong, o
             </div>
           )}
         </div>
+
+        <LimitOrderPanel equity={eq} world={world} docked={docked} access={access} />
       </div>
     </div>
   );
@@ -1203,6 +1205,112 @@ function VolumePanel({ equity, world }: { equity: Equity; world: World }) {
           );
         })}
       </div>
+    </section>
+  );
+}
+
+// --- Phase 4: limit-order panel + open orders -----------------------------
+
+function LimitOrderPanel({ equity, world, docked, access }: { equity: Equity; world: World; docked: boolean; access: { ok: boolean; reason: string } }) {
+  const placeLimitBuy = useStore(s => s.placeLimitBuy);
+  const placeLimitSell = useStore(s => s.placeLimitSell);
+  const cancelLimit = useStore(s => s.cancelLimit);
+  const [side, setSide] = useState<"bid" | "ask">("bid");
+  const [qty, setQty] = useState<number>(10);
+  const [price, setPrice] = useState<number>(equity.price);
+
+  // Find player's open limits for this equity.
+  const ship = world.player ? world.traders[world.player.shipIds[0]] : null;
+  const book = world.orderBooks?.[equity.id];
+  const playerOrders = ship && book
+    ? [...book.bids, ...book.asks].filter(o => o.agentId === ship.id)
+    : [];
+
+  // Reset price field when equity changes — keep it sticky to the user's
+  // latest typed value otherwise.
+  const lastEqRef = useRef(equity.id);
+  useEffect(() => {
+    if (lastEqRef.current !== equity.id) {
+      lastEqRef.current = equity.id;
+      setPrice(equity.price);
+    }
+  }, [equity.id, equity.price]);
+
+  const total = qty * price;
+  const fee = total * BROKER_FEE_RATE;
+  const grossWithFee = total + fee;
+
+  const onSubmit = () => {
+    if (side === "bid") placeLimitBuy(equity.id, qty, price);
+    else placeLimitSell(equity.id, qty, price);
+  };
+
+  return (
+    <section className="stocks-info-section stocks-limit-panel">
+      <div className="stocks-info-section-title">Limit orders</div>
+
+      <div className="stocks-limit-form">
+        <div className="stocks-limit-side">
+          <button
+            className={`stocks-limit-side-btn ${side === "bid" ? "active bid" : ""}`}
+            onClick={() => setSide("bid")}
+          >Buy</button>
+          <button
+            className={`stocks-limit-side-btn ${side === "ask" ? "active ask" : ""}`}
+            onClick={() => setSide("ask")}
+          >Sell</button>
+        </div>
+        <div className="stocks-limit-fields">
+          <label>
+            <span>Qty</span>
+            <input
+              type="number"
+              min={1}
+              value={qty}
+              onChange={e => setQty(Math.max(1, Math.floor(Number(e.target.value) || 0)))}
+            />
+          </label>
+          <label>
+            <span>Price</span>
+            <input
+              type="number"
+              step="0.01"
+              value={price.toFixed(2)}
+              onChange={e => setPrice(Math.max(0.01, Number(e.target.value) || 0))}
+            />
+          </label>
+        </div>
+        <div className="stocks-limit-summary dim">
+          {side === "bid"
+            ? `Reserve Ç${Math.round(grossWithFee).toLocaleString()} (${qty} × Ç${price.toFixed(2)} + ${(BROKER_FEE_RATE * 100).toFixed(0)}% fee)`
+            : `Net Ç${Math.round(total - fee).toLocaleString()} on fill (after ${(BROKER_FEE_RATE * 100).toFixed(0)}% fee)`}
+        </div>
+        <button
+          className="btn-action primary stocks-limit-submit"
+          disabled={!docked || !access.ok || qty <= 0 || price <= 0}
+          onClick={onSubmit}
+        >
+          Place {side === "bid" ? "Buy" : "Sell"} Limit
+        </button>
+      </div>
+
+      {playerOrders.length > 0 && (
+        <div className="stocks-open-orders">
+          <div className="stocks-info-section-title">Open ({playerOrders.length})</div>
+          {playerOrders.map(o => (
+            <div key={o.id} className={`stocks-open-order ${o.side}`}>
+              <span className="mono">{o.side === "bid" ? "BUY" : "SELL"}</span>
+              <span className="mono numeric">{Math.round(o.qty)}</span>
+              <span className="mono numeric">@ Ç{fmtPrice(o.limitPrice)}</span>
+              <button
+                className="btn-action btn-narrow"
+                onClick={() => cancelLimit(equity.id, o.id)}
+                title="Cancel order — refunds reserved funds or shares"
+              >Cancel</button>
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
