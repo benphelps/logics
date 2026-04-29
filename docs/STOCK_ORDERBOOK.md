@@ -43,7 +43,7 @@ Trade settlement is per-fill:
 | **1.5** | UI expansion: order book panel, T&S tape, volume summary, two-panel chart, sidebar widened to ~40%. | **complete** |
 | **2** | Ship trading agents (value / momentum / contrarian / noise styles), P2P cash flow on agent-vs-agent trades, MM still present as a fallback. | **complete** |
 | **2.5** | MM removed entirely. Agents are the sole counterparty. Agents get a dedicated `stockWallet` + seeded share positions; `warmUpBook` populates two-sided depth at world creation; momentum + half of noise post aggressive (book-crossing) orders to drive volume. | **complete** |
-| **3** | Couple agents to ship lifecycle: docking edge on station equities, syndicate revenue exposure, bankruptcy liquidation, agents may go bankrupt and be replaced. | not started |
+| **3** | Couple agents to ship lifecycle: docking edge on station equities, syndicate revenue exposure, bankruptcy liquidation. | **complete** |
 | **4** | Player limit-order UI; share-lend mechanic for shorts. | not started |
 
 ---
@@ -105,13 +105,40 @@ src/tools/stockBookDemo.ts       — Phase 1 price-impact demo (still useful)
     bars below.
   - Existing company info / position controls below.
 
+### Phase 3 — ship lifecycle coupling
+
+- **Docking edge.** When an NPC is physically docked at station X
+  (`trader.state === "idle" && trader.location === eq.underlyingId`), all
+  styles get a 50% qty boost on that equity. Value-style additionally
+  tightens its trigger band from ±3% to ±1.5% (`DOCKING_TRIGGER_TIGHTEN`).
+  The ship's physical presence at the station translates to deeper
+  conviction and more reactive trading on that equity.
+- **Syndicate exposure bias.** When an agent computes fair value for an
+  equity their ship belongs to (a syndicate equity, via `synd.memberShipIds`),
+  the fair value is biased upward by 8% (`SYNDICATE_OWNERSHIP_BIAS`). Members
+  are naturally bullish on their own syndicate; ownership skews toward
+  members; the syndicate's price floor is supported by its own ships.
+- **Bankruptcy liquidation.** When an agent's `stockWallet` drops below
+  10k (`BANKRUPTCY_THRESHOLD`), they enter liquidation mode: instead of
+  running their normal style, they post aggressive asks for 25%
+  (`LIQUIDATION_FRACTION`) of each held position per decision tick, at
+  0.5% below mid (`LIQUIDATION_AGGRESSION`) so the ask crosses bids.
+  Once stockWallet recovers above the threshold, they resume normal
+  style trading.
+
 ### Tests + verification
 
-- 277 tests pass (14 new orderbook + 11 new agents + adjusted stock tests).
-- `agentsDemo.ts` over 250 ticks: ~420 trades across 7 equities, balanced
-  buy/sell, no float or money invariant violations.
-- `orderBookSnapshot.ts` shows multi-level two-sided depth at most ticks;
-  one-sided moments exist (real markets do too).
+- 280 tests pass (14 orderbook + 14 agents including 3 new Phase 3 tests +
+  adjusted stock tests).
+- `agentsDemo.ts` over 250 ticks of a default world:
+  - **541 trades** across 7 equities (up from 420 pre-Phase-3, 35 with
+    pure-passive agents).
+  - Stations now see 60-70 trades each (vs. 0-5 early in Phase 2) — the
+    docking edge is the main driver.
+  - Syndicates: 80-100 trades each, 1/7 equities meets the aspirational
+    100/equity criterion.
+  - Float and money invariants hold throughout.
+- `orderBookSnapshot.ts` shows multi-level two-sided depth most ticks.
 
 ---
 
@@ -177,16 +204,17 @@ Player-facing UI improvements that the underlying simulation already supports.
 
 ---
 
-## Open questions / decisions to make
+## Resolved design decisions
 
-- **Should one-sided books trigger a thin fallback?** Currently they just
-  return "book too thin" to the player. Could add: when player trade fails
-  due to depth, force-step the agents on that side to give them a chance to
-  post. Or accept the friction.
-- **Should `stockWallet` ever interact with `trader.funds`?** Currently fully
-  isolated — agent stock-trading uses a separate pool. This is clean but
-  means agent stock wins/losses don't show up in their cargo capital. Phase 3
-  might bridge them.
-- **Should the player's wallet pool with agents'?** Right now player ship
-  uses `ship.funds` for everything (cargo + stock). NPC agents use
-  `stockWallet`. Asymmetric but workable.
+- **One-sided book friction is accepted as-is.** Without an MM, the player
+  may occasionally see "book too thin" rejections for a tick or two while
+  the depleted side waits for an agent to repost. This is real-market
+  behavior and the friction is part of the gameplay — Phase 3's mechanics
+  should reduce it organically without needing a fallback MM.
+- **Agent `stockWallet` stays isolated from `trader.funds`.** Equity trading
+  uses its own pool; cargo trading uses `trader.funds`. Clean separation,
+  easy to reason about, and lets agents trade equities even when their
+  cargo wallet is thin.
+- **Player keeps the unified wallet** (`ship.funds` covers cargo + stock).
+  Asymmetric vs. NPC agents but intentional: it's deeper play for the
+  player to balance both demands against one budget.

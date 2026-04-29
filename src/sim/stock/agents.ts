@@ -58,6 +58,26 @@ export const VALUE_PASSIVE_OFFSET = 0.005;  // 0.5% inside mid (bid below, ask a
 export const VALUE_BID_TRIGGER = 0.97;      // undervalued — start buying
 export const VALUE_ASK_TRIGGER = 1.03;      // overvalued — start selling
 
+// Phase 3: when an agent ship is physically docked at the station whose
+// equity it's evaluating, it gets an information edge — tighter triggers
+// (acts on smaller mispricings) and bigger orders (deeper conviction).
+export const DOCKING_TRIGGER_TIGHTEN = 0.5;   // halves the trigger band (3% → 1.5%)
+export const DOCKING_QTY_BOOST = 1.5;         // 50% bigger orders for the docked equity
+
+// Phase 3: agents in syndicate Y bias their fair-value estimate of Y's
+// equity upward (Berkshire-style — more bullish on your own team) so
+// syndicate ownership skews toward members.
+export const SYNDICATE_OWNERSHIP_BIAS = 0.08; // 8% positive bias on own syndicate
+
+// Phase 3: bankruptcy liquidation. When an agent's stockWallet drops
+// below this floor, they switch into liquidation mode — instead of
+// running their normal style they post aggressive asks to sell off
+// LIQUIDATION_FRACTION of each held position per decision tick. They
+// stop trading new positions until their wallet recovers.
+export const BANKRUPTCY_THRESHOLD = 10_000;  // 10% of AGENT_STOCK_WALLET_INIT
+export const LIQUIDATION_FRACTION = 0.25;    // sell 25% of held shares per decision
+export const LIQUIDATION_AGGRESSION = 0.005; // post 0.5% below mid (crosses bids)
+
 // Momentum / contrarian: read N most recent trades to determine direction.
 export const TREND_LOOKBACK_TRADES = 6;
 export const MOMENTUM_OFFSET = 0.003;       // 0.3% inside mid — slightly more aggressive than value
@@ -166,24 +186,60 @@ function heldShares(trader: Trader, eqId: string): number {
   return trader.stockState?.positions[eqId]?.shares ?? 0;
 }
 
+// Phase 3 — ship lifecycle coupling helpers.
+
+// True when the trader is physically docked at the station whose equity this
+// is. Syndicate equities don't have a "physical location" so always false.
+function isDockedAt(trader: Trader, eq: Equity): boolean {
+  if (eq.kind !== "station") return false;
+  return trader.state === "idle" && trader.location === eq.underlyingId;
+}
+
+// Returns the multiplier to apply to fair value, given the agent's
+// relationship to the equity. Members of a syndicate are biased UP on
+// their own syndicate's equity. Other relationships return 1.
+function fairBiasFor(world: World, trader: Trader, eq: Equity): number {
+  if (eq.kind !== "syndicate") return 1;
+  const synd = world.syndicates[eq.underlyingId];
+  if (!synd) return 1;
+  if (synd.memberShipIds.includes(trader.id)) return 1 + SYNDICATE_OWNERSHIP_BIAS;
+  return 1;
+}
+
+// "Effective fair value" used by all decision functions — applies the
+// syndicate-membership bias on top of the base fundamental.
+function effectiveFair(world: World, trader: Trader, eq: Equity): number {
+  return computeFundamental(world, eq) * fairBiasFor(world, trader, eq);
+}
+
 function decideValue(world: World, trader: Trader, eq: Equity, free: number, rng: () => number): PlanOrderArgs[] {
-  const fair = computeFundamental(world, eq);
+  const fair = effectiveFair(world, trader, eq);
   if (fair <= 0) return [];
   const mid = eq.price;
-  // Small per-agent rng jitter so multiple value agents don't post at
-  // exactly the same level (yields a depth ladder instead of one big level).
   const jitter = 1 + (rng() - 0.5) * 0.004;   // ±0.2%
+
+  // Phase 3: docked agents get an info edge — tighter triggers (act on
+  // smaller mispricings) and bigger orders. This is what makes a ship
+  // physically being at a station matter for that station's equity.
+  const docked = isDockedAt(trader, eq);
+  const tighten = docked ? DOCKING_TRIGGER_TIGHTEN : 1;
+  const qtyBoost = docked ? DOCKING_QTY_BOOST : 1;
+  // Original triggers: 0.97 / 1.03 (3% bands). Tightened to ~1.5% when docked.
+  const bidTrigger = 1 - (1 - VALUE_BID_TRIGGER) * tighten;
+  const askTrigger = 1 + (VALUE_ASK_TRIGGER - 1) * tighten;
+
   const out: PlanOrderArgs[] = [];
-  if (mid < fair * VALUE_BID_TRIGGER) {
+  if (mid < fair * bidTrigger) {
     const bidPrice = mid * (1 - VALUE_PASSIVE_OFFSET) * jitter;
-    const qty = sizedQty(free, bidPrice);
+    const qty = Math.floor(sizedQty(free, bidPrice) * qtyBoost);
     if (qty > 0) out.push({ side: "bid", limitPrice: bidPrice, qty });
   }
-  if (mid > fair * VALUE_ASK_TRIGGER) {
+  if (mid > fair * askTrigger) {
     const askPrice = mid * (1 + VALUE_PASSIVE_OFFSET) * jitter;
     const held = heldShares(trader, eq.id);
     if (held > 0) {
-      out.push({ side: "ask", limitPrice: askPrice, qty: Math.min(held, sizedQty(free, askPrice)) });
+      const qty = Math.min(held, Math.floor(sizedQty(free, askPrice) * qtyBoost));
+      if (qty > 0) out.push({ side: "ask", limitPrice: askPrice, qty });
     }
   }
   return out;
@@ -196,21 +252,18 @@ function decideMomentum(world: World, trader: Trader, eq: Equity, free: number, 
   if (Math.abs(bias) < 0.1 && rng() > 0.25) return [];
   const mid = eq.price;
   const jitter = 1 + (rng() - 0.5) * 0.004;
-  // Direction: follow trend if there is one, else random.
+  const qtyBoost = isDockedAt(trader, eq) ? DOCKING_QTY_BOOST : 1;
   const direction = bias !== 0 ? Math.sign(bias) : (rng() < 0.5 ? 1 : -1);
-  // Momentum is AGGRESSIVE: posts orders that cross the spread, generating
-  // trades. Bid above mid for buys (eats asks); ask below mid for sells
-  // (eats bids). The MOMENTUM_OFFSET is ABOVE mid for bids here.
-  const aggression = MOMENTUM_OFFSET * (1 + Math.abs(bias));   // stronger bias → walk further
+  const aggression = MOMENTUM_OFFSET * (1 + Math.abs(bias));
   if (direction > 0) {
     const bidPrice = mid * (1 + aggression) * jitter;
-    const qty = sizedQty(free, bidPrice);
+    const qty = Math.floor(sizedQty(free, bidPrice) * qtyBoost);
     return qty > 0 ? [{ side: "bid", limitPrice: bidPrice, qty }] : [];
   }
   const askPrice = mid * (1 - aggression) * jitter;
   const held = heldShares(trader, eq.id);
   if (held <= 0) return [];
-  const qty = Math.min(held, sizedQty(free, askPrice));
+  const qty = Math.min(held, Math.floor(sizedQty(free, askPrice) * qtyBoost));
   return qty > 0 ? [{ side: "ask", limitPrice: askPrice, qty }] : [];
 }
 
@@ -219,18 +272,30 @@ function decideContrarian(world: World, trader: Trader, eq: Equity, free: number
   if (Math.abs(bias) < 0.1) return [];
   const mid = eq.price;
   const jitter = 1 + (rng() - 0.5) * 0.004;
+  const qtyBoost = isDockedAt(trader, eq) ? DOCKING_QTY_BOOST : 1;
   if (bias > 0) {
     // Up trend → fade with an ask further out (waiting for the trend to push to them).
     const askPrice = mid * (1 + CONTRARIAN_OFFSET) * jitter;
     const held = heldShares(trader, eq.id);
     if (held <= 0) return [];
-    const qty = Math.min(held, Math.floor(sizedQty(free, askPrice) * Math.abs(bias)));
+    const qty = Math.min(held, Math.floor(sizedQty(free, askPrice) * Math.abs(bias) * qtyBoost));
     return qty > 0 ? [{ side: "ask", limitPrice: askPrice, qty }] : [];
   }
   // Down trend → fade with a bid further out (catch the falling knife).
   const bidPrice = mid * (1 - CONTRARIAN_OFFSET) * jitter;
-  const qty = Math.floor(sizedQty(free, bidPrice) * Math.abs(bias));
+  const qty = Math.floor(sizedQty(free, bidPrice) * Math.abs(bias) * qtyBoost);
   return qty > 0 ? [{ side: "bid", limitPrice: bidPrice, qty }] : [];
+}
+
+// Bankruptcy mode: post an aggressive ask for a fraction of held shares on
+// each equity. Crosses the bid side so it actually fills — the agent needs
+// cash now, not patience.
+function decideLiquidate(trader: Trader, eq: Equity): PlanOrderArgs[] {
+  const held = heldShares(trader, eq.id);
+  if (held <= 0) return [];
+  const askPrice = eq.price * (1 - LIQUIDATION_AGGRESSION);
+  const qty = Math.max(1, Math.floor(held * LIQUIDATION_FRACTION));
+  return [{ side: "ask", limitPrice: askPrice, qty }];
 }
 
 function decideNoise(world: World, trader: Trader, eq: Equity, free: number, rng: () => number): PlanOrderArgs[] {
@@ -242,10 +307,11 @@ function decideNoise(world: World, trader: Trader, eq: Equity, free: number, rng
   const aggressive = rng() < 0.5;
   const offset = NOISE_BAND_MIN + rng() * (NOISE_BAND_MAX - NOISE_BAND_MIN);
   const sign = side === "bid"
-    ? (aggressive ? +1 : -1)   // bid above mid = aggressive (eats asks); below = passive
-    : (aggressive ? -1 : +1);  // ask below mid = aggressive (eats bids); above = passive
+    ? (aggressive ? +1 : -1)
+    : (aggressive ? -1 : +1);
   const limitPrice = eq.price * (1 + sign * offset);
-  let qty = sizedQty(free, limitPrice);
+  const qtyBoost = isDockedAt(trader, eq) ? DOCKING_QTY_BOOST : 1;
+  let qty = Math.floor(sizedQty(free, limitPrice) * qtyBoost);
   if (side === "ask") {
     const held = heldShares(trader, eq.id);
     if (held <= 0) return [];
@@ -274,21 +340,29 @@ export function stepAgentTrader(world: World, trader: Trader, force = false): vo
   // Per-decision trading capacity = stockWallet × riskAppetite. Higher-risk
   // agents commit more of their wallet per round.
   const free = state.stockWallet * state.riskAppetite;
-  if (free <= 0) return;
 
-  // Iterate equities. Cancel this agent's stale orders for each equity;
-  // post a fresh order based on style.
+  // Phase 3: bankruptcy mode. If the wallet has fallen below the threshold,
+  // override the normal style and run liquidation logic — sell down held
+  // positions over multiple decisions. Agent stops opening new positions
+  // until proceeds bring stockWallet back above the threshold.
+  const bankrupt = state.stockWallet < BANKRUPTCY_THRESHOLD;
+  if (!bankrupt && free <= 0) return;
+
   const rng = mulberry32(hashStr(trader.id) ^ world.tick);
 
   for (const eq of Object.values(world.equities)) {
     cancelAgentOrders(world, eq.id, trader.id);
 
     let plans: PlanOrderArgs[];
-    switch (state.style) {
-      case "value":      plans = decideValue(world, trader, eq, free, rng); break;
-      case "momentum":   plans = decideMomentum(world, trader, eq, free, rng); break;
-      case "contrarian": plans = decideContrarian(world, trader, eq, free, rng); break;
-      case "noise":      plans = decideNoise(world, trader, eq, free, rng); break;
+    if (bankrupt) {
+      plans = decideLiquidate(trader, eq);
+    } else {
+      switch (state.style) {
+        case "value":      plans = decideValue(world, trader, eq, free, rng); break;
+        case "momentum":   plans = decideMomentum(world, trader, eq, free, rng); break;
+        case "contrarian": plans = decideContrarian(world, trader, eq, free, rng); break;
+        case "noise":      plans = decideNoise(world, trader, eq, free, rng); break;
+      }
     }
 
     for (const p of plans) {
