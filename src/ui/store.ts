@@ -80,12 +80,21 @@ function createDeveloperWorld(): World {
     mechanic: devCrew("mechanic", "Dev Mechanic", 1, { maintenanceDiscount: 0.45 }),
     captain: devCrew("captain", "Dev Pilot", 2, { speedBonus: 0.5 }),
   };
+  // Spread the dev loadout across all four rarity tiers so the colored
+  // catalog (white → blue → purple → gold) is visible at a glance:
+  //   T1 (common)    weapon  — Pulse Cannon Turret
+  //   T2 (uncommon)  fuel    — Hyperion Bloom Reclaimer (regen variant)
+  //                  hull    — Composite Battle Plating
+  //   T3 (rare)      cargo   — Megahauler Conversion
+  //                  systems — Pressure Atlas Console
+  //   T4 (legendary) engine  — FTL Fold Drive
   ship.upgrades = {
-    cargo: "upg_cargo_2",
-    engine: "upg_engine_2",
-    fuel: "upg_fuel_2",
-    hull: "upg_hull_1",
     weapon: "upg_weapon_1",
+    fuel: "upg_fuel_regen_2",
+    hull: "upg_hull_2",
+    cargo: "upg_cargo_3",
+    systems: "upg_systems_pressure_3",
+    engine: "upg_engine_3",
   };
   recomputeShipStats(ship);
   ship.currentFuel = { good: "plasma", qty: ship.fuelCapacity };
