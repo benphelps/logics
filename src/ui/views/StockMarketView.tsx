@@ -1,5 +1,17 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { MdArrowDropDown, MdArrowDropUp, MdRemove } from "react-icons/md";
+import {
+  AreaSeries,
+  ColorType,
+  HistogramSeries,
+  LineStyle,
+  createChart,
+  type IChartApi,
+  type IPriceLine,
+  type ISeriesApi,
+  type Time,
+  type UTCTimestamp,
+} from "lightweight-charts";
 import { useStore } from "../store";
 import type { BookTrade, Equity, EquityKind, Order, OrderBook, StockPosition, TradeRecord, World } from "../../sim/types";
 import {
@@ -1567,120 +1579,219 @@ function HealthBar({ value, label }: { value: number; label: string }) {
   );
 }
 
-// Two-panel chart: price line (top) + volume bars (bottom). Stretches to
-// fill the now-wider sidebar. Volume bins per tick are signed (net buy /
-// net sell) using the same convention as VolumePanel — green up from the
-// centerline for net buy pressure, red down for net sell. Position
-// reference lines (entry, stop, take) overlay the price panel.
+// Two-panel chart powered by lightweight-charts: price area on top +
+// volume histogram pinned to the bottom of the same canvas. Position
+// reference lines (avg entry, stop-loss, take-profit) ride along the
+// price scale via createPriceLine. Tick numbers are mapped to integer
+// time units and the time formatter renders them as "T1234" so the chart
+// reads as ticks rather than dates.
 function Sparkline({ equity, position }: { equity: Equity; position: StockPosition | null }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<IChartApi | null>(null);
+  const priceSeriesRef = useRef<ISeriesApi<"Area"> | null>(null);
+  const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const priceLinesRef = useRef<IPriceLine[]>([]);
+
   const history = equity.history ?? [];
-  const points = history.slice(-40);
-  if (points.length < 2) return <div className="stocks-sparkline-empty dim">Building price history…</div>;
-
-  const prices = points.map(p => p.price);
-  const extras: number[] = [];
-  if (position?.stopLoss != null) extras.push(position.stopLoss);
-  if (position?.takeProfit != null) extras.push(position.takeProfit);
-  if (position) extras.push(position.avgEntryPrice);
-  const all = [...prices, ...extras];
-  const min = Math.min(...all);
-  const max = Math.max(...all);
-  const range = max - min || 1;
-
-  // Layout: top price panel + small gap + bottom volume panel. viewBox stays
-  // fixed; CSS scales the SVG to the container width.
-  const W = 600;
-  const PRICE_H = 140;
-  const GAP = 8;
-  const VOL_H = 44;
-  const H = PRICE_H + GAP + VOL_H;
-  const VOL_TOP = PRICE_H + GAP;
-  const VOL_MID = VOL_TOP + VOL_H / 2;
-
-  const minTick = points[0].tick;
-  const maxTick = points[points.length - 1].tick;
-  const tickSpan = Math.max(1, maxTick - minTick);
-  const xFor = (tick: number) => ((tick - minTick) / tickSpan) * W;
-  const yPrice = (p: number) => 2 + (1 - (p - min) / range) * (PRICE_H - 4);
-
-  const path = points
-    .map((p, i) => `${i === 0 ? "M" : "L"}${xFor(p.tick).toFixed(1)},${yPrice(p.price).toFixed(1)}`)
-    .join(" ");
-  const areaPath = `${path} L${xFor(maxTick).toFixed(1)},${PRICE_H} L${xFor(minTick).toFixed(1)},${PRICE_H} Z`;
-  const lastUp = points[points.length - 1].price >= points[0].price;
-
-  // Per-tick volume bins from the recent-trades window, restricted to the
-  // ticks visible in the price panel.
   const trades = equity.recentTrades ?? [];
-  const buyVol: Record<number, number> = {};
-  const sellVol: Record<number, number> = {};
-  for (const t of trades) {
-    if (t.tick < minTick || t.tick > maxTick) continue;
-    if (t.takerSide === "bid") buyVol[t.tick] = (buyVol[t.tick] ?? 0) + t.qty;
-    else sellVol[t.tick] = (sellVol[t.tick] ?? 0) + t.qty;
-  }
-  const peakVol = Math.max(1, ...Object.values(buyVol), ...Object.values(sellVol));
-  const barW = Math.max(2, (W / Math.max(1, points.length)) * 0.7);
+
+  // Build the chart once. The chart instance survives across data updates;
+  // setData is called from a separate effect.
+  useEffect(() => {
+    const div = containerRef.current;
+    if (!div) return;
+    const chart = createChart(div, {
+      width: div.clientWidth,
+      height: 220,
+      autoSize: false,
+      layout: {
+        background: { type: ColorType.Solid, color: "transparent" },
+        textColor: "rgba(220, 230, 240, 0.42)",
+        fontSize: 11,
+        attributionLogo: false,
+      },
+      grid: {
+        vertLines: { color: "rgba(255,255,255,0.04)" },
+        horzLines: { color: "rgba(255,255,255,0.04)" },
+      },
+      rightPriceScale: { borderColor: "rgba(255,255,255,0.08)" },
+      timeScale: {
+        borderColor: "rgba(255,255,255,0.08)",
+        tickMarkFormatter: (time: Time) => `T${time}`,
+      },
+      localization: {
+        timeFormatter: (time: Time) => `tick ${time}`,
+        priceFormatter: (p: number) => `Ç${p.toFixed(2)}`,
+      },
+      crosshair: { mode: 1 },
+    });
+    const price = chart.addSeries(AreaSeries, {
+      lineColor: "#6cd99a",
+      topColor: "rgba(108,217,154,0.30)",
+      bottomColor: "rgba(108,217,154,0.02)",
+      lineWidth: 2,
+      priceFormat: { type: "price", precision: 2, minMove: 0.01 },
+      priceLineVisible: false,
+      lastValueVisible: true,
+    });
+    const volume = chart.addSeries(HistogramSeries, {
+      priceFormat: { type: "volume" },
+      priceScaleId: "",
+      color: "rgba(108,217,154,0.55)",
+    });
+    volume.priceScale().applyOptions({ scaleMargins: { top: 0.78, bottom: 0 } });
+
+    chartRef.current = chart;
+    priceSeriesRef.current = price;
+    volumeSeriesRef.current = volume;
+
+    const ro = new ResizeObserver(() => {
+      if (chartRef.current) chartRef.current.applyOptions({ width: div.clientWidth });
+    });
+    ro.observe(div);
+
+    return () => {
+      ro.disconnect();
+      chart.remove();
+      chartRef.current = null;
+      priceSeriesRef.current = null;
+      volumeSeriesRef.current = null;
+      priceLinesRef.current = [];
+    };
+  }, []);
+
+  // Push price + volume data. The sim mutates eq.history in place
+  // (Array.push), so we track length + the last price as effect deps.
+  // Each tick we append via series.update() so the user's pan/zoom and
+  // crosshair position survive — full setData would reset interactions.
+  // Full setData only happens on equity switch (different ticker) or
+  // when the latest tick rewinds (sim reset/scrub backward).
+  const histLen = history.length;
+  const tradesLen = trades.length;
+  const lastPrice = history.length > 0 ? history[history.length - 1].price : 0;
+  const lastTick = history.length > 0 ? history[history.length - 1].tick : -1;
+  const lastSeenTickRef = useRef<number>(-1);
+  const lastSeenEquityRef = useRef<string>("");
+  useEffect(() => {
+    const price = priceSeriesRef.current;
+    const volume = volumeSeriesRef.current;
+    if (!price || !volume) return;
+    const points = history.slice(-200);
+    if (points.length < 2) {
+      price.setData([]);
+      volume.setData([]);
+      lastSeenTickRef.current = -1;
+      lastSeenEquityRef.current = equity.id;
+      return;
+    }
+
+    const equityChanged = lastSeenEquityRef.current !== equity.id;
+    const seen = lastSeenTickRef.current;
+    const newest = points[points.length - 1].tick;
+    const canAppend = !equityChanged && seen >= 0 && newest >= seen;
+
+    // Build per-tick volume map once — used by both append and full reset.
+    const buyVol: Record<number, number> = {};
+    const sellVol: Record<number, number> = {};
+    for (const t of trades) {
+      if (t.takerSide === "bid") buyVol[t.tick] = (buyVol[t.tick] ?? 0) + t.qty;
+      else sellVol[t.tick] = (sellVol[t.tick] ?? 0) + t.qty;
+    }
+    const volumeBar = (p: { tick: number }) => {
+      const buy = buyVol[p.tick] ?? 0;
+      const sell = sellVol[p.tick] ?? 0;
+      return {
+        time: p.tick as UTCTimestamp,
+        value: buy + sell,
+        color: buy >= sell ? "rgba(108,217,154,0.55)" : "rgba(239,111,125,0.55)",
+      };
+    };
+
+    if (canAppend) {
+      // Update only the points at-or-after the last-seen tick. The
+      // series accepts update() with a time matching an existing point
+      // (overwrites) or one strictly greater (appends).
+      const tail = points.filter(p => p.tick >= seen);
+      for (const p of tail) {
+        price.update({ time: p.tick as UTCTimestamp, value: p.price });
+        volume.update(volumeBar(p));
+      }
+    } else {
+      // Equity switch or backward scrub — full reset and re-fit so the
+      // user gets the new ticker centered. Pan/zoom on the new chart
+      // is then preserved by future incremental updates.
+      price.setData(points.map(p => ({ time: p.tick as UTCTimestamp, value: p.price })));
+      volume.setData(points.map(volumeBar));
+      chartRef.current?.timeScale().fitContent();
+    }
+    lastSeenTickRef.current = newest;
+    lastSeenEquityRef.current = equity.id;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [equity.id, histLen, tradesLen, lastPrice, lastTick]);
+
+  // Position lines (avg entry / SL / TP). Re-create on every position
+  // change rather than tracking individual line refs — there are at most
+  // three lines and the api makes this cheap.
+  useEffect(() => {
+    const price = priceSeriesRef.current;
+    if (!price) return;
+    for (const line of priceLinesRef.current) {
+      price.removePriceLine(line);
+    }
+    priceLinesRef.current = [];
+    if (!position) return;
+    priceLinesRef.current.push(
+      price.createPriceLine({
+        price: position.avgEntryPrice,
+        color: "rgba(220, 230, 240, 0.30)",
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: "avg",
+      })
+    );
+    if (position.stopLoss != null) {
+      priceLinesRef.current.push(
+        price.createPriceLine({
+          price: position.stopLoss,
+          color: "#ef6f7d",
+          lineWidth: 1,
+          lineStyle: LineStyle.Dashed,
+          axisLabelVisible: true,
+          title: "SL",
+        })
+      );
+    }
+    if (position.takeProfit != null) {
+      priceLinesRef.current.push(
+        price.createPriceLine({
+          price: position.takeProfit,
+          color: "#6cd99a",
+          lineWidth: 1,
+          lineStyle: LineStyle.Dashed,
+          axisLabelVisible: true,
+          title: "TP",
+        })
+      );
+    }
+    // Track the position's individual fields rather than the object
+    // reference: the store may hand back the same object across ticks.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    position?.equityId,
+    position?.kind,
+    position?.avgEntryPrice,
+    position?.stopLoss,
+    position?.takeProfit,
+  ]);
 
   return (
-    <svg className="stocks-sparkline" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
-      {/* price panel background line */}
-      <line x1={0} y1={PRICE_H - 0.5} x2={W} y2={PRICE_H - 0.5} className="stocks-sparkline-axis" />
-
-      {/* price area + line */}
-      <path d={areaPath} className={lastUp ? "spark-area up" : "spark-area down"} />
-      <path d={path} className={lastUp ? "spark up" : "spark down"} />
-
-      {/* position reference lines */}
-      {position && (
-        <line x1={0} y1={yPrice(position.avgEntryPrice)} x2={W} y2={yPrice(position.avgEntryPrice)} className="spark-entry-line" />
+    <div className="stocks-sparkline-wrap">
+      <div ref={containerRef} className="stocks-sparkline" />
+      {history.length < 2 && (
+        <div className="stocks-sparkline-empty dim">Building price history…</div>
       )}
-      {position?.stopLoss != null && (
-        <line x1={0} y1={yPrice(position.stopLoss)} x2={W} y2={yPrice(position.stopLoss)} className="spark-stop-line" />
-      )}
-      {position?.takeProfit != null && (
-        <line x1={0} y1={yPrice(position.takeProfit)} x2={W} y2={yPrice(position.takeProfit)} className="spark-take-line" />
-      )}
-
-      {/* min/max labels in price panel corners */}
-      <text x={4} y={12} className="spark-label">{`Ç${fmtPrice(max)}`}</text>
-      <text x={4} y={PRICE_H - 6} className="spark-label">{`Ç${fmtPrice(min)}`}</text>
-
-      {/* volume centerline + bars */}
-      <line x1={0} y1={VOL_MID} x2={W} y2={VOL_MID} className="stocks-sparkline-axis" />
-      {points.map(p => {
-        const buy = buyVol[p.tick] ?? 0;
-        const sell = sellVol[p.tick] ?? 0;
-        const x = xFor(p.tick) - barW / 2;
-        const buyH = (buy / peakVol) * (VOL_H / 2);
-        const sellH = (sell / peakVol) * (VOL_H / 2);
-        return (
-          <g key={p.tick}>
-            {buy > 0 && (
-              <rect
-                x={x}
-                y={VOL_MID - buyH}
-                width={barW}
-                height={buyH}
-                className="vol-bar up"
-              />
-            )}
-            {sell > 0 && (
-              <rect
-                x={x}
-                y={VOL_MID}
-                width={barW}
-                height={sellH}
-                className="vol-bar down"
-              />
-            )}
-          </g>
-        );
-      })}
-
-      {/* tick-range label in volume panel */}
-      <text x={4} y={H - 4} className="spark-label">{`t${minTick}–${maxTick}`}</text>
-    </svg>
+    </div>
   );
 }
 
