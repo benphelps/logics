@@ -2467,8 +2467,10 @@ function ShipUpgradesTab({ ship }: { ship: Trader }) {
                 </div>
                 {def ? (
                   <>
-                    <div className="upgrade-card-name">{def.name}</div>
-                    {def.description && <div className="upgrade-card-description">{def.description}</div>}
+                    <div className="upgrade-card-heading">
+                      <div className="upgrade-card-name">{def.name}</div>
+                      {def.description && <div className="upgrade-card-description">{def.description}</div>}
+                    </div>
                     <div className="upgrade-card-bottom">
                       <UpgradeEffectPills text={upgradeEffectText(def)} />
                     </div>
@@ -2529,8 +2531,10 @@ function ShipUpgradesTab({ ship }: { ship: Trader }) {
                       <span className="upgrade-replace-hint dim">replaces {replacedDef.name}</span>
                     )}
                   </div>
-                  <div className="upgrade-card-name">{def.name}</div>
-                  {def.description && <div className="upgrade-card-description">{def.description}</div>}
+                  <div className="upgrade-card-heading">
+                    <div className="upgrade-card-name">{def.name}</div>
+                    {def.description && <div className="upgrade-card-description">{def.description}</div>}
+                  </div>
                   <div className="upgrade-card-bottom">
                     <UpgradeEffectPills text={upgradeEffectText(def)} />
                   </div>
@@ -2628,8 +2632,10 @@ function StationUpgradePurchaseTab({ ship, world, loc, target, hintText, cueText
                   <div className="upgrade-card-top">
                     <span className={`upgrade-slot-copy slot-${def.slot}`}>{upgradeSlotLabel(def.slot)}</span>
                   </div>
-                  <div className="upgrade-card-name">{def.name}</div>
-                  {def.description && <div className="upgrade-card-description">{def.description}</div>}
+                  <div className="upgrade-card-heading">
+                    <div className="upgrade-card-name">{def.name}</div>
+                    {def.description && <div className="upgrade-card-description">{def.description}</div>}
+                  </div>
                   <div className="upgrade-card-bottom">
                     <UpgradeEffectPills text={upgradeEffectText(def)} />
                   </div>
