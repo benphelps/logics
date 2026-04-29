@@ -1,12 +1,22 @@
 .atlas-view {
   --atlas-surface: #15191f;
   --atlas-surface-soft: #101419;
+  --atlas-surface-raised: #1b2026;
   --atlas-line: rgba(255, 255, 255, 0.08);
   --atlas-hub: #76c7ff;
   --atlas-mining: #e5b86b;
   --atlas-agri: #7bcf98;
   --atlas-frontier: #d58bdc;
   --atlas-research: #8fa8ff;
+  /* Alias the ship-* tokens that .bridge-tab and .trade-helper-section
+     reference so their hover/active states (background: var(
+     --ship-surface-raised)) actually paint a visible shade inside the
+     atlas view. Same trick used in the stocks view. */
+  --ship-surface: var(--atlas-surface);
+  --ship-surface-soft: var(--atlas-surface-soft);
+  --ship-surface-raised: var(--atlas-surface-raised);
+  --ship-line: var(--atlas-line);
+  --ship-line-soft: var(--atlas-line);
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -109,10 +119,11 @@
 .atlas-grid {
   flex: 1;
   display: grid;
-  /* 50/50 split: detail panel (full height) on the left, map+sheet
-     stack on the right. Mirrors the markets view's two-column shell
-     but with the proportions inverted and sized for parity. */
-  grid-template-columns: 1fr 1fr;
+  /* Match the player view's column rhythm: its three-column shell has
+     1.15 + 0.95 = 2.10fr on the left vs 1.35fr on the right (≈61/39).
+     Apply the same ratio here with map+sheet on the left and info on
+     the right, so the two views read in the same proportions. */
+  grid-template-columns: minmax(530px, 2.1fr) minmax(360px, 1.35fr);
   grid-template-rows: minmax(0, 1fr);
   gap: 14px;
   min-height: 0;
@@ -135,12 +146,12 @@
   overflow: hidden;
 }
 
-/* Right column: map fills the upper half, sheet (Systems / Ships
-   tabs) fills the lower half. The map gets noticeably more vertical
-   real estate now that ship plotting is in. */
+/* Left column: map (top) + tabbed sheet (bottom). Map is dialed back
+   to ~75% of its previous height so the sheet has more room for rows;
+   resulting ratio is 1.575fr : 1.875fr (≈46/54). */
 .atlas-side {
   display: grid;
-  grid-template-rows: 1fr 1fr;
+  grid-template-rows: 1.575fr 1.875fr;
   gap: 14px;
   min-width: 0;
   min-height: 0;
@@ -312,20 +323,25 @@
 .atlas-station-table .col-pressure-num { width: 64px; }
 .atlas-station-table .col-focus { width: 110px; }
 
-/* Tabbed sheet at the bottom of the right column. The bridge-card-tabs
-   look (defined in PlayerView.css) is shared with the stocks view's
-   Positions/Orders tabs for visual continuity. */
-.atlas-sheet-tabs {
+/* Tabbed sheet at the top of the left-column sheet panel. The
+   bridge-card-tabs base style (PlayerView.css) carries `flex: 1` so it
+   would expand vertically inside our column-flex panel; force it back
+   to a content-sized row that fills the width. */
+.atlas-sheet-tabs.bridge-card-tabs {
   display: flex;
+  flex: 0 0 auto;
   align-items: stretch;
   gap: 2px;
   padding: 3px;
   background: var(--atlas-surface-soft);
   border-bottom: 1px solid var(--atlas-line);
+  border-radius: 0;
 }
 
 .atlas-sheet-tabs .bridge-tab {
+  display: flex;
   flex: 1 1 0;
+  min-width: 0;
   justify-content: center;
 }
 

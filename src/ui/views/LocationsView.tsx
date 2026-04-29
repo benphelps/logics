@@ -106,23 +106,6 @@ export function LocationsView() {
   return (
     <section className="atlas-view">
       <div className="atlas-grid">
-        <section className="atlas-detail-panel">
-          {selected ? (
-            <DetailPanel
-              world={world}
-              loc={selected}
-              counts={selectedCounts}
-              marketRowsTop={selectedMarket}
-              stationKind={stationKind(selected)}
-              ships={ships}
-              selectedTraderId={selectedTrader}
-              onSelectTrader={selectTrader}
-            />
-          ) : (
-            <div className="atlas-detail-empty dim">Select a station from the map or list.</div>
-          )}
-        </section>
-
         <aside className="atlas-side">
           <section className="atlas-map-panel">
             <div className="atlas-panel-head compact art-panel-head" style={artCardStyle(headerArtUrl("sectorMap"))}>
@@ -183,6 +166,23 @@ export function LocationsView() {
             </div>
           </section>
         </aside>
+
+        <section className="atlas-detail-panel">
+          {selected ? (
+            <DetailPanel
+              world={world}
+              loc={selected}
+              counts={selectedCounts}
+              marketRowsTop={selectedMarket}
+              stationKind={stationKind(selected)}
+              ships={ships}
+              selectedTraderId={selectedTrader}
+              onSelectTrader={selectTrader}
+            />
+          ) : (
+            <div className="atlas-detail-empty dim">Select a station from the map or list.</div>
+          )}
+        </section>
       </div>
     </section>
   );
