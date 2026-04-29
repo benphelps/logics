@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { CrewMember, CrewRole, EquityId, World, LocationId, GoodId, JobId, TraderId } from "../sim/types";
+import type { CrewMember, CrewRole, EquityId, World, LocationId, GoodId, JobId, TraderId, UpgradeSlot } from "../sim/types";
 import { createStartingWorld } from "../sim/start";
 import { tickWorld } from "../sim/tick";
 import {
@@ -9,6 +9,7 @@ import {
   installUpgradeFromMarket as installUpgradeFromMarketAction,
   refuelManual,
   repairShip,
+  removeInstalledUpgrade as removeInstalledUpgradeAction,
   sellAtLocation,
   travelTo,
   type TradeOption,
@@ -137,6 +138,7 @@ interface UiState {
   repairShip: (traderId: TraderId) => void;
   installUpgradeFromCargo: (traderId: TraderId, good: GoodId) => void;
   installUpgradeFromMarket: (traderId: TraderId, good: GoodId) => void;
+  removeInstalledUpgrade: (traderId: TraderId, slot: UpgradeSlot) => void;
   selectEquity: (id: EquityId | null) => void;
   buyShares: (equityId: EquityId, qty: number) => void;
   sellShares: (equityId: EquityId, qty: number) => void;
@@ -367,6 +369,12 @@ export const useStore = create<UiState>((set, get) => {
       const w = get().world;
       const t = w.traders[traderId]; if (!t) return;
       const r = installUpgradeFromMarketAction(w, t, good);
+      persistCurrentGame({ lastError: r.ok ? null : r.reason });
+    },
+    removeInstalledUpgrade: (traderId, slot) => {
+      const w = get().world;
+      const t = w.traders[traderId]; if (!t) return;
+      const r = removeInstalledUpgradeAction(w, t, slot);
       persistCurrentGame({ lastError: r.ok ? null : r.reason });
     },
     selectEquity: (id) => set({ selectedEquity: id }),

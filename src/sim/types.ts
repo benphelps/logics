@@ -93,6 +93,11 @@ export interface CrewModifiers {
   hullBonus?: number;                 // +N structural rating; future dangerous jobs read this
   weaponPowerBonus?: number;          // +N weapon rating; future dangerous jobs read this
   rangeEfficiency?: number;           // 0.10 = 10% reduction in fuel-per-distance
+  unloadSpeedBonus?: number;          // 1.00 = unload in half the normal ticks
+  instantUnload?: number;             // >=1 = cargo sale/arrival unload settles immediately
+  remoteSettlementCollection?: number;// >=1 = completed exchange settlements pay immediately
+  instantTravel?: number;             // >=1 = plotted travel resolves on departure
+  fuelFreeTravel?: number;            // >=1 = travel needs/burns no fuel
   buyDiscount?: number;               // 0.05 = 5% off buy price (NOT YET WIRED)
   sellPremium?: number;               // 0.05 = 5% bonus on sell (NOT YET WIRED)
   maintenanceDiscount?: number;       // 0.10 = 10% off maintenance/tick
@@ -129,7 +134,7 @@ export interface Hire {
   expiresAt: number;
 }
 
-export type UpgradeSlot = "cargo" | "engine" | "fuel" | "hull" | "weapon";
+export type UpgradeSlot = "cargo" | "engine" | "fuel" | "hull" | "weapon" | "systems";
 export type UpgradeTier = 1 | 2 | 3;
 export type ShipUpgradeSlots = Partial<Record<UpgradeSlot, GoodId>>;
 

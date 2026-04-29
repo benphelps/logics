@@ -1,4 +1,4 @@
-import type { CargoLot, FuelType, GoodId, JobId, LocationId, ShipUpgradeSlots, Trader, TraderEvent, World } from "./types";
+import type { CargoLot, FuelType, GoodId, JobId, LocationId, ShipUpgradeSlots, Trader, TraderEvent, UpgradeSlot, World } from "./types";
 import { reachableNeighbors, routeDistance } from "./geometry";
 import { marketQuote, priceFor } from "./pricing";
 import {
@@ -14,7 +14,15 @@ import {
 import { acceptJob, collectTradeJob, creditJobOnDelivery, type JobCompletionEvent } from "./jobs";
 import { noteSyndicateRevenue } from "./stock";
 import { pushNote, pushTraderEvent } from "./log";
-import { effectivePerDistance, hasCrew, MAINTENANCE_DEBT_TRAVEL_BLOCK, recomputeShipStats } from "./crew";
+import {
+  combinedShipModifiers,
+  effectivePerDistance,
+  hasCrew,
+  ignoresFuel,
+  MAINTENANCE_DEBT_TRAVEL_BLOCK,
+  recomputeShipStats,
+  travelTicksFor,
+} from "./crew";
 import { isUpgradeGood, upgradeDef } from "./upgrades";
 import { buildDestinationLoadoutPlans, buildLocalFetchPlans, type PlannedBuy, type RoutePlanCandidate } from "./loadoutPlans";
 
@@ -42,6 +50,32 @@ export function totalCargoMass(trader: Trader, world: World): number {
 
 export function isUnloading(trader: Trader): boolean {
   return (trader.unloadingCargo?.length ?? 0) > 0;
+}
+
+function unloadTicksFor(trader: Trader): number {
+  const mods = combinedShipModifiers(trader);
+  if ((mods.instantUnload ?? 0) >= 1) return 0;
+  const speedBonus = Math.max(0, mods.unloadSpeedBonus ?? 0);
+  return Math.max(1, Math.round(UNLOAD_TICKS / (1 + speedBonus)));
+}
+
+function fuelPerDistanceFor(trader: Trader, ft: FuelType | null): number {
+  if (ignoresFuel(trader)) return 0;
+  return ft ? effectivePerDistance(trader, ft.perDistance) : Infinity;
+}
+
+function fuelQtyForPlanning(trader: Trader, fuel: Trader["currentFuel"], isHypothetical = false): number {
+  if (ignoresFuel(trader)) return Infinity;
+  return isHypothetical ? trader.fuelCapacity : fuel?.qty ?? 0;
+}
+
+function burnTravelFuel(trader: Trader, fuelNeeded: number): void {
+  if (fuelNeeded <= 0.001) return;
+  if (!trader.currentFuel) return;
+  trader.currentFuel = {
+    good: trader.currentFuel.good,
+    qty: Math.max(0, trader.currentFuel.qty - fuelNeeded),
+  };
 }
 
 // Max remaining ticks across all unloading lots — used by the UI to show a
@@ -89,6 +123,7 @@ export function selectRefuelType(world: World, trader: Trader): FuelType | null 
 }
 
 function tryRefuel(world: World, trader: Trader, events: TraderEvent[]): void {
+  if (ignoresFuel(trader)) return;
   const tankFraction = (trader.currentFuel?.qty ?? 0) / trader.fuelCapacity;
   if (tankFraction >= REFUEL_THRESHOLD) return;
 
@@ -240,6 +275,28 @@ function inTransitArrivalsByDestGood(world: World): Map<string, number> {
   return acc;
 }
 
+function settleUnloadedCargo(world: World, trader: Trader, lot: CargoLot, qty: number, events: TraderEvent[]): void {
+  const dstMarket = world.markets[trader.location];
+  const unitPrice = marketQuote(world, trader.location, lot.good);
+  dstMarket.stock[lot.good] = (dstMarket.stock[lot.good] ?? 0) + qty;
+  const settlement = settleSale(dstMarket, unitPrice, qty);
+  trader.funds += settlement.traderRevenue;
+  noteSyndicateRevenue(world, trader.id, settlement.traderRevenue);
+  events.push({ trader: trader.id, kind: "sell", good: lot.good, qty, unitPrice: settlement.effectiveUnitPrice, to: trader.location });
+  creditJobOnDelivery(world, trader.id, trader.location, lot.good, qty);
+}
+
+function beginUnloadLots(world: World, trader: Trader, lots: CargoLot[], events: TraderEvent[]): void {
+  if (lots.length === 0) return;
+  const ticks = unloadTicksFor(trader);
+  if (ticks <= 0) {
+    for (const lot of lots) settleUnloadedCargo(world, trader, lot, lot.qty, events);
+    return;
+  }
+  const movedLots = lots.map(l => ({ ...l, unloadTicksRemaining: ticks }));
+  trader.unloadingCargo = [...(trader.unloadingCargo ?? []), ...movedLots];
+}
+
 export function listTradeOptions(
   world: World,
   trader: Trader,
@@ -253,13 +310,15 @@ export function listTradeOptions(
   const here = fromLocation ?? trader.location;
   const srcMarket = world.markets[here];
   const fuel = trader.currentFuel;
-  const ft = activeFuelType(trader);
-  if (!fuel || !ft) return [];
-  const localFuelPrice = srcMarket.prices[fuel.good];
+  const fuelFree = ignoresFuel(trader);
+  const ft = activeFuelType(trader) ?? trader.fuelTypes[0] ?? null;
+  if ((!fuel || !ft) && !fuelFree) return [];
+  const fuelGood = fuel?.good ?? ft?.good;
+  const localFuelPrice = fuelGood ? srcMarket.prices[fuelGood] ?? 0 : 0;
   // When evaluating from a hypothetical location (speculative travel),
   // assume the ship refueled at that location (fuel = capacity).
   const isHypothetical = fromLocation != null && fromLocation !== trader.location;
-  const effectiveFuel = isHypothetical ? trader.fuelCapacity : fuel.qty;
+  const effectiveFuel = fuelQtyForPlanning(trader, fuel, isHypothetical);
   const options: TradeOption[] = [];
 
   // Pre-index this trader's accepted contracts by (destination|good) → bonus
@@ -342,7 +401,7 @@ export function listTradeOptions(
     const buyPrice = marketQuote(world, here, goodId);
     const srcStock = srcMarket.stock[goodId] ?? 0;
 
-    const perDist = effectivePerDistance(trader, ft.perDistance);
+    const perDist = fuelPerDistanceFor(trader, ft);
     for (const { to: dstId, dist } of destinations) {
 
       // Reserve cargo for accepted contracts at this destination whose good
@@ -368,12 +427,12 @@ export function listTradeOptions(
       if (fuelNeeded > effectiveFuel) continue;
 
       const dstMarket = world.markets[dstId];
-      const fuelAfter = effectiveFuel - fuelNeeded;
+      const fuelAfter = fuelFree ? trader.fuelCapacity : effectiveFuel - fuelNeeded;
       const deliversCompatibleFuel = trader.fuelTypes.some(f => f.good === goodId);
-      const dstHasMyFuel = trader.fuelTypes.some(
+      const dstHasMyFuel = fuelFree || trader.fuelTypes.some(
         f => ((dstMarket.stock[f.good] ?? 0) + (f.good === goodId ? maxQty : 0)) >= trader.fuelCapacity * REFUEL_THRESHOLD,
       );
-      const safeReserve = fuelAfter >= trader.fuelCapacity * STRANDING_RESERVE;
+      const safeReserve = fuelFree || fuelAfter >= trader.fuelCapacity * STRANDING_RESERVE;
       if (!dstHasMyFuel && !safeReserve && !deliversCompatibleFuel) continue;
 
       const dst = world.locations[dstId];
@@ -393,7 +452,7 @@ export function listTradeOptions(
       const grossProfitPerUnit = sellPrice - buyPrice - fuelCost / maxQty;
       if (grossProfitPerUnit <= 0) continue;
 
-      const travelTicks = Math.max(1, Math.ceil(dist / trader.speed));
+      const travelTicks = travelTicksFor(trader, dist);
       const tripMaintenance = travelTicks * trader.capacity * MAINTENANCE_PER_CAPACITY;
       const tripDockingFee = trader.capacity * DOCKING_FEE_PER_CAPACITY;
       let totalProfit = grossProfitPerUnit * maxQty - tripMaintenance - tripDockingFee;
@@ -485,12 +544,14 @@ export function listSpeculativeOptions(
 ): SpeculativeOption[] {
   if (maintenanceTravelBlockReason(trader)) return [];
 
-  const ft = activeFuelType(trader);
+  const fuelFree = ignoresFuel(trader);
+  const ft = activeFuelType(trader) ?? trader.fuelTypes[0] ?? null;
   const fuel = trader.currentFuel;
-  if (!ft || !fuel) return [];
+  if ((!ft || !fuel) && !fuelFree) return [];
   const here = trader.location;
   const hereMarket = world.markets[here];
-  const localFuelPrice = hereMarket.prices[fuel.good] ?? 0;
+  const fuelGood = fuel?.good ?? ft?.good;
+  const localFuelPrice = fuelGood ? hereMarket.prices[fuelGood] ?? 0 : 0;
   const out: SpeculativeOption[] = [];
 
   // Sort candidate via-points by distance and only consider the K nearest.
@@ -500,21 +561,21 @@ export function listSpeculativeOptions(
     .sort((a, b) => a.dist - b.dist)
     .slice(0, SPECULATIVE_NEAREST_K);
 
-  const perDist = effectivePerDistance(trader, ft.perDistance);
+  const perDist = fuelPerDistanceFor(trader, ft);
   for (const { id: viaId, dist } of candidates) {
     const emptyFuelNeeded = dist * perDist;
-    if (emptyFuelNeeded > fuel.qty) continue;
+    if (!fuelFree && emptyFuelNeeded > fuel!.qty) continue;
 
     // Need fuel at via (so we can refuel + continue) OR enough remaining
     // to skip the 2-leg plan. We require the via to have fuel — otherwise
     // the trader would arrive at via and be stuck.
     const viaMarket = world.markets[viaId];
-    const viaHasMyFuel = trader.fuelTypes.some(
+    const viaHasMyFuel = fuelFree || trader.fuelTypes.some(
       f => (viaMarket.stock[f.good] ?? 0) >= trader.fuelCapacity * REFUEL_THRESHOLD,
     );
     if (!viaHasMyFuel) continue;
 
-    const emptyTravelTicks = Math.max(1, Math.ceil(dist / trader.speed));
+    const emptyTravelTicks = travelTicksFor(trader, dist);
     const emptyTripMaint = emptyTravelTicks * trader.capacity * MAINTENANCE_PER_CAPACITY;
     const emptyDockingFee = trader.capacity * DOCKING_FEE_PER_CAPACITY;
     const fuelCost = emptyFuelNeeded * localFuelPrice;
@@ -547,6 +608,7 @@ export function listSpeculativeOptions(
 }
 
 export function isStuck(world: World, trader: Trader): boolean {
+  if (ignoresFuel(trader)) return false;
   const ft = activeFuelType(trader);
   if (!ft || !trader.currentFuel || trader.currentFuel.qty <= 0) return true;
   const neighbors = reachableNeighbors(world, trader.location);
@@ -597,30 +659,32 @@ function routePressureScore(world: World, dst: LocationId): number {
 }
 
 function listRepositionOptions(world: World, trader: Trader, allowUnsafeHop = false): RepositionOption[] {
-  const ft = activeFuelType(trader);
+  const fuelFree = ignoresFuel(trader);
+  const ft = activeFuelType(trader) ?? trader.fuelTypes[0] ?? null;
   const fuel = trader.currentFuel;
-  if (!ft || !fuel) return [];
+  if ((!ft || !fuel) && !fuelFree) return [];
 
   const hereMarket = world.markets[trader.location];
-  const localFuelPrice = hereMarket.prices[fuel.good] ?? 0;
-  const perDist = effectivePerDistance(trader, ft.perDistance);
+  const fuelGood = fuel?.good ?? ft?.good;
+  const localFuelPrice = fuelGood ? hereMarket.prices[fuelGood] ?? 0 : 0;
+  const perDist = fuelPerDistanceFor(trader, ft);
   const cargoLoaded = trader.cargo.length > 0;
 
   const out: RepositionOption[] = [];
   for (const { to, dist } of reachableNeighbors(world, trader.location)) {
     const fuelNeeded = dist * perDist;
-    if (fuelNeeded > fuel.qty + 0.001) continue;
+    if (!fuelFree && fuelNeeded > fuel!.qty + 0.001) continue;
 
     const dstMarket = world.markets[to];
-    const fuelAfter = fuel.qty - fuelNeeded;
-    const dstHasMyFuel = trader.fuelTypes.some(
+    const fuelAfter = fuelFree ? trader.fuelCapacity : fuel!.qty - fuelNeeded;
+    const dstHasMyFuel = fuelFree || trader.fuelTypes.some(
       f => (dstMarket.stock[f.good] ?? 0) >= trader.fuelCapacity * REFUEL_THRESHOLD,
     );
-    const safeReserve = fuelAfter >= trader.fuelCapacity * STRANDING_RESERVE;
+    const safeReserve = fuelFree || fuelAfter >= trader.fuelCapacity * STRANDING_RESERVE;
     const safeHop = dstHasMyFuel || safeReserve;
     if (!safeHop && !allowUnsafeHop) continue;
 
-    const travelTicks = Math.max(1, Math.ceil(dist / trader.speed));
+    const travelTicks = travelTicksFor(trader, dist);
     const travelCost = fuelNeeded * localFuelPrice
       + travelTicks * trader.capacity * MAINTENANCE_PER_CAPACITY
       + trader.capacity * DOCKING_FEE_PER_CAPACITY;
@@ -641,14 +705,47 @@ function listRepositionOptions(world: World, trader: Trader, allowUnsafeHop = fa
   );
 }
 
-function departForReposition(trader: Trader, to: LocationId, fuelNeeded: number, travelTicks: number, events: TraderEvent[]): void {
+function arriveTrader(world: World, trader: Trader, dst: LocationId, events: TraderEvent[]): void {
+  trader.location = dst;
+  trader.destination = null;
+  trader.state = "idle";
+  trader.ticksRemaining = 0;
+  trader.noOpportunityTicks = 0;
+  events.push({ trader: trader.id, kind: "arrive", to: dst });
+  chargeDockingFee(world, trader);
+
+  // Manual player ships keep cargo loaded until the player chooses Sell.
+  if (trader.cargo.length > 0 && trader.pilot !== "manual") {
+    if (trader.pilot === "auto" && hasCrew(trader, "captain")) {
+      const cargoGoods = new Set(trader.cargo.map(l => l.good));
+      for (const job of Object.values(world.jobs)) {
+        if (job.acceptedBy != null) continue;
+        if (job.kind !== "shortage") continue;
+        if (job.destination !== dst) continue;
+        if (!job.good) continue;
+        if (!cargoGoods.has(job.good)) continue;
+        acceptJob(world, job.id, trader.id);
+      }
+    }
+
+    const movedLots = trader.cargo.map(l => ({ ...l }));
+    trader.cargo = [];
+    beginUnloadLots(world, trader, movedLots, events);
+  }
+}
+
+function departForReposition(world: World, trader: Trader, to: LocationId, fuelNeeded: number, travelTicks: number, events: TraderEvent[]): void {
   const here = trader.location;
-  trader.currentFuel = { good: trader.currentFuel!.good, qty: trader.currentFuel!.qty - fuelNeeded };
+  burnTravelFuel(trader, fuelNeeded);
+  events.push({ trader: trader.id, kind: "depart", from: here, to });
+  if (travelTicks <= 0) {
+    arriveTrader(world, trader, to, events);
+    return;
+  }
   trader.destination = to;
   trader.state = "transit";
   trader.ticksRemaining = travelTicks;
   trader.noOpportunityTicks = 0;
-  events.push({ trader: trader.id, kind: "depart", from: here, to });
 }
 
 function acceptedTradeJobs(world: World, trader: Trader) {
@@ -698,9 +795,10 @@ function serviceTradeSettlementJob(world: World, trader: Trader, events: TraderE
     return true;
   }
 
-  const ft = activeFuelType(trader);
+  const fuelFree = ignoresFuel(trader);
+  const ft = activeFuelType(trader) ?? trader.fuelTypes[0] ?? null;
   const fuel = trader.currentFuel;
-  if (!ft || !fuel) {
+  if ((!ft || !fuel) && !fuelFree) {
     events.push({ trader: trader.id, kind: isStuck(world, trader) ? "stuck" : "idle" });
     return true;
   }
@@ -709,13 +807,13 @@ function serviceTradeSettlementJob(world: World, trader: Trader, events: TraderE
     events.push({ trader: trader.id, kind: "idle" });
     return true;
   }
-  const fuelNeeded = hop.dist * effectivePerDistance(trader, ft.perDistance);
-  if (fuelNeeded > fuel.qty + 0.001) {
+  const fuelNeeded = hop.dist * fuelPerDistanceFor(trader, ft);
+  if (!fuelFree && fuelNeeded > fuel!.qty + 0.001) {
     events.push({ trader: trader.id, kind: isStuck(world, trader) ? "stuck" : "idle" });
     return true;
   }
-  const travelTicks = Math.max(1, Math.ceil(hop.dist / trader.speed));
-  departForReposition(trader, hop.to, fuelNeeded, travelTicks, events);
+  const travelTicks = travelTicksFor(trader, hop.dist);
+  departForReposition(world, trader, hop.to, fuelNeeded, travelTicks, events);
   return true;
 }
 
@@ -754,13 +852,14 @@ function executeAutoLoadoutPlan(
   events: TraderEvent[],
   inflight: Map<string, number>,
 ): boolean {
-  const ft = activeFuelType(trader);
+  const fuelFree = ignoresFuel(trader);
+  const ft = activeFuelType(trader) ?? trader.fuelTypes[0] ?? null;
   const fuel = trader.currentFuel;
-  if (!ft || !fuel) return false;
+  if ((!ft || !fuel) && !fuelFree) return false;
   const dist = routeDistance(world, trader.location, plan.dst);
   if (dist == null) return false;
-  const fuelNeeded = dist * effectivePerDistance(trader, ft.perDistance);
-  if (fuelNeeded > fuel.qty + 0.001) return false;
+  const fuelNeeded = dist * fuelPerDistanceFor(trader, ft);
+  if (!fuelFree && fuelNeeded > fuel!.qty + 0.001) return false;
 
   for (const jobId of plan.acceptJobIds) {
     const job = world.jobs[jobId];
@@ -773,8 +872,8 @@ function executeAutoLoadoutPlan(
   if (plan.buys.length > 0 && bought < 1 && !carryingCargo) return false;
   if (plan.buys.length === 0 && !hasFuturePickup && !carryingCargo) return false;
 
-  const travelTicks = Math.max(1, Math.ceil(dist / trader.speed));
-  departForReposition(trader, plan.dst, fuelNeeded, travelTicks, events);
+  const travelTicks = travelTicksFor(trader, dist);
+  departForReposition(world, trader, plan.dst, fuelNeeded, travelTicks, events);
   for (const lot of trader.cargo) {
     const key = `${plan.dst}|${lot.good}`;
     inflight.set(key, (inflight.get(key) ?? 0) + lot.qty);
@@ -788,38 +887,7 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
     if (trader.ticksRemaining > 0) return;
 
     const dst = trader.destination!;
-    trader.location = dst;
-    trader.destination = null;
-    trader.state = "idle";
-    trader.noOpportunityTicks = 0;
-    events.push({ trader: trader.id, kind: "arrive", to: dst });
-    chargeDockingFee(world, trader);
-
-    // Manual player ships do NOT auto-sell on arrival — cargo stays loaded
-    // until the player clicks Sell. The hint engine highlights the Sell
-    // button on arrival so the next-step CTA is obvious.
-    if (trader.cargo.length > 0 && trader.pilot !== "manual") {
-      // Auto-accept matching local contracts on arrival when a pilot is
-      // handling the ship. Manual players still choose contracts themselves.
-      if (trader.pilot === "auto" && hasCrew(trader, "captain")) {
-        const cargoGoods = new Set(trader.cargo.map(l => l.good));
-        for (const job of Object.values(world.jobs)) {
-          if (job.acceptedBy != null) continue;
-          if (job.kind !== "shortage") continue;
-          if (job.destination !== dst) continue;
-          if (!job.good) continue;
-          if (!cargoGoods.has(job.good)) continue;
-          acceptJob(world, job.id, trader.id);
-        }
-      }
-
-      // Move all cargo to the unloading buffer and start each lot's drip timer.
-      // Lots are still physically aboard (count toward mass) until the drip
-      // moves each fraction off-ship over UNLOAD_TICKS subsequent ticks.
-      const movedLots = trader.cargo.map(l => ({ ...l, unloadTicksRemaining: UNLOAD_TICKS }));
-      trader.unloadingCargo = [...(trader.unloadingCargo ?? []), ...movedLots];
-      trader.cargo = [];
-    }
+    arriveTrader(world, trader, dst, events);
     return;
   }
 
@@ -827,7 +895,6 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
   // own ticks remaining, so a fresh Sell click never resets the drain rate of
   // already-unloading lots — the new lots get their own UNLOAD_TICKS window.
   if (isUnloading(trader)) {
-    const dstMarket = world.markets[trader.location];
     const buf = trader.unloadingCargo!;
     for (const lot of buf) {
       const ticksLeft = lot.unloadTicksRemaining ?? UNLOAD_TICKS;
@@ -837,13 +904,7 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
         lot.unloadTicksRemaining = ticksLeft - 1;
         continue;
       }
-      const unitPrice = marketQuote(world, trader.location, lot.good);
-      dstMarket.stock[lot.good] = (dstMarket.stock[lot.good] ?? 0) + dripQty;
-      const settlement = settleSale(dstMarket, unitPrice, dripQty);
-      trader.funds += settlement.traderRevenue;
-      noteSyndicateRevenue(world, trader.id, settlement.traderRevenue);
-      events.push({ trader: trader.id, kind: "sell", good: lot.good, qty: dripQty, unitPrice: settlement.effectiveUnitPrice, to: trader.location });
-      creditJobOnDelivery(world, trader.id, trader.location, lot.good, dripQty);
+      settleUnloadedCargo(world, trader, lot, dripQty, events);
       lot.qty -= dripQty;
       lot.unloadTicksRemaining = ticksLeft - 1;
     }
@@ -904,7 +965,7 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
       if (sp) {
         // Depart empty for the via point. On arrival, refuel + take the
         // best trade from there (which we'll re-evaluate next tick).
-        departForReposition(trader, sp.via, sp.emptyFuelNeeded, sp.emptyTravelTicks, events);
+        departForReposition(world, trader, sp.via, sp.emptyFuelNeeded, sp.emptyTravelTicks, events);
         return;
       }
     }
@@ -914,7 +975,7 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
       const emergencyHop = selectRefuelType(world, trader) == null;
       const reposition = listRepositionOptions(world, trader, emergencyHop)[0];
       if (reposition) {
-        departForReposition(trader, reposition.to, reposition.fuelNeeded, reposition.travelTicks, events);
+        departForReposition(world, trader, reposition.to, reposition.fuelNeeded, reposition.travelTicks, events);
         return;
       }
     }
@@ -992,12 +1053,7 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
     events.push({ trader: trader.id, kind: "buy", good: choice.good, qty: primaryQty, unitPrice: choice.buyPrice, from: here });
   }
 
-  trader.currentFuel = { good: trader.currentFuel!.good, qty: trader.currentFuel!.qty - choice.fuelNeeded };
-  trader.destination = choice.to;
-  trader.state = "transit";
-  trader.ticksRemaining = choice.travelTicks;
-  trader.noOpportunityTicks = 0;
-  events.push({ trader: trader.id, kind: "depart", from: here, to: choice.to });
+  departForReposition(world, trader, choice.to, choice.fuelNeeded, choice.travelTicks, events);
 
   for (const lot of trader.cargo) {
     const key = `${choice.to}|${lot.good}`;
@@ -1018,12 +1074,13 @@ export function executeTrade(world: World, trader: Trader, choice: TradeOption):
   const here = trader.location;
   const srcMarket = world.markets[here];
   const fuel = trader.currentFuel;
-  const ft = activeFuelType(trader);
-  if (!fuel || !ft) return { ok: false, reason: "No compatible fuel in tank." };
+  const fuelFree = ignoresFuel(trader);
+  const ft = activeFuelType(trader) ?? trader.fuelTypes[0] ?? null;
+  if ((!fuel || !ft) && !fuelFree) return { ok: false, reason: "No compatible fuel in tank." };
   const dist = routeDistance(world, here, choice.to);
   if (dist == null) return { ok: false, reason: "No plotted route to destination." };
-  const fuelNeeded = dist * effectivePerDistance(trader, ft.perDistance);
-  if (fuel.qty < fuelNeeded - 0.001) return { ok: false, reason: "Not enough fuel for this trip." };
+  const fuelNeeded = dist * fuelPerDistanceFor(trader, ft);
+  if (!fuelFree && fuel!.qty < fuelNeeded - 0.001) return { ok: false, reason: "Not enough fuel for this trip." };
   if (trader.funds < choice.qty * choice.buyPrice) return { ok: false, reason: "Not enough funds to buy this cargo." };
 
   const stockHere = srcMarket.stock[choice.good] ?? 0;
@@ -1042,7 +1099,6 @@ export function executeTrade(world: World, trader: Trader, choice: TradeOption):
   const purchase = settlePurchase(srcMarket, choice.buyPrice, choice.qty);
   trader.funds -= purchase.totalCost;
   addCargoLot(trader, choice.good, choice.qty, here, choice.buyPrice, world.tick);
-  trader.currentFuel = { good: fuel.good, qty: fuel.qty - fuelNeeded };
   events.push({
     trader: trader.id,
     kind: "buy",
@@ -1052,10 +1108,7 @@ export function executeTrade(world: World, trader: Trader, choice: TradeOption):
     from: here,
   });
 
-  trader.destination = choice.to;
-  trader.state = "transit";
-  trader.ticksRemaining = Math.max(1, Math.ceil(dist / trader.speed));
-  events.push({ trader: trader.id, kind: "depart", from: here, to: choice.to });
+  departForReposition(world, trader, choice.to, fuelNeeded, travelTicksFor(trader, dist), events);
 
   for (const ev of events) pushTraderEvent(world, trader, ev);
   return { ok: true, events };
@@ -1077,6 +1130,10 @@ function addCargoLot(
 
 export type UpgradeInstallResult =
   | { ok: true; installed: GoodId; replaced?: GoodId }
+  | { ok: false; reason: string };
+
+export type UpgradeRemoveResult =
+  | { ok: true; removed: GoodId }
   | { ok: false; reason: string };
 
 interface UpgradeInstallSnapshot {
@@ -1214,6 +1271,33 @@ export function installUpgradeFromCargo(world: World, trader: Trader, goodId: Go
   return result;
 }
 
+export function removeInstalledUpgrade(world: World, trader: Trader, slot: UpgradeSlot): UpgradeRemoveResult {
+  if (trader.state !== "idle") return { ok: false, reason: "Can only remove upgrades while docked." };
+  const goodId = trader.upgrades?.[slot];
+  if (!goodId) return { ok: false, reason: "No module installed in that slot." };
+  const def = upgradeDef(goodId);
+  if (!def) return { ok: false, reason: "Installed module definition is missing." };
+
+  const snap = snapshotUpgradeInstall(trader);
+  const nextUpgrades = { ...(trader.upgrades ?? {}) };
+  delete nextUpgrades[slot];
+  trader.upgrades = Object.keys(nextUpgrades).length > 0 ? nextUpgrades : undefined;
+  addCargoLot(trader, goodId, 1, trader.location, replacedUpgradeCargoPrice(world, trader, goodId), world.tick);
+  recomputeShipStats(trader);
+
+  const mass = currentCargoMass(trader, world);
+  if (mass > trader.capacity + 0.001) {
+    restoreUpgradeInstall(trader, snap);
+    return {
+      ok: false,
+      reason: `Removing ${def.name} would leave ${mass.toFixed(0)} mass in a ${trader.capacity.toFixed(0)} cargo hold.`,
+    };
+  }
+
+  pushNote(world, trader, `Removed ${def.name}; module moved to cargo`, "good");
+  return { ok: true, removed: goodId };
+}
+
 export function installUpgradeFromMarket(world: World, trader: Trader, goodId: GoodId): UpgradeInstallResult {
   if (trader.state !== "idle") return { ok: false, reason: "Can only install upgrades while docked." };
   const def = upgradeDef(goodId);
@@ -1303,33 +1387,30 @@ export function sellAtLocation(world: World, trader: Trader, goodId: GoodId, qty
     return { ok: false, reason: `Only have ${totalAvailable} units of ${goodId}.` };
   }
 
-  // Move sellQty FIFO from cargo into the unloading buffer. Each new lot gets
-  // its OWN UNLOAD_TICKS countdown, so chained Sell clicks never reset the
-  // drain rate of already-dripping lots — a click that follows an earlier sell
-  // adds fresh lots that drain on their own schedule alongside the existing
-  // ones. Mass stays counted until each fraction physically leaves the hold.
-  trader.unloadingCargo = trader.unloadingCargo ?? [];
+  // Move sellQty FIFO from cargo into the unloading flow. Each new lot gets
+  // its own countdown unless the ship has an instant-unload module, in which
+  // case it settles before this action returns.
+  const movedLots: CargoLot[] = [];
   let remaining = sellQty;
   const toRemove: number[] = [];
   for (const { lot, idx } of matching) {
     if (remaining <= 0.001) break;
     const take = Math.min(lot.qty, remaining);
     if (take >= lot.qty - 0.001) {
-      // Whole lot leaves the hold — annotate with its drain timer.
-      lot.unloadTicksRemaining = UNLOAD_TICKS;
-      trader.unloadingCargo.push(lot);
+      movedLots.push({ ...lot, unloadTicksRemaining: undefined });
       toRemove.push(idx);
     } else {
-      // Split: shrink the in-hold lot, push a new lot into unloading with its
-      // own timer. The remaining cargo lot has no timer (still in the hold).
       lot.qty -= take;
-      trader.unloadingCargo.push({ ...lot, qty: take, unloadTicksRemaining: UNLOAD_TICKS });
+      movedLots.push({ ...lot, qty: take, unloadTicksRemaining: undefined });
     }
     remaining -= take;
   }
   toRemove.sort((a, b) => b - a).forEach(i => trader.cargo.splice(i, 1));
 
-  return { ok: true, events: [] };
+  const events: TraderEvent[] = [];
+  beginUnloadLots(world, trader, movedLots, events);
+  for (const ev of events) pushTraderEvent(world, trader, ev);
+  return { ok: true, events };
 }
 
 export function refuelManual(world: World, trader: Trader, qty?: number): ExecuteResult {
@@ -1373,25 +1454,20 @@ export function travelTo(world: World, trader: Trader, dst: LocationId): Execute
   const blocked = maintenanceTravelBlockReason(trader);
   if (blocked) return { ok: false, reason: blocked };
 
-  const ft = activeFuelType(trader);
+  const fuelFree = ignoresFuel(trader);
+  const ft = activeFuelType(trader) ?? trader.fuelTypes[0] ?? null;
   const fuel = trader.currentFuel;
-  if (!ft || !fuel) return { ok: false, reason: "No compatible fuel in tank." };
+  if ((!ft || !fuel) && !fuelFree) return { ok: false, reason: "No compatible fuel in tank." };
 
   const dist = routeDistance(world, trader.location, dst);
   if (dist == null) return { ok: false, reason: "No plotted route to destination." };
-  const fuelNeeded = dist * effectivePerDistance(trader, ft.perDistance);
-  if (fuel.qty < fuelNeeded - 0.001) {
-    return { ok: false, reason: `Need ${fuelNeeded.toFixed(1)} fuel, have ${fuel.qty.toFixed(1)}.` };
+  const fuelNeeded = dist * fuelPerDistanceFor(trader, ft);
+  if (!fuelFree && fuel!.qty < fuelNeeded - 0.001) {
+    return { ok: false, reason: `Need ${fuelNeeded.toFixed(1)} fuel, have ${fuel!.qty.toFixed(1)}.` };
   }
 
-  const travelTicks = Math.max(1, Math.ceil(dist / trader.speed));
-
-  trader.currentFuel = { good: fuel.good, qty: fuel.qty - fuelNeeded };
-  trader.destination = dst;
-  trader.state = "transit";
-  trader.ticksRemaining = travelTicks;
-
-  const events: TraderEvent[] = [{ trader: trader.id, kind: "depart", from: trader.location, to: dst }];
+  const events: TraderEvent[] = [];
+  departForReposition(world, trader, dst, fuelNeeded, travelTicksFor(trader, dist), events);
   for (const ev of events) pushTraderEvent(world, trader, ev);
   return { ok: true, events };
 }

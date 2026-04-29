@@ -16,7 +16,7 @@ const EXPIRY_BY_TIER: Record<number, number> = { 1: 100, 2: 140, 3: 200 };
 const MOD_POOL_BY_ROLE: Record<CrewRole, (keyof CrewModifiers)[]> = {
   captain:   ["speedBonus", "rangeEfficiency", "sellPremium", "buyDiscount"],
   navigator: ["fuelCapacityBonus", "rangeEfficiency", "contractRewardBonus"],
-  mechanic:  ["cargoCapacityBonus", "maintenanceDiscount", "fuelCapacityBonus"],
+  mechanic:  ["cargoCapacityBonus", "maintenanceDiscount", "fuelCapacityBonus", "unloadSpeedBonus"],
 };
 
 // Per-modifier roll envelope. value = lerp(min, max, tierFraction * variance).
@@ -27,6 +27,11 @@ const MOD_RANGE: Record<keyof CrewModifiers, [number, number]> = {
   hullBonus:           [1, 2],
   weaponPowerBonus:    [1, 2],
   rangeEfficiency:     [0.03, 0.10],
+  unloadSpeedBonus:    [0.06, 0.15],
+  instantUnload:        [1, 1],
+  remoteSettlementCollection: [1, 1],
+  instantTravel:        [1, 1],
+  fuelFreeTravel:       [1, 1],
   buyDiscount:         [0.02, 0.05],
   sellPremium:         [0.02, 0.05],
   maintenanceDiscount: [0.04, 0.10],
@@ -41,6 +46,11 @@ const MOD_COST_WEIGHT: Record<keyof CrewModifiers, number> = {
   hullBonus:           12_000,
   weaponPowerBonus:    18_000,
   rangeEfficiency:     250_000,           // multiplied by fractional value
+  unloadSpeedBonus:    30_000,
+  instantUnload:       150_000,
+  remoteSettlementCollection: 160_000,
+  instantTravel:       260_000,
+  fuelFreeTravel:      220_000,
   buyDiscount:         400_000,
   sellPremium:         400_000,
   maintenanceDiscount: 100_000,

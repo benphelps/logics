@@ -10,22 +10,19 @@ export const MAINTENANCE_DEBT_TRAVEL_BLOCK = 8_000;
 
 // --- modifier folding ------------------------------------------------------
 
+function addModifiers(acc: CrewModifiers, mods: CrewModifiers): void {
+  for (const [key, value] of Object.entries(mods) as [keyof CrewModifiers, number][]) {
+    if (!value) continue;
+    acc[key] = ((acc[key] ?? 0) + value) as never;
+  }
+}
+
 export function combinedModifiers(crew: ShipCrew | undefined): CrewModifiers {
   const acc: CrewModifiers = {};
   if (!crew) return acc;
   for (const member of Object.values(crew)) {
     if (!member) continue;
-    const m = member.modifiers;
-    if (m.cargoCapacityBonus)    acc.cargoCapacityBonus    = (acc.cargoCapacityBonus ?? 0)    + m.cargoCapacityBonus;
-    if (m.fuelCapacityBonus)     acc.fuelCapacityBonus     = (acc.fuelCapacityBonus ?? 0)     + m.fuelCapacityBonus;
-    if (m.speedBonus)            acc.speedBonus            = (acc.speedBonus ?? 0)            + m.speedBonus;
-    if (m.hullBonus)             acc.hullBonus             = (acc.hullBonus ?? 0)             + m.hullBonus;
-    if (m.weaponPowerBonus)      acc.weaponPowerBonus      = (acc.weaponPowerBonus ?? 0)      + m.weaponPowerBonus;
-    if (m.rangeEfficiency)       acc.rangeEfficiency       = (acc.rangeEfficiency ?? 0)       + m.rangeEfficiency;
-    if (m.buyDiscount)           acc.buyDiscount           = (acc.buyDiscount ?? 0)           + m.buyDiscount;
-    if (m.sellPremium)           acc.sellPremium           = (acc.sellPremium ?? 0)           + m.sellPremium;
-    if (m.maintenanceDiscount)   acc.maintenanceDiscount   = (acc.maintenanceDiscount ?? 0)   + m.maintenanceDiscount;
-    if (m.contractRewardBonus)   acc.contractRewardBonus   = (acc.contractRewardBonus ?? 0)   + m.contractRewardBonus;
+    addModifiers(acc, member.modifiers);
   }
   return acc;
 }
@@ -35,16 +32,7 @@ export function combinedShipModifiers(ship: Trader): CrewModifiers {
   const upgrades = combinedUpgradeModifiers(ship.upgrades);
   const acc: CrewModifiers = {};
   for (const mods of [crew, upgrades]) {
-    if (mods.cargoCapacityBonus)  acc.cargoCapacityBonus  = (acc.cargoCapacityBonus ?? 0)  + mods.cargoCapacityBonus;
-    if (mods.fuelCapacityBonus)   acc.fuelCapacityBonus   = (acc.fuelCapacityBonus ?? 0)   + mods.fuelCapacityBonus;
-    if (mods.speedBonus)          acc.speedBonus          = (acc.speedBonus ?? 0)          + mods.speedBonus;
-    if (mods.hullBonus)           acc.hullBonus           = (acc.hullBonus ?? 0)           + mods.hullBonus;
-    if (mods.weaponPowerBonus)    acc.weaponPowerBonus    = (acc.weaponPowerBonus ?? 0)    + mods.weaponPowerBonus;
-    if (mods.rangeEfficiency)     acc.rangeEfficiency     = (acc.rangeEfficiency ?? 0)     + mods.rangeEfficiency;
-    if (mods.buyDiscount)         acc.buyDiscount         = (acc.buyDiscount ?? 0)         + mods.buyDiscount;
-    if (mods.sellPremium)         acc.sellPremium         = (acc.sellPremium ?? 0)         + mods.sellPremium;
-    if (mods.maintenanceDiscount) acc.maintenanceDiscount = (acc.maintenanceDiscount ?? 0) + mods.maintenanceDiscount;
-    if (mods.contractRewardBonus) acc.contractRewardBonus = (acc.contractRewardBonus ?? 0) + mods.contractRewardBonus;
+    addModifiers(acc, mods);
   }
   return acc;
 }
@@ -77,8 +65,22 @@ export function recomputeShipStats(ship: Trader): void {
 // declared fuel cost stays untouched.
 export function effectivePerDistance(ship: Trader, basePerDistance: number): number {
   const mods = combinedShipModifiers(ship);
+  if ((mods.fuelFreeTravel ?? 0) >= 1) return 0;
   const eff = mods.rangeEfficiency ?? 0;
   return basePerDistance * Math.max(0.1, 1 - eff);
+}
+
+export function ignoresFuel(ship: Trader): boolean {
+  return (combinedShipModifiers(ship).fuelFreeTravel ?? 0) >= 1;
+}
+
+export function hasInstantTravel(ship: Trader): boolean {
+  return (combinedShipModifiers(ship).instantTravel ?? 0) >= 1;
+}
+
+export function travelTicksFor(ship: Trader, dist: number): number {
+  if (hasInstantTravel(ship)) return 0;
+  return Math.max(1, Math.ceil(dist / ship.speed));
 }
 
 // --- hire / fire actions ---------------------------------------------------

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { recomputeShipStats } from "./crew";
-import { buyAtLocation, installUpgradeFromCargo, installUpgradeFromMarket, sellAtLocation, UNLOAD_TICKS } from "./traders";
+import { buyAtLocation, installUpgradeFromCargo, installUpgradeFromMarket, removeInstalledUpgrade, sellAtLocation, travelTo, UNLOAD_TICKS } from "./traders";
 import { tickN } from "./tick";
 import { createWorld } from "./world";
 
@@ -80,6 +80,23 @@ describe("ship upgrades", () => {
     expect(ship.cargo).toContainEqual(expect.objectContaining({ good: "upg_cargo_1", qty: 1 }));
   });
 
+  it("removes an installed module back into cargo", () => {
+    const world = createWorld();
+    const ship = playerShip(world);
+    ship.funds = 100_000;
+    world.markets.haven.stock.upg_engine_1 = 1;
+    world.markets.haven.prices.upg_engine_1 = 10_000;
+
+    expect(installUpgradeFromMarket(world, ship, "upg_engine_1").ok).toBe(true);
+    const upgradedSpeed = ship.speed;
+    const result = removeInstalledUpgrade(world, ship, "engine");
+
+    expect(result.ok).toBe(true);
+    expect(ship.upgrades?.engine).toBeUndefined();
+    expect(ship.speed).toBeLessThan(upgradedSpeed);
+    expect(ship.cargo).toContainEqual(expect.objectContaining({ good: "upg_engine_1", qty: 1 }));
+  });
+
   it("stacks upgrade modifiers with crew modifiers", () => {
     const world = createWorld();
     const ship = playerShip(world);
@@ -122,5 +139,83 @@ describe("ship upgrades", () => {
     expect(ship.upgrades?.cargo).toBe("upg_cargo_3");
     expect(ship.capacity).toBe((ship.baseCapacity ?? 60) + 60);
     expect(world.markets.haven.stock.upg_cargo_1).toBe(1);
+  });
+
+  it("blocks removing cargo modules that would overfill the resulting bay", () => {
+    const world = createWorld();
+    const ship = playerShip(world);
+    ship.funds = 1_000_000;
+    world.markets.haven.stock.upg_cargo_3 = 1;
+    world.markets.haven.prices.upg_cargo_3 = 64_000;
+
+    expect(installUpgradeFromMarket(world, ship, "upg_cargo_3").ok).toBe(true);
+    expect(buyAtLocation(world, ship, "protein", 100).ok).toBe(true);
+
+    const result = removeInstalledUpgrade(world, ship, "cargo");
+
+    expect(result.ok).toBe(false);
+    expect(ship.upgrades?.cargo).toBe("upg_cargo_3");
+    expect(ship.capacity).toBe((ship.baseCapacity ?? 60) + 60);
+    expect(ship.cargo.some(l => l.good === "upg_cargo_3")).toBe(false);
+  });
+
+  it("rapid cargo lift cuts unload time in half", () => {
+    const world = createWorld();
+    const ship = playerShip(world);
+    ship.funds = 100_000;
+    world.markets.haven.stock.upg_cargo_loader_2 = 1;
+    world.markets.haven.prices.upg_cargo_loader_2 = 42_000;
+    expect(installUpgradeFromMarket(world, ship, "upg_cargo_loader_2").ok).toBe(true);
+
+    ship.cargo.push({ good: "protein", qty: 4, source: "haven", unitPrice: 1, purchasedAt: world.tick });
+    const result = sellAtLocation(world, ship, "protein");
+
+    expect(result.ok).toBe(true);
+    expect(ship.unloadingCargo?.[0]?.unloadTicksRemaining).toBe(2);
+    tickN(world, 2);
+    expect(ship.unloadingCargo ?? []).toEqual([]);
+  });
+
+  it("zero-g unload matrix settles cargo immediately", () => {
+    const world = createWorld();
+    const ship = playerShip(world);
+    ship.funds = 200_000;
+    world.markets.haven.stock.upg_cargo_loader_3 = 1;
+    world.markets.haven.prices.upg_cargo_loader_3 = 110_000;
+    expect(installUpgradeFromMarket(world, ship, "upg_cargo_loader_3").ok).toBe(true);
+
+    const fundsBefore = ship.funds;
+    ship.cargo.push({ good: "protein", qty: 4, source: "haven", unitPrice: 1, purchasedAt: world.tick });
+    const result = sellAtLocation(world, ship, "protein");
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.events.some(e => e.kind === "sell" && e.good === "protein")).toBe(true);
+    expect(ship.cargo).toEqual([]);
+    expect(ship.unloadingCargo).toBeUndefined();
+    expect(ship.funds).toBeGreaterThan(fundsBefore);
+  });
+
+  it("FTL engine plus zero-point core travels instantly without fuel", () => {
+    const world = createWorld();
+    const ship = playerShip(world);
+    ship.funds = 300_000;
+    world.markets.haven.stock.upg_engine_3 = 1;
+    world.markets.haven.stock.upg_fuel_3 = 1;
+    world.markets.haven.prices.upg_engine_3 = 95_000;
+    world.markets.haven.prices.upg_fuel_3 = 90_000;
+
+    expect(installUpgradeFromMarket(world, ship, "upg_engine_3").ok).toBe(true);
+    expect(installUpgradeFromMarket(world, ship, "upg_fuel_3").ok).toBe(true);
+    ship.currentFuel = { good: "plasma", qty: 0 };
+
+    const result = travelTo(world, ship, "ironhold");
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.events.map(e => e.kind)).toEqual(["depart", "arrive"]);
+    expect(ship.location).toBe("ironhold");
+    expect(ship.state).toBe("idle");
+    expect(ship.currentFuel?.qty).toBe(0);
   });
 });

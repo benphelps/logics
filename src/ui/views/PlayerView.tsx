@@ -10,8 +10,10 @@ import {
   GiFactory,
   GiFuelTank,
   GiPathDistance,
+  GiProcessor,
   GiRadarSweep,
   GiSpeedometer,
+  GiCrossedSwords,
   GiTrade,
 } from "react-icons/gi";
 import { useStore } from "../store";
@@ -21,10 +23,10 @@ import { DOCKING_FEE_PER_CAPACITY, MAINTENANCE_PER_CAPACITY, SALES_TAX_RATE } fr
 import { marketQuote } from "../../sim/pricing";
 import { cargoMass as cargoMassFn, findCargoLot, groupCargoByGood, type CargoGroup } from "../../sim/cargo";
 import { listLocalJobs } from "../../sim/jobs";
-import { effectivePerDistance, hasCrew, totalCrewWage } from "../../sim/crew";
+import { effectivePerDistance, hasCrew, ignoresFuel, totalCrewWage, travelTicksFor } from "../../sim/crew";
 import { MAINTENANCE_DEBT_TRAVEL_BLOCK } from "../../sim/crew";
 import { listHiresAt } from "../../sim/hires";
-import { selectRefuelType, UNLOAD_TICKS } from "../../sim/traders";
+import { selectRefuelType, UNLOAD_TICKS, unloadTicksRemainingFor } from "../../sim/traders";
 import { UPGRADE_SLOTS, installedUpgrade, isUpgradeGood, upgradeDef, upgradeEffectText } from "../../sim/upgrades";
 import type { CrewModifiers, CrewRole } from "../../sim/types";
 import type { GoodId, Job, JobId, LocationDef, LocationId, Trader, UpgradeSlot, World } from "../../sim/types";
@@ -790,7 +792,7 @@ function TransitProgress({ ship, world }: { ship: Trader; world: World }) {
   // Recover total trip ticks from origin/destination distance; fuel was burned
   // on departure, but location remains the origin until arrival resolves.
   const tripDist = distance(world, ship.location, ship.destination);
-  const totalTicks = Math.max(1, Math.ceil(tripDist / ship.speed));
+  const totalTicks = Math.max(1, travelTicksFor(ship, tripDist));
   const elapsed = Math.max(0, totalTicks - ship.ticksRemaining);
   const pct = Math.max(0, Math.min(100, (elapsed / totalTicks) * 100));
 
@@ -1732,8 +1734,8 @@ function travelCostEstimate(world: World, ship: Trader, from: LocationId, dist: 
   const currentFuelGood = ship.currentFuel?.good ?? ship.fuelTypes[0]?.good;
   const fuelType = ship.fuelTypes.find(f => f.good === currentFuelGood) ?? ship.fuelTypes[0];
   const fuelPrice = fuelType ? world.markets[from].prices[fuelType.good] ?? 0 : 0;
-  const fuelCost = fuelType ? dist * effectivePerDistance(ship, fuelType.perDistance) * fuelPrice : 0;
-  const ticks = Math.max(1, Math.ceil(dist / ship.speed));
+  const fuelCost = fuelType && !ignoresFuel(ship) ? dist * effectivePerDistance(ship, fuelType.perDistance) * fuelPrice : 0;
+  const ticks = travelTicksFor(ship, dist);
   return fuelCost + ticks * ship.capacity * MAINTENANCE_PER_CAPACITY + ship.capacity * DOCKING_FEE_PER_CAPACITY;
 }
 
@@ -2372,6 +2374,7 @@ const UPGRADE_SLOT_RANK: Record<UpgradeSlot, number> = {
   fuel: 2,
   hull: 3,
   weapon: 4,
+  systems: 5,
 };
 
 const UPGRADE_SLOT_ICONS: Record<UpgradeSlot, IconType> = {
@@ -2379,7 +2382,8 @@ const UPGRADE_SLOT_ICONS: Record<UpgradeSlot, IconType> = {
   engine: GiSpeedometer,
   fuel: GiFuelTank,
   hull: GiAutoRepair,
-  weapon: GiRadarSweep,
+  weapon: GiCrossedSwords,
+  systems: GiProcessor,
 };
 
 function compareUpgradeGoods(a: string, b: string): number {
@@ -2391,8 +2395,29 @@ function compareUpgradeGoods(a: string, b: string): number {
     || da.name.localeCompare(db.name);
 }
 
+function upgradeSlotLabel(slot: UpgradeSlot): string {
+  return UPGRADE_SLOTS.find(s => s.slot === slot)?.label ?? slot;
+}
+
+function UpgradeEffectPills({ text }: { text: string }) {
+  return (
+    <div className="upgrade-effect-pills">
+      {text.split(" · ").filter(Boolean).map((part) => (
+        <span key={part} className="upgrade-effect-pill">{part}</span>
+      ))}
+    </div>
+  );
+}
+
+function unloadingRemainingPct(ship: Trader, good: GoodId): number {
+  const maxTicksLeft = unloadTicksRemainingFor(ship, good);
+  return Math.max(0, Math.min(100, (maxTicksLeft / UNLOAD_TICKS) * 100));
+}
+
 function ShipUpgradesTab({ ship }: { ship: Trader }) {
   const installFromCargo = useStore((s) => s.installUpgradeFromCargo);
+  const removeInstalledUpgrade = useStore((s) => s.removeInstalledUpgrade);
+  const sell = useStore((s) => s.sell);
   const docked = ship.state === "idle";
   const cargoUpgrades = groupCargoByGood(ship)
     .filter(g => isUpgradeGood(g.good))
@@ -2400,111 +2425,140 @@ function ShipUpgradesTab({ ship }: { ship: Trader }) {
 
   return (
     <div className="upgrades-tab">
-      <table className="upgrade-table upgrade-slots-table">
-        <colgroup>
-          <col className="col-tier" />
-          <col className="col-role" />
-          <col />
-          <col />
-        </colgroup>
-        <thead>
-          <tr>
-            <th>Tier</th>
-            <th>Slot</th>
-            <th>Installed</th>
-            <th>Effect</th>
-          </tr>
-        </thead>
-        <tbody>
-          {UPGRADE_SLOTS.map(({ slot, label }) => {
-            const def = installedUpgrade(ship, slot);
-            const Icon = UPGRADE_SLOT_ICONS[slot];
-            return (
-              <tr key={slot} className="upgrade-slot-row">
-                <td>{def ? <span className={`tier-badge tier-${tierClass(def.tier)}`}>T{def.tier}</span> : <span className="faint">—</span>}</td>
-                <td className="dim"><IconLabel icon={Icon}>{label}</IconLabel></td>
-                <td>
+      <div className="upgrade-slot-grid">
+        {UPGRADE_SLOTS.map(({ slot, label }) => {
+          const def = installedUpgrade(ship, slot);
+          const Icon = UPGRADE_SLOT_ICONS[slot];
+          return (
+            <article key={slot} className={`upgrade-card upgrade-slot-card ${def ? "installed" : "empty"}`}>
+              <Icon className="upgrade-card-splash" aria-hidden="true" focusable="false" />
+              <div className="upgrade-card-main">
+                <div className="upgrade-card-top">
+                  <span className="upgrade-slot-copy">{label}</span>
                   {def ? (
-                    <span className="upgrade-name">{def.name}</span>
+                    <button
+                      type="button"
+                      className={`tier-badge upgrade-remove-pill tier-${tierClass(def.tier)}`}
+                      onClick={() => removeInstalledUpgrade(ship.id, slot)}
+                      disabled={!docked}
+                      title={docked ? `Remove ${def.name} to cargo` : "Dock to remove"}
+                      aria-label={`Remove ${def.name}`}
+                    >
+                      <span className="upgrade-remove-tier">T{def.tier}</span>
+                      <span className="upgrade-remove-copy">Remove</span>
+                    </button>
                   ) : (
-                    <span className="faint">open</span>
+                    <span className="upgrade-source-pill">Empty</span>
                   )}
-                </td>
-                <td className="dim upgrade-effect">{def ? upgradeEffectText(def) : "No modifier"}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                </div>
+                {def ? (
+                  <>
+                    <div className="upgrade-card-name">{def.name}</div>
+                    <div className="upgrade-card-bottom">
+                      <UpgradeEffectPills text={upgradeEffectText(def)} />
+                    </div>
+                  </>
+                ) : (
+                  <div className="upgrade-card-bottom">
+                    <span className="upgrade-empty-bottom">No module installed</span>
+                  </div>
+                )}
+              </div>
+            </article>
+          );
+        })}
+      </div>
 
       <div className="upgrade-offer-title dim">Cargo modules</div>
-      <table className="upgrade-table upgrade-offers-table">
-        <colgroup>
-          <col className="col-tier" />
-          <col className="col-source" />
-          <col />
-          <col className="col-role" />
-          <col />
-          <col className="col-num" />
-          <col className="col-action" />
-        </colgroup>
-        <thead>
-          <tr>
-            <th>Tier</th>
-            <th>Source</th>
-            <th>Module</th>
-            <th>Slot</th>
-            <th>Effect</th>
-            <th className="numeric">Qty</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {cargoUpgrades.length === 0 ? (
-            <tr>
-              <td colSpan={7} className="upgrade-row-empty">
-                No upgrade modules in cargo.
-              </td>
-            </tr>
-          ) : (
-            <>
-              {cargoUpgrades.map((group) => {
-                const def = upgradeDef(group.good)!;
-                const Icon = UPGRADE_SLOT_ICONS[def.slot];
-                const alreadyInstalled = ship.upgrades?.[def.slot] === def.id;
-                const disabled = !docked || alreadyInstalled;
-                const title = !docked
-                  ? "Dock to install"
-                  : alreadyInstalled
-                    ? "Already installed"
-                    : `Install ${def.name} from cargo`;
-                return (
-                  <tr key={`cargo-${group.good}`} className="upgrade-offer-row">
-                    <td><span className={`tier-badge tier-${tierClass(def.tier)}`}>T{def.tier}</span></td>
-                    <td><span className="upgrade-source-pill">Cargo</span></td>
-                    <td>
-                      <span className="upgrade-name">{def.name}</span>
-                    </td>
-                    <td className="dim"><IconLabel icon={Icon}>{UPGRADE_SLOTS.find(s => s.slot === def.slot)?.label ?? def.slot}</IconLabel></td>
-                    <td className="dim upgrade-effect">{upgradeEffectText(def)}</td>
-                    <td className="numeric mono dim">x{group.totalQty.toFixed(0)}</td>
-                    <td>
+      {cargoUpgrades.length === 0 ? (
+        <div className="upgrade-empty-card">No upgrade modules in cargo.</div>
+      ) : (
+        <div className="upgrade-offer-grid">
+          {cargoUpgrades.map((group) => {
+            const def = upgradeDef(group.good)!;
+            const Icon = UPGRADE_SLOT_ICONS[def.slot];
+            const installedInSlot = ship.upgrades?.[def.slot];
+            const alreadyInstalled = installedInSlot === def.id;
+            const replaceMode = installedInSlot != null && !alreadyInstalled;
+            const replacedDef = replaceMode ? upgradeDef(installedInSlot) : null;
+            const isUnloading = group.unloadingQty > 0;
+            const remainingPct = isUnloading ? unloadingRemainingPct(ship, group.good) : 0;
+            const installDisabled = !docked || alreadyInstalled || group.totalQty < 1 || isUnloading;
+            const sellDisabled = !docked || group.totalQty < 1 || isUnloading;
+            const title = !docked
+              ? "Dock to install"
+              : alreadyInstalled
+                ? "Already installed"
+                  : isUnloading
+                    ? "Wait for unloading to finish"
+                    : group.totalQty < 1
+                      ? "No cargo module ready"
+                      : replaceMode
+                        ? `Replace ${replacedDef?.name ?? "installed module"} with ${def.name}`
+                        : `Install ${def.name} from cargo`;
+            const installLabel = alreadyInstalled ? "Installed" : replaceMode ? "Replace" : "Install";
+            const sellTitle = !docked
+              ? "Dock to sell"
+              : isUnloading
+                ? `Unloading ${group.unloadingQty.toFixed(0)} ${def.name}`
+                : group.totalQty < 1
+                  ? "No cargo module ready"
+                  : `Sell ${def.name}`;
+            return (
+              <article key={`cargo-${group.good}`} className="upgrade-card upgrade-offer-card">
+                <Icon className="upgrade-card-splash" aria-hidden="true" focusable="false" />
+                <div className="upgrade-card-main">
+                  <div className="upgrade-card-top">
+                    <span className="upgrade-slot-copy">{upgradeSlotLabel(def.slot)}</span>
+                  </div>
+                  <div className="upgrade-card-name">{def.name}</div>
+                  <div className="upgrade-card-bottom">
+                    <UpgradeEffectPills text={upgradeEffectText(def)} />
+                  </div>
+                </div>
+                <div className="upgrade-card-actions">
+                  <span className={`tier-badge upgrade-action-tier tier-${tierClass(def.tier)}`}>T{def.tier}</span>
+                  <div className="upgrade-action-stack">
+                    <span className="upgrade-action-meta mono">
+                      {isUnloading ? `Unloading x${group.unloadingQty.toFixed(0)}` : `Cargo x${group.totalQty.toFixed(0)}`}
+                    </span>
+                    {isUnloading ? (
                       <button
-                        className="btn-action upgrade-action"
-                        onClick={() => installFromCargo(ship.id, def.id)}
-                        disabled={disabled}
-                        title={title}
+                        className="btn-action upgrade-action upgrade-sell-action primary cargo-sell-progress"
+                        disabled
+                        title={`Unloading ${group.unloadingQty.toFixed(0)} ${def.name} — ${Math.round(100 - remainingPct)}% delivered`}
+                        style={{ ["--remaining" as string]: `${remainingPct}%` }}
                       >
-                        <span className="btn-label">Install</span>
+                        <span className="btn-label">Unloading</span>
+                        <span className="btn-count">{group.unloadingQty.toFixed(0)}</span>
                       </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </>
-          )}
-        </tbody>
-      </table>
+                    ) : (
+                      <>
+                        <button
+                          className="btn-action upgrade-action primary"
+                          onClick={() => installFromCargo(ship.id, def.id)}
+                          disabled={installDisabled}
+                          title={title}
+                        >
+                          <span className="btn-label">{installLabel}</span>
+                        </button>
+                        <button
+                          className="btn-action upgrade-action upgrade-sell-action"
+                          onClick={() => sell(ship.id, def.id, 1)}
+                          disabled={sellDisabled}
+                          title={sellTitle}
+                        >
+                          <span className="btn-label">Sell</span>
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -2524,65 +2578,47 @@ function StationUpgradePurchaseTab({ ship, world, loc, target, hintText, cueText
   const roomMass = ship.capacity - totalMass;
 
   return (
-    <table className="upgrade-table upgrade-offers-table">
-        <colgroup>
-          <col className="col-tier" />
-          <col />
-          <col className="col-role" />
-          <col />
-          <col className="col-num" />
-          <col className="col-num" />
-          <col className="col-action" />
-        </colgroup>
-        <thead>
-          <tr>
-            <th>Tier</th>
-            <th>Module</th>
-            <th>Slot</th>
-            <th>Effect</th>
-            <th className="numeric">Stock</th>
-            <th className="numeric">Cost</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {stationUpgradeIds.length === 0 ? (
-            <tr>
-              <td colSpan={7} className="upgrade-row-empty">
-                No upgrade modules stocked at this station.
-              </td>
-            </tr>
-          ) : (
-            stationUpgradeIds.map((goodId) => {
-              const def = upgradeDef(goodId)!;
-              const Icon = UPGRADE_SLOT_ICONS[def.slot];
-              const good = world.goods[goodId];
-              const price = market ? marketQuote(world, loc.id, goodId) : good.basePrice;
-              const stock = market?.stock[goodId] ?? 0;
-              const canAfford = ship.funds >= price;
-              const fits = roomMass >= good.weight;
-              const disabled = !docked || !canAfford || stock < 1 || !fits;
-              const suggested = target.buyGood === goodId || target.buyGoods?.[goodId] != null;
-              const title = !docked
-                ? "Dock to buy"
-                : stock < 1
-                  ? "Out of stock here"
-                  : !fits
-                    ? "Cargo bay full"
-                    : !canAfford
-                      ? "Insufficient funds"
-                      : `Buy ${def.name} into cargo`;
-              return (
-                <tr key={goodId} className="upgrade-offer-row">
-                  <td><span className={`tier-badge tier-${tierClass(def.tier)}`}>T{def.tier}</span></td>
-                  <td>
-                    <span className="upgrade-name">{def.name}</span>
-                  </td>
-                  <td className="dim"><IconLabel icon={Icon}>{UPGRADE_SLOTS.find(s => s.slot === def.slot)?.label ?? def.slot}</IconLabel></td>
-                  <td className="dim upgrade-effect">{upgradeEffectText(def)}</td>
-                  <td className="numeric mono">{stock.toFixed(0)}</td>
-                  <td className="numeric mono">Ç{Math.round(price).toLocaleString()}</td>
-                  <td>
+    <div className="upgrade-purchase-panel">
+      {stationUpgradeIds.length === 0 ? (
+        <div className="upgrade-empty-card">No upgrade modules stocked at this station.</div>
+      ) : (
+        <div className="upgrade-offer-grid station-upgrade-grid">
+          {stationUpgradeIds.map((goodId) => {
+            const def = upgradeDef(goodId)!;
+            const Icon = UPGRADE_SLOT_ICONS[def.slot];
+            const good = world.goods[goodId];
+            const price = market ? marketQuote(world, loc.id, goodId) : good.basePrice;
+            const stock = market?.stock[goodId] ?? 0;
+            const canAfford = ship.funds >= price;
+            const fits = roomMass >= good.weight;
+            const disabled = !docked || !canAfford || stock < 1 || !fits;
+            const suggested = target.buyGood === goodId || target.buyGoods?.[goodId] != null;
+            const title = !docked
+              ? "Dock to buy"
+              : stock < 1
+                ? "Out of stock here"
+                : !fits
+                  ? "Cargo bay full"
+                  : !canAfford
+                    ? "Insufficient funds"
+                    : `Buy ${def.name} into cargo`;
+            return (
+              <article key={goodId} className={`upgrade-card upgrade-offer-card ${suggested ? "suggested" : ""}`}>
+                <Icon className="upgrade-card-splash" aria-hidden="true" focusable="false" />
+                <div className="upgrade-card-main">
+                  <div className="upgrade-card-top">
+                    <span className="upgrade-slot-copy">{upgradeSlotLabel(def.slot)}</span>
+                  </div>
+                  <div className="upgrade-card-name">{def.name}</div>
+                  <div className="upgrade-card-bottom">
+                    <UpgradeEffectPills text={upgradeEffectText(def)} />
+                  </div>
+                </div>
+                <div className="upgrade-card-actions">
+                  <span className={`tier-badge upgrade-action-tier tier-${tierClass(def.tier)}`}>T{def.tier}</span>
+                  <div className="upgrade-action-stack">
+                    <span className="upgrade-action-meta mono">Stock {stock.toFixed(0)}</span>
+                    <span className="upgrade-action-price mono">Ç{Math.round(price).toLocaleString()}</span>
                     <ActionCell suggested={suggested} hintText={cueText.buyGoods[goodId] ?? hintText}>
                       <button
                         className={`btn-action upgrade-action ${suggested ? "btn-suggested" : "primary"}`}
@@ -2593,13 +2629,14 @@ function StationUpgradePurchaseTab({ ship, world, loc, target, hintText, cueText
                         <span className="btn-label">Buy</span>
                       </button>
                     </ActionCell>
-                  </td>
-                </tr>
-              );
-            })
-          )}
-        </tbody>
-    </table>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -2695,15 +2732,7 @@ function CargoRow({ group, ship, world, refLocId, inTransit, suggested, hintText
   // UNLOAD_TICKS. With per-lot timers, a follow-up Sell click on the same good
   // bumps the bar back up (newest lot starts at full) but earlier lots
   // continue draining on their own schedule underneath.
-  let maxTicksLeft = 0;
-  for (const lot of ship.unloadingCargo ?? []) {
-    if (lot.good !== group.good) continue;
-    const t = lot.unloadTicksRemaining ?? 0;
-    if (t > maxTicksLeft) maxTicksLeft = t;
-  }
-  const remainingPct = isUnloading
-    ? Math.max(0, Math.min(100, (maxTicksLeft / UNLOAD_TICKS) * 100))
-    : 0;
+  const remainingPct = isUnloading ? unloadingRemainingPct(ship, group.good) : 0;
 
   return (
     <tr
@@ -2772,6 +2801,11 @@ const MOD_LABEL: Record<keyof CrewModifiers, (v: number) => string> = {
   hullBonus:           (v) => `+${v} hull`,
   weaponPowerBonus:    (v) => `+${v} weapons`,
   rangeEfficiency:     (v) => `−${(v * 100).toFixed(0)}% fuel/dist`,
+  unloadSpeedBonus:    (v) => `+${(v * 100).toFixed(0)}% unload`,
+  instantUnload:        () => "instant unload",
+  remoteSettlementCollection: () => "remote exchange",
+  instantTravel:        () => "FTL jump",
+  fuelFreeTravel:       () => "zero fuel travel",
   buyDiscount:         (v) => `−${(v * 100).toFixed(0)}% buy`,
   sellPremium:         (v) => `+${(v * 100).toFixed(0)}% sell`,
   maintenanceDiscount: (v) => `−${(v * 100).toFixed(0)}% maint`,
@@ -2781,6 +2815,18 @@ const MOD_LABEL: Record<keyof CrewModifiers, (v: number) => string> = {
 function modifiersText(mods: CrewModifiers): string {
   const entries = Object.entries(mods).filter(([, v]) => v) as [keyof CrewModifiers, number][];
   return entries.map(([k, v]) => MOD_LABEL[k](v)).join(" · ");
+}
+
+function ModifierPills({ mods }: { mods: CrewModifiers }) {
+  const entries = Object.entries(mods).filter(([, v]) => v) as [keyof CrewModifiers, number][];
+  if (entries.length === 0) return <span className="faint">No specialty modifiers</span>;
+  return (
+    <div className="crew-mod-pill-row">
+      {entries.map(([key, value]) => (
+        <span key={key} className="crew-mod-pill">{MOD_LABEL[key](value)}</span>
+      ))}
+    </div>
+  );
 }
 
 // Crew tab inside the Cargo card — current crew only. Each role row shows
@@ -2796,59 +2842,41 @@ function CrewTab({ ship }: { ship: Trader }) {
   ];
 
   return (
-    <table className="crew-table">
-      <colgroup>
-        <col className="col-tier" />
-        <col className="col-role" />
-        <col />
-        <col className="col-num" />
-        <col className="col-action" />
-      </colgroup>
-      <thead>
-        <tr>
-          <th>Tier</th>
-          <th>Role</th>
-          <th>Crew</th>
-          <th className="numeric">Wage</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {roles.map(({ role, label }) => {
-          const member = ship.crew?.[role];
-          const mods = member ? modifiersText(member.modifiers) : "";
-          return (
-            <tr key={role} className="crew-row">
-              <td>{member ? <span className={`tier-badge tier-${tierClass(member.tier)}`}>T{member.tier}</span> : <span className="faint">—</span>}</td>
-              <td className="dim">{label}</td>
-              <td>
-                {member ? (
-                  <>
-                    <span className="crew-name">{member.name}</span>
-                    {mods && <span className="crew-mods dim" title={mods}> · {mods}</span>}
-                  </>
-                ) : (
-                  <span className="faint">vacant — hire from Offers tab</span>
-                )}
-              </td>
-              <td className="numeric mono dim">{member ? `Ç${member.wagePerTick}/t` : "—"}</td>
-              <td>
-                {member && (
+    <div className="crew-card-grid">
+      {roles.map(({ role, label }) => {
+        const member = ship.crew?.[role];
+        return (
+          <article key={role} className={`crew-card ${member ? "filled" : "empty"}`}>
+            <div className="crew-card-main">
+              <div className="crew-card-head">
+                <span className="crew-role-label">{label}</span>
+                {!member && <span className="upgrade-source-pill">Vacant</span>}
+              </div>
+              <div className="crew-card-name">{member?.name ?? "Open crew station"}</div>
+              <div className="crew-card-bottom">
+                {member ? <ModifierPills mods={member.modifiers} /> : <span className="crew-empty-bottom">Vacant berth</span>}
+              </div>
+            </div>
+            {member && (
+              <div className="crew-card-actions">
+                <span className={`tier-badge crew-action-tier tier-${tierClass(member.tier)}`}>T{member.tier}</span>
+                <div className="crew-action-stack">
+                  <span className="crew-action-price mono">Ç{member.wagePerTick}/t</span>
                   <button
-                    className="btn-action"
+                    className="btn-action crew-card-action"
                     onClick={() => fire(ship.id, role)}
                     disabled={!docked}
                     title={docked ? "Stop wages. No refund." : "Dock to fire"}
                   >
                     <span className="btn-label">Fire</span>
                   </button>
-                )}
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+                </div>
+              </div>
+            )}
+          </article>
+        );
+      })}
+    </div>
   );
 }
 
@@ -2978,63 +3006,46 @@ function HireOffersTab({ ship, world, loc, interactionLocked }: { ship: Trader; 
   const docked = ship.state === "idle" && ship.location === loc.id && !interactionLocked;
 
   return (
-    <table className="jobs-table">
-      <colgroup>
-        <col className="col-tier" />
-        <col className="col-role" />
-        <col />
-        <col className="col-num" />
-        <col className="col-num" />
-        <col className="col-num" />
-        <col className="col-action" />
-      </colgroup>
-      <thead>
-        <tr>
-          <th>Tier</th>
-          <th>Role</th>
-          <th>Candidate</th>
-          <th className="numeric">Wage</th>
-          <th className="numeric">Hire</th>
-          <th className="numeric">Expires</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {offers.length === 0 ? (
-          <tr><td colSpan={7} className="jobs-row-empty">No crew posted at {loc.name}.</td></tr>
-        ) : offers.map((h) => {
-          const ticksLeft = Math.max(0, h.expiresAt - world.tick);
-          const expiringSoon = ticksLeft <= 15;
-          const mods = modifiersText(h.modifiers);
-          const canAfford = ship.funds >= h.hireCost;
-          return (
-            <tr key={h.id} className={`job-row tier-${tierClass(h.tier)}`}>
-              <td><span className={`tier-badge tier-${tierClass(h.tier)}`}>T{h.tier}</span></td>
-              <td>{ROLE_SHORT[h.role]}</td>
-              <td>
-                <span className="crew-offer-copy">
-                  <span className="crew-name">{h.name}</span>
-                  {mods && <span className="crew-mods dim" title={mods}> · {mods}</span>}
-                </span>
-              </td>
-              <td className="numeric mono dim">Ç{h.wagePerTick}/t</td>
-              <td className="numeric mono">Ç{h.hireCost.toLocaleString()}</td>
-              <td className={`numeric mono ${expiringSoon ? "warn" : "dim"}`}>{ticksLeft}t</td>
-              <td>
-                <button
-                  className={`btn-action ${canAfford && docked ? "primary" : ""}`}
-                  onClick={() => hire(ship.id, h.id)}
-                  disabled={!canAfford || !docked}
-                  title={!docked ? "Dock to hire" : !canAfford ? `Need Ç${h.hireCost.toLocaleString()}` : "Sign on (replaces any existing in this role)"}
-                >
-                  <span className="btn-label">Hire</span>
-                </button>
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+    <div className="crew-offer-panel">
+      {offers.length === 0 ? (
+        <div className="upgrade-empty-card">No crew posted at {loc.name}.</div>
+      ) : (
+        <div className="crew-offer-grid">
+          {offers.map((h) => {
+            const ticksLeft = Math.max(0, h.expiresAt - world.tick);
+            const mods = modifiersText(h.modifiers);
+            const canAfford = ship.funds >= h.hireCost;
+            return (
+              <article key={h.id} className={`crew-card crew-offer-card tier-${tierClass(h.tier)}`}>
+                <div className="crew-card-main">
+                  <div className="crew-card-head">
+                    <span className="crew-role-label">{ROLE_SHORT[h.role]}</span>
+                  </div>
+                  <div className="crew-card-name">{h.name}</div>
+                  <div className="crew-card-bottom" title={mods || undefined}>
+                    <ModifierPills mods={h.modifiers} />
+                  </div>
+                </div>
+                <div className="crew-card-actions">
+                  <span className={`tier-badge crew-action-tier tier-${tierClass(h.tier)}`}>T{h.tier}</span>
+                  <div className="crew-action-stack">
+                    <span className="crew-action-price mono" title={`Wage Ç${h.wagePerTick}/t · expires in ${ticksLeft}t`}>Ç{h.hireCost.toLocaleString()}</span>
+                    <button
+                      className={`btn-action crew-card-action ${canAfford && docked ? "primary" : ""}`}
+                      onClick={() => hire(ship.id, h.id)}
+                      disabled={!canAfford || !docked}
+                      title={!docked ? "Dock to hire" : !canAfford ? `Need Ç${h.hireCost.toLocaleString()}` : "Sign on (replaces any existing in this role)"}
+                    >
+                      <span className="btn-label">Hire</span>
+                    </button>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -3069,7 +3080,8 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
     if (departGuardTimer.current != null) window.clearTimeout(departGuardTimer.current);
   }, []);
   const manualActions = ship.pilot !== "auto";
-  const ft = ship.fuelTypes.find(f => f.good === ship.currentFuel?.good);
+  const fuelFree = ignoresFuel(ship);
+  const ft = ship.fuelTypes.find(f => f.good === ship.currentFuel?.good) ?? ship.fuelTypes[0];
   const fuel = ship.currentFuel?.qty ?? 0;
   const routeFrom = inTransit ? loc.id : ship.location;
   const market = world.markets[routeFrom];
@@ -3093,10 +3105,10 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
   const neighborDests = reachableNeighbors(world, routeFrom)
     .map(({ to, dist }) => {
       const dst = world.locations[to];
-      const fuelNeeded = ft ? dist * effectivePerDistance(ship, ft.perDistance) : 0;
-      const fuelCost = ft ? fuelNeeded * (market.prices[ft.good] ?? 0) : 0;
-      const travelTicks = Math.max(1, Math.ceil(dist / ship.speed));
-      const canFly = ft != null && fuel >= fuelNeeded;
+      const fuelNeeded = ft && !fuelFree ? dist * effectivePerDistance(ship, ft.perDistance) : 0;
+      const fuelCost = ft && !fuelFree ? fuelNeeded * (market.prices[ft.good] ?? 0) : 0;
+      const travelTicks = travelTicksFor(ship, dist);
+      const canFly = fuelFree || (ft != null && fuel >= fuelNeeded);
       return { to, name: dst?.name ?? to, dist, fuelNeeded, fuelCost, travelTicks, canFly, isCurrent: false };
     })
     .sort((a, b) => a.dist - b.dist);

@@ -2,6 +2,9 @@ import { describe, it, expect } from "vitest";
 import { createWorld } from "./world";
 import { tickN, tickWorld } from "./tick";
 import {
+  installUpgradeFromMarket,
+} from "./traders";
+import {
   abandonPosition,
   buyShares,
   adjustPlayerLimit,
@@ -31,7 +34,7 @@ import {
   TRADE_LEDGER_MAX,
   EXCHANGE_TRADE_MAX_HOPS,
 } from "./stock";
-import { collectTradeJob, exchangeLossForgiveness } from "./jobs";
+import { exchangeLossForgiveness } from "./jobs";
 
 describe("stock market — initialization", () => {
   it("createWorld initializes a stock market with stations and syndicates", () => {
@@ -240,6 +243,34 @@ describe("stock market — player trading", () => {
     expect(settlement!.reward).toBe(exchangeLossForgiveness(loss));
     expect(settlement!.reward).toBeGreaterThan(0);
     expect(settlement!.reward).toBeLessThan(loss);
+  });
+
+  it("exchange relay collects station-equity settlements immediately", () => {
+    const w = createWorld();
+    const ship = w.traders[w.player!.shipIds[0]];
+    ship.funds = 1_000_000;
+    w.markets.haven.stock.upg_systems_exchange_2 = 1;
+    expect(installUpgradeFromMarket(w, ship, "upg_systems_exchange_2").ok).toBe(true);
+
+    const eq = listEquities(w).find(e => e.kind === "station" && e.underlyingId === ship.location)!;
+    const shares = 20;
+    expect(buyShares(w, eq.id, shares).ok).toBe(true);
+    const entry = w.player!.positions![eq.id].avgEntryPrice;
+    eq.price = entry * 1.5;
+    for (let i = 0; i < 8; i++) tickWorld(w);
+
+    const fundsBeforeSell = ship.funds;
+    const result = sellShares(w, eq.id, shares);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const reward = (result.realizedPnl ?? 0) >= 0
+      ? (result.realizedPnl ?? 0)
+      : exchangeLossForgiveness(-(result.realizedPnl ?? 0));
+    expect(reward).toBeGreaterThan(0);
+    expect(result.settlementJobId).toBeUndefined();
+    expect(Object.values(w.jobs).some(j => j.kind === "trade" && j.trade?.equityId === eq.id)).toBe(false);
+    expect(ship.funds).toBeCloseTo(fundsBeforeSell + result.cashFlow + reward, 5);
   });
 
   it("station-equity trades require proximity to the listed station", () => {

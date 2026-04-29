@@ -3,7 +3,7 @@ import { reachableNeighbors, routeDistance } from "./geometry";
 import { marketQuote, priceFor } from "./pricing";
 import { activeFuelType, listSpeculativeOptions, listTradeOptions, maintenanceTravelBlockReason, refuelManual, selectRefuelType, sellAtLocation, type TradeOption } from "./traders";
 import { acceptJob, collectTradeJob, listLocalJobs } from "./jobs";
-import { effectivePerDistance, hasCrew } from "./crew";
+import { effectivePerDistance, hasCrew, ignoresFuel, travelTicksFor } from "./crew";
 import { DOCKING_FEE_PER_CAPACITY, MAINTENANCE_PER_CAPACITY, SALES_TAX_RATE } from "./economy";
 import {
   buildDestinationLoadoutPlans,
@@ -133,21 +133,22 @@ function tradeSettlementHint(world: World, ship: Trader, canRefuelHere: boolean)
   const blocked = maintenanceTravelBlockReason(ship);
   if (blocked) return { kind: "wait", reason: blocked };
 
-  const ft = activeFuelType(ship);
+  const fuelFree = ignoresFuel(ship);
+  const ft = activeFuelType(ship) ?? ship.fuelTypes[0] ?? null;
   const fuel = ship.currentFuel;
-  if (!ft || !fuel) {
+  if ((!ft || !fuel) && !fuelFree) {
     return { kind: "wait", reason: `Exchange settlement waiting at ${stationName}, but this ship has no compatible fuel loaded.` };
   }
 
   const hop = nextHopToward(world, ship.location, job.destination);
   if (!hop) return { kind: "wait", reason: `No plotted route to ${stationName} for the pending exchange settlement.` };
-  const fuelNeeded = hop.dist * effectivePerDistance(ship, ft.perDistance);
-  if (fuelNeeded > fuel.qty + 0.001) {
+  const fuelNeeded = hop.dist * (fuelFree ? 0 : effectivePerDistance(ship, ft!.perDistance));
+  if (!fuelFree && fuelNeeded > fuel!.qty + 0.001) {
     if (canRefuelHere) return { kind: "refuel", critical: true, reason: `Refuel to reach the pending ${ticker} settlement at ${stationName}.` };
     return { kind: "wait", reason: `Pending ${ticker} settlement at ${stationName}, but fuel is too low for the next hop.` };
   }
   const hopName = world.locations[hop.to]?.name ?? hop.to;
-  const ticks = Math.max(1, Math.ceil(hop.dist / ship.speed));
+  const ticks = travelTicksFor(ship, hop.dist);
   return {
     kind: "travel_to_collect_trade_job",
     jobId: job.id,
@@ -194,7 +195,7 @@ export function getGuidedHint(
   if (settlementHint) return settlementHint;
 
   // Critical fuel + fuel for sale here → refuel right now (override everything)
-  if (fuel && ft) {
+  if (!ignoresFuel(advisoryShip) && fuel && ft) {
     const fraction = fuel.qty / advisoryShip.fuelCapacity;
 
     if (!travelBlocked && fraction < FUEL_CRITICAL_FRACTION && canRefuelHere) {
@@ -484,9 +485,10 @@ function contractUnitValue(job: Job, ship: Trader): number {
 }
 
 function travelFuelIntent(world: World, ship: Trader, hint: GuidedHint, buyOptions: TradeOption[]): TravelFuelIntent | null {
-  const ft = activeFuelType(ship);
+  const fuelFree = ignoresFuel(ship);
+  const ft = activeFuelType(ship) ?? ship.fuelTypes[0] ?? null;
   const fuel = ship.currentFuel;
-  if (!ft || !fuel) return null;
+  if ((!ft || !fuel) && !fuelFree) return null;
 
   let dst: LocationId | null = null;
   let plannedFuelNeeded: number | null = null;
@@ -506,9 +508,9 @@ function travelFuelIntent(world: World, ship: Trader, hint: GuidedHint, buyOptio
 
   const directDist = routeDistance(world, ship.location, dst);
   if (directDist == null && plannedFuelNeeded == null) return null;
-  const fuelNeeded = plannedFuelNeeded ?? directDist! * effectivePerDistance(ship, ft.perDistance);
-  const fuelAfter = fuel.qty - fuelNeeded;
-  const dstHasFuel = ship.fuelTypes.some(f => (world.markets[dst].stock[f.good] ?? 0) >= ship.fuelCapacity * 0.4);
+  const fuelNeeded = plannedFuelNeeded ?? directDist! * (fuelFree ? 0 : effectivePerDistance(ship, ft!.perDistance));
+  const fuelAfter = fuelFree ? ship.fuelCapacity : fuel!.qty - fuelNeeded;
+  const dstHasFuel = fuelFree || ship.fuelTypes.some(f => (world.markets[dst].stock[f.good] ?? 0) >= ship.fuelCapacity * 0.4);
   return {
     dst,
     dstName: world.locations[dst]?.name ?? dst,
@@ -525,28 +527,30 @@ function travelProfile(world: World, ship: Trader, dst: LocationId): {
   travelCost: number;
 } | null {
   if (maintenanceTravelBlockReason(ship)) return null;
-  const ft = activeFuelType(ship);
+  const fuelFree = ignoresFuel(ship);
+  const ft = activeFuelType(ship) ?? ship.fuelTypes[0] ?? null;
   const fuel = ship.currentFuel;
-  if (!ft || !fuel) return null;
+  if ((!ft || !fuel) && !fuelFree) return null;
 
   const reachable = reachableNeighbors(world, ship.location).find(n => n.to === dst);
   if (!reachable) return null;
 
-  const perDist = effectivePerDistance(ship, ft.perDistance);
+  const perDist = fuelFree ? 0 : effectivePerDistance(ship, ft!.perDistance);
   const fuelNeeded = reachable.dist * perDist;
-  if (fuelNeeded > fuel.qty) return null;
+  if (!fuelFree && fuelNeeded > fuel!.qty) return null;
 
   const dstMarket = world.markets[dst];
-  const fuelAfter = fuel.qty - fuelNeeded;
-  const dstHasMyFuel = ship.fuelTypes.some(
+  const fuelAfter = fuelFree ? ship.fuelCapacity : fuel!.qty - fuelNeeded;
+  const dstHasMyFuel = fuelFree || ship.fuelTypes.some(
     f => (dstMarket.stock[f.good] ?? 0) >= ship.fuelCapacity * 0.4,
   );
-  const safeReserve = fuelAfter >= ship.fuelCapacity * FUEL_POST_TRADE_MIN;
+  const safeReserve = fuelFree || fuelAfter >= ship.fuelCapacity * FUEL_POST_TRADE_MIN;
   if (!dstHasMyFuel && !safeReserve) return null;
 
   const hereMarket = world.markets[ship.location];
-  const fuelPrice = hereMarket.prices[fuel.good] ?? 0;
-  const travelTicks = Math.max(1, Math.ceil(reachable.dist / ship.speed));
+  const fuelGood = fuel?.good ?? ft?.good;
+  const fuelPrice = fuelGood ? hereMarket.prices[fuelGood] ?? 0 : 0;
+  const travelTicks = travelTicksFor(ship, reachable.dist);
   const fuelCost = fuelNeeded * fuelPrice;
   const tripMaint = travelTicks * ship.capacity * MAINTENANCE_PER_CAPACITY;
   const dockingFee = ship.capacity * DOCKING_FEE_PER_CAPACITY;
@@ -623,7 +627,8 @@ function localJobAcceptCandidates(world: World, ship: Trader): { value: number; 
   const jobs = listLocalJobs(world, ship.location).filter(hasJobGood);
   if (jobs.length === 0) return out;
   const hereMarket = world.markets[ship.location];
-  const ft = activeFuelType(ship);
+  const fuelFree = ignoresFuel(ship);
+  const ft = activeFuelType(ship) ?? ship.fuelTypes[0] ?? null;
   const fuel = ship.currentFuel;
   const travelBlocked = maintenanceTravelBlockReason(ship);
 
@@ -661,30 +666,31 @@ function localJobAcceptCandidates(world: World, ship: Trader): { value: number; 
     }
 
     // Case B — empty bay. Find the cheapest fetch from a reachable neighbor.
-    if (!ft || !fuel || travelBlocked) continue;
+    if (((!ft || !fuel) && !fuelFree) || travelBlocked) continue;
     const goodWeight = world.goods[job.good]?.weight ?? 1;
-    const fuelPriceHere = hereMarket.prices[fuel.good] ?? 0;
+    const fuelGood = fuel?.good ?? ft?.good;
+    const fuelPriceHere = fuelGood ? hereMarket.prices[fuelGood] ?? 0 : 0;
     const dstGross = hereMarket.prices[job.good] ?? 0;
     const dstNet = dstGross * (1 - SALES_TAX_RATE);
     let best: { srcId: LocationId; net: number; ticks: number; qty: number; srcPrice: number } | null = null;
 
-    const perDist = effectivePerDistance(ship, ft.perDistance);
+    const perDist = fuelFree ? 0 : effectivePerDistance(ship, ft!.perDistance);
     for (const { to: srcId, dist } of reachableNeighbors(world, ship.location)) {
       const outFuelNeeded = dist * perDist;
-      if (outFuelNeeded > fuel.qty) continue;            // can't even get there
+      if (!fuelFree && outFuelNeeded > fuel!.qty) continue;            // can't even get there
       const srcMarket = world.markets[srcId];
       const srcStock = srcMarket.stock[job.good] ?? 0;
       if (srcStock < 1) continue;
       const srcPrice = srcMarket.prices[job.good] ?? 0;
 
-      const fuelRemainingAtSource = fuel.qty - outFuelNeeded;
+      const fuelRemainingAtSource = fuelFree ? ship.fuelCapacity : fuel!.qty - outFuelNeeded;
       const returnFuelNeeded = outFuelNeeded;
       const fuelDeficitForReturn = Math.max(0, returnFuelNeeded - fuelRemainingAtSource);
-      const srcFuelStock = srcMarket.stock[fuel.good] ?? 0;
-      const fuelPriceSrc = srcMarket.prices[fuel.good] ?? fuelPriceHere;
-      if (fuelDeficitForReturn > 0.001 && srcFuelStock < fuelDeficitForReturn) continue;
+      const srcFuelStock = fuelGood ? srcMarket.stock[fuelGood] ?? 0 : 0;
+      const fuelPriceSrc = fuelGood ? srcMarket.prices[fuelGood] ?? fuelPriceHere : 0;
+      if (!fuelFree && fuelDeficitForReturn > 0.001 && srcFuelStock < fuelDeficitForReturn) continue;
 
-      const stockReservedForReturnFuel = job.good === fuel.good ? fuelDeficitForReturn : 0;
+      const stockReservedForReturnFuel = !fuelFree && job.good === fuelGood ? fuelDeficitForReturn : 0;
       const stockAvailableForCargo = Math.max(0, srcStock - stockReservedForReturnFuel);
       const returnFuelCash = fuelDeficitForReturn * fuelPriceSrc;
 
@@ -693,7 +699,7 @@ function localJobAcceptCandidates(world: World, ship: Trader): { value: number; 
       const buyQty = Math.max(0, Math.min(maxByCargo, maxByFunds, Math.floor(stockAvailableForCargo), job.qty));
       if (buyQty < 1) continue;
 
-      const oneWayTicks = Math.max(1, Math.ceil(dist / ship.speed));
+      const oneWayTicks = travelTicksFor(ship, dist);
       const totalTicks = oneWayTicks * 2 + 1;            // out, return, accept/sell tick
       const outFuelCost = outFuelNeeded * fuelPriceHere;
       const existingFuelForReturn = Math.min(returnFuelNeeded, Math.max(0, fuelRemainingAtSource));
@@ -730,7 +736,7 @@ function localJobAcceptCandidates(world: World, ship: Trader): { value: number; 
   // carrying the requested good and can reach the destination, suggest
   // accepting + flying out to deliver. Naturally rewards "speculative buy
   // here, hold for a contract" play.
-  if (ft && fuel && !travelBlocked) {
+  if ((fuelFree || (ft && fuel)) && !travelBlocked) {
     const here = ship.location;
     for (const job of Object.values(world.jobs)) {
       if (job.acceptedBy != null) continue;
@@ -774,7 +780,8 @@ function localJobAcceptCandidates(world: World, ship: Trader): { value: number; 
 // The "value" is realized P&L (revenue - cost basis) so it compares apples-
 // to-apples with buy_for_route's totalProfit.
 function cargoLoadedCandidates(world: World, ship: Trader): { value: number; hint: GuidedHint }[] {
-  const ft = activeFuelType(ship);
+  const fuelFree = ignoresFuel(ship);
+  const ft = activeFuelType(ship) ?? ship.fuelTypes[0] ?? null;
   const fuel = ship.currentFuel;
   const out: { value: number; hint: GuidedHint }[] = [];
   const travelBlocked = maintenanceTravelBlockReason(ship);
@@ -817,12 +824,12 @@ function cargoLoadedCandidates(world: World, ship: Trader): { value: number; hin
       hint: { kind: "sell_here", good: goodId, qty: agg.totalQty, revenue: hereRevenue },
     });
 
-    if (!ft || !fuel || travelBlocked) continue;
-    const perDist = effectivePerDistance(ship, ft.perDistance);
+    if (((!ft || !fuel) && !fuelFree) || travelBlocked) continue;
+    const perDist = fuelFree ? 0 : effectivePerDistance(ship, ft!.perDistance);
 
     for (const { to, dist } of reachableNeighbors(world, ship.location)) {
       const fuelNeeded = dist * perDist;
-      if (fuelNeeded > fuel.qty) continue;
+      if (!fuelFree && fuelNeeded > fuel!.qty) continue;
       const dstMarket = world.markets[to];
       const dstLoc = world.locations[to];
       const dstTarget = dstLoc.targetStock[goodId] ?? 0;
@@ -831,8 +838,9 @@ function cargoLoadedCandidates(world: World, ship: Trader): { value: number; hin
         ? priceFor(good.basePrice, dstStockNow, dstTarget)
         : marketQuote(world, to, goodId);
       const dstNet = dstGross * (1 - SALES_TAX_RATE);
-      const fuelCost = fuelNeeded * marketQuote(world, ship.location, fuel.good);
-      const travelTicks = Math.max(1, Math.ceil(dist / ship.speed));
+      const fuelGood = fuel?.good ?? ft?.good;
+      const fuelCost = fuelGood ? fuelNeeded * marketQuote(world, ship.location, fuelGood) : 0;
+      const travelTicks = travelTicksFor(ship, dist);
       const tripMaint = travelTicks * ship.capacity * MAINTENANCE_PER_CAPACITY;
       const dockingFee = ship.capacity * DOCKING_FEE_PER_CAPACITY;
       let netRevenue = agg.totalQty * dstNet - fuelCost - tripMaint - dockingFee;

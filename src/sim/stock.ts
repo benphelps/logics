@@ -42,8 +42,10 @@ import type {
   World,
 } from "./types";
 import { mulberry32 } from "./gen/rng";
+import { combinedShipModifiers } from "./crew";
 import { depositToTreasury } from "./economy";
 import { createTradeJob, exchangeLossForgiveness } from "./jobs";
+import { pushNote } from "./log";
 import { cancelOrder as cancelBookOrder, ensureOrderBook, executeMarketOrder, placeLimitOrder as placeBookLimit, simulateMarketOrder, matchBook } from "./stock/orderbook";
 import { SYNTHETIC_MM_AGENT_ID } from "./stock/market-maker";
 import { applyAgentFill, seedAgentPositions, stepStockAgents, warmUpBook } from "./stock/agents";
@@ -414,6 +416,17 @@ function createStationTradeSettlement(
   const settlementKind = realizedPnl >= 0 ? "profit" : "loss_forgiveness";
   const reward = realizedPnl >= 0 ? realizedPnl : exchangeLossForgiveness(-realizedPnl);
   if (reward <= 0) return undefined;
+  const ship = world.traders[shipId];
+  if (ship && (combinedShipModifiers(ship).remoteSettlementCollection ?? 0) >= 1) {
+    ship.funds += reward;
+    pushNote(
+      world,
+      ship,
+      `Exchange relay collected ${eq.ticker} ${settlementKind === "profit" ? "profit" : "loss review"} — Ç${Math.round(reward).toLocaleString()} paid`,
+      "good",
+    );
+    return undefined;
+  }
   return createTradeJob(world, {
     traderId: shipId,
     destination,

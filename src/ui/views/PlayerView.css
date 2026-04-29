@@ -1377,6 +1377,374 @@
   text-align: center !important;
 }
 
+.upgrades-tab,
+.upgrade-purchase-panel,
+.crew-offer-panel {
+  padding: 10px 12px 12px;
+}
+
+.upgrade-slot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 10px;
+}
+
+.upgrade-offer-grid,
+.crew-card-grid,
+.crew-offer-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.upgrade-card,
+.crew-card {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgba(154, 182, 202, 0.10);
+  border-radius: 5px;
+  background:
+    linear-gradient(135deg, rgba(121, 157, 184, 0.055), rgba(121, 157, 184, 0.018)),
+    rgb(20 25 30 / 82%);
+  box-shadow:
+    inset 0 1px rgba(255, 255, 255, 0.025);
+}
+
+.upgrade-card {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
+  min-height: 108px;
+  padding: 12px 13px;
+}
+
+.upgrade-offer-card {
+  grid-template-columns: minmax(0, 1fr) 104px;
+  gap: 14px;
+  align-items: center;
+  min-height: 106px;
+  padding: 10px 12px;
+}
+
+.upgrade-card.suggested {
+  border-color: rgba(118, 157, 184, 0.24);
+  box-shadow:
+    inset 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.upgrade-card.empty {
+  border-style: dashed;
+  border-color: rgba(142, 170, 190, 0.14);
+  background:
+    linear-gradient(135deg, rgba(121, 157, 184, 0.035), rgba(121, 157, 184, 0.01)),
+    rgba(18, 25, 32, 0.62);
+}
+
+.upgrade-card-splash {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  z-index: 0;
+  width: 92px;
+  height: 92px;
+  color: rgba(126, 159, 182, 0.085);
+  pointer-events: none;
+  transform: translateY(-50%) rotate(-7deg);
+}
+
+.upgrade-slot-card .upgrade-card-splash {
+  right: 2px;
+  color: rgba(126, 159, 182, 0.065);
+}
+
+.upgrade-offer-card .upgrade-card-splash {
+  right: 0;
+  width: 132px;
+  height: 132px;
+  color: rgba(126, 159, 182, 0.06);
+}
+
+.upgrade-card.empty .upgrade-card-splash {
+  color: rgba(126, 159, 182, 0.065);
+}
+
+.upgrade-card-main,
+.crew-card {
+  min-width: 0;
+}
+
+.upgrade-card-main {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-rows: auto minmax(28px, 1fr) auto;
+  min-height: 100%;
+}
+
+.upgrade-offer-card .upgrade-card-main {
+  grid-template-rows: auto minmax(22px, 1fr) auto;
+}
+
+.upgrades-tab .upgrade-offer-title {
+  padding: 2px 0 0;
+}
+
+.upgrade-card-top,
+.crew-card-head,
+.upgrade-card-meta,
+.crew-card-meta,
+.crew-card-foot {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.upgrade-card-top,
+.crew-card-head {
+  gap: 9px;
+  color: var(--text-dim);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.upgrade-card-top {
+  justify-content: space-between;
+}
+
+.crew-card-head {
+  justify-content: space-between;
+}
+
+.upgrade-slot-copy {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upgrade-card-name,
+.crew-card-name {
+  min-width: 0;
+  overflow: hidden;
+  align-self: center;
+  color: rgba(226, 232, 236, 0.94);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.18;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upgrade-card-effect,
+.crew-card-effect {
+  margin-top: 10px;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.upgrade-card-bottom {
+  align-self: end;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.crew-card-bottom {
+  align-self: end;
+  display: flex;
+  min-width: 0;
+}
+
+.upgrade-empty-bottom,
+.crew-empty-bottom {
+  color: rgba(164, 174, 182, 0.62);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.upgrade-effect-pills,
+.crew-mod-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.upgrade-effect-pill,
+.crew-mod-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 3px 7px;
+  border: 1px solid rgba(152, 178, 196, 0.12);
+  border-radius: 3px;
+  background: rgba(118, 151, 176, 0.075);
+  color: rgba(214, 223, 229, 0.82);
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.1;
+}
+
+.upgrade-card-meta,
+.crew-card-meta {
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 0;
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.upgrade-card .action-cell,
+.upgrade-card .btn-action,
+.crew-card .btn-action {
+  width: 112px;
+  min-width: 0;
+}
+
+.upgrade-card-actions {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.crew-card-actions {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.upgrade-action-tier,
+.crew-action-tier {
+  align-self: flex-end;
+}
+
+.upgrade-action-stack,
+.crew-action-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  margin-top: auto;
+  min-width: 0;
+}
+
+.upgrade-card-actions .action-cell,
+.upgrade-card-actions .btn-action,
+.crew-card-actions .btn-action {
+  width: 100%;
+}
+
+.upgrade-card-actions .btn-action,
+.crew-card-actions .btn-action {
+  justify-content: center;
+}
+
+.upgrade-card-actions .btn-label,
+.crew-card-actions .btn-label {
+  flex: 0 1 auto;
+  text-align: center;
+}
+
+.upgrade-action-meta,
+.upgrade-action-price,
+.crew-action-price {
+  overflow: hidden;
+  color: var(--text-dim);
+  font-size: 10px;
+  line-height: 1.1;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upgrade-action-price {
+  color: rgba(214, 223, 229, 0.72);
+}
+
+.crew-action-price {
+  color: rgba(214, 223, 229, 0.76);
+}
+
+.upgrade-empty-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 86px;
+  padding: 18px;
+  border: 1px solid rgba(152, 178, 196, 0.13);
+  border-radius: 5px;
+  background: rgba(18, 25, 32, 0.56);
+  color: var(--text-faint);
+  font-size: 12px;
+  text-align: center;
+}
+
+.crew-card-grid {
+  padding: 10px 12px 12px;
+}
+
+.crew-card {
+  grid-template-columns: minmax(0, 1fr) 112px;
+  grid-template-rows: minmax(0, 1fr);
+  align-items: stretch;
+  gap: 12px;
+  min-height: 108px;
+  padding: 12px 13px;
+}
+
+.crew-card.empty {
+  grid-template-columns: minmax(0, 1fr);
+  background: rgba(18, 25, 32, 0.48);
+}
+
+.crew-card-main {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-rows: auto minmax(24px, 1fr) auto;
+  min-width: 0;
+  min-height: 100%;
+}
+
+.crew-role-label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-dim);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crew-card-foot {
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.crew-offer-card {
+  min-height: 108px;
+}
+
+.crew-offer-card .crew-card-action {
+  margin-top: 0;
+}
+
 /* ---- crew table (inside Cargo card via tab) ---- */
 
 .crew-table {
@@ -1499,6 +1867,50 @@
 .tier-badge.tier-high   { background: rgba(208, 72, 72, 0.18); color: #f08080; }
 .tier-badge.tier-medium { background: rgba(200, 162, 58, 0.18); color: #e6c270; }
 .tier-badge.tier-low    { background: rgba(120, 140, 160, 0.18); color: #98a8b8; }
+
+button.upgrade-remove-pill {
+  border: 0;
+  font: inherit;
+  line-height: 1.15;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease,
+    min-width 120ms ease;
+}
+
+.upgrade-remove-pill:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.upgrade-remove-copy {
+  display: none;
+}
+
+.upgrade-slot-card.installed:hover .upgrade-remove-pill:not(:disabled),
+.upgrade-slot-card.installed:focus-within .upgrade-remove-pill:not(:disabled),
+.upgrade-remove-pill:hover:not(:disabled),
+.upgrade-remove-pill:focus-visible:not(:disabled) {
+  min-width: 52px;
+  background: rgba(130, 62, 58, 0.28);
+  color: rgba(244, 184, 176, 0.95);
+  outline: none;
+}
+
+.upgrade-slot-card.installed:hover .upgrade-remove-pill:not(:disabled) .upgrade-remove-tier,
+.upgrade-slot-card.installed:focus-within .upgrade-remove-pill:not(:disabled) .upgrade-remove-tier,
+.upgrade-remove-pill:hover:not(:disabled) .upgrade-remove-tier,
+.upgrade-remove-pill:focus-visible:not(:disabled) .upgrade-remove-tier {
+  display: none;
+}
+
+.upgrade-slot-card.installed:hover .upgrade-remove-pill:not(:disabled) .upgrade-remove-copy,
+.upgrade-slot-card.installed:focus-within .upgrade-remove-pill:not(:disabled) .upgrade-remove-copy,
+.upgrade-remove-pill:hover:not(:disabled) .upgrade-remove-copy,
+.upgrade-remove-pill:focus-visible:not(:disabled) .upgrade-remove-copy {
+  display: inline;
+}
 
 .job-kind { font-weight: 500; }
 
@@ -2499,6 +2911,12 @@
     overflow: visible;
   }
 
+  .upgrade-offer-grid,
+  .crew-card-grid,
+  .crew-offer-grid {
+    grid-template-columns: 1fr;
+  }
+
   .info-area-content {
     overflow: visible;
     padding-right: 0;
@@ -3145,6 +3563,64 @@
 
 .btn-action:disabled .btn-count {
   color: var(--text-faint);
+}
+
+.player-view .upgrade-card-actions .btn-action:not(.primary):not(.btn-suggested) {
+  background: rgba(31, 43, 53, 0.78);
+  border-color: rgba(122, 151, 172, 0.32);
+  color: rgba(224, 232, 237, 0.88);
+  box-shadow: none;
+}
+
+.player-view .upgrade-card-actions .btn-action:not(.primary):not(.btn-suggested):hover:not(:disabled) {
+  background: rgba(41, 57, 69, 0.88);
+  border-color: rgba(142, 172, 194, 0.42);
+  color: rgba(240, 246, 249, 0.94);
+  box-shadow: none;
+}
+
+.player-view .upgrade-card-actions .btn-action.upgrade-sell-action:not(.primary):not(.btn-suggested) {
+  background: rgba(64, 56, 46, 0.78);
+  border-color: rgba(166, 137, 96, 0.34);
+  color: rgba(230, 219, 205, 0.88);
+}
+
+.player-view .upgrade-card-actions .btn-action.upgrade-sell-action:not(.primary):not(.btn-suggested):hover:not(:disabled) {
+  background: rgba(78, 67, 54, 0.86);
+  border-color: rgba(186, 152, 104, 0.44);
+  color: rgba(244, 235, 222, 0.94);
+}
+
+.player-view .upgrade-card-actions .btn-action.primary:not(.cargo-sell-progress),
+.player-view .upgrade-card-actions .btn-action.btn-suggested {
+  background: var(--ship-action-blue) !important;
+  border-color: var(--ship-action-blue-line) !important;
+  color: white !important;
+}
+
+.player-view .upgrade-card-actions .btn-action.primary:not(.cargo-sell-progress):hover:not(:disabled),
+.player-view .upgrade-card-actions .btn-action.btn-suggested:hover:not(:disabled) {
+  background: var(--ship-action-blue-hover) !important;
+  border-color: var(--ship-action-blue-line-hover) !important;
+}
+
+.player-view .upgrade-card-actions .btn-action.upgrade-sell-action.cargo-sell-progress {
+  --btn-unloading-base: #4b4236;
+  --btn-unloading-bg: #211f1d;
+  border-color: rgba(176, 144, 100, 0.48);
+  color: rgba(246, 238, 228, 0.94);
+}
+
+.player-view .upgrade-card-actions .btn-action:disabled:not(.cargo-sell-progress) {
+  opacity: 1;
+  background: rgba(24, 32, 40, 0.66) !important;
+  border-color: rgba(122, 151, 172, 0.18) !important;
+  color: rgba(170, 184, 194, 0.64) !important;
+  box-shadow: none !important;
+}
+
+.player-view .upgrade-card-actions .btn-action:disabled:not(.cargo-sell-progress) .btn-count {
+  color: rgba(170, 184, 194, 0.58);
 }
 
 .action-cell {
