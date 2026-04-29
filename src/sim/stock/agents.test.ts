@@ -26,12 +26,12 @@ function makeNpcTrader(id: string, funds = 50_000): Trader {
 }
 
 describe("agents — initialization", () => {
-  it("deterministic init: same trader id → same style + risk", () => {
+  it("deterministic init: same trader id → same style + risk + wallet", () => {
     const a = initAgent(makeNpcTrader("t1"));
     const b = initAgent(makeNpcTrader("t1"));
     expect(a.style).toBe(b.style);
     expect(a.riskAppetite).toBe(b.riskAppetite);
-    expect(a.cashReserveFraction).toBe(b.cashReserveFraction);
+    expect(a.stockWallet).toBe(b.stockWallet);
   });
 
   it("different ids → diverse styles across the population", () => {

@@ -189,7 +189,13 @@ export interface AgentPosition {
 export interface ShipTraderState {
   style: AgentStyle;
   riskAppetite: number;       // 0..1, scales how much capital this agent commits per order
-  cashReserveFraction: number;// 0..1, floor on funds the agent won't trade with (operational reserve)
+  // Dedicated stock-trading wallet, separate from trader.funds (which is the
+  // cargo-trading wallet). This isolation prevents share-trading from
+  // entangling with cargo flows and lets agents have meaningful trading
+  // capital regardless of their cargo profitability. Initialized at world
+  // creation; cash flows only between stockWallet and other stockWallets
+  // (or the player ship.funds when player is the counterparty).
+  stockWallet: number;
   positions: Record<EquityId, AgentPosition>;
   lastDecisionAt?: number;    // last world-tick on which this agent ran a decision
 }

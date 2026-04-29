@@ -45,8 +45,8 @@ import { mulberry32 } from "./gen/rng";
 import { depositToTreasury } from "./economy";
 import { createTradeJob, exchangeLossForgiveness } from "./jobs";
 import { ensureOrderBook, executeMarketOrder, simulateMarketOrder, matchBook } from "./stock/orderbook";
-import { refreshMarketMakerQuotes, SYNTHETIC_MM_AGENT_ID, tickMarketMakers } from "./stock/market-maker";
-import { applyAgentFill, stepStockAgents } from "./stock/agents";
+import { SYNTHETIC_MM_AGENT_ID } from "./stock/market-maker";
+import { applyAgentFill, seedAgentPositions, stepStockAgents, warmUpBook } from "./stock/agents";
 
 // --- tunables --------------------------------------------------------------
 
@@ -173,10 +173,13 @@ export function ensureStockMarket(world: World, opts: { syndicateCount?: number;
     const eq = createSyndicateEquity(synd);
     world.equities[eq.id] = eq;
   }
-  // Phase 1: warm the order books with the synthetic MM's first quote so
-  // a player can trade immediately on world creation without waiting for
-  // the first tickStockMarket to run.
-  tickMarketMakers(world);
+  // Phase 2 (MM-less): distribute the float across NPC agents and warm up
+  // the book — each agent posts both a bid and an ask on every equity using
+  // noise-style passive offsets — so depth exists on both sides from frame
+  // zero. After this initial seed the regular per-tick decision loop runs
+  // style-specific logic.
+  seedAgentPositions(world);
+  warmUpBook(world);
 }
 
 // --- per-tick price update -------------------------------------------------
@@ -510,24 +513,26 @@ function settleNonPlayerTradeSides(
 ): void {
   const cash = trade.qty * trade.price;
 
-  // Buyer pays cash.
+  // Buyer pays cash. NPC agents pay from their dedicated stockWallet (kept
+  // separate from cargo trader.funds). Player side is skipped here — the
+  // call site lump-sums it.
   if (trade.buyer === SYNTHETIC_MM_AGENT_ID) {
     drawShareCashFlow(world, eq, cash);
   } else if (trade.buyer !== playerShipId) {
     const t = world.traders[trade.buyer];
-    if (t) {
-      t.funds = Math.max(0, t.funds - cash);
+    if (t?.stockState) {
+      t.stockState.stockWallet = Math.max(0, t.stockState.stockWallet - cash);
       applyAgentFill(t, eq.id, +trade.qty, trade.price, world.tick);
     }
   }
 
-  // Seller receives cash.
+  // Seller receives cash into stockWallet.
   if (trade.seller === SYNTHETIC_MM_AGENT_ID) {
     routeShareCashFlow(world, eq, cash);
   } else if (trade.seller !== playerShipId) {
     const t = world.traders[trade.seller];
-    if (t) {
-      t.funds += cash;
+    if (t?.stockState) {
+      t.stockState.stockWallet += cash;
       applyAgentFill(t, eq.id, -trade.qty, trade.price, world.tick);
     }
   }
@@ -545,10 +550,6 @@ function executeAgainstBook(
   agentId: TraderId,
   worstPrice?: number,
 ): BookExecution | BookExecutionEmpty {
-  // Always refresh MM quotes before executing so the book reflects current
-  // eq.price (whether it was last updated by another trade, an EMA tick, or
-  // a direct mutation).
-  refreshMarketMakerQuotes(world, eq);
   const result = executeMarketOrder(world, { equityId: eq.id, side, qty, agentId, worstPrice });
   if (result.filled <= 0) {
     return { ok: false, reason: `${eq.ticker} book is too thin to fill that order right now.` };
@@ -584,9 +585,6 @@ function previewBookCost(
   qty: number,
   agentId: TraderId,
 ): { fillable: number; totalCash: number } {
-  // Refresh the MM here too — the player-facing functions call previewBookCost
-  // before executeAgainstBook, and we want both to read the same fresh quotes.
-  refreshMarketMakerQuotes(world, eq);
   const sim = simulateMarketOrder(world, { equityId: eq.id, side, qty, agentId });
   let totalCash = 0;
   for (const t of sim.trades) totalCash += t.qty * t.price;
@@ -1062,10 +1060,9 @@ export function tickStockMarket(world: World): void {
   // execute at trade-time, not on tick boundaries), so matchBook is mostly
   // a no-op here — but keeping it ensures any future limit-order agents
   // settle every tick.
-  tickMarketMakers(world);
-  // Phase 2: agent ships post their fresh limit orders into the book here,
-  // staggered by id so they don't all fire on the same tick. After agents
-  // step, run matchBook to cross any new orders against existing rest.
+  // Agents step first (staggered by id hash so all 73 don't fire on the
+  // same tick). Their orders join whatever's left in the book from prior
+  // ticks (TTL=8 means a posted order persists ~2 decision cycles).
   stepStockAgents(world);
   for (const eq of Object.values(world.equities)) {
     const matched = matchBook(ensureOrderBook(world, eq.id), world.tick);

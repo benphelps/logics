@@ -1028,15 +1028,18 @@ const ORDER_BOOK_LEVELS = 5;
 const TS_TAPE_ROWS = 18;
 const VOLUME_HISTOGRAM_TICKS = 18;
 
-// Order book — top N bid + ask levels with depth bars. Reads
-// world.orderBooks[eq.id] live; bars are sized to the largest qty in view so
-// relative depth across levels is visible. Phase 1 only has the synthetic
-// MM as counterparty so typically there's just one level per side, but the
-// component is sized for Phase 2's deeper books.
+// Order book — DOM-style vertical layout: asks at top descending (worst on
+// top, best near the spread), spread row in the middle, bids below
+// descending (best near the spread, worst at the bottom). Each row shows
+// price · cumulative qty · size, with a depth bar sized to qty/maxQty
+// across the visible levels. Reads world.orderBooks[eq.id] live.
 function OrderBookPanel({ equity, world }: { equity: Equity; world: World }) {
   const book: OrderBook | undefined = world.orderBooks?.[equity.id];
   const bids = (book?.bids ?? []).slice(0, ORDER_BOOK_LEVELS);
   const asks = (book?.asks ?? []).slice(0, ORDER_BOOK_LEVELS);
+  // Conventional DOM display: asks descend so the BEST ask sits just above
+  // the spread row. We render them in reverse (worst first → best last).
+  const asksDesc = [...asks].reverse();
   // Largest visible qty across either side — used to scale the depth bars
   // so a glance reveals which level is heaviest.
   const maxQty = Math.max(
@@ -1044,6 +1047,15 @@ function OrderBookPanel({ equity, world }: { equity: Equity; world: World }) {
     ...bids.map(o => o.qty),
     ...asks.map(o => o.qty),
   );
+  // Cumulative qty (running totals from the spread outward) — gives a
+  // sense of how much has to be eaten to walk past each level.
+  const askCum: number[] = [];
+  let acc = 0;
+  for (const a of asks) { acc += a.qty; askCum.push(acc); }
+  const bidCum: number[] = [];
+  acc = 0;
+  for (const b of bids) { acc += b.qty; bidCum.push(acc); }
+
   const bestBid = bids[0]?.limitPrice;
   const bestAsk = asks[0]?.limitPrice;
   const spread = bestBid != null && bestAsk != null ? bestAsk - bestBid : null;
@@ -1054,42 +1066,54 @@ function OrderBookPanel({ equity, world }: { equity: Equity; world: World }) {
   return (
     <section className="stocks-info-section stocks-orderbook">
       <div className="stocks-info-section-title">Order book</div>
-      <div className="stocks-orderbook-head">
-        <span>Bid</span>
-        <span>Size</span>
-        <span>Ask</span>
-        <span>Size</span>
-      </div>
-      {Array.from({ length: ORDER_BOOK_LEVELS }).map((_, i) => {
-        const b = bids[i];
-        const a = asks[i];
-        return (
-          <div key={i} className="stocks-orderbook-row">
-            <BookCell order={b} side="bid" maxQty={maxQty} />
-            <BookCell order={a} side="ask" maxQty={maxQty} />
-          </div>
-        );
-      })}
-      {spread != null && spreadPct != null && (
-        <div className="stocks-orderbook-spread">
-          <span>spread</span>
-          <span className="mono">Ç{fmtPrice(spread)} · {spreadPct.toFixed(2)}%</span>
+      <div className="stocks-orderbook-dom">
+        <div className="stocks-orderbook-head">
+          <span>Price</span>
+          <span className="numeric">Size</span>
+          <span className="numeric">Cum</span>
         </div>
-      )}
+        {asksDesc.length === 0 && (
+          <div className="stocks-orderbook-row empty"><span className="dim">— no asks —</span></div>
+        )}
+        {asksDesc.map((a, i) => {
+          // asks were reversed; cum index from the original asks array
+          const origIdx = asks.length - 1 - i;
+          return <BookRow key={`a${i}`} order={a} side="ask" maxQty={maxQty} cum={askCum[origIdx]} />;
+        })}
+        <div className="stocks-orderbook-spread-row">
+          {spread != null && spreadPct != null ? (
+            <>
+              <span>spread</span>
+              <span className="mono">Ç{fmtPrice(spread)}</span>
+              <span className="mono dim">{spreadPct.toFixed(2)}%</span>
+            </>
+          ) : (
+            <>
+              <span className="dim">spread</span>
+              <span className="mono dim">{bestBid == null && bestAsk == null ? "—" : bestBid == null ? "no bids" : "no asks"}</span>
+              <span />
+            </>
+          )}
+        </div>
+        {bids.length === 0 && (
+          <div className="stocks-orderbook-row empty"><span className="dim">— no bids —</span></div>
+        )}
+        {bids.map((b, i) => (
+          <BookRow key={`b${i}`} order={b} side="bid" maxQty={maxQty} cum={bidCum[i]} />
+        ))}
+      </div>
     </section>
   );
 }
 
-function BookCell({ order, side, maxQty }: { order?: Order; side: "bid" | "ask"; maxQty: number }) {
-  if (!order) {
-    return <div className={`stocks-orderbook-cell empty ${side}`}><span /><span className="dim mono">—</span></div>;
-  }
+function BookRow({ order, side, maxQty, cum }: { order: Order; side: "bid" | "ask"; maxQty: number; cum: number }) {
   const widthPct = Math.max(2, Math.min(100, (order.qty / maxQty) * 100));
   return (
-    <div className={`stocks-orderbook-cell ${side}`}>
+    <div className={`stocks-orderbook-row ${side}`}>
       <span className="stocks-orderbook-bar" style={{ width: `${widthPct}%` }} />
       <span className="stocks-orderbook-price mono">Ç{fmtPrice(order.limitPrice)}</span>
-      <span className="stocks-orderbook-qty mono dim">{Math.round(order.qty).toLocaleString()}</span>
+      <span className="stocks-orderbook-qty mono numeric">{Math.round(order.qty).toLocaleString()}</span>
+      <span className="stocks-orderbook-cum mono numeric dim">{Math.round(cum).toLocaleString()}</span>
     </div>
   );
 }

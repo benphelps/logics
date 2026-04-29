@@ -20,13 +20,12 @@ import { clampSharePrice } from "../stock";
 // not so much that the book looks dysfunctional.
 export const MM_HALF_SPREAD = 0.02;
 
-// Quote depth on each side. Phase 1 is single-level so spread cost is
-// constant regardless of trade size — depth just sets the upper bound on
-// any single order. 5000 is half the float, large enough that almost any
-// player trade fits while still leaving a hard cap that triggers
-// "book too thin" rejections at extreme sizes. Phase 2's diverse ship
-// agents will provide real per-level depth and walking-the-book impact.
-export const MM_QUOTE_DEPTH = 5000;
+// Quote depth on each side. Sized so that the MM is a visible level but
+// not a wall that dwarfs ship-agent orders (which post 2-200 shares each).
+// Players typically trade in 10-100 share clips so this still covers
+// routine fills; bigger orders walk into the agent levels above/below the
+// MM, which is the intended price-impact mechanic now that agents exist.
+export const MM_QUOTE_DEPTH = 250;
 
 export const SYNTHETIC_MM_AGENT_ID = "synthetic-mm" as const;
 

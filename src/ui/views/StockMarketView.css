@@ -1420,69 +1420,67 @@
 
 /* --- T&S / order book / volume panels --------------------------------- */
 
+/* DOM-style order book: vertical stack — asks at top descending (worst on
+   top, best near the spread row), then a spread row, then bids descending
+   (best near the spread, worst at bottom). Each row is price · size · cum
+   with a depth bar growing from the centerline outward. */
 .stocks-orderbook {
   font-size: 11px;
 }
 
+.stocks-orderbook-dom {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1px;
+}
+
 .stocks-orderbook-head {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  column-gap: 12px;
+  grid-template-columns: 1fr 60px 60px;
+  column-gap: 8px;
+  padding: 0 6px 4px;
   color: var(--text-faint);
   font-size: 8.5px;
   font-weight: 750;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-}
-
-.stocks-orderbook-head > span:nth-child(1)::before,
-.stocks-orderbook-head > span:nth-child(3)::before {
-  content: "";
-}
-
-.stocks-orderbook-head {
-  /* 4 sub-cells: bid-price, bid-qty, ask-price, ask-qty */
-  grid-template-columns: 1fr 56px 1fr 56px;
+  border-bottom: 1px solid var(--stock-line);
 }
 
 .stocks-orderbook-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  column-gap: 12px;
-}
-
-.stocks-orderbook-cell {
   position: relative;
   display: grid;
-  grid-template-columns: 1fr 56px;
+  grid-template-columns: 1fr 60px 60px;
+  column-gap: 8px;
   align-items: center;
-  height: 22px;
+  height: 20px;
   padding: 0 6px;
-  border-radius: 3px;
+  border-radius: 2px;
   overflow: hidden;
 }
 
-.stocks-orderbook-cell.empty {
-  height: 22px;
-  opacity: 0.45;
+.stocks-orderbook-row.empty {
+  justify-content: center;
+  opacity: 0.5;
+  font-size: 10px;
 }
 
 .stocks-orderbook-bar {
   position: absolute;
   top: 0;
   bottom: 0;
-  border-radius: 3px;
   pointer-events: none;
   z-index: 0;
 }
 
-.stocks-orderbook-cell.bid .stocks-orderbook-bar {
+/* Bars grow from the right edge of each row outward (toward the spread)
+   so depth visually points at the spread. */
+.stocks-orderbook-row.bid .stocks-orderbook-bar {
   right: 0;
   background: rgba(108, 217, 154, 0.18);
 }
-
-.stocks-orderbook-cell.ask .stocks-orderbook-bar {
-  left: 0;
+.stocks-orderbook-row.ask .stocks-orderbook-bar {
+  right: 0;
   background: rgba(239, 111, 125, 0.18);
 }
 
@@ -1491,25 +1489,40 @@
   z-index: 1;
   font-size: 11px;
 }
+.stocks-orderbook-row.bid .stocks-orderbook-price { color: var(--stock-up); }
+.stocks-orderbook-row.ask .stocks-orderbook-price { color: var(--stock-down); }
 
-.stocks-orderbook-cell.bid .stocks-orderbook-price { color: var(--stock-up); }
-.stocks-orderbook-cell.ask .stocks-orderbook-price { color: var(--stock-down); }
-
-.stocks-orderbook-qty {
+.stocks-orderbook-qty,
+.stocks-orderbook-cum {
   position: relative;
   z-index: 1;
   font-size: 10.5px;
   text-align: right;
 }
 
-.stocks-orderbook-spread {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 4px;
-  padding-top: 6px;
+.stocks-orderbook-cum {
+  color: var(--text-faint);
+}
+
+.stocks-orderbook-spread-row {
+  display: grid;
+  grid-template-columns: 1fr 60px 60px;
+  column-gap: 8px;
+  align-items: center;
+  margin: 2px 0;
+  padding: 4px 6px;
   border-top: 1px dashed var(--stock-line);
+  border-bottom: 1px dashed var(--stock-line);
+  background: rgba(255, 255, 255, 0.02);
   color: var(--text-dim);
-  font-size: 10.5px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.stocks-orderbook-spread-row > span:nth-child(2),
+.stocks-orderbook-spread-row > span:nth-child(3) {
+  text-align: right;
 }
 
 /* T&S tape */
