@@ -163,10 +163,18 @@ function EquitySelector({ rows, tapeRows, selectedId, onSelect }: {
   void rows;
   return (
     <section className="stocks-shell-panel stocks-selector">
-      <header className="stocks-shell-panel-head">
-        <span className="stocks-shell-panel-title">Listings</span>
-        <span className="stocks-shell-panel-meta">{tapeRows.reachable.length} reachable · {tapeRows.far.length} far</span>
-      </header>
+      <div className="stocks-panel-head art-panel-head" style={artCardStyle(headerArtUrl("stockTape"))}>
+        <div>
+          <span className="stocks-panel-label">Listings</span>
+          <span className="dim">{tapeRows.reachable.length} reachable · {tapeRows.far.length} far</span>
+        </div>
+      </div>
+      <div className="stocks-selector-header">
+        <span>Ticker</span>
+        <span>Listing</span>
+        <span className="numeric">Price</span>
+        <span className="numeric">Δ</span>
+      </div>
       <div className="stocks-selector-list">
         {tapeRows.reachable.map(r => (
           <SelectorRow key={r.equity.id} row={r} selected={r.equity.id === selectedId} onSelect={onSelect} />
@@ -233,19 +241,26 @@ function PnoPanel(props: {
 
   return (
     <section className="stocks-shell-panel stocks-pno">
-      <header className="stocks-shell-panel-head">
-        <div className="stocks-pno-tabs">
-          <button className={`stocks-pno-tab ${tab === "positions" ? "active" : ""}`} onClick={() => setTab("positions")}>
-            Positions <span className="dim">{props.positions.length}</span>
-          </button>
-          <button className={`stocks-pno-tab ${tab === "orders" ? "active" : ""}`} onClick={() => setTab("orders")}>
-            Orders <span className="dim">{limits.length}</span>
-          </button>
-          <button className={`stocks-pno-tab ${tab === "history" ? "active" : ""}`} onClick={() => setTab("history")}>
-            History <span className="dim">{props.trades.length}</span>
-          </button>
-        </div>
-      </header>
+      <div className="bridge-card-tabs stocks-pno-tabs">
+        <button
+          className={`bridge-tab ${tab === "positions" ? "active" : ""} ${props.positions.length > 0 ? "has-suggestion" : ""}`}
+          onClick={() => setTab("positions")}
+        >
+          Positions <span className="bridge-tab-count">{props.positions.length}</span>
+        </button>
+        <button
+          className={`bridge-tab ${tab === "orders" ? "active" : ""} ${limits.length > 0 ? "has-suggestion" : ""}`}
+          onClick={() => setTab("orders")}
+        >
+          Orders <span className="bridge-tab-count">{limits.length}</span>
+        </button>
+        <button
+          className={`bridge-tab ${tab === "history" ? "active" : ""}`}
+          onClick={() => setTab("history")}
+        >
+          History <span className="bridge-tab-count">{props.trades.length}</span>
+        </button>
+      </div>
       <div className="stocks-pno-body">
         {tab === "positions" && (
           <PositionsAccordion
@@ -545,10 +560,14 @@ function InfoColumn({ row, world, shipId, docked }: {
 }) {
   const eq = row.equity;
   const access = exchangeAccess(world, eq, shipId);
+  const artUrl = equityArtUrl(world, eq);
 
   return (
     <section className="stocks-shell-panel stocks-info-col">
-      <header className="stocks-shell-panel-head">
+      <div
+        className={`stocks-panel-head art-panel-head ${artUrl ? "" : "no-art"}`}
+        style={artUrl ? artCardStyle(artUrl) : undefined}
+      >
         <div className="stocks-info-title">
           <span className="stocks-info-eyebrow">{eq.kind === "station" ? "Listed station" : "Listed company"}</span>
           <span className="stocks-info-name">{eq.name}</span>
@@ -557,13 +576,13 @@ function InfoColumn({ row, world, shipId, docked }: {
           <span className="price big mono">Ç{fmtPrice(eq.price)}</span>
           <ChangeCell pct={row.changePct} />
         </div>
-      </header>
+      </div>
 
       <div className="stocks-info-body">
         <Sparkline equity={eq} position={row.position} />
 
         <div className="stocks-info-row">
-          <KpiPanel row={row} />
+          <KpiPanel row={row} world={world} />
           <CompanyUnderlying eq={eq} world={world} />
         </div>
 
@@ -578,19 +597,48 @@ function InfoColumn({ row, world, shipId, docked }: {
   );
 }
 
-function KpiPanel({ row }: { row: EquityRow }) {
+function KpiPanel({ row, world }: { row: EquityRow; world: World }) {
   const eq = row.equity;
   const dividend = eq.lastDividend?.perShare ?? 0;
+  const book = world.orderBooks?.[eq.id];
+  const bestBid = book?.bids[0]?.limitPrice;
+  const bestAsk = book?.asks[0]?.limitPrice;
+  const spreadPct = bestBid != null && bestAsk != null && bestBid > 0
+    ? ((bestAsk - bestBid) / ((bestAsk + bestBid) / 2)) * 100
+    : null;
+
+  const trades = eq.recentTrades ?? [];
+  const windowQty = trades.reduce((s, t) => s + t.qty, 0);
+  const windowHigh = trades.reduce((m, t) => Math.max(m, t.price), 0);
+  const windowLow = trades.length > 0 ? trades.reduce((m, t) => Math.min(m, t.price), Infinity) : 0;
+
   return (
-    <section className="stocks-info-section stocks-kpi">
-      <div className="stocks-info-section-title">KPI</div>
-      <dl className="stocks-info-grid">
-        <InfoStat label="vs IPO" value={`${row.ratioToAnchor.toFixed(2)}x`} />
-        <InfoStat label="shares" value={eq.sharesOutstanding.toLocaleString()} />
-        <InfoStat label="dividend" value={dividend > 0 ? `Ç${dividend.toFixed(2)}/sh` : "none"} />
-        <InfoStat label="next div" value={`${row.ticksUntilDividend}t`} />
+    <section className="trade-helper-section stocks-kpi">
+      <div className="exchange-section-title">KPI</div>
+      <dl className="trade-helper-grid station-info-grid">
+        <FleetStat label="bid" value={bestBid != null ? `Ç${fmtPrice(bestBid)}` : "—"} />
+        <FleetStat label="ask" value={bestAsk != null ? `Ç${fmtPrice(bestAsk)}` : "—"} />
+        <FleetStat label="spread" value={spreadPct != null ? `${spreadPct.toFixed(2)}%` : "—"} />
+        <FleetStat label="vs IPO" value={`${row.ratioToAnchor.toFixed(2)}x`} />
+        <FleetStat label="vol" value={Math.round(windowQty).toLocaleString()} />
+        <FleetStat label="hi/low" value={trades.length > 0 ? `${fmtPrice(windowHigh)} / ${fmtPrice(windowLow)}` : "—"} />
+        <FleetStat label="shares" value={eq.sharesOutstanding.toLocaleString()} />
+        <FleetStat label="dividend" value={dividend > 0 ? `Ç${dividend.toFixed(2)}/sh` : "none"} />
+        <FleetStat label="next div" value={`${row.ticksUntilDividend}t`} />
       </dl>
     </section>
+  );
+}
+
+// Mirrors the Stat component used by the fleet view — same classes
+// (.cargo-stat with dim label + mono value) so the visual style is
+// guaranteed identical across views.
+function FleetStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="cargo-stat">
+      <dt className="dim">{label}</dt>
+      <dd className="mono info-value">{value}</dd>
+    </div>
   );
 }
 
@@ -637,8 +685,8 @@ function UnifiedOrderForm({ equity, world, docked, access }: {
   };
 
   return (
-    <section className="stocks-info-section stocks-order-form">
-      <div className="stocks-info-section-title">Place order</div>
+    <section className="trade-helper-section stocks-order-form">
+      <div className="exchange-section-title">Place order</div>
       <div className="stocks-order-side">
         <button className={`stocks-order-side-btn buy ${side === "buy" ? "active" : ""}`} onClick={() => setSide("buy")}>Buy</button>
         <button className={`stocks-order-side-btn sell ${side === "sell" ? "active" : ""}`} onClick={() => setSide("sell")}>Sell</button>
@@ -898,22 +946,16 @@ function CompanyUnderlying({ eq, world }: { eq: Equity; world: World }) {
     const market = world.markets[eq.underlyingId];
     const loc = world.locations[eq.underlyingId];
     if (!market || !loc) return null;
-    const exports = goodsList(world, loc.primaryExports);
-    const imports = goodsList(world, loc.primaryImports);
     return (
-      <div className="stocks-info-section">
-        <div className="stocks-info-section-title">Underlying</div>
-        <div className="stocks-info-line">
-          <span>Treasury</span>
-          <span className="mono">Ç{fmtBig(market.treasury)} / Ç{fmtBig(market.treasuryTarget)}</span>
-        </div>
-        <div className="stocks-info-line">
-          <span>Population</span>
-          <span className="mono">{loc.population.toLocaleString()} · tech L{loc.traits.techLevel}</span>
-        </div>
-        <div className="stocks-info-line"><span>Exports</span><span>{exports}</span></div>
-        <div className="stocks-info-line"><span>Imports</span><span>{imports}</span></div>
-      </div>
+      <section className="trade-helper-section">
+        <div className="exchange-section-title">Underlying</div>
+        <dl className="trade-helper-grid station-info-grid">
+          <FleetStat label="treasury" value={`Ç${fmtBig(market.treasury)}`} />
+          <FleetStat label="target" value={`Ç${fmtBig(market.treasuryTarget)}`} />
+          <FleetStat label="population" value={loc.population.toLocaleString()} />
+          <FleetStat label="tech" value={`L${loc.traits.techLevel}`} />
+        </dl>
+      </section>
     );
   }
   const synd = world.syndicates[eq.underlyingId];
@@ -921,13 +963,16 @@ function CompanyUnderlying({ eq, world }: { eq: Equity; world: World }) {
   const memberWealth = synd.memberShipIds.reduce((s, id) => s + (world.traders[id]?.funds ?? 0), 0);
   const lead = synd.memberShipIds.map(id => world.traders[id]).find(Boolean);
   return (
-    <div className="stocks-info-section">
-      <div className="stocks-info-section-title">Underlying</div>
-      <div className="stocks-info-line"><span>Fleet</span><span>{synd.memberShipIds.length.toLocaleString()} ships · Ç{fmtBig(memberWealth)}</span></div>
-      <div className="stocks-info-line"><span>Treasury</span><span className="mono">Ç{fmtBig(synd.treasury)}</span></div>
-      <div className="stocks-info-line"><span>Recent revenue</span><span className="mono">Ç{fmtBig(synd.recentRevenue)}</span></div>
-      <div className="stocks-info-line"><span>Lead ship</span><span>{lead?.name ?? "Unassigned"}</span></div>
-    </div>
+    <section className="trade-helper-section">
+      <div className="exchange-section-title">Underlying</div>
+      <dl className="trade-helper-grid station-info-grid">
+        <FleetStat label="ships" value={synd.memberShipIds.length.toLocaleString()} />
+        <FleetStat label="member wealth" value={`Ç${fmtBig(memberWealth)}`} />
+        <FleetStat label="treasury" value={`Ç${fmtBig(synd.treasury)}`} />
+        <FleetStat label="recent revenue" value={`Ç${fmtBig(synd.recentRevenue)}`} />
+        <FleetStat label="lead ship" value={lead?.name ?? "Unassigned"} />
+      </dl>
+    </section>
   );
 }
 
@@ -1468,8 +1513,8 @@ function Sparkline({ equity, position }: { equity: Equity; position: StockPositi
 
 // --- T&S / order book / volume panels -----------------------------------
 
-const ORDER_BOOK_LEVELS = 5;
-const TS_TAPE_ROWS = 18;
+const ORDER_BOOK_LEVELS = 9;
+const TS_TAPE_ROWS = 19;
 const VOLUME_HISTOGRAM_TICKS = 18;
 
 // Order book — DOM-style vertical layout: asks at top descending (worst on
@@ -1484,21 +1529,20 @@ function OrderBookPanel({ equity, world }: { equity: Equity; world: World }) {
   // Conventional DOM display: asks descend so the BEST ask sits just above
   // the spread row. We render them in reverse (worst first → best last).
   const asksDesc = [...asks].reverse();
-  // Largest visible qty across either side — used to scale the depth bars
-  // so a glance reveals which level is heaviest.
-  const maxQty = Math.max(
-    1,
-    ...bids.map(o => o.qty),
-    ...asks.map(o => o.qty),
-  );
   // Cumulative qty (running totals from the spread outward) — gives a
-  // sense of how much has to be eaten to walk past each level.
+  // sense of how much has to be eaten to walk past each level. We size
+  // the depth bars by cum so they build outward from the spread in a
+  // smooth pyramid (smallest bar nearest the spread, largest at the
+  // walls), instead of zig-zagging based on per-level qty.
   const askCum: number[] = [];
   let acc = 0;
   for (const a of asks) { acc += a.qty; askCum.push(acc); }
   const bidCum: number[] = [];
   acc = 0;
   for (const b of bids) { acc += b.qty; bidCum.push(acc); }
+  // Largest cumulative depth across either side — used to scale the bars
+  // so the deepest level fills the row.
+  const maxCum = Math.max(1, ...askCum, ...bidCum);
 
   const bestBid = bids[0]?.limitPrice;
   const bestAsk = asks[0]?.limitPrice;
@@ -1507,22 +1551,28 @@ function OrderBookPanel({ equity, world }: { equity: Equity; world: World }) {
     ? ((bestAsk - bestBid) / ((bestAsk + bestBid) / 2)) * 100
     : null;
 
+  // Pad each side to a fixed row count so the spread row always sits in
+  // the visual center — bids build downward, asks build upward, and the
+  // panel doesn't jump around as depth comes and goes.
+  const askPadCount = Math.max(0, ORDER_BOOK_LEVELS - asksDesc.length);
+  const bidPadCount = Math.max(0, ORDER_BOOK_LEVELS - bids.length);
+
   return (
-    <section className="stocks-info-section stocks-orderbook">
-      <div className="stocks-info-section-title">Order book</div>
+    <section className="trade-helper-section stocks-orderbook">
+      <div className="exchange-section-title">Order book</div>
       <div className="stocks-orderbook-dom">
         <div className="stocks-orderbook-head">
           <span>Price</span>
           <span className="numeric">Size</span>
           <span className="numeric">Cum</span>
         </div>
-        {asksDesc.length === 0 && (
-          <div className="stocks-orderbook-row empty"><span className="dim">— no asks —</span></div>
-        )}
+        {Array.from({ length: askPadCount }).map((_, i) => (
+          <EmptyBookRow key={`ap${i}`} side="ask" />
+        ))}
         {asksDesc.map((a, i) => {
           // asks were reversed; cum index from the original asks array
           const origIdx = asks.length - 1 - i;
-          return <BookRow key={`a${i}`} order={a} side="ask" maxQty={maxQty} cum={askCum[origIdx]} />;
+          return <BookRow key={`a${i}`} order={a} side="ask" maxCum={maxCum} cum={askCum[origIdx]} />;
         })}
         <div className="stocks-orderbook-spread-row">
           {spread != null && spreadPct != null ? (
@@ -1539,19 +1589,32 @@ function OrderBookPanel({ equity, world }: { equity: Equity; world: World }) {
             </>
           )}
         </div>
-        {bids.length === 0 && (
-          <div className="stocks-orderbook-row empty"><span className="dim">— no bids —</span></div>
-        )}
         {bids.map((b, i) => (
-          <BookRow key={`b${i}`} order={b} side="bid" maxQty={maxQty} cum={bidCum[i]} />
+          <BookRow key={`b${i}`} order={b} side="bid" maxCum={maxCum} cum={bidCum[i]} />
+        ))}
+        {Array.from({ length: bidPadCount }).map((_, i) => (
+          <EmptyBookRow key={`bp${i}`} side="bid" />
         ))}
       </div>
     </section>
   );
 }
 
-function BookRow({ order, side, maxQty, cum }: { order: Order; side: "bid" | "ask"; maxQty: number; cum: number }) {
-  const widthPct = Math.max(2, Math.min(100, (order.qty / maxQty) * 100));
+function EmptyBookRow({ side }: { side: "bid" | "ask" }) {
+  return (
+    <div className={`stocks-orderbook-row ${side} empty`}>
+      <span className="stocks-orderbook-price dim">—</span>
+      <span className="stocks-orderbook-qty dim numeric">—</span>
+      <span className="stocks-orderbook-cum dim numeric">—</span>
+    </div>
+  );
+}
+
+function BookRow({ order, side, maxCum, cum }: { order: Order; side: "bid" | "ask"; maxCum: number; cum: number }) {
+  // Bars are sized by cumulative depth so they build outward from the
+  // spread — best level (closest to spread) is smallest, walking outward
+  // toward the walls each level adds to the bar.
+  const widthPct = Math.max(2, Math.min(100, (cum / maxCum) * 100));
   return (
     <div className={`stocks-orderbook-row ${side}`}>
       <span className="stocks-orderbook-bar" style={{ width: `${widthPct}%` }} />
@@ -1569,8 +1632,8 @@ function BookRow({ order, side, maxQty, cum }: { order: Order; side: "bid" | "as
 function TimeAndSalesPanel({ equity }: { equity: Equity }) {
   const trades = (equity.recentTrades ?? []).slice(-TS_TAPE_ROWS).reverse();
   return (
-    <section className="stocks-info-section stocks-tape">
-      <div className="stocks-info-section-title">Time &amp; sales</div>
+    <section className="trade-helper-section stocks-tape">
+      <div className="exchange-section-title">Time &amp; sales</div>
       {trades.length === 0 ? (
         <div className="stocks-tape-empty dim">No trades yet.</div>
       ) : (
@@ -1628,8 +1691,8 @@ function VolumePanel({ equity, world }: { equity: Equity; world: World }) {
   const peak = Math.max(1, ...bins.map(v => Math.abs(v)));
 
   return (
-    <section className="stocks-info-section stocks-volume">
-      <div className="stocks-info-section-title">Volume</div>
+    <section className="trade-helper-section stocks-volume">
+      <div className="exchange-section-title">Volume</div>
       <dl className="stocks-volume-grid">
         <InfoStat label="window" value={`${trades.length} trades`} />
         <InfoStat label="total" value={Math.round(totalQty).toLocaleString()} />

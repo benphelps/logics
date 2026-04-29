@@ -9,6 +9,14 @@
   --stock-station: #9dd7ff;
   --stock-syndicate: #f0b37e;
   --stock-owned: #ffd166;
+  /* Alias the bridge-* vars (defined under .player-view / .bridge-card) so
+     shared classes like .bridge-card-tabs and .bridge-tab pick up the stock
+     palette and tokens when nested inside the stocks view instead of
+     falling back to no-color. */
+  --ship-surface-soft: var(--stock-surface-soft);
+  --ship-surface-raised: var(--stock-surface-raised);
+  --ship-line: var(--stock-line);
+  --bridge-table-pad-x: 28px;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -371,21 +379,33 @@
 .stocks-panel-head {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  padding: 10px 14px;
+  align-items: center;            /* center title+subtitle vertically */
+  padding: 12px 14px;
   border-bottom: 1px solid var(--stock-line);
   gap: 12px;
 }
 
+.stocks-panel-head .dim {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+}
+
 .stocks-panel-head.art-panel-head {
   min-height: 62px;
+  /* The dimming gradient ramps from 14% → 88% → 100% so the bottom row of
+     pixels is fully opaque, eliminating the 1px art bleed that was visible
+     just above the border-bottom on the previous version. background-clip
+     padding-box stops the art at the inside of the border so it never
+     paints under the 1px border-bottom. */
   background-image:
-    linear-gradient(to bottom, rgba(13, 17, 22, 0.14), rgba(13, 17, 22, 0.72)),
+    linear-gradient(to bottom, rgba(13, 17, 22, 0.14) 0%, rgba(13, 17, 22, 0.78) 88%, rgba(13, 17, 22, 1) 100%),
     linear-gradient(90deg, rgba(13, 17, 22, 0.86), rgba(13, 17, 22, 0.38) 58%, rgba(13, 17, 22, 0.84)),
     var(--card-art);
   background-position: center center, center center, var(--header-art-pan-x, 50%) var(--header-art-pan-y, 50%);
   background-repeat: no-repeat;
   background-size: 100% 100%, 100% 100%, 104% auto;
+  background-clip: padding-box;
   box-shadow: inset 0 -1px rgba(220, 235, 250, 0.08);
 }
 
@@ -1435,16 +1455,18 @@
 }
 
 .stocks-orderbook-head {
+  box-sizing: border-box;
   display: grid;
   grid-template-columns: 1fr 60px 60px;
   column-gap: 8px;
-  padding: 0 6px 4px;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px;
   color: var(--text-faint);
   font-size: 8.5px;
   font-weight: 750;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  border-bottom: 1px solid var(--stock-line);
 }
 
 .stocks-orderbook-row {
@@ -1509,11 +1531,11 @@
   grid-template-columns: 1fr 60px 60px;
   column-gap: 8px;
   align-items: center;
-  margin: 2px 0;
-  padding: 4px 6px;
-  border-top: 1px dashed var(--stock-line);
-  border-bottom: 1px dashed var(--stock-line);
-  background: rgba(255, 255, 255, 0.02);
+  height: 20px;
+  margin: 0;
+  padding: 0 6px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.04);
   color: var(--text-dim);
   font-size: 10px;
   letter-spacing: 0.06em;
@@ -1534,11 +1556,13 @@
 
 .stocks-tape-head,
 .stocks-tape-row {
+  box-sizing: border-box;
   display: grid;
   grid-template-columns: 60px 1fr 1fr 60px;
   column-gap: 8px;
   align-items: center;
-  padding: 2px 6px;
+  height: 20px;
+  padding: 0 6px;
   border-radius: 3px;
 }
 
@@ -1548,8 +1572,6 @@
   font-weight: 750;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  padding-bottom: 4px;
-  border-bottom: 1px solid var(--stock-line);
 }
 
 .stocks-tape-row.up {
@@ -1816,6 +1838,27 @@
   min-height: 0;
 }
 
+/* Column header matches the row grid below — same template-columns so
+   labels line up over the data they describe. */
+.stocks-selector-header {
+  display: grid;
+  grid-template-columns: 56px 1fr 80px 60px;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 12px;
+  background: var(--stock-surface-soft);
+  border-bottom: 1px solid var(--stock-line);
+  color: var(--text-faint);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.stocks-selector-header .numeric {
+  text-align: right;
+}
+
 .stocks-selector-list {
   flex: 1 1 auto;
   overflow-y: auto;
@@ -1908,27 +1951,25 @@
   min-height: 0;
 }
 
+/* P&O panel uses the shared .bridge-card-tabs + .bridge-tab style for
+   sub-tabs so the styling matches the rest of the app. The bridge-card-tabs
+   container has its own background + border + padding, so it sits directly
+   in the panel like exchange-card does on the fleet view. Each tab gets
+   flex: 1 so they share the bar width evenly with centered text. */
 .stocks-pno-tabs {
-  display: flex;
-  gap: 4px;
+  flex: 0 0 auto;
+  width: 100%;
+  border-radius: 0;
+  border-width: 0 0 1px;
 }
 
-.stocks-pno-tab {
-  appearance: none;
-  background: transparent;
-  border: 0;
-  padding: 4px 10px;
-  border-radius: 4px;
-  color: var(--text-dim);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  cursor: pointer;
+.stocks-pno-tabs .bridge-tab {
+  flex: 1 1 0;
+  justify-content: center;
+  min-width: 0;
+  padding-left: 8px;
+  padding-right: 8px;
 }
-
-.stocks-pno-tab:hover { background: rgba(255, 255, 255, 0.04); color: var(--text); }
-.stocks-pno-tab.active { background: var(--stock-surface-raised); color: var(--text); }
 
 .stocks-pno-body {
   flex: 1 1 auto;
@@ -2087,38 +2128,96 @@
   flex: 1 1 auto;
   overflow-y: auto;
   min-height: 0;
-  padding: 14px;
+  padding: var(--bridge-table-pad-x);
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 0;
+}
+
+/* Horizontal pixel dividers between info sections — except the last one
+   (above the order form), which the user wants open. */
+.stocks-info-body > * {
+  padding-bottom: var(--bridge-table-pad-x);
+  border-bottom: 1px solid var(--stock-line);
+}
+
+.stocks-info-body > * + * {
+  padding-top: var(--bridge-table-pad-x);
+}
+
+.stocks-info-body > *:nth-last-child(2),
+.stocks-info-body > *:last-child {
+  border-bottom: 0;
+}
+
+.stocks-info-body > *:last-child {
+  padding-bottom: 0;
 }
 
 .stocks-info-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 14px;
+  gap: 0;
 }
 
-.stocks-info-row > .stocks-info-section,
-.stocks-info-row > section {
-  margin: 0;
-  padding: 10px 12px;
-  background: var(--stock-surface-soft);
-  border: 1px solid var(--stock-line);
-  border-radius: 6px;
+/* Horizontal spacing between the two cells in an info-row (no divider). */
+.stocks-info-body .stocks-info-row > *:first-child {
+  padding-right: 12px;
 }
 
-.stocks-info-section {
+.stocks-info-body .stocks-info-row > *:last-child {
+  padding-left: 12px;
+}
+
+/* Open layout — sections inside the info column sit directly on the panel
+   background with no sub-card framing. The legacy .stocks-info-section
+   rule (used by the old single-column CompanyPane) carried margin/padding/
+   border-top that pushed content down and never applied here. Reset all
+   that for sections nested inside .stocks-info-body. The fleet view's
+   .trade-helper-section ships with its own margin/padding/border-top to
+   produce in-card dividers — we don't want those here either, since the
+   info-body already paints horizontal pixel dividers between siblings. */
+.stocks-info-body .stocks-info-section,
+.stocks-info-body .trade-helper-section,
+.stocks-info-body > section {
   margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  gap: 7px;
+}
+
+/* The fleet view's .trade-helper-grid has `margin: 14px 0 0` because there
+   it sits below a card head. In the info column it's the first content of
+   its section, so the margin reads as a stray gap between the section
+   title and the grid — kill it so KPI's title→grid gap matches the
+   title→line gap on the Underlying side. */
+.stocks-info-body .trade-helper-grid {
+  margin: 0;
+}
+
+/* Inside .trade-helper-section the title's bridge-table-pad-x left/right
+   padding is already removed (PlayerView.css), but the standalone titles
+   here also need no padding since the body controls outer padding. */
+.stocks-info-body .exchange-section-title {
+  padding: 0;
+}
+
+/* Keep section content top-aligned even when the row stretches the cell to
+   match its taller sibling. */
+.stocks-info-row > * {
+  align-content: start;
+  align-self: stretch;   /* keep border-right running full row height */
 }
 
 /* Order placement form */
 
 .stocks-order-form {
-  padding: 12px 14px;
-  background: var(--stock-surface-soft);
-  border: 1px solid var(--stock-line);
-  border-radius: 6px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
 }
 
 .stocks-order-side {
