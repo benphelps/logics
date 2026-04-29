@@ -303,16 +303,23 @@ function PositionsAccordion(props: {
   onSetStopLoss: (eqId: string, price: number | null) => void;
   onSetTakeProfit: (eqId: string, price: number | null) => void;
 }) {
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   if (props.positions.length === 0) {
     return <div className="stocks-pno-empty dim">No open positions.</div>;
   }
   return (
     <div className="stocks-pno-list">
+      <div className="stocks-pno-header positions">
+        <span>Ticker</span>
+        <span>Side</span>
+        <span className="numeric">Shares</span>
+        <span className="numeric">Avg</span>
+        <span className="numeric">P&amp;L</span>
+      </div>
       {props.positions.map(pos => {
         const eq = props.world.equities[pos.equityId];
         if (!eq) return null;
-        const isOpen = expanded.has(pos.equityId);
+        const isOpen = expandedId === pos.equityId;
         return (
           <PositionAccordionItem
             key={pos.equityId}
@@ -324,10 +331,7 @@ function PositionsAccordion(props: {
             docked={props.docked}
             isOpen={isOpen}
             onToggle={() => {
-              const next = new Set(expanded);
-              if (next.has(pos.equityId)) next.delete(pos.equityId);
-              else next.add(pos.equityId);
-              setExpanded(next);
+              setExpandedId(isOpen ? null : pos.equityId);
               props.onSelectEquity(pos.equityId);
             }}
             onSell={(qty) => props.onSell(pos.equityId, qty)}
@@ -358,19 +362,36 @@ function PositionAccordionItem(props: {
   onSetTakeProfit: (price: number | null) => void;
 }) {
   const placeLimitSellAction = useStore(s => s.placeLimitSell);
+  const placeLimitBuyAction = useStore(s => s.placeLimitBuy);
   const eq = props.equity;
   const pos = props.position;
   const longSign = pos.kind === "long" ? 1 : -1;
   const mark = eq.price;
+  const value = mark * pos.shares;
+  const cost = pos.avgEntryPrice * pos.shares;
   const unrealized = (mark - pos.avgEntryPrice) * pos.shares * longSign;
   const unrealizedPct = pos.avgEntryPrice > 0 ? (unrealized / (pos.avgEntryPrice * pos.shares)) * 100 : 0;
   const tone = unrealized > 0 ? "good" : unrealized < 0 ? "bad" : "";
+  const ageTicks = props.world.tick - pos.openedAt;
 
-  // Inputs for "Sell limit at price" tool inside the open accordion.
-  const [limitQty, setLimitQty] = useState<number>(pos.shares);
-  const [limitPrice, setLimitPrice] = useState<number>(eq.price);
+  // Distance from mark to triggers — null if no trigger set. Phrased so a
+  // negative number always means "danger" relative to mark.
+  const slDistPct = pos.stopLoss != null && mark > 0
+    ? ((pos.stopLoss - mark) / mark) * 100 * longSign
+    : null;
+  const tpDistPct = pos.takeProfit != null && mark > 0
+    ? ((pos.takeProfit - mark) / mark) * 100 * longSign
+    : null;
+
+  const [closeQty, setCloseQty] = useState<number>(pos.shares);
+  const [closePrice, setClosePrice] = useState<number>(mark);
   const [stopPrice, setStopPrice] = useState<string>(pos.stopLoss?.toFixed(2) ?? "");
   const [takePrice, setTakePrice] = useState<string>(pos.takeProfit?.toFixed(2) ?? "");
+
+  const placeLimitClose = () => {
+    if (pos.kind === "long") placeLimitSellAction(eq.id, closeQty, closePrice);
+    else placeLimitBuyAction(eq.id, closeQty, closePrice);
+  };
 
   return (
     <div className={`stocks-accordion-item ${props.isOpen ? "open" : ""} ${pos.kind}`}>
@@ -386,86 +407,197 @@ function PositionAccordionItem(props: {
       </button>
       {props.isOpen && (
         <div className="stocks-accordion-body">
-          <div className="stocks-position-tools">
-            {/* Quick close (market) */}
-            {pos.kind === "long" ? (
-              <button
-                className="btn-action primary"
-                disabled={!props.docked || pos.shares <= 0}
-                onClick={() => props.onSell(pos.shares)}
-              >
-                Sell all (market)
-              </button>
-            ) : (
-              <button
-                className="btn-action primary"
-                disabled={!props.docked || pos.shares <= 0}
-                onClick={() => props.onCover(pos.shares)}
-              >
-                Cover all (market)
-              </button>
-            )}
+          <dl className="trade-helper-grid station-info-grid">
+            <FleetStat label="mark" value={`Ç${fmtPrice(mark)}`} />
+            <FleetStat label="avg cost" value={`Ç${fmtPrice(pos.avgEntryPrice)}`} />
+            <FleetStat label="value" value={`Ç${Math.round(value).toLocaleString()}`} />
+            <FleetStat label="exposure" value={`Ç${Math.round(cost).toLocaleString()}`} />
+            <FleetStat label="P&L" value={`${unrealized >= 0 ? "+" : ""}Ç${Math.round(unrealized).toLocaleString()} (${unrealized >= 0 ? "+" : ""}${unrealizedPct.toFixed(1)}%)`} />
+            <FleetStat label="held for" value={`${ageTicks.toLocaleString()}t`} />
+          </dl>
 
-            {/* Sell-limit tool (long only) */}
-            {pos.kind === "long" && (
-              <div className="stocks-position-row">
-                <label className="stocks-position-field">
-                  <span>Limit sell qty</span>
-                  <input type="number" min={1} max={pos.shares} value={limitQty}
-                    onChange={e => setLimitQty(Math.max(1, Math.min(pos.shares, Math.floor(Number(e.target.value) || 0))))} />
-                </label>
-                <label className="stocks-position-field">
-                  <span>at price</span>
-                  <input type="number" step="0.01" value={limitPrice.toFixed(2)}
-                    onChange={e => setLimitPrice(Math.max(0.01, Number(e.target.value) || 0))} />
-                </label>
-                <button
-                  className="btn-action"
-                  disabled={!props.docked || limitQty <= 0 || limitPrice <= 0}
-                  onClick={() => placeLimitSellAction(eq.id, limitQty, limitPrice)}
-                >
-                  Place
-                </button>
-              </div>
-            )}
-
-            {/* Stop-loss / take-profit */}
-            <div className="stocks-position-row">
+          <section className="trade-helper-section">
+            <div className="stocks-position-row close">
               <label className="stocks-position-field">
-                <span>Stop-loss</span>
-                <input type="number" step="0.01" placeholder="—" value={stopPrice}
-                  onChange={e => setStopPrice(e.target.value)} />
+                <span>Qty</span>
+                <input type="number" min={1} max={pos.shares} value={closeQty}
+                  onChange={e => setCloseQty(Math.max(1, Math.min(pos.shares, Math.floor(Number(e.target.value) || 0))))} />
               </label>
-              <button className="btn-action btn-narrow" disabled={!stopPrice}
-                onClick={() => {
+              <label className="stocks-position-field">
+                <span>Limit price</span>
+                <input type="number" step="0.01" value={closePrice.toFixed(2)}
+                  onChange={e => setClosePrice(Math.max(0.01, Number(e.target.value) || 0))} />
+              </label>
+              <button className="stocks-position-spot" onClick={() => setClosePrice(mark)}>Spot</button>
+              <button
+                className="btn-action"
+                disabled={!props.docked || closeQty <= 0 || closePrice <= 0}
+                onClick={placeLimitClose}
+              >
+                Place limit
+              </button>
+              <button
+                className="btn-action primary"
+                disabled={!props.docked || pos.shares <= 0}
+                onClick={() => (pos.kind === "long" ? props.onSell(pos.shares) : props.onCover(pos.shares))}
+              >
+                {pos.kind === "long" ? "Sell all" : "Cover all"}
+              </button>
+            </div>
+            <div className="stocks-position-quick-row">
+              <div className="stocks-position-quick-group">
+                {[25, 50, 100].map(pct => {
+                  const shares = Math.max(1, Math.round(pos.shares * pct / 100));
+                  return (
+                    <QuickChip
+                      key={pct}
+                      label={`${pct}%`}
+                      hoverLabel={`${shares.toLocaleString()} sh`}
+                      onClick={() => setCloseQty(shares)}
+                    />
+                  );
+                })}
+              </div>
+              <div className="stocks-position-quick-group">
+                {[1, 2, 5].map(pct => {
+                  const target = mark * (1 + (pct / 100) * longSign);
+                  return (
+                    <QuickChip
+                      key={pct}
+                      label={`${pos.kind === "long" ? "+" : "−"}${pct}%`}
+                      hoverLabel={`Ç${fmtPrice(target)}`}
+                      className={pos.kind === "long" ? "tp" : "sl"}
+                      onClick={() => setClosePrice(Math.max(0.01, target))}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+
+          <section className="trade-helper-section">
+            <div className="stocks-trigger-grid">
+              <TriggerCell
+                label="Stop-loss"
+                kind="sl"
+                value={pos.stopLoss}
+                distPct={slDistPct}
+                inputValue={stopPrice}
+                mark={mark}
+                pctSign={(-longSign) as 1 | -1}
+                onInputChange={setStopPrice}
+                onSet={() => {
                   const v = Number(stopPrice);
                   if (Number.isFinite(v) && v > 0) props.onSetStopLoss(v);
-                }}>Set</button>
-              <button className="btn-action btn-narrow" disabled={pos.stopLoss == null}
-                onClick={() => { props.onSetStopLoss(null); setStopPrice(""); }}>Clear</button>
-            </div>
-            <div className="stocks-position-row">
-              <label className="stocks-position-field">
-                <span>Take-profit</span>
-                <input type="number" step="0.01" placeholder="—" value={takePrice}
-                  onChange={e => setTakePrice(e.target.value)} />
-              </label>
-              <button className="btn-action btn-narrow" disabled={!takePrice}
-                onClick={() => {
+                }}
+                onClear={() => { props.onSetStopLoss(null); setStopPrice(""); }}
+                onQuickPct={(pct) => {
+                  // SL on long sits BELOW mark (negative pct from mark);
+                  // SL on short sits ABOVE mark — multiply by -longSign.
+                  const target = mark * (1 - pct / 100 * longSign);
+                  setStopPrice(target.toFixed(2));
+                }}
+              />
+              <TriggerCell
+                label="Take-profit"
+                kind="tp"
+                value={pos.takeProfit}
+                distPct={tpDistPct}
+                inputValue={takePrice}
+                mark={mark}
+                pctSign={longSign as 1 | -1}
+                onInputChange={setTakePrice}
+                onSet={() => {
                   const v = Number(takePrice);
                   if (Number.isFinite(v) && v > 0) props.onSetTakeProfit(v);
-                }}>Set</button>
-              <button className="btn-action btn-narrow" disabled={pos.takeProfit == null}
-                onClick={() => { props.onSetTakeProfit(null); setTakePrice(""); }}>Clear</button>
+                }}
+                onClear={() => { props.onSetTakeProfit(null); setTakePrice(""); }}
+                onQuickPct={(pct) => {
+                  // TP on long sits ABOVE mark; on short BELOW.
+                  const target = mark * (1 + pct / 100 * longSign);
+                  setTakePrice(target.toFixed(2));
+                }}
+              />
             </div>
+          </section>
 
-            {/* Abandon */}
-            <button className="btn-action stocks-position-abandon" onClick={props.onAbandon}>
-              Abandon (5% penalty)
-            </button>
-          </div>
+          <section className="trade-helper-section stocks-position-danger">
+            <div className="stocks-position-danger-row">
+              <span className="dim">Force-close at a 5% penalty.</span>
+              <button className="btn-action stocks-position-abandon" onClick={props.onAbandon}>
+                Abandon
+              </button>
+            </div>
+          </section>
         </div>
       )}
+    </div>
+  );
+}
+
+// A small chip button that shows "+5%" by default and the actual computed
+// value (e.g. "Ç78.45") on hover. Used everywhere we have quick-% nudges
+// (close-position qty/price, triggers, order accordion qty/price).
+function QuickChip(props: {
+  label: string;
+  hoverLabel: string;
+  className?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button type="button" className={`stocks-trigger-chip ${props.className ?? ""}`} onClick={props.onClick}>
+      <span className="chip-default">{props.label}</span>
+      <span className="chip-hover">{props.hoverLabel}</span>
+    </button>
+  );
+}
+
+// One side of the Triggers row — stop-loss or take-profit. Renders as:
+//   header: label + current value with distance-from-mark
+//   input row: price input · Set · Clear
+//   quick %: 2% · 5% · 10% (clicking sets the input to that distance from mark)
+function TriggerCell(props: {
+  label: string;
+  kind: "sl" | "tp";
+  value: number | undefined;
+  distPct: number | null;
+  inputValue: string;
+  mark: number;
+  pctSign: 1 | -1;     // sign applied to pct when computing target price
+  onInputChange: (v: string) => void;
+  onSet: () => void;
+  onClear: () => void;
+  onQuickPct: (pct: number) => void;
+}) {
+  return (
+    <div className={`stocks-trigger-cell ${props.kind}`}>
+      <div className="trade-helper-line">
+        <span>{props.label}</span>
+        <span className="mono">
+          {props.value != null
+            ? <>Ç{fmtPrice(props.value)} <span className="dim">({props.distPct! >= 0 ? "+" : ""}{props.distPct!.toFixed(1)}%)</span></>
+            : <span className="dim">not set</span>}
+        </span>
+      </div>
+      <div className="stocks-trigger-controls">
+        <input type="number" step="0.01" placeholder="—" value={props.inputValue}
+          onChange={e => props.onInputChange(e.target.value)} />
+        <button className="btn-action btn-narrow" disabled={!props.inputValue} onClick={props.onSet}>Set</button>
+        <button className="btn-action btn-narrow" disabled={props.value == null} onClick={props.onClear}>Clear</button>
+      </div>
+      <div className="stocks-trigger-quick">
+        {[2, 5, 10].map(pct => {
+          const target = props.mark * (1 + (pct / 100) * props.pctSign);
+          return (
+            <QuickChip
+              key={pct}
+              label={`${props.pctSign > 0 ? "+" : "−"}${pct}%`}
+              hoverLabel={`Ç${fmtPrice(target)}`}
+              onClick={() => props.onQuickPct(pct)}
+            />
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -477,15 +609,22 @@ function OrdersAccordion({ world, limits, onSelectEquity }: {
   limits: PlayerLimitView[];
   onSelectEquity: (eqId: string) => void;
 }) {
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const cancelLimit = useStore(s => s.cancelLimit);
   const adjustLimit = useStore(s => s.adjustLimit);
 
   if (limits.length === 0) return <div className="stocks-pno-empty dim">No open orders.</div>;
   return (
     <div className="stocks-pno-list">
+      <div className="stocks-pno-header orders">
+        <span>Ticker</span>
+        <span>Side</span>
+        <span className="numeric">Shares</span>
+        <span className="numeric">Limit</span>
+        <span className="numeric">Age</span>
+      </div>
       {limits.map(o => {
-        const isOpen = expanded.has(o.orderId);
+        const isOpen = expandedId === o.orderId;
         return (
           <OrderAccordionItem
             key={o.orderId}
@@ -493,10 +632,7 @@ function OrdersAccordion({ world, limits, onSelectEquity }: {
             order={o}
             isOpen={isOpen}
             onToggle={() => {
-              const next = new Set(expanded);
-              if (next.has(o.orderId)) next.delete(o.orderId);
-              else next.add(o.orderId);
-              setExpanded(next);
+              setExpandedId(isOpen ? null : o.orderId);
               onSelectEquity(o.equityId);
             }}
             onCancel={() => cancelLimit(o.equityId, o.orderId)}
@@ -516,9 +652,16 @@ function OrderAccordionItem({ world, order, isOpen, onToggle, onCancel, onAdjust
   onCancel: () => void;
   onAdjust: (qty: number, price: number) => void;
 }) {
+  const eq = world.equities[order.equityId];
+  const mark = eq?.price ?? order.limitPrice;
   const [qty, setQty] = useState<number>(order.qty);
   const [price, setPrice] = useState<number>(order.limitPrice);
   const ageTicks = world.tick - order.postedAt;
+  // Buy-side wants below mark (negative chip), sell-side wants above
+  // mark — flip the sign so the chip's sign always means "more
+  // favorable than mark" for the player.
+  const sideSign = order.side === "bid" ? -1 : 1;
+
   return (
     <div className={`stocks-accordion-item ${isOpen ? "open" : ""} ${order.side}`}>
       <button type="button" className="stocks-accordion-summary" onClick={onToggle}>
@@ -530,19 +673,49 @@ function OrderAccordionItem({ world, order, isOpen, onToggle, onCancel, onAdjust
       </button>
       {isOpen && (
         <div className="stocks-accordion-body">
-          <div className="stocks-position-row">
+          <div className="stocks-position-row close">
             <label className="stocks-position-field">
-              <span>New qty</span>
+              <span>Qty</span>
               <input type="number" min={1} value={qty}
                 onChange={e => setQty(Math.max(1, Math.floor(Number(e.target.value) || 0)))} />
             </label>
             <label className="stocks-position-field">
-              <span>New price</span>
+              <span>Limit price</span>
               <input type="number" step="0.01" value={price.toFixed(2)}
                 onChange={e => setPrice(Math.max(0.01, Number(e.target.value) || 0))} />
             </label>
+            <button className="stocks-position-spot" onClick={() => setPrice(mark)}>Spot</button>
             <button className="btn-action" onClick={() => onAdjust(qty, price)}>Adjust</button>
             <button className="btn-action stocks-position-abandon" onClick={onCancel}>Cancel</button>
+          </div>
+          <div className="stocks-position-quick-row">
+            <div className="stocks-position-quick-group">
+              {[25, 50, 100].map(pct => {
+                const shares = Math.max(1, Math.round(order.qty * pct / 100));
+                return (
+                  <QuickChip
+                    key={pct}
+                    label={`${pct}%`}
+                    hoverLabel={`${shares.toLocaleString()} sh`}
+                    onClick={() => setQty(shares)}
+                  />
+                );
+              })}
+            </div>
+            <div className="stocks-position-quick-group">
+              {[1, 2, 5].map(pct => {
+                const target = mark * (1 + (pct / 100) * sideSign);
+                return (
+                  <QuickChip
+                    key={pct}
+                    label={`${sideSign > 0 ? "+" : "−"}${pct}%`}
+                    hoverLabel={`Ç${fmtPrice(target)}`}
+                    className={order.side === "ask" ? "tp" : "sl"}
+                    onClick={() => setPrice(Math.max(0.01, target))}
+                  />
+                );
+              })}
+            </div>
           </div>
         </div>
       )}

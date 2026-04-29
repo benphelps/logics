@@ -1994,6 +1994,26 @@
   border-bottom: 1px solid var(--stock-line);
 }
 
+/* Header row for the positions and orders accordion lists. Mirrors the
+   accordion summary's grid so the columns line up. */
+.stocks-pno-header {
+  display: grid;
+  grid-template-columns: 56px 60px 1fr 90px 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--stock-line);
+  color: var(--text-faint);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.stocks-pno-header .numeric {
+  text-align: right;
+}
+
 .stocks-accordion-summary {
   width: 100%;
   display: grid;
@@ -2049,22 +2069,180 @@
 .stocks-accordion-summary .numeric { text-align: right; }
 
 .stocks-accordion-body {
-  padding: 8px 12px 12px;
+  padding: 15px 12px 17px;
   background: var(--stock-surface-soft);
   border-top: 1px solid var(--stock-line);
 }
 
-.stocks-position-tools {
-  display: flex;
-  flex-direction: column;
+/* Orders body: there's no stats grid up top, so the close-style row sits
+   first — drop the top padding closer to the row. */
+.stocks-accordion-item.bid .stocks-accordion-body,
+.stocks-accordion-item.ask .stocks-accordion-body {
+  padding-top: 9px;
+}
+
+/* Stats grid sits flush with the body's top padding. */
+.stocks-accordion-body > .trade-helper-grid {
+  margin-top: 0;
+}
+
+/* Sections inside the accordion body are unframed and tightly stacked —
+   no titles, no border dividers, just a small vertical gap. */
+.stocks-accordion-body .trade-helper-section {
+  margin-top: 12px;
+  padding-top: 0;
+  border-top: 0;
   gap: 6px;
 }
 
 .stocks-position-row {
   display: grid;
-  grid-template-columns: 1fr 1fr auto auto;
   align-items: end;
   gap: 6px;
+}
+
+/* Close row: qty | price | spot | place limit | sell/cover all */
+.stocks-position-row.close {
+  grid-template-columns: 1fr 1fr auto auto auto;
+}
+
+.stocks-position-row.close .btn-action {
+  height: 28px;
+  white-space: nowrap;
+}
+
+/* Triggers: SL and TP cells side by side. Each cell stacks status, input
+   row, and quick-% chips. */
+.stocks-trigger-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 18px;
+}
+
+.stocks-trigger-cell {
+  display: grid;
+  gap: 2px;
+}
+
+/* Status line + input row sit tight; the quick-% chip row gets a small
+   breath below the input. */
+.stocks-trigger-cell .stocks-trigger-quick {
+  margin-top: 4px;
+}
+
+/* Style the trigger cell's label (Stop-loss / Take-profit) to match the
+   small-caps section title look — 9px uppercase faint, same as
+   .exchange-section-title elsewhere. Drop the trade-helper-line's
+   default min-height so the label hugs the input below it just like the
+   Qty/Limit price labels in the close row. */
+.stocks-trigger-cell .trade-helper-line {
+  min-height: 0;
+  align-items: center;
+}
+
+.stocks-trigger-cell .trade-helper-line > span:first-child {
+  color: var(--text-faint);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.stocks-trigger-controls {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 6px;
+}
+
+.stocks-trigger-controls input {
+  appearance: none;
+  height: 28px;
+  padding: 0 8px;
+  background: var(--stock-surface);
+  color: var(--text);
+  border: 1px solid var(--stock-line);
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 12px;
+  text-align: right;
+}
+
+.stocks-trigger-controls .btn-action.btn-narrow {
+  height: 28px;
+  padding: 0 10px;
+}
+
+.stocks-trigger-quick {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+
+.stocks-trigger-chip {
+  appearance: none;
+  position: relative;
+  height: 22px;
+  padding: 0 6px;
+  background: var(--stock-surface);
+  border: 1px solid var(--stock-line);
+  color: var(--text-dim);
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+.stocks-trigger-chip:hover {
+  color: var(--text);
+  background: var(--stock-surface-raised);
+}
+
+/* Default shows the % label; on hover swap to the computed value
+   (price or share count). Both spans share the chip's space; only one
+   is visible at a time. */
+.stocks-trigger-chip .chip-default,
+.stocks-trigger-chip .chip-hover {
+  display: inline-block;
+}
+
+.stocks-trigger-chip .chip-hover {
+  display: none;
+}
+
+.stocks-trigger-chip:hover .chip-default {
+  display: none;
+}
+
+.stocks-trigger-chip:hover .chip-hover {
+  display: inline-block;
+}
+
+.stocks-trigger-cell.sl .stocks-trigger-chip,
+.stocks-trigger-chip.sl {
+  color: var(--stock-down);
+  border-color: rgba(239, 111, 125, 0.25);
+}
+
+.stocks-trigger-cell.tp .stocks-trigger-chip,
+.stocks-trigger-chip.tp {
+  color: var(--stock-up);
+  border-color: rgba(108, 217, 154, 0.25);
+}
+
+/* Quick-% buttons under the close row. Mirrors the close row's first two
+   columns so qty chips sit under the qty input and price chips sit under
+   the price input. */
+.stocks-position-quick-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.stocks-position-quick-group {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
 }
 
 .stocks-position-field {
@@ -2080,19 +2258,46 @@
 
 .stocks-position-field input {
   appearance: none;
-  height: 26px;
+  height: 28px;
   padding: 0 8px;
   background: var(--stock-surface);
   color: var(--text);
   border: 1px solid var(--stock-line);
   border-radius: 3px;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 12px;
   text-align: right;
 }
 
+.stocks-position-spot {
+  appearance: none;
+  height: 28px;
+  padding: 0 12px;
+  background: var(--stock-surface-raised);
+  border: 1px solid var(--stock-line);
+  color: var(--text-dim);
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.stocks-position-spot:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.stocks-position-danger-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11px;
+}
+
 .stocks-position-abandon {
-  align-self: stretch;
   background: rgba(239, 111, 125, 0.10) !important;
   color: var(--stock-down) !important;
   border-color: rgba(239, 111, 125, 0.35) !important;
