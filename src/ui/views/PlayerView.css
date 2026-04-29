@@ -1577,34 +1577,12 @@
   gap: 7px;
 }
 
-/* Phase C: family-grouped layout — each slot gets its own section
-   with a small-caps header and the variant grid beneath. Sections
-   stack vertically so cargo/engine/fuel/etc. read top-to-bottom. */
-.upgrade-family-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.upgrade-family-section {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.upgrade-family-title {
-  color: var(--text-faint);
-  font-size: 9px;
-  font-weight: 750;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  padding: 0 2px;
-}
-
 /* Optional flavor blurb under the upgrade name. Italic + dim so it
-   reads as supporting copy, not core info. */
+   reads as supporting copy, not core info. Negative top margin pulls
+   it tight against the name (the .upgrade-card-name ends with a 1.18
+   line-height that already feels low-set). */
 .upgrade-card-description {
-  margin-top: 2px;
+  margin-top: -2px;
   color: var(--text-dim);
   font-size: 10.5px;
   font-style: italic;
@@ -1622,6 +1600,91 @@
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+/* --- rarity scale (4-step) ---------------------------------------------
+   Drives the upgrade card's title color, tier badge, and accent border.
+   Mirrors the ARPG palette: white → blue → purple → gold. */
+.upgrade-card.rarity-common .upgrade-card-name {
+  color: rgba(232, 238, 244, 0.96);
+}
+.upgrade-card.rarity-uncommon .upgrade-card-name {
+  color: #6fb6ff;
+}
+.upgrade-card.rarity-rare .upgrade-card-name {
+  color: #c79bff;
+}
+.upgrade-card.rarity-legendary .upgrade-card-name {
+  color: #f4b643;
+}
+
+.tier-badge.rarity-common {
+  background: rgba(232, 238, 244, 0.12);
+  color: rgba(232, 238, 244, 0.92);
+  border-color: rgba(232, 238, 244, 0.22);
+}
+.tier-badge.rarity-uncommon {
+  background: rgba(111, 182, 255, 0.16);
+  color: #6fb6ff;
+  border-color: rgba(111, 182, 255, 0.42);
+}
+.tier-badge.rarity-rare {
+  background: rgba(199, 155, 255, 0.16);
+  color: #c79bff;
+  border-color: rgba(199, 155, 255, 0.42);
+}
+.tier-badge.rarity-legendary {
+  background: rgba(244, 182, 67, 0.18);
+  color: #f4b643;
+  border-color: rgba(244, 182, 67, 0.50);
+}
+
+/* Subtle border accent on the card itself for rarer items. The common
+   tier stays neutral so it doesn't shout for attention. */
+.upgrade-card.rarity-uncommon { border-color: rgba(111, 182, 255, 0.28); }
+.upgrade-card.rarity-rare { border-color: rgba(199, 155, 255, 0.30); }
+.upgrade-card.rarity-legendary { border-color: rgba(244, 182, 67, 0.34); }
+
+/* --- slot pill colors --------------------------------------------------
+   Treat .upgrade-slot-copy as a small caps pill — reusing the slot-X
+   modifier classes attached on the JSX side. Each slot gets a tinted
+   background + foreground so a glance at the card top tells you what
+   you're looking at. */
+.upgrade-slot-copy {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-dim);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.upgrade-slot-copy.slot-cargo {
+  background: rgba(229, 184, 107, 0.16);
+  color: #e5b86b;
+}
+.upgrade-slot-copy.slot-engine {
+  background: rgba(118, 199, 255, 0.16);
+  color: #76c7ff;
+}
+.upgrade-slot-copy.slot-fuel {
+  background: rgba(123, 207, 152, 0.16);
+  color: #7bcf98;
+}
+.upgrade-slot-copy.slot-hull {
+  background: rgba(213, 139, 220, 0.16);
+  color: #d58bdc;
+}
+.upgrade-slot-copy.slot-weapon {
+  background: rgba(248, 130, 117, 0.16);
+  color: #f88275;
+}
+.upgrade-slot-copy.slot-systems {
+  background: rgba(143, 168, 255, 0.16);
+  color: #8fa8ff;
 }
 
 .upgrade-effect-pill,

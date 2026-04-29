@@ -140,7 +140,7 @@ export interface Hire {
 }
 
 export type UpgradeSlot = "cargo" | "engine" | "fuel" | "hull" | "weapon" | "systems";
-export type UpgradeTier = 1 | 2 | 3;
+export type UpgradeTier = 1 | 2 | 3 | 4;
 export type ShipUpgradeSlots = Partial<Record<UpgradeSlot, GoodId>>;
 
 export interface Trader {

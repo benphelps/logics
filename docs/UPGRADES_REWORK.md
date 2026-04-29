@@ -75,15 +75,27 @@ effect; better suited to phase C.
 
 ## Phase C — UI (done)
 
-- [x] Group upgrade cards by slot in both the cargo-modules section
-  (Ship Upgrades tab) and the station purchase tab — each slot gets
-  its own small-caps section title and grid of variants. Variants
-  within a slot sort by tier ascending.
-- [x] Render the `description` blurb on each card under the name
-  (italic, dim).
+Initial pass tried slot-grouped sections; we reverted to a single flat
+grid because clustering hurt scannability when slot variety was low.
+The visual hierarchy now comes from per-slot pill colors and a 4-step
+rarity scale instead.
+
+- [x] Render the `description` blurb on each card directly under the
+  name (italic, dim, tight margin).
 - [x] Inline "replaces X" hint on cargo cards when installing would
-  displace an already-installed module — pairs with the existing
-  Replace button label so the player sees both before clicking.
+  displace an already-installed variant.
+- [x] Tier scale extended to 4 (`UpgradeTier = 1 | 2 | 3 | 4`); one
+  legendary variant per slot promoted to T4 (FTL Fold Drive,
+  Zero-Point Fuel Core, Atlas Hauler Spine, Self-Repair Nanite Mesh,
+  Plasma Lance Array, Oracle Trade Core). All other tier-3 entries
+  remain at T3.
+- [x] Rarity color scheme drives upgrade name + tier badge + card
+  border accent: white (common) → blue (uncommon) → purple (rare) →
+  gold (legendary). Coloring crew tiers is unchanged — `tierClass`
+  remains for that path.
+- [x] Slot label rendered as a colored pill (cargo amber, engine
+  cyan, fuel green, hull violet, weapons salmon, systems indigo) so
+  the slot reads at a glance from the card top.
 
 ## Notes
 

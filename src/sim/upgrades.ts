@@ -73,7 +73,7 @@ export const SHIP_UPGRADES: Record<GoodId, ShipUpgradeDef> = {
     effects: { cargoCapacityBonus: 20, instantUnload: 1 },
   },
   upg_cargo_atlas_3: {
-    id: "upg_cargo_atlas_3", slot: "cargo", tier: 3,
+    id: "upg_cargo_atlas_3", slot: "cargo", tier: 4,
     name: "Atlas Hauler Spine",
     description: "Hardpoint-mounted spine adds a third hold beneath the keel.",
     effects: { cargoCapacityBonus: 90 },
@@ -105,7 +105,7 @@ export const SHIP_UPGRADES: Record<GoodId, ShipUpgradeDef> = {
     effects: { speedBonus: 0.4, maintenanceDiscount: 0.06 },
   },
   upg_engine_3: {
-    id: "upg_engine_3", slot: "engine", tier: 3,
+    id: "upg_engine_3", slot: "engine", tier: 4,
     name: "FTL Fold Drive",
     description: "Folds space at the cost of a dock-side requalification.",
     effects: { speedBonus: 1, instantTravel: 1 },
@@ -143,7 +143,7 @@ export const SHIP_UPGRADES: Record<GoodId, ShipUpgradeDef> = {
     effects: { fuelCapacityBonus: 60 },
   },
   upg_fuel_3: {
-    id: "upg_fuel_3", slot: "fuel", tier: 3,
+    id: "upg_fuel_3", slot: "fuel", tier: 4,
     name: "Zero-Point Fuel Core",
     description: "Exotic core taps vacuum energy. Travel costs no fuel.",
     effects: { fuelCapacityBonus: 60, fuelFreeTravel: 1 },
@@ -187,7 +187,7 @@ export const SHIP_UPGRADES: Record<GoodId, ShipUpgradeDef> = {
     effects: { hullBonus: 4, maintenanceDiscount: 0.10 },
   },
   upg_hull_nano_3: {
-    id: "upg_hull_nano_3", slot: "hull", tier: 3,
+    id: "upg_hull_nano_3", slot: "hull", tier: 4,
     name: "Self-Repair Nanite Mesh",
     description: "Skin knits itself between trips. Maintenance is almost free.",
     effects: { hullBonus: 3, maintenanceDiscount: 0.20 },
@@ -219,7 +219,7 @@ export const SHIP_UPGRADES: Record<GoodId, ShipUpgradeDef> = {
     effects: { weaponPowerBonus: 3, contractRewardBonus: 0.08 },
   },
   upg_weapon_3: {
-    id: "upg_weapon_3", slot: "weapon", tier: 3,
+    id: "upg_weapon_3", slot: "weapon", tier: 4,
     name: "Plasma Lance Array",
     description: "Forward lance + dorsal turret cluster. Almost certainly illegal somewhere.",
     effects: { weaponPowerBonus: 6, contractRewardBonus: 0.10 },
@@ -257,7 +257,7 @@ export const SHIP_UPGRADES: Record<GoodId, ShipUpgradeDef> = {
     effects: { contractRewardBonus: 0.06 },
   },
   upg_systems_oracle_3: {
-    id: "upg_systems_oracle_3", slot: "systems", tier: 3,
+    id: "upg_systems_oracle_3", slot: "systems", tier: 4,
     name: "Oracle Trade Core",
     description: "Predictive market AI. Stations open the books a little wider.",
     effects: { remoteSettlementCollection: 1, contractRewardBonus: 0.12, sellPremium: 0.03 },

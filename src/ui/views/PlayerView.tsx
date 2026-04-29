@@ -2402,6 +2402,16 @@ function upgradeSlotLabel(slot: UpgradeSlot): string {
   return UPGRADE_SLOTS.find(s => s.slot === slot)?.label ?? slot;
 }
 
+// Rarity class for upgrade tiers — drives the title color, tier badge,
+// and card border accent. Mirrors the four-step Diablo-style scale:
+// common (white) → uncommon (blue) → rare (purple) → legendary (gold).
+function upgradeRarityClass(tier: number): "common" | "uncommon" | "rare" | "legendary" {
+  if (tier >= 4) return "legendary";
+  if (tier === 3) return "rare";
+  if (tier === 2) return "uncommon";
+  return "common";
+}
+
 function UpgradeEffectPills({ text }: { text: string }) {
   return (
     <div className="upgrade-effect-pills">
@@ -2432,16 +2442,17 @@ function ShipUpgradesTab({ ship }: { ship: Trader }) {
         {UPGRADE_SLOTS.map(({ slot, label }) => {
           const def = installedUpgrade(ship, slot);
           const Icon = UPGRADE_SLOT_ICONS[slot];
+          const rarity = def ? upgradeRarityClass(def.tier) : "common";
           return (
-            <article key={slot} className={`upgrade-card upgrade-slot-card ${def ? "installed" : "empty"}`}>
+            <article key={slot} className={`upgrade-card upgrade-slot-card ${def ? "installed" : "empty"} rarity-${rarity}`}>
               <Icon className="upgrade-card-splash" aria-hidden="true" focusable="false" />
               <div className="upgrade-card-main">
                 <div className="upgrade-card-top">
-                  <span className="upgrade-slot-copy">{label}</span>
+                  <span className={`upgrade-slot-copy slot-${slot}`}>{label}</span>
                   {def ? (
                     <button
                       type="button"
-                      className={`tier-badge upgrade-remove-pill tier-${tierClass(def.tier)}`}
+                      className={`tier-badge upgrade-remove-pill rarity-${rarity}`}
                       onClick={() => removeInstalledUpgrade(ship.id, slot)}
                       disabled={!docked}
                       title={docked ? `Remove ${def.name} to cargo` : "Dock to remove"}
@@ -2477,15 +2488,8 @@ function ShipUpgradesTab({ ship }: { ship: Trader }) {
       {cargoUpgrades.length === 0 ? (
         <div className="upgrade-empty-card">No upgrade modules in cargo.</div>
       ) : (
-        <div className="upgrade-family-stack">
-          {UPGRADE_SLOTS.map(({ slot, label }) => {
-            const groupsForSlot = cargoUpgrades.filter(g => upgradeDef(g.good)?.slot === slot);
-            if (groupsForSlot.length === 0) return null;
-            return (
-              <section key={slot} className="upgrade-family-section">
-                <div className="upgrade-family-title">{label}</div>
-                <div className="upgrade-offer-grid">
-                  {groupsForSlot.map((group) => {
+        <div className="upgrade-offer-grid">
+          {cargoUpgrades.map((group) => {
             const def = upgradeDef(group.good)!;
             const Icon = UPGRADE_SLOT_ICONS[def.slot];
             const installedInSlot = ship.upgrades?.[def.slot];
@@ -2516,11 +2520,11 @@ function ShipUpgradesTab({ ship }: { ship: Trader }) {
                   ? "No cargo module ready"
                   : `Sell ${def.name}`;
             return (
-              <article key={`cargo-${group.good}`} className="upgrade-card upgrade-offer-card">
+              <article key={`cargo-${group.good}`} className={`upgrade-card upgrade-offer-card rarity-${upgradeRarityClass(def.tier)}`}>
                 <Icon className="upgrade-card-splash" aria-hidden="true" focusable="false" />
                 <div className="upgrade-card-main">
                   <div className="upgrade-card-top">
-                    <span className="upgrade-slot-copy">{upgradeSlotLabel(def.slot)}</span>
+                    <span className={`upgrade-slot-copy slot-${def.slot}`}>{upgradeSlotLabel(def.slot)}</span>
                     {replaceMode && replacedDef && (
                       <span className="upgrade-replace-hint dim">replaces {replacedDef.name}</span>
                     )}
@@ -2532,7 +2536,7 @@ function ShipUpgradesTab({ ship }: { ship: Trader }) {
                   </div>
                 </div>
                 <div className="upgrade-card-actions">
-                  <span className={`tier-badge upgrade-action-tier tier-${tierClass(def.tier)}`}>T{def.tier}</span>
+                  <span className={`tier-badge upgrade-action-tier rarity-${upgradeRarityClass(def.tier)}`}>T{def.tier}</span>
                   <div className="upgrade-action-stack">
                     <span className="upgrade-action-meta mono">
                       {isUnloading ? `Unloading x${group.unloadingQty.toFixed(0)}` : `Cargo x${group.totalQty.toFixed(0)}`}
@@ -2571,10 +2575,6 @@ function ShipUpgradesTab({ ship }: { ship: Trader }) {
                 </div>
               </article>
             );
-                  })}
-                </div>
-              </section>
-            );
           })}
         </div>
       )}
@@ -2601,15 +2601,8 @@ function StationUpgradePurchaseTab({ ship, world, loc, target, hintText, cueText
       {stationUpgradeIds.length === 0 ? (
         <div className="upgrade-empty-card">No upgrade modules stocked at this station.</div>
       ) : (
-        <div className="upgrade-family-stack">
-          {UPGRADE_SLOTS.map(({ slot, label }) => {
-            const idsForSlot = stationUpgradeIds.filter(id => upgradeDef(id)?.slot === slot);
-            if (idsForSlot.length === 0) return null;
-            return (
-              <section key={slot} className="upgrade-family-section">
-                <div className="upgrade-family-title">{label}</div>
-                <div className="upgrade-offer-grid station-upgrade-grid">
-                  {idsForSlot.map((goodId) => {
+        <div className="upgrade-offer-grid station-upgrade-grid">
+          {stationUpgradeIds.map((goodId) => {
             const def = upgradeDef(goodId)!;
             const Icon = UPGRADE_SLOT_ICONS[def.slot];
             const good = world.goods[goodId];
@@ -2629,11 +2622,11 @@ function StationUpgradePurchaseTab({ ship, world, loc, target, hintText, cueText
                     ? "Insufficient funds"
                     : `Buy ${def.name} into cargo`;
             return (
-              <article key={goodId} className={`upgrade-card upgrade-offer-card ${suggested ? "suggested" : ""}`}>
+              <article key={goodId} className={`upgrade-card upgrade-offer-card rarity-${upgradeRarityClass(def.tier)} ${suggested ? "suggested" : ""}`}>
                 <Icon className="upgrade-card-splash" aria-hidden="true" focusable="false" />
                 <div className="upgrade-card-main">
                   <div className="upgrade-card-top">
-                    <span className="upgrade-slot-copy">{upgradeSlotLabel(def.slot)}</span>
+                    <span className={`upgrade-slot-copy slot-${def.slot}`}>{upgradeSlotLabel(def.slot)}</span>
                   </div>
                   <div className="upgrade-card-name">{def.name}</div>
                   {def.description && <div className="upgrade-card-description">{def.description}</div>}
@@ -2642,7 +2635,7 @@ function StationUpgradePurchaseTab({ ship, world, loc, target, hintText, cueText
                   </div>
                 </div>
                 <div className="upgrade-card-actions">
-                  <span className={`tier-badge upgrade-action-tier tier-${tierClass(def.tier)}`}>T{def.tier}</span>
+                  <span className={`tier-badge upgrade-action-tier rarity-${upgradeRarityClass(def.tier)}`}>T{def.tier}</span>
                   <div className="upgrade-action-stack">
                     <span className="upgrade-action-meta mono">Stock {stock.toFixed(0)}</span>
                     <span className="upgrade-action-price mono">Ç{Math.round(price).toLocaleString()}</span>
@@ -2659,10 +2652,6 @@ function StationUpgradePurchaseTab({ ship, world, loc, target, hintText, cueText
                   </div>
                 </div>
               </article>
-            );
-                  })}
-                </div>
-              </section>
             );
           })}
         </div>
