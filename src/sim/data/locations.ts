@@ -33,6 +33,9 @@ export const LOCATIONS: Record<string, LocationDef> = {
       protein: 100, grain: 80, polymer: 40, fiber: 40, parts: 20, plasma: 120,
       medkits: 40, electronics: 20, weapons: 15, luxury_goods: 20,
       upg_cargo_1: 1, upg_fuel_1: 1, upg_hull_1: 1, upg_systems_nav_1: 1,
+      // Civilian-flavored alternatives that fit a hub/transit station.
+      upg_cargo_modular_1: 1, upg_engine_solar_1: 1, upg_fuel_solar_1: 1,
+      upg_systems_haggler_1: 1,
     },
   },
 
@@ -71,6 +74,9 @@ export const LOCATIONS: Record<string, LocationDef> = {
       upg_engine_1: 1, upg_fuel_1: 1, upg_hull_1: 1, upg_weapon_1: 1,
       upg_engine_2: 1, upg_hull_2: 1, upg_weapon_2: 1, upg_engine_3: 1,
       upg_cargo_loader_2: 1, upg_systems_exchange_2: 1,
+      // Industrial / military variants — naval yard fare.
+      upg_weapon_defense_1: 1, upg_weapon_bounty_2: 1,
+      upg_engine_micro_2: 1, upg_fuel_aux_2: 1, upg_hull_ablative_2: 1,
     },
   },
 
@@ -104,6 +110,9 @@ export const LOCATIONS: Record<string, LocationDef> = {
       grain: 200, vatmeat: 50, polymer: 80, parts: 20, fiber: 20, plasma: 80,
       medkits: 50, electronics: 20, weapons: 10,
       upg_cargo_1: 1, upg_fuel_1: 1, upg_systems_nav_1: 1,
+      // Off-the-record cargo + sustainable bio fuel — fits a smuggler-
+      // friendly agri ring.
+      upg_cargo_smuggler_2: 1, upg_fuel_bio_3: 1,
     },
   },
 
@@ -141,6 +150,10 @@ export const LOCATIONS: Record<string, LocationDef> = {
       upg_cargo_2: 1, upg_fuel_2: 1, upg_hull_2: 1, upg_weapon_2: 1,
       upg_cargo_3: 1, upg_fuel_3: 1, upg_hull_3: 1, upg_weapon_3: 1,
       upg_cargo_loader_3: 1, upg_systems_oracle_3: 1,
+      // Frontier/luxury variety — exotic top-tier kit and stealth fits.
+      upg_cargo_atlas_3: 1, upg_engine_singularity_3: 1,
+      upg_hull_stealth_2: 1, upg_hull_nano_3: 1,
+      upg_weapon_emp_3: 1, upg_systems_ticker_2: 1, upg_systems_pressure_3: 1,
     },
   },
 };
