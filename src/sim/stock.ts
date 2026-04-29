@@ -26,9 +26,11 @@
 //    treasury before others can short the station's shares.
 
 import type {
+  BookTrade,
   Equity,
   EquityId,
   LocationId,
+  OrderSide,
   Player,
   StockPosition,
   Syndicate,
@@ -42,6 +44,8 @@ import type {
 import { mulberry32 } from "./gen/rng";
 import { depositToTreasury } from "./economy";
 import { createTradeJob, exchangeLossForgiveness } from "./jobs";
+import { ensureOrderBook, executeMarketOrder, simulateMarketOrder, matchBook } from "./stock/orderbook";
+import { refreshMarketMakerQuotes, tickMarketMakers } from "./stock/market-maker";
 
 // --- tunables --------------------------------------------------------------
 
@@ -167,6 +171,10 @@ export function ensureStockMarket(world: World, opts: { syndicateCount?: number;
     const eq = createSyndicateEquity(synd);
     world.equities[eq.id] = eq;
   }
+  // Phase 1: warm the order books with the synthetic MM's first quote so
+  // a player can trade immediately on world creation without waiting for
+  // the first tickStockMarket to run.
+  tickMarketMakers(world);
 }
 
 // --- per-tick price update -------------------------------------------------
@@ -180,7 +188,7 @@ function syndicateWealth(world: World, syn: Syndicate): number {
   return w;
 }
 
-function clampSharePrice(eq: Equity, price: number): number {
+export function clampSharePrice(eq: Equity, price: number): number {
   const floor = eq.anchorPrice * SHARE_PRICE_FLOOR_MULT;
   const ceiling = eq.anchorPrice * SHARE_PRICE_CEILING_MULT;
   return Math.max(floor, Math.min(ceiling, price));
@@ -189,7 +197,7 @@ function clampSharePrice(eq: Equity, price: number): number {
 // Compute the "fundamental" price for an equity from underlying signals.
 // Every signal is converted to a multiplier on anchorPrice. The tick-by-tick
 // EMA blend toward this fundamental drives the visible price.
-function computeFundamental(world: World, eq: Equity): number {
+export function computeFundamental(world: World, eq: Equity): number {
   if (eq.kind === "station") {
     const market = world.markets[eq.underlyingId];
     if (!market) return eq.anchorPrice;
@@ -454,6 +462,76 @@ function proximityBlockReason(world: World, eq: Equity, ship: NonNullable<TradeC
   return `Move within ${EXCHANGE_TRADE_MAX_HOPS} hops of ${stationName} to trade ${eq.ticker}.`;
 }
 
+// --- order-book execution helpers ---------------------------------------
+// Phase 1: route player trades through the order book. The MM is the only
+// counterparty so cash always flows through the underlying treasury, same
+// as today. The "execution price" comes from the trades printed by the
+// book — possibly a weighted average across multiple fills if the order
+// walks past the MM's first level.
+
+interface BookExecution {
+  ok: true;
+  filled: number;
+  unfilled: number;
+  totalCash: number;        // sum of qty * price across all fills
+  weightedAvgPrice: number; // totalCash / filled
+  trades: BookTrade[];
+  lastPrice: number;        // final fill price, used to update eq.price
+}
+
+interface BookExecutionEmpty { ok: false; reason: string }
+
+function executeAgainstBook(
+  world: World,
+  eq: Equity,
+  side: OrderSide,
+  qty: number,
+  agentId: TraderId,
+  worstPrice?: number,
+): BookExecution | BookExecutionEmpty {
+  // Always refresh MM quotes before executing so the book reflects current
+  // eq.price (whether it was last updated by another trade, an EMA tick, or
+  // a direct mutation). Phase 1 has only the MM as counterparty so this is
+  // critical for the order to fill at a sensible price.
+  refreshMarketMakerQuotes(world, eq);
+  const result = executeMarketOrder(world, { equityId: eq.id, side, qty, agentId, worstPrice });
+  if (result.filled <= 0) {
+    return { ok: false, reason: `${eq.ticker} book is too thin to fill that order right now.` };
+  }
+  let totalCash = 0;
+  for (const t of result.trades) totalCash += t.qty * t.price;
+  const lastPrice = result.trades[result.trades.length - 1].price;
+  eq.prevPrice = eq.price;
+  eq.price = clampSharePrice(eq, lastPrice);
+  return {
+    ok: true,
+    filled: result.filled,
+    unfilled: result.unfilled,
+    totalCash,
+    weightedAvgPrice: totalCash / result.filled,
+    trades: result.trades,
+    lastPrice,
+  };
+}
+
+// Read-only counterpart used by preflight cost checks (player fund adequacy).
+// Returns the cost the order WOULD pay against the current book.
+function previewBookCost(
+  world: World,
+  eq: Equity,
+  side: OrderSide,
+  qty: number,
+  agentId: TraderId,
+): { fillable: number; totalCash: number } {
+  // Refresh the MM here too — the player-facing functions call previewBookCost
+  // before executeAgainstBook, and we want both to read the same fresh quotes.
+  refreshMarketMakerQuotes(world, eq);
+  const sim = simulateMarketOrder(world, { equityId: eq.id, side, qty, agentId });
+  let totalCash = 0;
+  for (const t of sim.trades) totalCash += t.qty * t.price;
+  return { fillable: sim.filled, totalCash };
+}
+
 function preflight(world: World, equityId: EquityId, shares: number, shipId?: TraderId): TradeContext | { ok: false; reason: string } {
   if (!world.player) return { ok: false, reason: "No player." };
   if (shares <= 0 || !Number.isFinite(shares)) return { ok: false, reason: "Quantity must be positive." };
@@ -481,10 +559,24 @@ export function buyShares(world: World, equityId: EquityId, shares: number, ship
   const owned = current?.shares ?? 0;
   const maxBuyable = Math.max(0, eq.sharesOutstanding - owned);
   if (shares > maxBuyable) return { ok: false, reason: `Only ${maxBuyable} shares available on the float.` };
-  const cost = shares * eq.price;
+
+  // Preflight: walk the book read-only to compute would-be cost. Reject if
+  // the book can't fill the requested qty or the player can't afford it.
+  const preview = previewBookCost(world, eq, "bid", shares, ship!.id);
+  if (preview.fillable < shares) {
+    return { ok: false, reason: `${eq.ticker} book has only ${preview.fillable} share${preview.fillable === 1 ? "" : "s"} on offer.` };
+  }
+  const previewFee = preview.totalCash * BROKER_FEE_RATE;
+  if (ship!.funds < preview.totalCash + previewFee) {
+    return { ok: false, reason: `Need Ç${Math.round(preview.totalCash + previewFee).toLocaleString()}, have Ç${Math.round(ship!.funds).toLocaleString()}.` };
+  }
+
+  // Commit: execute against the book.
+  const exec = executeAgainstBook(world, eq, "bid", shares, ship!.id);
+  if (!exec.ok) return { ok: false, reason: exec.reason };
+  const cost = exec.totalCash;
   const fee = cost * BROKER_FEE_RATE;
   const total = cost + fee;
-  if (ship!.funds < total) return { ok: false, reason: `Need Ç${Math.round(total).toLocaleString()}, have Ç${Math.round(ship!.funds).toLocaleString()}.` };
 
   ship!.funds -= total;
   routeShareCashFlow(world, eq, cost);
@@ -493,19 +585,19 @@ export function buyShares(world: World, equityId: EquityId, shares: number, ship
     positions[equityId] = {
       equityId,
       kind: "long",
-      shares,
-      avgEntryPrice: eq.price,
+      shares: exec.filled,
+      avgEntryPrice: exec.weightedAvgPrice,
       openedAt: world.tick,
     };
-    recordTrade(world, player, eq, "open_long", shares, eq.price, fee, -total);
+    recordTrade(world, player, eq, "open_long", exec.filled, exec.weightedAvgPrice, fee, -total);
   } else {
     // Weighted-average entry price across the combined position
-    const totalShares = current.shares + shares;
-    current.avgEntryPrice = (current.avgEntryPrice * current.shares + eq.price * shares) / totalShares;
+    const totalShares = current.shares + exec.filled;
+    current.avgEntryPrice = (current.avgEntryPrice * current.shares + exec.weightedAvgPrice * exec.filled) / totalShares;
     current.shares = totalShares;
-    recordTrade(world, player, eq, "add_long", shares, eq.price, fee, -total);
+    recordTrade(world, player, eq, "add_long", exec.filled, exec.weightedAvgPrice, fee, -total);
   }
-  return { ok: true, shares, cashFlow: -total, fee };
+  return { ok: true, shares: exec.filled, cashFlow: -total, fee };
 }
 
 // Close (or partially close) a long position. `trigger` is set when this
@@ -528,12 +620,19 @@ export function sellShares(
   }
   if (shares > current.shares) return { ok: false, reason: `Only ${current.shares} shares owned.` };
 
-  const proceedsWanted = shares * eq.price;
+  // Sell aggresses against the bid side of the book. Walk to compute the
+  // realized proceeds at actual fill prices.
+  const exec = executeAgainstBook(world, eq, "ask", shares, ship!.id);
+  if (!exec.ok) return { ok: false, reason: exec.reason };
+  const proceedsWanted = exec.totalCash;
+  // Draw the wanted proceeds from the underlying treasury. If the underlying
+  // is depleted, the trader gets a haircut — same closed-loop behavior as
+  // before; only the gross-proceeds calculation now comes from the book.
   const realized = drawShareCashFlow(world, eq, proceedsWanted);
   const fee = realized * BROKER_FEE_RATE;
   const net = realized - fee;
 
-  const basis = current.avgEntryPrice * shares;
+  const basis = current.avgEntryPrice * exec.filled;
   const realizedPnl = net - basis;
   let immediateCashFlow = net;
   let settlementJobId: string | undefined;
@@ -542,14 +641,14 @@ export function sellShares(
       // Return capital now; station-side profit clears only when collected.
       immediateCashFlow = Math.min(net, basis);
     }
-    settlementJobId = createStationTradeSettlement(world, ship!.id, eq, "close_long", shares, realizedPnl);
+    settlementJobId = createStationTradeSettlement(world, ship!.id, eq, "close_long", exec.filled, realizedPnl);
   }
   ship!.funds += immediateCashFlow;
 
-  current.shares -= shares;
+  current.shares -= exec.filled;
   if (current.shares <= 0.0001) delete positions[equityId];
-  recordTrade(world, player, eq, "close_long", shares, eq.price, fee, immediateCashFlow, realizedPnl, trigger);
-  return { ok: true, shares, cashFlow: immediateCashFlow, fee, realizedPnl, settlementJobId };
+  recordTrade(world, player, eq, "close_long", exec.filled, exec.weightedAvgPrice, fee, immediateCashFlow, realizedPnl, trigger);
+  return { ok: true, shares: exec.filled, cashFlow: immediateCashFlow, fee, realizedPnl, settlementJobId };
 }
 
 // Returns the maximum cash the equity's underlying can actually pay out to a
@@ -599,10 +698,12 @@ export function shortShares(world: World, equityId: EquityId, shares: number, sh
     return { ok: false, reason: `Only ${maxShortable} shares fundable at this quote.` };
   }
 
-  const proceedsGross = shares * eq.price;
-  // Underlying funds the short via drawShareCashFlow. We just capped `shares`
-  // against the available pool, so `realized` should equal `proceedsGross`
-  // (within rounding).
+  // Short aggresses against the bid side of the book (we're selling short).
+  // The fill price comes from the book; the underlying funds the short
+  // proceeds via drawShareCashFlow.
+  const exec = executeAgainstBook(world, eq, "ask", shares, ship!.id);
+  if (!exec.ok) return { ok: false, reason: exec.reason };
+  const proceedsGross = exec.totalCash;
   const realized = drawShareCashFlow(world, eq, proceedsGross);
   const fee = realized * BROKER_FEE_RATE;
   const net = realized - fee;
@@ -612,18 +713,18 @@ export function shortShares(world: World, equityId: EquityId, shares: number, sh
     positions[equityId] = {
       equityId,
       kind: "short",
-      shares,
-      avgEntryPrice: eq.price,
+      shares: exec.filled,
+      avgEntryPrice: exec.weightedAvgPrice,
       openedAt: world.tick,
     };
-    recordTrade(world, player, eq, "open_short", shares, eq.price, fee, net);
+    recordTrade(world, player, eq, "open_short", exec.filled, exec.weightedAvgPrice, fee, net);
   } else {
-    const totalShares = current.shares + shares;
-    current.avgEntryPrice = (current.avgEntryPrice * current.shares + eq.price * shares) / totalShares;
+    const totalShares = current.shares + exec.filled;
+    current.avgEntryPrice = (current.avgEntryPrice * current.shares + exec.weightedAvgPrice * exec.filled) / totalShares;
     current.shares = totalShares;
-    recordTrade(world, player, eq, "add_short", shares, eq.price, fee, net);
+    recordTrade(world, player, eq, "add_short", exec.filled, exec.weightedAvgPrice, fee, net);
   }
-  return { ok: true, shares, cashFlow: net, fee };
+  return { ok: true, shares: exec.filled, cashFlow: net, fee };
 }
 
 // Close (or partially close) a short position. Buys back the borrowed shares
@@ -645,17 +746,30 @@ export function coverShares(
   }
   if (shares > current.shares) return { ok: false, reason: `Only ${current.shares} shares short.` };
 
-  const cost = shares * eq.price;
+  // Cover aggresses against the ask side (we're buying back). Preflight via
+  // simulateMarketOrder so the player's funds are checked before the book is
+  // mutated.
+  const preview = previewBookCost(world, eq, "bid", shares, ship!.id);
+  if (preview.fillable < shares) {
+    return { ok: false, reason: `${eq.ticker} book has only ${preview.fillable} share${preview.fillable === 1 ? "" : "s"} on offer to cover.` };
+  }
+  const previewFee = preview.totalCash * BROKER_FEE_RATE;
+  if (ship!.funds < preview.totalCash + previewFee) {
+    return { ok: false, reason: `Need Ç${Math.round(preview.totalCash + previewFee).toLocaleString()} to cover, have Ç${Math.round(ship!.funds).toLocaleString()}.` };
+  }
+
+  const exec = executeAgainstBook(world, eq, "bid", shares, ship!.id);
+  if (!exec.ok) return { ok: false, reason: exec.reason };
+  const cost = exec.totalCash;
   const fee = cost * BROKER_FEE_RATE;
   const total = cost + fee;
-  if (ship!.funds < total) return { ok: false, reason: `Need Ç${Math.round(total).toLocaleString()} to cover, have Ç${Math.round(ship!.funds).toLocaleString()}.` };
 
   ship!.funds -= total;
   // The buyback principal flows back into the underlying (closed loop).
   routeShareCashFlow(world, eq, cost);
 
   // Realized P&L for a short: (entry price - cover price) × shares - fee.
-  const realizedPnl = (current.avgEntryPrice - eq.price) * shares - fee;
+  const realizedPnl = (current.avgEntryPrice - exec.weightedAvgPrice) * exec.filled - fee;
   let immediateCashFlow = -total;
   let settlementJobId: string | undefined;
   if (eq.kind === "station") {
@@ -664,12 +778,12 @@ export function coverShares(
       ship!.funds -= holdback;
       immediateCashFlow -= holdback;
     }
-    settlementJobId = createStationTradeSettlement(world, ship!.id, eq, "cover_short", shares, realizedPnl);
+    settlementJobId = createStationTradeSettlement(world, ship!.id, eq, "cover_short", exec.filled, realizedPnl);
   }
-  current.shares -= shares;
+  current.shares -= exec.filled;
   if (current.shares <= 0.0001) delete positions[equityId];
-  recordTrade(world, player, eq, "cover_short", shares, eq.price, fee, immediateCashFlow, realizedPnl, trigger);
-  return { ok: true, shares, cashFlow: immediateCashFlow, fee, realizedPnl, settlementJobId };
+  recordTrade(world, player, eq, "cover_short", exec.filled, exec.weightedAvgPrice, fee, immediateCashFlow, realizedPnl, trigger);
+  return { ok: true, shares: exec.filled, cashFlow: immediateCashFlow, fee, realizedPnl, settlementJobId };
 }
 
 // Walk away from a position regardless of cash. Records realized P&L at the
@@ -876,6 +990,21 @@ function drawShareCashFlow(world: World, eq: Equity, amount: number): number {
 
 export function tickStockMarket(world: World): void {
   if (Object.keys(world.equities).length === 0) return;   // no market initialized
+
+  // Phase 1 order-book step: age old MM quotes, post fresh ones for each
+  // equity, then match any crossing limit orders. In Phase 1 only the
+  // synthetic MM posts limit orders (player trades are market orders that
+  // execute at trade-time, not on tick boundaries), so matchBook is mostly
+  // a no-op here — but keeping it ensures any future limit-order agents
+  // settle every tick.
+  tickMarketMakers(world);
+  for (const eq of Object.values(world.equities)) {
+    matchBook(ensureOrderBook(world, eq.id), world.tick);
+  }
+
+  // EMA toward fundamental — fallback movement when no trades printed this
+  // tick. When a player trade ran between ticks, eq.price was updated to the
+  // last fill, so the EMA blends from there toward fundamental.
   for (const eq of Object.values(world.equities)) {
     recomputeEquityPrice(world, eq);
   }

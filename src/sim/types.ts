@@ -346,4 +346,49 @@ export interface World {
   // syndicate definitions themselves. Initialized in createWorld.
   equities: Record<EquityId, Equity>;
   syndicates: Record<SyndicateId, Syndicate>;
+  // Order books: one per equity. Phase 1 of the order-book migration —
+  // populated lazily by ensureOrderBook() and ticked alongside the rest of
+  // the stock market. nextOrderId is a global monotonic counter for stable
+  // ordering / determinism.
+  orderBooks?: Record<EquityId, OrderBook>;
+  nextOrderId?: number;
+}
+
+// --- order book ----------------------------------------------------------
+// Phase 1 of the real-market migration. Each equity has a book of resting
+// limit orders; market orders walk the book at fill time. See
+// docs/STOCK_ORDERBOOK.md for the full design.
+
+export type OrderId = string;
+export type OrderSide = "bid" | "ask";
+// "synthetic-mm" is the built-in market-maker that quotes both sides each
+// tick to keep books liquid in Phase 1. Phase 2 will introduce real ship
+// agents with TraderId-typed agentIds.
+export type AgentId = TraderId | "synthetic-mm";
+
+export interface Order {
+  id: OrderId;
+  equityId: EquityId;
+  side: OrderSide;
+  qty: number;          // remaining (decrements as it fills)
+  limitPrice: number;
+  agentId: AgentId;     // who placed it (used for self-trade prevention + ledger attribution)
+  postedAt: number;     // world.tick when the order entered the book; ties broken by id afterward
+  ttl?: number;         // ticks-to-live; if undefined, sits until matched or cancelled
+}
+
+export interface OrderBook {
+  equityId: EquityId;
+  bids: Order[];        // descending price (best at index 0); ties broken by postedAt then id
+  asks: Order[];        // ascending price (best at index 0); same tie-break
+}
+
+export interface BookTrade {
+  equityId: EquityId;
+  qty: number;
+  price: number;        // the resting order's limit price (taker pays the resting maker's quote)
+  buyer: AgentId;
+  seller: AgentId;
+  takerSide: OrderSide; // which side aggressed
+  tick: number;
 }
