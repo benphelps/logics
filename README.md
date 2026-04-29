@@ -1,6 +1,19 @@
 # Logics
 
-A spreadsheet-style, single-player browser game where a dense market simulation is the primary thing you interact with — not a backdrop. You run a fleet across a small universe of stations; the universe is already running an economy with NPC traders moving goods between specialized ports, and you make money by reading the same numbers they're reading. On top of the goods market sits an equity exchange where every station and a handful of NPC syndicates trade as listed companies you can go long or short.
+An easy-to-play space logistics trading idle clicker. You start by running a single hauler: read prices, buy cargo, ship it to a better market, collect contracts, and reinvest. As the game opens up, the same choices become automated routes, crew-managed ships, upgrades, and passive market positions.
+
+The core is still a dense single-player market simulation. Stations produce and consume goods, NPC traders move cargo, treasuries close the money loop, and an equity exchange sits on top of the goods market. The player-facing direction is simpler: clear shipping actions first, automation and optimization second.
+
+## Website
+
+The project includes a single-page website for presenting the game:
+
+- `website.html` — marketing/site entry point
+- `src/site/` — React + CSS for the website
+- `public/site/logics-mark.svg` and `public/site/logics-wordmark.svg` — small-size logo assets
+- `public/site/screenshots/` — gameplay screenshots captured from the running app
+
+Run the Vite dev server and open `http://localhost:5173/website.html` (or the port Vite selects). The playable game remains at `index.html` / `/`.
 
 ## Stack
 
@@ -51,6 +64,8 @@ src/ui/                           Vite/React app
   views/StockMarketView.tsx       equity exchange (tape, positions, trades, sidebar trade controls)
   store.ts                        zustand store with sim actions
   saveGames.ts                    localStorage persistence + migration
+src/site/                         single-page website for the game
+public/site/                      website logo + gameplay screenshots
 ```
 
 ## Docs
@@ -58,4 +73,5 @@ src/ui/                           Vite/React app
 - [`docs/VISION.md`](docs/VISION.md) — what the game is, what it isn't, the design pillars
 - [`docs/SIM.md`](docs/SIM.md) — current simulation model in detail (economy, geometry, ships, supply chains, treasuries, equity exchange)
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — what's done, what's queued, what's deferred, and what we've discussed but parked
+- [`docs/WEBSITE.md`](docs/WEBSITE.md) — website entry point, assets, and screenshot refresh notes
 - [`docs/AUDIT_REPORT.md`](docs/AUDIT_REPORT.md) — before/after metrics for the Tier-3 stability + stock market work

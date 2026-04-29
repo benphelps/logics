@@ -2,11 +2,23 @@
 
 ## What this game is
 
-A **dense, spreadsheet-style** single-player browser game about running a fleet inside a **living market economy**. The economy is the protagonist. Ships, jobs, fuel, trade routes — everything else exists to give the player levers on the simulation.
+An **easy-to-play space logistics trading idle clicker** about running a fleet inside a **living market economy**. The first minute should be readable: buy cargo, ship it, sell it, take the next better job. The long game is automation: crew, upgrades, auto-pilot behavior, route tuning, and passive market positions that keep earning while the player optimizes.
+
+The economy is still the protagonist. Ships, jobs, fuel, trade routes, crew, and the clicker-style interactions exist to give the player levers on the simulation.
 
 Inspirations: Patrician, Port Royale, Offworld Trading Company, X-series. Setting: late-era / space.
 
 ## Pillars
+
+### 0. Simple actions open the door
+
+The player-facing loop should be approachable before it is deep:
+- Click a clear profitable action
+- See cargo, credits, fuel, and travel change immediately
+- Repeat enough times to understand the trade lane
+- Automate the lane once it becomes routine
+
+The game can expose dense numbers, but it should not require spreadsheet mastery in the first session. The grid is a power tool; the opening loop is shipping.
 
 ### 1. The economy is the game
 
@@ -42,6 +54,16 @@ We prefer mechanisms that produce interesting behavior to scripted events that s
 - Ironhold antimatter trickles outward only because traders carry it as fuel — there's no "spread antimatter" routine.
 - Tier-2 production at Ironhold throttles when the parts-from-ore tier-1 chain throttles. Nobody wired this up; it falls out of the input-gating logic.
 
+### 6. Automation is progression
+
+The idle/clicker layer should not be a separate currency fountain. It should automate real game actions:
+- Captains keep ships moving
+- Navigators improve route planning and multi-good contract loads
+- Mechanics reduce upkeep friction
+- Upgrades increase the volume, range, speed, and resilience of the same shipping loop
+
+Automation should make the player's earlier manual decisions feel validated, not obsolete.
+
 ## What this game isn't
 
 - **Not real-time-strategy**. No combat as a primary loop. (Escort jobs may have damage state, but combat is not the game.)
@@ -51,7 +73,7 @@ We prefer mechanisms that produce interesting behavior to scripted events that s
 
 ## The look (planned)
 
-A **dense grid**. Think AG-Grid / TanStack Table — multiple sortable, filterable tables of: markets, ships, jobs, contracts, prices over time. No 3D, no cinematic camera, no NPC dialogue trees. The drama is in the columns.
+A **dense, industrial command UI** with readable click targets. Think compact bridge panels, sortable market tables, route cards, job boards, and status strips. No 3D, no cinematic camera, no NPC dialogue trees. The drama is in prices, cargo holds, route timing, and automation decisions.
 
 A small map view may exist for spatial intuition (we have positions on locations now), but it's a sidebar, not the main act.
 
@@ -62,6 +84,7 @@ A small map view may exist for spatial intuition (we have positions on locations
 - Player runs persistent contracts (subscribe to deliver X to Y on schedule, instead of one-off jobs)
 - Player has reputation/standing with factions, modulating port access and prices
 - Player holds a portfolio of station and syndicate equities, riding NPC arbitrage as a passive return stream alongside their own active trading
+- Player has automated enough routine shipping that their active attention shifts to exceptions: shortages, new chains, bad lanes, and investment opportunities
 - The universe has grown — more locations, more goods, more chains — but a unit of grain still costs roughly what it cost on day one
 
 The work to make late-game feel different is **adding scale**, not adding price inflation. New locations, new goods, new tiers, new ship classes, new contract types.

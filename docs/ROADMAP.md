@@ -42,6 +42,7 @@ Listed in commit order. Each was scoped tight, landed with tests, and updated th
 | Contract-aware engine | `listTradeOptions` folds in unaccepted-shortage bonuses for player ships that can realize them (manual or auto+nav). Accepted-contract bonus uses `(reward + penalty)/qty` so commitment carries weight. `cargoLoadedCandidates` does the same for travel-to-sell. New remote-Case-A: when carrying a contract good, surface "Accept and head to X" as a candidate. Honor-commitments override force-promotes at-destination contract sells. Sell hint targets a specific good (not all cargo). |
 | Auto-pilot multi-good loadout | With a navigator, `stepTrader` pre-loads accepted-contract goods (high-tier first) before the primary buy when a buy_for_route's destination matches an accepted contract for a different good. One trip, multiple contracts fulfilled. |
 | Cargo reservation in `listTradeOptions` | When sizing the primary buy for manual guidance or auto+navigator, the engine reserves cargo for accepted-contract goods at the same destination available at this source. Recommended `hint.qty` shrinks; the suggested Buy button uses it (not bay-max), leaving room for the contract good. |
+| Single-page website + logo | Added `website.html` with a standalone React/CSS site that presents Logics as a space logistics trading idle clicker. Added compact SVG logo assets in `public/site/` and captured live gameplay screenshots into `public/site/screenshots/`. |
 
 ---
 
@@ -83,6 +84,10 @@ Single dense market table — locations down, goods across, with stock/price cel
 ### Ship traits / upgrades scaffolding
 Generalize the multi-fuel `fuelTypes` pattern: ship has slotted modules (engine, hull, cargo bay, sensors, life support). Each module has stats; player visits a shipyard to upgrade. Multi-fuel is already an example — `fuelTypes` swap is exactly the upgrade flow.
 **Why not yet**: needs UI to be useful. Slot on top of player layer.
+
+### Clicker-friendly automation feedback
+The current mechanics support manual shipping and crew-gated auto-pilot, but the feedback should feel more incremental and idle-friendly. Add clearer route earnings, per-ship earning rates, automation unlock moments, and compact "next best action" surfaces that make repeated shipping decisions satisfying before the player opens the dense tables.
+**Why not yet**: this is mostly UX polish and progression framing. It should follow the current bridge/contract flows so the signals are tied to real sim actions, not a separate meta layer.
 
 ---
 
