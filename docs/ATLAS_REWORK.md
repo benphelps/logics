@@ -40,17 +40,35 @@ Source data already on hand:
   fleet-activity column (`docked + inbound` with subtitle splitting
   the two), all with a small caps header row that matches stocks.
 
-## Phase 2 — second pass
+## Phase 2 — layout flip + tabs + table trim
+
+- [x] Layout flip: detail panel takes the full left half (50%), right
+  half stacks the map (top, half-height) over a tabbed sheet (bottom,
+  half-height). The map is now ~5× the previous height so ship plotting
+  is actually readable.
+- [x] Sheet tabs: Systems / Ships using the shared `.bridge-card-tabs`
+  + `.bridge-tab` classes (matches the stocks PnO tabs).
+- [x] Systems table trimmed to 6 columns: Station, Class, Ships
+  (docked + inbound), Jobs, Pressure (stacked short↓ / surplus↑ /
+  avg-skew %), Focus chip. Drops the old Profile (tech/pop) and Goods
+  (export/import flow) columns — neither drives a trade decision and
+  both clutter the row.
+- [x] Ships table: per-trader row with name, state pill, route
+  (origin → dest for transit, location for idle), ETA, cargo bar +
+  percent, pilot pill. Player ships are flagged and float to the top.
+
+## Phase 3 — possible follow-ups
 
 - Per-ship accordion expansion (route preview, ETA, cargo manifest,
   contract acceptance, retarget control).
 - Lane traffic by direction (split the line into outbound vs inbound
   per ship, color-coded).
-- Filter chips (faction / kind / has-shortage) above the table.
+- Filter chips (faction / kind / has-shortage / has-jobs) above the
+  Systems sheet; pilot/state filters on the Ships sheet.
 - Cleanup: remove dead CSS from the previous detail-panel design
   (.atlas-stat-grid, .atlas-coords, .atlas-section, .atlas-market-list,
-  .atlas-market-row, .atlas-pressure, .atlas-summary*) and the unused
-  AtlasSummary card layout.
+  .atlas-market-row, .atlas-pressure, .atlas-summary*) and the now-
+  unused .atlas-station-table column variants.
 
 ## Notes / decisions
 

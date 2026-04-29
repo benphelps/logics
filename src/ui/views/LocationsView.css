@@ -109,7 +109,11 @@
 .atlas-grid {
   flex: 1;
   display: grid;
-  grid-template-columns: minmax(720px, 1fr) minmax(300px, 0.32fr);
+  /* 50/50 split: detail panel (full height) on the left, map+sheet
+     stack on the right. Mirrors the markets view's two-column shell
+     but with the proportions inverted and sized for parity. */
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: minmax(0, 1fr);
   gap: 14px;
   min-height: 0;
 }
@@ -131,12 +135,24 @@
   overflow: hidden;
 }
 
+/* Right column: map fills the upper half, sheet (Systems / Ships
+   tabs) fills the lower half. The map gets noticeably more vertical
+   real estate now that ship plotting is in. */
 .atlas-side {
   display: grid;
-  grid-template-rows: 280px minmax(0, 1fr);
+  grid-template-rows: 1fr 1fr;
   gap: 14px;
   min-width: 0;
   min-height: 0;
+}
+
+.atlas-detail-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  padding: 24px;
 }
 
 .atlas-map-panel {
@@ -295,6 +311,240 @@
 .atlas-station-table .col-flow { width: 160px; }
 .atlas-station-table .col-pressure-num { width: 64px; }
 .atlas-station-table .col-focus { width: 110px; }
+
+/* Tabbed sheet at the bottom of the right column. The bridge-card-tabs
+   look (defined in PlayerView.css) is shared with the stocks view's
+   Positions/Orders tabs for visual continuity. */
+.atlas-sheet-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 3px;
+  background: var(--atlas-surface-soft);
+  border-bottom: 1px solid var(--atlas-line);
+}
+
+.atlas-sheet-tabs .bridge-tab {
+  flex: 1 1 0;
+  justify-content: center;
+}
+
+.atlas-tab-count {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-faint);
+  font-size: 9.5px;
+  font-weight: 700;
+}
+
+/* New trimmed Systems/Ships sheet — shared layout with .atlas-station-
+   table where appropriate (font-size, header style, hover/active
+   highlight) but with its own column widths per tab. */
+.atlas-sheet-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+}
+
+.atlas-sheet-table th,
+.atlas-sheet-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--atlas-line);
+  vertical-align: middle;
+}
+
+.atlas-sheet-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #171d24;
+  color: var(--text-faint);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.atlas-sheet-table th.numeric,
+.atlas-sheet-table td.numeric {
+  text-align: right;
+}
+
+.atlas-sheet-table tbody tr {
+  cursor: pointer;
+}
+
+.atlas-sheet-table tbody tr:hover,
+.atlas-sheet-table tbody tr.active {
+  background: rgba(79, 182, 255, 0.07);
+}
+
+.atlas-sheet-table tbody tr.active {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+/* Systems tab columns. */
+.atlas-sheet-table .col-station { width: 180px; }
+.atlas-sheet-table .col-kind { width: 84px; }
+.atlas-sheet-table .col-activity { width: 90px; }
+.atlas-sheet-table .col-jobs { width: 56px; }
+.atlas-sheet-table .col-pressure { width: 130px; }
+.atlas-sheet-table .col-focus { width: 110px; }
+
+/* Ships tab columns. */
+.atlas-sheet-table .col-ship { width: 130px; }
+.atlas-sheet-table .col-state { width: 78px; }
+.atlas-sheet-table .col-route { width: 1fr; min-width: 160px; }
+.atlas-sheet-table .col-eta { width: 56px; }
+.atlas-sheet-table .col-cargo { width: 110px; }
+.atlas-sheet-table .col-pilot { width: 70px; }
+
+/* Sub-text inside a numeric activity cell — small caps tied to the
+   primary value. */
+.atlas-cell-sub {
+  display: block;
+  margin-top: 1px;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+
+/* Pressure cell: stacks short/surplus/skew with tone-coded inline pills. */
+.atlas-pressure-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.atlas-pressure-cell .good { color: var(--good); }
+.atlas-pressure-cell .bad { color: var(--bad); }
+
+/* Ship row pieces. */
+.atlas-ship-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.atlas-ship-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.atlas-ship-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 8.5px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  background: rgba(79, 182, 255, 0.18);
+  color: var(--accent);
+}
+
+.atlas-state-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 18px;
+  padding: 0 8px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-dim);
+}
+
+.atlas-state-pill.transit {
+  background: rgba(118, 199, 255, 0.15);
+  color: var(--accent);
+}
+
+.atlas-state-pill.idle {
+  background: rgba(108, 217, 154, 0.15);
+  color: var(--good);
+}
+
+.atlas-route {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 11px;
+}
+
+.atlas-route-arrow {
+  color: var(--text-faint);
+}
+
+.atlas-route-cell {
+  overflow: hidden;
+}
+
+.atlas-route span:not(.atlas-route-arrow) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Cargo cell with a tiny progress bar + percentage. */
+.atlas-cargo-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.atlas-cargo-track {
+  flex: 1;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.atlas-cargo-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+}
+
+.atlas-pilot-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 18px;
+  padding: 0 8px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-dim);
+}
+
+.atlas-pilot-pill.pilot-manual {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+.atlas-pilot-pill.pilot-auto {
+  background: rgba(108, 217, 154, 0.15);
+  color: var(--good);
+}
 
 .atlas-station-table th,
 .atlas-station-table td {

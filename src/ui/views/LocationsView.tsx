@@ -83,6 +83,8 @@ export function LocationsView() {
   const selectTrader = useStore((s) => s.selectTrader);
   useStore((s) => s.tickEpoch);
 
+  const [sheetTab, setSheetTab] = useState<"systems" | "ships">("systems");
+
   const locations = Object.values(world.locations);
   const playerShipIds = world.player?.shipIds ?? [];
   const playerShip = selectedTrader && playerShipIds.includes(selectedTrader)
@@ -104,101 +106,21 @@ export function LocationsView() {
   return (
     <section className="atlas-view">
       <div className="atlas-grid">
-        <section className="atlas-sheet-panel">
-          <div className="atlas-panel-head art-panel-head" style={artCardStyle(headerArtUrl("atlasStations"))}>
-            <div>
-              <span className="atlas-panel-label">Stations</span>
-              <span className="dim">{locations.length} known ports, sorted by route pressure</span>
-            </div>
-            <div className="atlas-sheet-legend">
-              <span><span className="atlas-pressure-dot short" /> shortages</span>
-              <span><span className="atlas-pressure-dot surplus" /> surplus</span>
-            </div>
-          </div>
-
-          <div className="atlas-table-scroll">
-            <table className="atlas-station-table">
-              <colgroup>
-                <col className="col-station" />
-                <col className="col-kind" />
-                <col className="col-profile" />
-                <col className="col-traffic" />
-                <col className="col-flow" />
-                <col className="col-pressure-num" />
-                <col className="col-pressure-num" />
-                <col className="col-pressure-num" />
-                <col className="col-focus" />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th>Station</th>
-                  <th>Class</th>
-                  <th>Profile</th>
-                  <th>Activity</th>
-                  <th>Goods</th>
-                  <th className="numeric">Short</th>
-                  <th className="numeric">Surplus</th>
-                  <th className="numeric">Skew</th>
-                  <th>Focus</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sheetRows.map(row => {
-                  const selectedRow = selected?.id === row.loc.id;
-                  return (
-                    <tr
-                      key={row.loc.id}
-                      className={selectedRow ? "active" : ""}
-                      onClick={() => selectLocation(row.loc.id)}
-                    >
-                      <td>
-                        <span className="atlas-station-cell">
-                          <span className={`atlas-kind-dot atlas-kind-${row.kind}`} />
-                          <span>
-                            <span className="atlas-station-name">{row.loc.name}</span>
-                            <span className="atlas-station-sub dim">{row.loc.traits.faction ?? "Independent"}</span>
-                          </span>
-                        </span>
-                      </td>
-                      <td><span className={`atlas-kind atlas-kind-${row.kind}`}>{kindLabel(row.kind)}</span></td>
-                      <td>
-                        <span className="atlas-stack">
-                          <span className="mono">L{row.loc.traits.techLevel}</span>
-                          <span className="mono dim">{formatPopulation(row.loc.population)}</span>
-                        </span>
-                      </td>
-                      <td>
-                        <span className="atlas-stack">
-                          <span className="mono">{row.counts.docked}+{row.counts.inbound} ships</span>
-                          <span className="mono dim">{row.counts.routes} routes · {row.counts.jobs} jobs</span>
-                        </span>
-                      </td>
-                      <td>
-                        <span className="atlas-stack atlas-flow-stack">
-                          <FlowText world={world} loc={row.loc} goods={row.loc.primaryExports} />
-                          <FlowText world={world} loc={row.loc} goods={row.loc.primaryImports} />
-                        </span>
-                      </td>
-                      <td className="numeric mono">
-                        <span className={row.pressure.short > 0 ? "bad" : "dim"}>{row.pressure.short}</span>
-                      </td>
-                      <td className="numeric mono">
-                        <span className={row.pressure.surplus > 0 ? "good" : "dim"}>{row.pressure.surplus}</span>
-                      </td>
-                      <td className="numeric mono">
-                        {row.pressure.avgSkew > 0
-                          ? <span className={row.pressure.tone}>{(row.pressure.avgSkew * 100).toFixed(1)}%</span>
-                          : <span className="dim">—</span>}
-                      </td>
-                      <td>
-                        <span className={`atlas-focus ${row.pressure.tone}`}>{row.pressure.focusGood}</span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+        <section className="atlas-detail-panel">
+          {selected ? (
+            <DetailPanel
+              world={world}
+              loc={selected}
+              counts={selectedCounts}
+              marketRowsTop={selectedMarket}
+              stationKind={stationKind(selected)}
+              ships={ships}
+              selectedTraderId={selectedTrader}
+              onSelectTrader={selectTrader}
+            />
+          ) : (
+            <div className="atlas-detail-empty dim">Select a station from the map or list.</div>
+          )}
         </section>
 
         <aside className="atlas-side">
@@ -225,19 +147,40 @@ export function LocationsView() {
             />
           </section>
 
-          <section className="atlas-detail-panel">
-            {selected && (
-              <DetailPanel
-                world={world}
-                loc={selected}
-                counts={selectedCounts}
-                marketRowsTop={selectedMarket}
-                stationKind={stationKind(selected)}
-                ships={ships}
-                selectedTraderId={selectedTrader}
-                onSelectTrader={selectTrader}
-              />
-            )}
+          <section className="atlas-sheet-panel">
+            <div className="atlas-sheet-tabs bridge-card-tabs">
+              <button
+                type="button"
+                className={`bridge-tab ${sheetTab === "systems" ? "active" : ""}`}
+                onClick={() => setSheetTab("systems")}
+              >
+                Systems <span className="atlas-tab-count">{sheetRows.length}</span>
+              </button>
+              <button
+                type="button"
+                className={`bridge-tab ${sheetTab === "ships" ? "active" : ""}`}
+                onClick={() => setSheetTab("ships")}
+              >
+                Ships <span className="atlas-tab-count">{Object.values(world.traders).length}</span>
+              </button>
+            </div>
+
+            <div className="atlas-table-scroll">
+              {sheetTab === "systems" ? (
+                <SystemsTable
+                  rows={sheetRows}
+                  selectedId={selected?.id ?? null}
+                  onSelect={selectLocation}
+                />
+              ) : (
+                <ShipsTable
+                  world={world}
+                  selectedTraderId={selectedTrader}
+                  onSelectTrader={selectTrader}
+                  onSelectLocation={selectLocation}
+                />
+              )}
+            </div>
           </section>
         </aside>
       </div>
@@ -568,6 +511,195 @@ function buildLaneTraffic(world: World): Map<string, LaneTraffic> {
 // Detail panel for the focused station — uses the same fleet-card
 // patterns as the stock info column: art-backed panel head, KPI grid,
 // trade-helper-section blocks separated by tight section titles.
+// Systems sheet — trimmed columns focused on actionable trade signals.
+// Drops the old Profile (tech/pop) and Goods stack (which clutter the
+// row without driving decisions) and merges the four-cell pressure
+// breakout into a single Pressure column with short/surplus counts +
+// average price skew.
+function SystemsTable(props: {
+  rows: StationSheetRow[];
+  selectedId: LocationId | null;
+  onSelect: (id: LocationId) => void;
+}) {
+  return (
+    <table className="atlas-sheet-table">
+      <colgroup>
+        <col className="col-station" />
+        <col className="col-kind" />
+        <col className="col-activity" />
+        <col className="col-jobs" />
+        <col className="col-pressure" />
+        <col className="col-focus" />
+      </colgroup>
+      <thead>
+        <tr>
+          <th>Station</th>
+          <th>Class</th>
+          <th className="numeric">Ships</th>
+          <th className="numeric">Jobs</th>
+          <th>Pressure</th>
+          <th>Focus</th>
+        </tr>
+      </thead>
+      <tbody>
+        {props.rows.map(row => {
+          const selectedRow = props.selectedId === row.loc.id;
+          const totalShips = row.counts.docked + row.counts.inbound;
+          return (
+            <tr
+              key={row.loc.id}
+              className={selectedRow ? "active" : ""}
+              onClick={() => props.onSelect(row.loc.id)}
+            >
+              <td>
+                <span className="atlas-station-cell">
+                  <span className={`atlas-kind-dot atlas-kind-${row.kind}`} />
+                  <span>
+                    <span className="atlas-station-name">{row.loc.name}</span>
+                    <span className="atlas-station-sub dim">{row.loc.traits.faction ?? "Independent"}</span>
+                  </span>
+                </span>
+              </td>
+              <td><span className={`atlas-kind atlas-kind-${row.kind}`}>{kindLabel(row.kind)}</span></td>
+              <td className="numeric mono">
+                <span className={totalShips > 0 ? "" : "dim"}>{totalShips}</span>
+                <span className="atlas-cell-sub dim">{row.counts.docked}d + {row.counts.inbound}i</span>
+              </td>
+              <td className="numeric mono">
+                <span className={row.counts.jobs > 0 ? "" : "dim"}>{row.counts.jobs}</span>
+              </td>
+              <td>
+                <span className="atlas-pressure-cell">
+                  {row.pressure.short > 0 && <span className="bad">{row.pressure.short}↓</span>}
+                  {row.pressure.surplus > 0 && <span className="good">{row.pressure.surplus}↑</span>}
+                  {row.pressure.avgSkew > 0 && (
+                    <span className={row.pressure.tone === "short" ? "bad" : row.pressure.tone === "surplus" ? "good" : "dim"}>
+                      {(row.pressure.avgSkew * 100).toFixed(0)}%
+                    </span>
+                  )}
+                  {row.pressure.short === 0 && row.pressure.surplus === 0 && (
+                    <span className="dim">balanced</span>
+                  )}
+                </span>
+              </td>
+              <td>
+                <span className={`atlas-focus ${row.pressure.tone}`}>{row.pressure.focusGood}</span>
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+// Ships sheet — every trader in the world, focused on actionable
+// fields: name, status (docked vs in-transit with origin → dest), ETA
+// for transit, cargo fill ratio, pilot mode. Click a row to pin the
+// trader (and jump to its current/destination station).
+function ShipsTable(props: {
+  world: World;
+  selectedTraderId: TraderId | null;
+  onSelectTrader: (id: TraderId | null) => void;
+  onSelectLocation: (id: LocationId) => void;
+}) {
+  const playerIds = new Set(props.world.player?.shipIds ?? []);
+  const ships = Object.values(props.world.traders).slice().sort((a, b) => {
+    // Player ships first, then transit (visible motion), then by name.
+    const ap = playerIds.has(a.id) ? 0 : 1;
+    const bp = playerIds.has(b.id) ? 0 : 1;
+    if (ap !== bp) return ap - bp;
+    if (a.state !== b.state) return a.state === "transit" ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+  return (
+    <table className="atlas-sheet-table">
+      <colgroup>
+        <col className="col-ship" />
+        <col className="col-state" />
+        <col className="col-route" />
+        <col className="col-eta" />
+        <col className="col-cargo" />
+        <col className="col-pilot" />
+      </colgroup>
+      <thead>
+        <tr>
+          <th>Ship</th>
+          <th>State</th>
+          <th>Where</th>
+          <th className="numeric">ETA</th>
+          <th className="numeric">Cargo</th>
+          <th>Pilot</th>
+        </tr>
+      </thead>
+      <tbody>
+        {ships.map(t => {
+          const isSelected = props.selectedTraderId === t.id;
+          const isPlayer = playerIds.has(t.id);
+          const cargoQty = t.cargo.reduce((s, l) => s + l.qty, 0);
+          const cargoPct = t.capacity > 0 ? (cargoQty / t.capacity) * 100 : 0;
+          const cur = props.world.locations[t.location]?.name ?? "—";
+          const dst = t.destination ? props.world.locations[t.destination]?.name ?? "—" : null;
+          return (
+            <tr
+              key={t.id}
+              className={`${isSelected ? "active" : ""} ${isPlayer ? "player" : ""} ${t.state}`}
+              onClick={() => {
+                props.onSelectTrader(t.id);
+                if (t.state === "idle") props.onSelectLocation(t.location);
+                else if (t.destination) props.onSelectLocation(t.destination);
+              }}
+            >
+              <td>
+                <span className="atlas-ship-cell">
+                  {isPlayer && <span className="atlas-ship-pill player">YOU</span>}
+                  <span className="atlas-ship-name">{t.name}</span>
+                </span>
+              </td>
+              <td>
+                <span className={`atlas-state-pill ${t.state}`}>
+                  {t.state === "transit" ? "TRANSIT" : "DOCKED"}
+                </span>
+              </td>
+              <td className="atlas-route-cell">
+                {t.state === "transit" && dst ? (
+                  <span className="atlas-route">
+                    <span className="dim">{cur}</span>
+                    <span className="atlas-route-arrow">→</span>
+                    <span>{dst}</span>
+                  </span>
+                ) : (
+                  <span className="mono">{cur}</span>
+                )}
+              </td>
+              <td className="numeric mono">
+                {t.state === "transit" ? `${t.ticksRemaining}t` : <span className="dim">—</span>}
+              </td>
+              <td className="numeric mono">
+                <CargoBar pct={cargoPct} qty={cargoQty} cap={t.capacity} />
+              </td>
+              <td>
+                <span className={`atlas-pilot-pill pilot-${t.pilot}`}>{t.pilot}</span>
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+function CargoBar({ pct, qty, cap }: { pct: number; qty: number; cap: number }) {
+  return (
+    <span className="atlas-cargo-cell" title={`${qty.toFixed(0)} / ${cap}`}>
+      <span className="atlas-cargo-track">
+        <span className="atlas-cargo-fill" style={{ width: `${Math.min(100, pct)}%` }} />
+      </span>
+      <span>{pct.toFixed(0)}%</span>
+    </span>
+  );
+}
+
 function DetailPanel(props: {
   world: World;
   loc: LocationDef;
