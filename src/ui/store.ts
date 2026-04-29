@@ -15,7 +15,7 @@ import {
 } from "../sim/traders";
 import { abandonJob, acceptJob, collectTradeJob } from "../sim/jobs";
 import { fireCrew, hireCrew, recomputeShipStats } from "../sim/crew";
-import { abandonPosition, buyShares, cancelPlayerLimit, coverShares, placeLimitBuy, placeLimitSell, sellShares, setStopLoss, setTakeProfit, shortShares } from "../sim/stock";
+import { abandonPosition, adjustPlayerLimit, buyShares, cancelPlayerLimit, coverShares, placeLimitBuy, placeLimitSell, sellShares, setStopLoss, setTakeProfit, shortShares } from "../sim/stock";
 import {
   createGameSlot,
   deleteGameSlot,
@@ -148,6 +148,7 @@ interface UiState {
   placeLimitBuy: (equityId: EquityId, qty: number, limitPrice: number) => void;
   placeLimitSell: (equityId: EquityId, qty: number, limitPrice: number) => void;
   cancelLimit: (equityId: EquityId, orderId: string) => void;
+  adjustLimit: (equityId: EquityId, orderId: string, qty: number, price: number) => void;
 }
 
 export const useStore = create<UiState>((set, get) => {
@@ -417,6 +418,11 @@ export const useStore = create<UiState>((set, get) => {
     cancelLimit: (equityId, orderId) => {
       const w = get().world;
       const r = cancelPlayerLimit(w, equityId, orderId, selectedPlayerShipId(w, get().selectedTrader));
+      persistCurrentGame({ lastError: r.ok ? null : r.reason });
+    },
+    adjustLimit: (equityId, orderId, qty, price) => {
+      const w = get().world;
+      const r = adjustPlayerLimit(w, equityId, orderId, qty, price, selectedPlayerShipId(w, get().selectedTrader));
       persistCurrentGame({ lastError: r.ok ? null : r.reason });
     },
   };

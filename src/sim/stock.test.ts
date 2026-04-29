@@ -4,6 +4,7 @@ import { tickN, tickWorld } from "./tick";
 import {
   abandonPosition,
   buyShares,
+  adjustPlayerLimit,
   cancelPlayerLimit,
   checkPositionTriggers,
   coverShares,
@@ -780,5 +781,60 @@ describe("stock market — Phase 4 player limit orders", () => {
     expect(limits.length).toBe(2);
     expect(limits.every(o => o.side === "bid")).toBe(true);
     expect(limits.every(o => o.equityId === eq.id)).toBe(true);
+  });
+});
+
+describe("stock market — adjust limit order", () => {
+  it("adjustPlayerLimit cancels old and creates a new order with new qty/price", () => {
+    const w = createWorld();
+    const ship = w.traders[w.player!.shipIds[0]];
+    ship.funds = 1_000_000;
+    const eq = listEquities(w).find(e => e.kind === "syndicate")!;
+
+    const place = placeLimitBuy(w, eq.id, 10, 100);
+    expect(place.ok).toBe(true);
+    if (!place.ok) return;
+    const oldId = place.orderId;
+    const fundsAfterPlace = ship.funds;
+
+    const adjusted = adjustPlayerLimit(w, eq.id, oldId, 20, 90);
+    expect(adjusted.ok).toBe(true);
+    if (!adjusted.ok) return;
+    expect(adjusted.orderId).not.toBe(oldId);
+
+    // Old order is gone; new order is in the book at new qty/price.
+    const limits = listPlayerLimits(w);
+    expect(limits.find(o => o.orderId === oldId)).toBeUndefined();
+    const adjustedView = limits.find(o => o.orderId === adjusted.orderId);
+    expect(adjustedView).toBeDefined();
+    expect(adjustedView!.qty).toBe(20);
+    expect(adjustedView!.limitPrice).toBe(90);
+
+    // Funds: refunded the old reservation (10*100*1.01 = 1010), then
+    // debited the new (20*90*1.01 = 1818). Net: started with X, ended
+    // with X - 1818 (since we added back 1010 then took 1818).
+    const expectedFunds = fundsAfterPlace + 10 * 100 * (1 + BROKER_FEE_RATE) - 20 * 90 * (1 + BROKER_FEE_RATE);
+    expect(ship.funds).toBeCloseTo(expectedFunds, 5);
+  });
+
+  it("adjustPlayerLimit on insufficient funds restores the original order", () => {
+    const w = createWorld();
+    const ship = w.traders[w.player!.shipIds[0]];
+    const eq = listEquities(w).find(e => e.kind === "syndicate")!;
+
+    ship.funds = 10 * 100 * (1 + BROKER_FEE_RATE) + 100;  // can afford the original but not a 100x scale
+    const place = placeLimitBuy(w, eq.id, 10, 100);
+    expect(place.ok).toBe(true);
+    if (!place.ok) return;
+    const oldId = place.orderId;
+
+    // Try to adjust to something we can't afford.
+    const adjusted = adjustPlayerLimit(w, eq.id, oldId, 1000, 100);
+    expect(adjusted.ok).toBe(false);
+
+    // Original order should still be in the book (rollback).
+    const limits = listPlayerLimits(w);
+    const restored = limits.find(o => o.qty === 10 && o.limitPrice === 100);
+    expect(restored).toBeDefined();
   });
 });

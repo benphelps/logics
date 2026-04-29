@@ -9,12 +9,14 @@ import {
   equityTradeHopDistance,
   equityTradeStation,
   listEquities,
+  listPlayerLimits,
   listPositions,
   listTradeRecords,
   maxShortableShares,
   priceChangePct,
   totalUnrealizedPnl,
   unrealizedPnl,
+  type PlayerLimitView,
 } from "../../sim/stock";
 import { headerArtUrl, shipArtUrl, stationArtUrl, stationKind, stationKindLabel, stationScale, stationScaleLabel, stationSubtype, stationSubtypeLabel } from "../art";
 import "./StockMarketView.css";
@@ -91,6 +93,9 @@ export function StockMarketView() {
     }
   }, [focusedPositionId, positions]);
 
+  void activePanel; void setActivePanel; void focusedPositionId; void setFocusedPositionId;
+  void detailArtUrl; void unrealizedTotal; void longCount; void shortCount;
+
   return (
     <section className="stocks-view">
       {lastError && (
@@ -99,135 +104,572 @@ export function StockMarketView() {
         </div>
       )}
 
-      <div className="stocks-layout">
-        <div className={`stocks-left ${focusedPositionId ? "has-focus" : ""}`}>
-          <section className="stocks-main-panel">
-            <div className="stocks-card-tabs stocks-main-tabs">
-              <button className={`stock-main-tab ${activePanel === "tape" ? "active" : ""}`} onClick={() => setActivePanel("tape")}>
-                Tape <span className="stock-tab-count">{rows.length}</span>
-              </button>
-              <button className={`stock-main-tab ${activePanel === "positions" ? "active" : ""}`} onClick={() => setActivePanel("positions")}>
-                Positions <span className="stock-tab-count">{positions.length}</span>
-              </button>
-              <button className={`stock-main-tab ${activePanel === "trades" ? "active" : ""}`} onClick={() => setActivePanel("trades")}>
-                Trades <span className="stock-tab-count">{trades.length}</span>
-              </button>
-            </div>
+      <div className="stocks-shell">
+        <aside className="stocks-shell-left">
+          <EquitySelector
+            rows={rows}
+            tapeRows={tapeRows}
+            selectedId={selectedId}
+            onSelect={select}
+          />
+          <PnoPanel
+            world={world}
+            positions={positions}
+            trades={trades}
+            shipId={playerShipId}
+            cash={cash}
+            docked={docked}
+            onSelectEquity={select}
+            onSell={(eqId, qty) => sellShares(eqId, qty)}
+            onCover={(eqId, qty) => coverShares(eqId, qty)}
+            onAbandon={(eqId) => {
+              const pos = positions.find(p => p.equityId === eqId);
+              const shares = pos?.shares ?? 0;
+              const ticker = world.equities[eqId]?.ticker ?? eqId;
+              if (confirm(`Abandon ${shares} shares of ${ticker}? Settles at the current mark with a 5% penalty.`)) {
+                abandonPosition(eqId);
+              }
+            }}
+            onSetStopLoss={(eqId, price) => setStopLoss(eqId, price)}
+            onSetTakeProfit={(eqId, price) => setTakeProfit(eqId, price)}
+          />
+        </aside>
 
-            <section className={`stocks-board stocks-tab-panel ${activePanel !== "tape" ? "stocks-panel-hidden" : ""}`}>
-              <div className="stocks-panel-head art-panel-head" style={artCardStyle(headerArtUrl("stockTape"))}>
-                <div>
-                  <span className="stocks-panel-label">Tape</span>
-                  <span className="dim">{tapeRows.reachable.length} reachable · {tapeRows.far.length} out of range</span>
-                </div>
-                <div className="stocks-legend">
-                  <span><span className="stock-dot up" /> up tick</span>
-                  <span><span className="stock-dot down" /> down tick</span>
-                  <span><span className="stock-dot owned" /> long</span>
-                  <span><span className="stock-dot shorted" /> short</span>
-                </div>
-              </div>
-              <div className="stocks-scroll">
-                <StockRowsTable rows={tapeRows.reachable} selectedId={selectedId} onSelect={select} />
-                {tapeRows.far.length > 0 && (
-                  <section className="stocks-distance-group">
-                    <div className="stocks-distance-head">
-                      <span className="stocks-panel-label">Out of range</span>
-                      <span className="dim mono">{tapeRows.far.length} station listing{tapeRows.far.length === 1 ? "" : "s"} beyond {EXCHANGE_TRADE_MAX_HOPS} hops</span>
-                    </div>
-                    <StockRowsTable rows={tapeRows.far} selectedId={selectedId} onSelect={select} outOfRange />
-                  </section>
-                )}
-              </div>
-            </section>
-
-            <section className={`stocks-positions-panel stocks-tab-panel ${focusedPositionId ? "focused" : ""} ${activePanel !== "positions" ? "stocks-panel-hidden" : ""}`}>
-              <div className="stocks-panel-head art-panel-head" style={artCardStyle(headerArtUrl("portfolioPositions"))}>
-                <div>
-                  <span className="stocks-panel-label">Positions</span>
-                  <span className="dim">
-                    {focusedPositionId
-                      ? "managing one position"
-                      : `${longCount} long · ${shortCount} short · click to manage`}
-                  </span>
-                </div>
-                <div className="stocks-panel-head-right">
-                  {focusedPositionId && (
-                    <button className="stocks-panel-back" onClick={() => setFocusedPositionId(null)}>
-                      ← Show all
-                    </button>
-                  )}
-                  <div className="dim mono">
-                    Unrealized:&nbsp;
-                    <span className={unrealizedTotal > 0 ? "stock-pnl-up" : unrealizedTotal < 0 ? "stock-pnl-down" : ""}>
-                      {unrealizedTotal >= 0 ? "+" : ""}Ç{Math.round(unrealizedTotal).toLocaleString()}
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <PositionsPanel
-                positions={positions}
-                world={world}
-                shipId={playerShipId}
-                focusedId={focusedPositionId}
-                cash={cash}
-                docked={docked}
-                onSelect={(eqId) => {
-                  select(eqId);
-                  setActivePanel("positions");
-                  // Toggle: clicking the focused row again returns to the
-                  // full positions list.
-                  setFocusedPositionId(prev => prev === eqId ? null : eqId);
-                }}
-                onSell={(eqId, qty) => sellShares(eqId, qty)}
-                onCover={(eqId, qty) => coverShares(eqId, qty)}
-                onAbandon={(eqId) => {
-                  const pos = positions.find(p => p.equityId === eqId);
-                  const shares = pos?.shares ?? 0;
-                  const ticker = world.equities[eqId]?.ticker ?? eqId;
-                  if (confirm(`Abandon ${shares} shares of ${ticker}? Settles at the current mark with a 5% penalty.`)) {
-                    abandonPosition(eqId);
-                    setFocusedPositionId(null);
-                  }
-                }}
-                onSetStopLoss={(eqId, price) => setStopLoss(eqId, price)}
-                onSetTakeProfit={(eqId, price) => setTakeProfit(eqId, price)}
-              />
-            </section>
-
-            <section className={`stocks-trades-panel stocks-tab-panel ${activePanel !== "trades" ? "stocks-panel-hidden" : ""}`}>
-              <div className="stocks-panel-head art-panel-head" style={artCardStyle(headerArtUrl("tradeLedger"))}>
-                <div>
-                  <span className="stocks-panel-label">Trades</span>
-                  <span className="dim">most recent first ({trades.length} entries)</span>
-                </div>
-              </div>
-              <TradesList trades={trades} onSelect={(eqId) => select(eqId)} />
-            </section>
-          </section>
-        </div>
-
-        <aside
-          className={`stocks-sidebar ${detailArtUrl ? "stocks-info-card" : ""}`}
-          style={detailArtUrl ? artCardStyle(detailArtUrl) : undefined}
-        >
+        <aside className="stocks-shell-right">
           {detail ? (
-            <CompanyPane
+            <InfoColumn
               row={detail}
               world={world}
               shipId={playerShipId}
-              cash={cash}
               docked={docked}
-              hasOpposite={detail.position?.kind === "short"}
-              hasLong={detail.position?.kind === "long"}
-              onBuy={(qty) => buyShares(detail.equity.id, qty)}
-              onShort={(qty) => shortShares(detail.equity.id, qty)}
             />
           ) : (
             <div className="stocks-detail-empty dim">No listed equities.</div>
           )}
         </aside>
       </div>
+    </section>
+  );
+}
+
+// --- new shell components ----------------------------------------------
+
+function EquitySelector({ rows, tapeRows, selectedId, onSelect }: {
+  rows: EquityRow[];
+  tapeRows: { reachable: EquityRow[]; far: EquityRow[] };
+  selectedId: string | null;
+  onSelect: (eqId: string) => void;
+}) {
+  void rows;
+  return (
+    <section className="stocks-shell-panel stocks-selector">
+      <header className="stocks-shell-panel-head">
+        <span className="stocks-shell-panel-title">Listings</span>
+        <span className="stocks-shell-panel-meta">{tapeRows.reachable.length} reachable · {tapeRows.far.length} far</span>
+      </header>
+      <div className="stocks-selector-list">
+        {tapeRows.reachable.map(r => (
+          <SelectorRow key={r.equity.id} row={r} selected={r.equity.id === selectedId} onSelect={onSelect} />
+        ))}
+        {tapeRows.far.length > 0 && (
+          <>
+            <div className="stocks-selector-divider">Out of range</div>
+            {tapeRows.far.map(r => (
+              <SelectorRow key={r.equity.id} row={r} selected={r.equity.id === selectedId} onSelect={onSelect} farRow />
+            ))}
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function SelectorRow({ row, selected, onSelect, farRow = false }: {
+  row: EquityRow;
+  selected: boolean;
+  onSelect: (eqId: string) => void;
+  farRow?: boolean;
+}) {
+  const eq = row.equity;
+  const tone = row.changePct > 0.0005 ? "up" : row.changePct < -0.0005 ? "down" : "flat";
+  const ownedTone = row.position?.kind === "long" ? "owned" : row.position?.kind === "short" ? "shorted" : "";
+  return (
+    <button
+      type="button"
+      className={`stocks-selector-row ${selected ? "selected" : ""} ${tone} ${ownedTone} ${farRow ? "far" : ""}`}
+      onClick={() => onSelect(eq.id)}
+    >
+      <span className="ticker mono">{eq.ticker}</span>
+      <span className="stocks-selector-name">
+        <span className="name">{eq.name}</span>
+        <span className="kind dim">{eq.kind === "station" ? "station" : "syndicate"}</span>
+      </span>
+      <span className="stocks-selector-price mono">Ç{fmtPrice(eq.price)}</span>
+      <span className={`stocks-selector-delta mono ${tone}`}>{fmtPct(row.changePct)}</span>
+    </button>
+  );
+}
+
+// --- positions, orders, history (P&O) panel ----------------------------
+
+type PnoTab = "positions" | "orders" | "history";
+
+function PnoPanel(props: {
+  world: World;
+  positions: StockPosition[];
+  trades: TradeRecord[];
+  shipId?: string;
+  cash: number;
+  docked: boolean;
+  onSelectEquity: (eqId: string) => void;
+  onSell: (eqId: string, qty: number) => void;
+  onCover: (eqId: string, qty: number) => void;
+  onAbandon: (eqId: string) => void;
+  onSetStopLoss: (eqId: string, price: number | null) => void;
+  onSetTakeProfit: (eqId: string, price: number | null) => void;
+}) {
+  const [tab, setTab] = useState<PnoTab>("positions");
+  const limits = useMemo(() => listPlayerLimits(props.world, props.shipId), [props.world, props.shipId]);
+
+  return (
+    <section className="stocks-shell-panel stocks-pno">
+      <header className="stocks-shell-panel-head">
+        <div className="stocks-pno-tabs">
+          <button className={`stocks-pno-tab ${tab === "positions" ? "active" : ""}`} onClick={() => setTab("positions")}>
+            Positions <span className="dim">{props.positions.length}</span>
+          </button>
+          <button className={`stocks-pno-tab ${tab === "orders" ? "active" : ""}`} onClick={() => setTab("orders")}>
+            Orders <span className="dim">{limits.length}</span>
+          </button>
+          <button className={`stocks-pno-tab ${tab === "history" ? "active" : ""}`} onClick={() => setTab("history")}>
+            History <span className="dim">{props.trades.length}</span>
+          </button>
+        </div>
+      </header>
+      <div className="stocks-pno-body">
+        {tab === "positions" && (
+          <PositionsAccordion
+            world={props.world}
+            positions={props.positions}
+            shipId={props.shipId}
+            cash={props.cash}
+            docked={props.docked}
+            onSelectEquity={props.onSelectEquity}
+            onSell={props.onSell}
+            onCover={props.onCover}
+            onAbandon={props.onAbandon}
+            onSetStopLoss={props.onSetStopLoss}
+            onSetTakeProfit={props.onSetTakeProfit}
+          />
+        )}
+        {tab === "orders" && (
+          <OrdersAccordion world={props.world} limits={limits} onSelectEquity={props.onSelectEquity} />
+        )}
+        {tab === "history" && (
+          <TradesList trades={props.trades} onSelect={props.onSelectEquity} />
+        )}
+      </div>
+    </section>
+  );
+}
+
+// --- positions accordion (multi-expand) ---------------------------------
+
+function PositionsAccordion(props: {
+  world: World;
+  positions: StockPosition[];
+  shipId?: string;
+  cash: number;
+  docked: boolean;
+  onSelectEquity: (eqId: string) => void;
+  onSell: (eqId: string, qty: number) => void;
+  onCover: (eqId: string, qty: number) => void;
+  onAbandon: (eqId: string) => void;
+  onSetStopLoss: (eqId: string, price: number | null) => void;
+  onSetTakeProfit: (eqId: string, price: number | null) => void;
+}) {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  if (props.positions.length === 0) {
+    return <div className="stocks-pno-empty dim">No open positions.</div>;
+  }
+  return (
+    <div className="stocks-pno-list">
+      {props.positions.map(pos => {
+        const eq = props.world.equities[pos.equityId];
+        if (!eq) return null;
+        const isOpen = expanded.has(pos.equityId);
+        return (
+          <PositionAccordionItem
+            key={pos.equityId}
+            world={props.world}
+            equity={eq}
+            position={pos}
+            shipId={props.shipId}
+            cash={props.cash}
+            docked={props.docked}
+            isOpen={isOpen}
+            onToggle={() => {
+              const next = new Set(expanded);
+              if (next.has(pos.equityId)) next.delete(pos.equityId);
+              else next.add(pos.equityId);
+              setExpanded(next);
+              props.onSelectEquity(pos.equityId);
+            }}
+            onSell={(qty) => props.onSell(pos.equityId, qty)}
+            onCover={(qty) => props.onCover(pos.equityId, qty)}
+            onAbandon={() => props.onAbandon(pos.equityId)}
+            onSetStopLoss={(price) => props.onSetStopLoss(pos.equityId, price)}
+            onSetTakeProfit={(price) => props.onSetTakeProfit(pos.equityId, price)}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function PositionAccordionItem(props: {
+  world: World;
+  equity: Equity;
+  position: StockPosition;
+  shipId?: string;
+  cash: number;
+  docked: boolean;
+  isOpen: boolean;
+  onToggle: () => void;
+  onSell: (qty: number) => void;
+  onCover: (qty: number) => void;
+  onAbandon: () => void;
+  onSetStopLoss: (price: number | null) => void;
+  onSetTakeProfit: (price: number | null) => void;
+}) {
+  const placeLimitSellAction = useStore(s => s.placeLimitSell);
+  const eq = props.equity;
+  const pos = props.position;
+  const longSign = pos.kind === "long" ? 1 : -1;
+  const mark = eq.price;
+  const unrealized = (mark - pos.avgEntryPrice) * pos.shares * longSign;
+  const unrealizedPct = pos.avgEntryPrice > 0 ? (unrealized / (pos.avgEntryPrice * pos.shares)) * 100 : 0;
+  const tone = unrealized > 0 ? "good" : unrealized < 0 ? "bad" : "";
+
+  // Inputs for "Sell limit at price" tool inside the open accordion.
+  const [limitQty, setLimitQty] = useState<number>(pos.shares);
+  const [limitPrice, setLimitPrice] = useState<number>(eq.price);
+  const [stopPrice, setStopPrice] = useState<string>(pos.stopLoss?.toFixed(2) ?? "");
+  const [takePrice, setTakePrice] = useState<string>(pos.takeProfit?.toFixed(2) ?? "");
+
+  return (
+    <div className={`stocks-accordion-item ${props.isOpen ? "open" : ""} ${pos.kind}`}>
+      <button type="button" className="stocks-accordion-summary" onClick={props.onToggle}>
+        <span className="ticker mono">{eq.ticker}</span>
+        <span className="kind-pill mono">{pos.kind === "long" ? "LONG" : "SHORT"}</span>
+        <span className="numeric mono">{Math.round(pos.shares)} sh</span>
+        <span className="numeric mono dim">@ Ç{fmtPrice(pos.avgEntryPrice)}</span>
+        <span className={`numeric mono pnl ${tone}`}>
+          {unrealized >= 0 ? "+" : ""}Ç{Math.round(unrealized).toLocaleString()}
+          <span className="dim"> ({unrealized >= 0 ? "+" : ""}{unrealizedPct.toFixed(1)}%)</span>
+        </span>
+      </button>
+      {props.isOpen && (
+        <div className="stocks-accordion-body">
+          <div className="stocks-position-tools">
+            {/* Quick close (market) */}
+            {pos.kind === "long" ? (
+              <button
+                className="btn-action primary"
+                disabled={!props.docked || pos.shares <= 0}
+                onClick={() => props.onSell(pos.shares)}
+              >
+                Sell all (market)
+              </button>
+            ) : (
+              <button
+                className="btn-action primary"
+                disabled={!props.docked || pos.shares <= 0}
+                onClick={() => props.onCover(pos.shares)}
+              >
+                Cover all (market)
+              </button>
+            )}
+
+            {/* Sell-limit tool (long only) */}
+            {pos.kind === "long" && (
+              <div className="stocks-position-row">
+                <label className="stocks-position-field">
+                  <span>Limit sell qty</span>
+                  <input type="number" min={1} max={pos.shares} value={limitQty}
+                    onChange={e => setLimitQty(Math.max(1, Math.min(pos.shares, Math.floor(Number(e.target.value) || 0))))} />
+                </label>
+                <label className="stocks-position-field">
+                  <span>at price</span>
+                  <input type="number" step="0.01" value={limitPrice.toFixed(2)}
+                    onChange={e => setLimitPrice(Math.max(0.01, Number(e.target.value) || 0))} />
+                </label>
+                <button
+                  className="btn-action"
+                  disabled={!props.docked || limitQty <= 0 || limitPrice <= 0}
+                  onClick={() => placeLimitSellAction(eq.id, limitQty, limitPrice)}
+                >
+                  Place
+                </button>
+              </div>
+            )}
+
+            {/* Stop-loss / take-profit */}
+            <div className="stocks-position-row">
+              <label className="stocks-position-field">
+                <span>Stop-loss</span>
+                <input type="number" step="0.01" placeholder="—" value={stopPrice}
+                  onChange={e => setStopPrice(e.target.value)} />
+              </label>
+              <button className="btn-action btn-narrow" disabled={!stopPrice}
+                onClick={() => {
+                  const v = Number(stopPrice);
+                  if (Number.isFinite(v) && v > 0) props.onSetStopLoss(v);
+                }}>Set</button>
+              <button className="btn-action btn-narrow" disabled={pos.stopLoss == null}
+                onClick={() => { props.onSetStopLoss(null); setStopPrice(""); }}>Clear</button>
+            </div>
+            <div className="stocks-position-row">
+              <label className="stocks-position-field">
+                <span>Take-profit</span>
+                <input type="number" step="0.01" placeholder="—" value={takePrice}
+                  onChange={e => setTakePrice(e.target.value)} />
+              </label>
+              <button className="btn-action btn-narrow" disabled={!takePrice}
+                onClick={() => {
+                  const v = Number(takePrice);
+                  if (Number.isFinite(v) && v > 0) props.onSetTakeProfit(v);
+                }}>Set</button>
+              <button className="btn-action btn-narrow" disabled={pos.takeProfit == null}
+                onClick={() => { props.onSetTakeProfit(null); setTakePrice(""); }}>Clear</button>
+            </div>
+
+            {/* Abandon */}
+            <button className="btn-action stocks-position-abandon" onClick={props.onAbandon}>
+              Abandon (5% penalty)
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- orders accordion ---------------------------------------------------
+
+function OrdersAccordion({ world, limits, onSelectEquity }: {
+  world: World;
+  limits: PlayerLimitView[];
+  onSelectEquity: (eqId: string) => void;
+}) {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const cancelLimit = useStore(s => s.cancelLimit);
+  const adjustLimit = useStore(s => s.adjustLimit);
+
+  if (limits.length === 0) return <div className="stocks-pno-empty dim">No open orders.</div>;
+  return (
+    <div className="stocks-pno-list">
+      {limits.map(o => {
+        const isOpen = expanded.has(o.orderId);
+        return (
+          <OrderAccordionItem
+            key={o.orderId}
+            world={world}
+            order={o}
+            isOpen={isOpen}
+            onToggle={() => {
+              const next = new Set(expanded);
+              if (next.has(o.orderId)) next.delete(o.orderId);
+              else next.add(o.orderId);
+              setExpanded(next);
+              onSelectEquity(o.equityId);
+            }}
+            onCancel={() => cancelLimit(o.equityId, o.orderId)}
+            onAdjust={(qty, price) => adjustLimit(o.equityId, o.orderId, qty, price)}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function OrderAccordionItem({ world, order, isOpen, onToggle, onCancel, onAdjust }: {
+  world: World;
+  order: PlayerLimitView;
+  isOpen: boolean;
+  onToggle: () => void;
+  onCancel: () => void;
+  onAdjust: (qty: number, price: number) => void;
+}) {
+  const [qty, setQty] = useState<number>(order.qty);
+  const [price, setPrice] = useState<number>(order.limitPrice);
+  const ageTicks = world.tick - order.postedAt;
+  return (
+    <div className={`stocks-accordion-item ${isOpen ? "open" : ""} ${order.side}`}>
+      <button type="button" className="stocks-accordion-summary" onClick={onToggle}>
+        <span className="ticker mono">{order.ticker}</span>
+        <span className="kind-pill mono">{order.side === "bid" ? "BUY" : "SELL"}</span>
+        <span className="numeric mono">{Math.round(order.qty)} sh</span>
+        <span className="numeric mono dim">@ Ç{fmtPrice(order.limitPrice)}</span>
+        <span className="numeric mono dim">age {ageTicks}t</span>
+      </button>
+      {isOpen && (
+        <div className="stocks-accordion-body">
+          <div className="stocks-position-row">
+            <label className="stocks-position-field">
+              <span>New qty</span>
+              <input type="number" min={1} value={qty}
+                onChange={e => setQty(Math.max(1, Math.floor(Number(e.target.value) || 0)))} />
+            </label>
+            <label className="stocks-position-field">
+              <span>New price</span>
+              <input type="number" step="0.01" value={price.toFixed(2)}
+                onChange={e => setPrice(Math.max(0.01, Number(e.target.value) || 0))} />
+            </label>
+            <button className="btn-action" onClick={() => onAdjust(qty, price)}>Adjust</button>
+            <button className="btn-action stocks-position-abandon" onClick={onCancel}>Cancel</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- info column (right) -----------------------------------------------
+
+function InfoColumn({ row, world, shipId, docked }: {
+  row: EquityRow;
+  world: World;
+  shipId?: string;
+  docked: boolean;
+}) {
+  const eq = row.equity;
+  const access = exchangeAccess(world, eq, shipId);
+
+  return (
+    <section className="stocks-shell-panel stocks-info-col">
+      <header className="stocks-shell-panel-head">
+        <div className="stocks-info-title">
+          <span className="stocks-info-eyebrow">{eq.kind === "station" ? "Listed station" : "Listed company"}</span>
+          <span className="stocks-info-name">{eq.name}</span>
+        </div>
+        <div className="stocks-info-quote">
+          <span className="price big mono">Ç{fmtPrice(eq.price)}</span>
+          <ChangeCell pct={row.changePct} />
+        </div>
+      </header>
+
+      <div className="stocks-info-body">
+        <Sparkline equity={eq} position={row.position} />
+
+        <div className="stocks-info-row">
+          <KpiPanel row={row} />
+          <CompanyUnderlying eq={eq} world={world} />
+        </div>
+
+        <div className="stocks-info-row">
+          <OrderBookPanel equity={eq} world={world} />
+          <TimeAndSalesPanel equity={eq} />
+        </div>
+
+        <UnifiedOrderForm equity={eq} world={world} docked={docked} access={access} />
+      </div>
+    </section>
+  );
+}
+
+function KpiPanel({ row }: { row: EquityRow }) {
+  const eq = row.equity;
+  const dividend = eq.lastDividend?.perShare ?? 0;
+  return (
+    <section className="stocks-info-section stocks-kpi">
+      <div className="stocks-info-section-title">KPI</div>
+      <dl className="stocks-info-grid">
+        <InfoStat label="vs IPO" value={`${row.ratioToAnchor.toFixed(2)}x`} />
+        <InfoStat label="shares" value={eq.sharesOutstanding.toLocaleString()} />
+        <InfoStat label="dividend" value={dividend > 0 ? `Ç${dividend.toFixed(2)}/sh` : "none"} />
+        <InfoStat label="next div" value={`${row.ticksUntilDividend}t`} />
+      </dl>
+    </section>
+  );
+}
+
+// Unified order form — Buy / Sell / Short with qty + price + "Use Spot".
+// Spot = limit at the current eq.price (still goes into the book; the
+// matching engine fills it immediately if there's a crossing counterparty,
+// or rests it otherwise).
+function UnifiedOrderForm({ equity, world, docked, access }: {
+  equity: Equity;
+  world: World;
+  docked: boolean;
+  access: { ok: boolean; reason: string };
+}) {
+  void world;
+  const placeLimitBuy = useStore(s => s.placeLimitBuy);
+  const placeLimitSell = useStore(s => s.placeLimitSell);
+  const shortShares = useStore(s => s.shortShares);
+
+  type Side = "buy" | "sell" | "short";
+  const [side, setSide] = useState<Side>("buy");
+  const [qty, setQty] = useState<number>(10);
+  const [price, setPrice] = useState<number>(equity.price);
+
+  const lastEqRef = useRef(equity.id);
+  useEffect(() => {
+    if (lastEqRef.current !== equity.id) {
+      lastEqRef.current = equity.id;
+      setPrice(equity.price);
+    }
+  }, [equity.id, equity.price]);
+
+  const total = qty * price;
+  const fee = total * BROKER_FEE_RATE;
+  const summary = side === "buy"
+    ? `Reserve Ç${Math.round(total + fee).toLocaleString()}`
+    : side === "sell"
+      ? `Net Ç${Math.round(total - fee).toLocaleString()} on fill`
+      : `Short proceeds ~Ç${Math.round(total - fee).toLocaleString()}`;
+
+  const submit = () => {
+    if (side === "buy") placeLimitBuy(equity.id, qty, price);
+    else if (side === "sell") placeLimitSell(equity.id, qty, price);
+    else shortShares(equity.id, qty);   // short uses market for now
+  };
+
+  return (
+    <section className="stocks-info-section stocks-order-form">
+      <div className="stocks-info-section-title">Place order</div>
+      <div className="stocks-order-side">
+        <button className={`stocks-order-side-btn buy ${side === "buy" ? "active" : ""}`} onClick={() => setSide("buy")}>Buy</button>
+        <button className={`stocks-order-side-btn sell ${side === "sell" ? "active" : ""}`} onClick={() => setSide("sell")}>Sell</button>
+        <button className={`stocks-order-side-btn short ${side === "short" ? "active" : ""}`} onClick={() => setSide("short")}>Short</button>
+      </div>
+      <div className="stocks-order-fields">
+        <label>
+          <span>Qty</span>
+          <input type="number" min={1} value={qty}
+            onChange={e => setQty(Math.max(1, Math.floor(Number(e.target.value) || 0)))} />
+        </label>
+        <label>
+          <span>Price</span>
+          <input type="number" step="0.01" value={price.toFixed(2)}
+            onChange={e => setPrice(Math.max(0.01, Number(e.target.value) || 0))}
+            disabled={side === "short"} />
+        </label>
+        <button className="stocks-order-spot" onClick={() => setPrice(equity.price)} disabled={side === "short"}>
+          Use spot
+        </button>
+      </div>
+      <div className="stocks-order-summary dim">{summary}</div>
+      <button
+        className="btn-action primary stocks-order-submit"
+        disabled={!docked || !access.ok || qty <= 0 || (side !== "short" && price <= 0)}
+        onClick={submit}
+      >
+        Place {side === "buy" ? "Buy" : side === "sell" ? "Sell" : "Short"} Order
+      </button>
+      {!docked && <div className="stocks-warning dim">Equity trades only execute while docked.</div>}
+      {!access.ok && <div className="stocks-warning dim">{access.reason}</div>}
     </section>
   );
 }

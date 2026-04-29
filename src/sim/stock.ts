@@ -1011,6 +1011,42 @@ export function placeLimitSell(
   return { ok: true, orderId: order.id, reservedShares: shares };
 }
 
+// Atomic cancel+replace of an open player limit order. Allows the player
+// to change qty and/or price on a resting order in a single op (so funds
+// or shares get released and re-reserved without a window where the order
+// is gone). Returns the new order id (different from the cancelled one).
+export function adjustPlayerLimit(
+  world: World,
+  equityId: EquityId,
+  orderId: string,
+  newQty: number,
+  newPrice: number,
+  shipId?: TraderId,
+): { ok: true; orderId: string } | { ok: false; reason: string } {
+  const eq = world.equities[equityId];
+  if (!eq) return { ok: false, reason: "Equity not listed." };
+  const ship = getPlayerShip(world, shipId);
+  if (!ship) return { ok: false, reason: "No anchor ship." };
+  const book = world.orderBooks?.[equityId];
+  if (!book) return { ok: false, reason: "No book for that equity." };
+  const order = [...book.bids, ...book.asks].find(o => o.id === orderId && o.agentId === ship.id);
+  if (!order) return { ok: false, reason: "Order not found (already filled or cancelled)." };
+
+  const cancelResult = cancelPlayerLimit(world, equityId, orderId, shipId);
+  if (!cancelResult.ok) return cancelResult;
+
+  const placeResult = order.side === "bid"
+    ? placeLimitBuy(world, equityId, newQty, newPrice, shipId)
+    : placeLimitSell(world, equityId, newQty, newPrice, shipId);
+  if (!placeResult.ok) {
+    // Re-place the original on failure so we don't leave the player worse off.
+    if (order.side === "bid") placeLimitBuy(world, equityId, order.qty, order.limitPrice, shipId);
+    else placeLimitSell(world, equityId, order.qty, order.limitPrice, shipId);
+    return { ok: false, reason: placeResult.reason };
+  }
+  return { ok: true, orderId: placeResult.orderId };
+}
+
 // Cancel an open player limit order. Refunds the unfilled portion of
 // reserved funds (for buy limits) or shares (for sell limits).
 export function cancelPlayerLimit(world: World, equityId: EquityId, orderId: string, shipId?: TraderId): { ok: true; refunded: number } | { ok: false; reason: string } {
