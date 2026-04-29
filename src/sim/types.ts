@@ -169,6 +169,29 @@ export interface Trader {
   log: ShipLogEntry[];              // capped action history (oldest entries dropped). Drives the per-ship log card.
   crew?: ShipCrew;                  // player-only — NPCs operate without a crew model.
   maintenanceDebt?: number;         // accrued unpaid maintenance for player ships missing a mechanic.
+  stockState?: ShipTraderState;     // Phase 2: agent stock-trading state (style, risk, positions). Optional so non-trading ships have nothing.
+}
+
+// --- agent stock-trading state ------------------------------------------
+// Phase 2 of the order-book migration. Each NPC trader can carry an agent
+// "personality" used by stock/agents.ts to post orders into the book each
+// decision tick. The player ship does NOT use stockState; its positions
+// live on world.player.positions with richer features (stops/takes/etc.).
+
+export type AgentStyle = "value" | "momentum" | "contrarian" | "noise";
+
+export interface AgentPosition {
+  shares: number;             // signed: positive = long, negative = short
+  avgEntryPrice: number;
+  openedAt: number;           // tick when the position first opened
+}
+
+export interface ShipTraderState {
+  style: AgentStyle;
+  riskAppetite: number;       // 0..1, scales how much capital this agent commits per order
+  cashReserveFraction: number;// 0..1, floor on funds the agent won't trade with (operational reserve)
+  positions: Record<EquityId, AgentPosition>;
+  lastDecisionAt?: number;    // last world-tick on which this agent ran a decision
 }
 
 export type ShipLogTone = "good" | "bad" | "warn" | "info";

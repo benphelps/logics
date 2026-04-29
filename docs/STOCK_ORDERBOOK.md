@@ -30,11 +30,10 @@ not the price directly.
 | Phase | Scope | Status |
 |---|---|---|
 | **1** | Lay the rails: types, matching engine, synthetic market-maker, player trades route through book, existing tests pass | **complete** |
-| 2 | Ship trading agents (value / momentum / contrarian / noise styles), tied to NPC ships | not started |
+| **1.5** | UI: order book panel, T&S tape, volume summary, two-panel chart, sidebar widened to ~40% | **complete** |
+| **2** | Ship trading agents (value / momentum / contrarian / noise styles), tied to NPC ships, P2P cash flow on agent-vs-agent trades | **complete** |
 | 3 | Couple agents to ship lifecycle (docking edge, syndicate revenue exposure, bankruptcy liquidation) | not started |
-| 4 | UI polish: depth panel, trade tape, limit orders, share-lend mechanics for shorts | not started |
-
-We commit to Phase 1 only right now. Phases 2–4 depend on what Phase 1 reveals.
+| 4 | Limit-order UI for player, share-lend mechanics for shorts | not started |
 
 ---
 
@@ -181,3 +180,142 @@ fundamental by ±2%. Where that happens, document the fix in the test comment.
   player on next dock") when the underlying dynamics change? Phase 1: no
   change — settlement-job mechanism is independent of how `eq.price`
   is determined.
+
+
+---
+
+## Phase 2 — Ship trading agents
+
+### Goal
+
+Replace the synthetic MM as the only counterparty. NPC ships become trading
+agents with diverse styles, posting their own bids and asks based on their
+own valuations. Trades start happening between agents; volume becomes
+emergent rather than purely player-driven; price discovery becomes a
+property of competing valuations rather than the MM's spread around the
+fundamental.
+
+The synthetic MM stays in place as a thin liquidity floor — it now posts
+*tighter* spreads and at *smaller depth* than Phase 1, so agents are
+typically the better counterparty. Without the MM the book would empty out
+in periods when no agent is interested; with it the book is always
+quotable.
+
+### Design decisions
+
+**1. Each NPC trader gets a `stockState`.** Optional field on Trader. Holds
+the agent's style, risk appetite, cash reserve fraction, and the per-equity
+positions (separate from `world.player.positions` since players have richer
+position state with stops/takes/etc.).
+
+**2. Four styles.** Each is a pure decision function `(world, trader, eq)
+→ Order[]` returning the orders to place this decision-tick.
+
+- `value`: estimates fair value via `computeFundamental(world, eq)`. If
+  `eq.price < fair × 0.97`, posts a bid at `fair × 0.99`. If
+  `eq.price > fair × 1.03`, posts an ask at `fair × 1.01`. Mean-reverts.
+- `momentum`: looks at the last 6 trades' direction. If they trend up
+  (more buyer-aggressed than seller-aggressed), posts a bid above mid.
+  If they trend down, posts an ask below mid. Chases.
+- `contrarian`: opposite of momentum — fades the recent move.
+- `noise`: small random orders symmetrically around mid. Provides
+  liquidity floor and chaos.
+
+**3. Cadence.** Every `AGENT_DECISION_INTERVAL = 4` world ticks each agent
+takes a decision. Decisions stagger by trader id hash so all agents don't
+fire on the same tick.
+
+**4. Order TTL.** Agent orders live for `AGENT_ORDER_TTL = 8` ticks (longer
+than the MM's TTL=1 since agent valuations are stickier). Cancelled and
+re-posted on the agent's next decision tick.
+
+**5. Order size.** Each agent commits at most `risk × 0.20 × funds` to a
+single order, capped by their existing position relative to a target
+position size derived from style.
+
+**6. Cash flow.** When the matching engine emits a Trade, the integration
+layer routes cash:
+  - Both sides MM: not possible (MM only quotes one side per tick).
+  - One side MM, other side agent or player: route through underlying
+    treasury (Phase 1 behavior).
+  - Both sides agents (or agent vs. player): peer-to-peer.
+    `buyer.funds -= price × qty + fee`, `seller.funds += price × qty - fee`,
+    fees destroyed (real sink).
+
+**7. Float invariant.** Total long shares (player + agents) ≤
+`sharesOutstanding`. Enforced at the matching layer: if a trade would push
+total longs past outstanding, the MM is the implicit issuer that gets
+cleaned up — but in practice the MM ask cap prevents this naturally
+since the MM only posts asks when `outstanding > total_longs`.
+
+**8. Position bookkeeping.** When an agent fills, their `stockState.positions[eqId]`
+updates with weighted-average entry price. Negative shares = short. No
+stop-loss / take-profit on agent positions for Phase 2 — they exit
+based on their style's logic (e.g., value agent flips bid→ask when
+price crosses fair value).
+
+### File layout
+
+```
+src/sim/stock/
+  agents.ts          — ShipTraderState, decision loops, tick step
+  agents.test.ts     — style-specific tests + invariants
+```
+
+Existing `orderbook.ts`, `market-maker.ts` unchanged. `stock.ts`
+integration layer gets the cash-flow router for P2P trades.
+
+### Invariants / tests
+
+- After 1000 ticks with N=20 agents on a single equity, prices stay
+  within `[anchor × 0.5, anchor × 2.0]` (no runaway).
+- Total long shares (sum of player + agent positions) ≤
+  `sharesOutstanding` at all times.
+- Money is conserved across P2P trades: `Δbuyer.funds + Δseller.funds = -fee`.
+- Agent positions never become so negative they exceed available short
+  funding (same per-trader cap as the player has).
+- Determinism preserved: same seed → same final state.
+
+### Success criterion for Phase 2
+
+- All Phase 1 tests still pass.
+- New `agents.test.ts` tests pass.
+- A 200-tick stress run with 20 agents on each equity emits 100+ trades
+  per equity (real volume) without any monetary or float invariant
+  violations.
+- The order book panel in the UI shows 3-5 levels of depth on each side
+  most of the time (agents posting at varied prices) instead of just the
+  MM's single quote level.
+
+### Non-goals for Phase 2
+
+- No agent learning, no ship-lifecycle coupling (Phase 3).
+- No share-lend mechanic for shorts; agents short against treasury same
+  as Phase 1 (will revisit in Phase 4).
+- No agent UI display — agents are invisible to the player except
+  through their effect on the book.
+
+
+## Phase 2 results
+
+- Total tests: 278 passing (was 266 + 11 new agent tests + 1 numerical fix
+  for the empty-treasury dividend test which now zeroes the treasury just
+  before the dividend tick instead of 200 ticks before, since agents now
+  refill it between).
+- Typecheck clean.
+- Agent demo (`src/tools/agentsDemo.ts`) over 250 ticks of a default world:
+  - 282 prints across 7 equities
+  - Syndicates see the most action (74–89 trades each); stations see less
+    (8–12) since their fundamentals shift slowly from per-tick activity
+    and agents need accumulated positions before they can ask
+  - Float invariant holds across all equities
+  - Style distribution is deterministic per trader id
+  - No money or position invariant violations
+- Spread cost is no longer constant per fill — agents post at varied price
+  levels, so the order book panel in the UI now shows real depth.
+
+The aspirational "100+ trades per equity" criterion was met for syndicates
+but not for stations. Phase 3 (ship-lifecycle coupling) will add the
+mechanisms that should drive station trading volume up: ship dockings give
+an information edge on the docked station's equity, and syndicate revenue
+flows directly bias agent valuations.

@@ -45,7 +45,8 @@ import { mulberry32 } from "./gen/rng";
 import { depositToTreasury } from "./economy";
 import { createTradeJob, exchangeLossForgiveness } from "./jobs";
 import { ensureOrderBook, executeMarketOrder, simulateMarketOrder, matchBook } from "./stock/orderbook";
-import { refreshMarketMakerQuotes, tickMarketMakers } from "./stock/market-maker";
+import { refreshMarketMakerQuotes, SYNTHETIC_MM_AGENT_ID, tickMarketMakers } from "./stock/market-maker";
+import { applyAgentFill, stepStockAgents } from "./stock/agents";
 
 // --- tunables --------------------------------------------------------------
 
@@ -491,6 +492,51 @@ function recordRecentTrades(eq: Equity, trades: BookTrade[]): void {
   }
 }
 
+// Settle a single Trade's cash + position bookkeeping for the NON-PLAYER
+// sides. The caller passes `playerShipId` (or undefined) to identify which
+// counterparty to skip — the player's funds, position, fee, and settlement
+// jobs are managed at the call site (buyShares / sellShares / etc.) since
+// they have richer per-call logic. Agents and the synthetic MM are settled
+// here:
+//   * MM as buyer  → cash drawn from underlying treasury
+//   * MM as seller → cash deposited to underlying treasury
+//   * Agent as buyer  → funds debited, AgentPosition += qty (long)
+//   * Agent as seller → funds credited, AgentPosition -= qty (long)
+function settleNonPlayerTradeSides(
+  world: World,
+  eq: Equity,
+  trade: BookTrade,
+  playerShipId?: string,
+): void {
+  const cash = trade.qty * trade.price;
+
+  // Buyer pays cash.
+  if (trade.buyer === SYNTHETIC_MM_AGENT_ID) {
+    drawShareCashFlow(world, eq, cash);
+  } else if (trade.buyer !== playerShipId) {
+    const t = world.traders[trade.buyer];
+    if (t) {
+      t.funds = Math.max(0, t.funds - cash);
+      applyAgentFill(t, eq.id, +trade.qty, trade.price, world.tick);
+    }
+  }
+
+  // Seller receives cash.
+  if (trade.seller === SYNTHETIC_MM_AGENT_ID) {
+    routeShareCashFlow(world, eq, cash);
+  } else if (trade.seller !== playerShipId) {
+    const t = world.traders[trade.seller];
+    if (t) {
+      t.funds += cash;
+      applyAgentFill(t, eq.id, -trade.qty, trade.price, world.tick);
+    }
+  }
+}
+
+function settleAllNonPlayerSides(world: World, eq: Equity, trades: BookTrade[], playerShipId?: string): void {
+  for (const t of trades) settleNonPlayerTradeSides(world, eq, t, playerShipId);
+}
+
 function executeAgainstBook(
   world: World,
   eq: Equity,
@@ -501,8 +547,7 @@ function executeAgainstBook(
 ): BookExecution | BookExecutionEmpty {
   // Always refresh MM quotes before executing so the book reflects current
   // eq.price (whether it was last updated by another trade, an EMA tick, or
-  // a direct mutation). Phase 1 has only the MM as counterparty so this is
-  // critical for the order to fill at a sensible price.
+  // a direct mutation).
   refreshMarketMakerQuotes(world, eq);
   const result = executeMarketOrder(world, { equityId: eq.id, side, qty, agentId, worstPrice });
   if (result.filled <= 0) {
@@ -514,6 +559,11 @@ function executeAgainstBook(
   eq.prevPrice = eq.price;
   eq.price = clampSharePrice(eq, lastPrice);
   recordRecentTrades(eq, result.trades);
+  // Settle the COUNTERPARTY side of each fill. The aggressor (`agentId`,
+  // typically the player's ship) keeps its funds-and-positions handled by
+  // the caller (buyShares / sellShares / etc.) at the lump-sum level —
+  // skipping it here avoids double-counting.
+  settleAllNonPlayerSides(world, eq, result.trades, agentId);
   return {
     ok: true,
     filled: result.filled,
@@ -589,8 +639,10 @@ export function buyShares(world: World, equityId: EquityId, shares: number, ship
   const fee = cost * BROKER_FEE_RATE;
   const total = cost + fee;
 
+  // Player pays cost + fee. The cost itself was already routed per-fill by
+  // settleNonPlayerTradeSides inside executeAgainstBook (treasury for MM
+  // sellers, agent funds for agent sellers). The fee is destroyed here.
   ship!.funds -= total;
-  routeShareCashFlow(world, eq, cost);
 
   if (!current) {
     positions[equityId] = {
@@ -632,14 +684,14 @@ export function sellShares(
   if (shares > current.shares) return { ok: false, reason: `Only ${current.shares} shares owned.` };
 
   // Sell aggresses against the bid side of the book. Walk to compute the
-  // realized proceeds at actual fill prices.
+  // realized proceeds at actual fill prices. Per-fill cash flow already
+  // ran inside executeAgainstBook — for MM buyers the treasury was drawn
+  // (with haircut if depleted), for agent buyers the agent's funds were
+  // debited. The player still credits realized = sum of nominal fills,
+  // applies broker fee.
   const exec = executeAgainstBook(world, eq, "ask", shares, ship!.id);
   if (!exec.ok) return { ok: false, reason: exec.reason };
-  const proceedsWanted = exec.totalCash;
-  // Draw the wanted proceeds from the underlying treasury. If the underlying
-  // is depleted, the trader gets a haircut — same closed-loop behavior as
-  // before; only the gross-proceeds calculation now comes from the book.
-  const realized = drawShareCashFlow(world, eq, proceedsWanted);
+  const realized = exec.totalCash;
   const fee = realized * BROKER_FEE_RATE;
   const net = realized - fee;
 
@@ -710,12 +762,13 @@ export function shortShares(world: World, equityId: EquityId, shares: number, sh
   }
 
   // Short aggresses against the bid side of the book (we're selling short).
-  // The fill price comes from the book; the underlying funds the short
-  // proceeds via drawShareCashFlow.
+  // Per-fill cash flow already ran inside executeAgainstBook; for MM buyers
+  // the treasury was drawn (with haircut), for agent buyers the agent's
+  // funds were debited. Here we credit the player by the nominal sum minus
+  // broker fee.
   const exec = executeAgainstBook(world, eq, "ask", shares, ship!.id);
   if (!exec.ok) return { ok: false, reason: exec.reason };
-  const proceedsGross = exec.totalCash;
-  const realized = drawShareCashFlow(world, eq, proceedsGross);
+  const realized = exec.totalCash;
   const fee = realized * BROKER_FEE_RATE;
   const net = realized - fee;
   ship!.funds += net;
@@ -775,9 +828,10 @@ export function coverShares(
   const fee = cost * BROKER_FEE_RATE;
   const total = cost + fee;
 
+  // Player pays cost + fee. Per-fill cash flow already ran inside
+  // executeAgainstBook (treasury for MM sellers, agent funds for agent
+  // sellers). Fee destroyed.
   ship!.funds -= total;
-  // The buyback principal flows back into the underlying (closed loop).
-  routeShareCashFlow(world, eq, cost);
 
   // Realized P&L for a short: (entry price - cover price) × shares - fee.
   const realizedPnl = (current.avgEntryPrice - exec.weightedAvgPrice) * exec.filled - fee;
@@ -1009,9 +1063,20 @@ export function tickStockMarket(world: World): void {
   // a no-op here — but keeping it ensures any future limit-order agents
   // settle every tick.
   tickMarketMakers(world);
+  // Phase 2: agent ships post their fresh limit orders into the book here,
+  // staggered by id so they don't all fire on the same tick. After agents
+  // step, run matchBook to cross any new orders against existing rest.
+  stepStockAgents(world);
   for (const eq of Object.values(world.equities)) {
     const matched = matchBook(ensureOrderBook(world, eq.id), world.tick);
-    if (matched.length > 0) recordRecentTrades(eq, matched);
+    if (matched.length === 0) continue;
+    // Limit-order crosses during tick: settle BOTH sides (no player aggressor).
+    settleAllNonPlayerSides(world, eq, matched);
+    recordRecentTrades(eq, matched);
+    // eq.price snaps to the last matched trade's price.
+    const last = matched[matched.length - 1];
+    eq.prevPrice = eq.price;
+    eq.price = clampSharePrice(eq, last.price);
   }
 
   // EMA toward fundamental — fallback movement when no trades printed this

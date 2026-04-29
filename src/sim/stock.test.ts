@@ -261,14 +261,18 @@ describe("stock market — dividends", () => {
     const eq = listEquities(w).find(e => e.kind === "syndicate")!;
     const synd = w.syndicates[eq.underlyingId];
     expect(buyShares(w, eq.id, 100).ok).toBe(true);
-    synd.treasury = 0;        // empty
+
+    // Tick up to one tick BEFORE the dividend payout, then empty the treasury
+    // and tick once more. Phase 2's agent traders can deposit small amounts
+    // into the syndicate treasury between ticks, so emptying it 200 ticks
+    // before payout no longer guarantees it's still empty at payout time —
+    // we have to zero it right before the dividend fires.
+    while (w.tick < DIVIDEND_INTERVAL - 1) tickWorld(w);
+    synd.treasury = 0;
     const fundsBefore = ship.funds;
+    tickWorld(w);  // dividend tick
 
-    const target = DIVIDEND_INTERVAL + 1;
-    while (w.tick < target) tickWorld(w);
-
-    // Empty treasury → no dividend (ship.funds may shift slightly from
-    // routine activity but no positive bump from a dividend)
+    // Empty treasury at payout → no dividend.
     expect(ship.funds).toBeLessThanOrEqual(fundsBefore + 0.01);
   });
 });
