@@ -454,12 +454,28 @@
   color: var(--good);
 }
 
+.atlas-map-wrap {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--atlas-surface-soft);
+  cursor: grab;
+  user-select: none;
+}
+
+.atlas-map-wrap:active {
+  cursor: grabbing;
+}
+
 .atlas-map {
   display: block;
   width: 100%;
   flex: 1;
   min-height: 0;
-  background: var(--atlas-surface-soft);
+  background: transparent;
+  touch-action: none;
 }
 
 .atlas-map-bg {
@@ -469,11 +485,24 @@
 .atlas-gridlines line {
   stroke: rgba(255, 255, 255, 0.035);
   stroke-width: 1;
+  vector-effect: non-scaling-stroke;
 }
 
-.atlas-links line {
+.atlas-links line,
+.atlas-link {
   stroke: rgba(130, 164, 190, 0.20);
   stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+  transition: stroke 120ms ease;
+}
+
+.atlas-link.traffic {
+  stroke: rgba(151, 193, 151, 0.65);
+  stroke-width: 1.6;
+}
+
+.atlas-link:hover {
+  stroke: rgba(220, 235, 250, 0.65);
 }
 
 .atlas-node {
@@ -518,6 +547,70 @@
   stroke: var(--accent);
   stroke-width: 2.5;
   filter: drop-shadow(0 0 8px rgba(79, 182, 255, 0.8));
+  vector-effect: non-scaling-stroke;
+}
+
+/* Ships drawn on the sector map. Idle ships render as small circles
+   spiraled around their station; transit ships ride along their lane
+   interpolated by ticks-remaining. The player ship is the diamond. */
+.atlas-ship {
+  cursor: pointer;
+}
+
+.atlas-ship circle {
+  fill: rgba(220, 230, 240, 0.62);
+  stroke: rgba(20, 26, 32, 0.85);
+  stroke-width: 0.6;
+  vector-effect: non-scaling-stroke;
+}
+
+.atlas-ship.transit circle {
+  fill: var(--atlas-hub);
+  stroke: rgba(20, 26, 32, 0.95);
+}
+
+.atlas-ship:hover circle {
+  fill: white;
+}
+
+.atlas-ship.selected circle {
+  fill: var(--accent);
+}
+
+.atlas-ship-ring {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.6;
+  vector-effect: non-scaling-stroke;
+}
+
+/* Tooltip floating over the map — positioned via inline transform from
+   the SectorMap mouse handlers. */
+.atlas-tooltip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  display: grid;
+  gap: 1px;
+  padding: 6px 8px;
+  background: rgba(10, 14, 18, 0.92);
+  border: 1px solid var(--atlas-line);
+  border-radius: 4px;
+  font-size: 11px;
+  z-index: 4;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+
+.atlas-tooltip-title {
+  font-weight: 700;
+  color: var(--text);
+}
+
+.atlas-tooltip-sub {
+  font-size: 10px;
+  color: var(--text-faint);
 }
 
 .atlas-detail-head {

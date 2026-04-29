@@ -1,4 +1,4 @@
-import { useMemo, type CSSProperties, type ReactNode } from "react";
+import { useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { IconType } from "react-icons";
 import {
   GiCargoCrate,
@@ -7,9 +7,9 @@ import {
   GiPathDistance,
 } from "react-icons/gi";
 import { useStore } from "../store";
-import { reachableNeighbors, routeSegments } from "../../sim/geometry";
+import { reachableNeighbors, routeDistance, routeSegments } from "../../sim/geometry";
 import { netProductionRate } from "../../sim/locations";
-import type { LocationDef, LocationId, World } from "../../sim/types";
+import type { LocationDef, LocationId, Trader, TraderId, World } from "../../sim/types";
 import { headerArtUrl, stationArtUrl } from "../art";
 import "./LocationsView.css";
 
@@ -32,6 +32,26 @@ interface AtlasLink {
   a: LocationId;
   b: LocationId;
   dist: number;
+}
+
+interface ShipMarker {
+  id: TraderId;
+  trader: Trader;
+  x: number;
+  y: number;
+  // For idle ships, the projected station; for transit ships the lane
+  // they're on. Used to drive lane-traffic shading and tooltips.
+  origin: LocationId;
+  destination: LocationId | null;
+  isPlayer: boolean;
+  isTransit: boolean;
+}
+
+interface LaneTraffic {
+  count: number;
+  // Outbound + inbound ships per lane regardless of direction. The map
+  // shades lanes by this so corridors with traffic stand out.
+  ships: TraderId[];
 }
 
 interface MarketRow {
@@ -63,6 +83,7 @@ export function LocationsView() {
   const selectedLocation = useStore((s) => s.selectedLocation);
   const selectLocation = useStore((s) => s.selectLocation);
   const selectedTrader = useStore((s) => s.selectedTrader);
+  const selectTrader = useStore((s) => s.selectTrader);
   useStore((s) => s.tickEpoch);
 
   const locations = Object.values(world.locations);
@@ -78,6 +99,8 @@ export function LocationsView() {
   const projected = useMemo(() => projectLocations(locations), [locations]);
   const projectedById = useMemo(() => new Map(projected.map(p => [p.loc.id, p])), [projected]);
   const links = useMemo(() => buildAtlasLinks(world, locations), [world, locations]);
+  const ships = useMemo(() => buildShipMarkers(world, projectedById), [world, projectedById]);
+  const laneTraffic = useMemo(() => buildLaneTraffic(world), [world]);
   const selectedMarket = selected ? marketRows(world, selected).slice(0, 9) : [];
   const selectedCounts = selected ? stationCounts(world, selected.id) : { docked: 0, inbound: 0, jobs: 0, routes: 0 };
 
@@ -175,13 +198,18 @@ export function LocationsView() {
               </div>
             </div>
             <SectorMap
+              world={world}
               projected={projected}
               projectedById={projectedById}
               links={links}
+              ships={ships}
+              laneTraffic={laneTraffic}
               selectedId={selected?.id ?? null}
               playerLocation={playerShip?.location ?? null}
               playerDestination={playerShip?.state === "transit" ? playerShip.destination : null}
+              selectedTraderId={selectedTrader}
               onSelect={selectLocation}
+              onSelectTrader={selectTrader}
             />
           </section>
 
@@ -237,89 +265,320 @@ function artCardStyle(url: string): CSSProperties {
   return { "--card-art": `url("${url}")` } as CSSProperties;
 }
 
-function SectorMap({ projected, projectedById, links, selectedId, playerLocation, playerDestination, onSelect }: {
+function SectorMap({
+  world,
+  projected,
+  projectedById,
+  links,
+  ships,
+  laneTraffic,
+  selectedId,
+  playerLocation,
+  playerDestination,
+  selectedTraderId,
+  onSelect,
+  onSelectTrader,
+}: {
+  world: World;
   projected: ProjectedLocation[];
   projectedById: Map<LocationId, ProjectedLocation>;
   links: AtlasLink[];
+  ships: ShipMarker[];
+  laneTraffic: Map<string, LaneTraffic>;
   selectedId: LocationId | null;
   playerLocation: LocationId | null;
   playerDestination: LocationId | null;
+  selectedTraderId: TraderId | null;
   onSelect: (id: LocationId) => void;
+  onSelectTrader: (id: TraderId | null) => void;
 }) {
+  // viewBox state drives pan/zoom — wheel zooms toward the cursor,
+  // mouse drag pans, double-click resets.
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const [vbox, setVbox] = useState({ x: 0, y: 0, w: MAP_W, h: MAP_H });
+  const dragRef = useRef<{ sx: number; sy: number; vx: number; vy: number; moved: boolean } | null>(null);
+  const [hover, setHover] = useState<{
+    label: string;
+    sub: string;
+    px: number;
+    py: number;
+  } | null>(null);
+
+  const peakLaneTraffic = Math.max(1, ...Array.from(laneTraffic.values()).map(t => t.count));
+
+  const applyZoom = (clientX: number, clientY: number, factor: number) => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const cx = vbox.x + ((clientX - rect.left) / rect.width) * vbox.w;
+    const cy = vbox.y + ((clientY - rect.top) / rect.height) * vbox.h;
+    const newW = Math.max(MAP_W * 0.18, Math.min(MAP_W * 1.6, vbox.w / factor));
+    const newH = (newW / MAP_W) * MAP_H;
+    setVbox({
+      x: cx - (cx - vbox.x) * (newW / vbox.w),
+      y: cy - (cy - vbox.y) * (newH / vbox.h),
+      w: newW,
+      h: newH,
+    });
+  };
+
+  const onWheel = (e: React.WheelEvent<SVGSVGElement>) => {
+    if (e.deltaY === 0) return;
+    applyZoom(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.0015));
+  };
+
+  const onMouseDown = (e: React.MouseEvent<SVGSVGElement>) => {
+    // Only left-button drags pan; let other handlers (clicks on shapes)
+    // capture their own events first.
+    if (e.button !== 0) return;
+    dragRef.current = { sx: e.clientX, sy: e.clientY, vx: vbox.x, vy: vbox.y, moved: false };
+  };
+  const onMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const svg = svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const dx = ((e.clientX - drag.sx) / rect.width) * vbox.w;
+    const dy = ((e.clientY - drag.sy) / rect.height) * vbox.h;
+    if (Math.abs(e.clientX - drag.sx) + Math.abs(e.clientY - drag.sy) > 3) drag.moved = true;
+    setVbox({ x: drag.vx - dx, y: drag.vy - dy, w: vbox.w, h: vbox.h });
+  };
+  const releaseDrag = () => { dragRef.current = null; };
+  const onDoubleClick = () => setVbox({ x: 0, y: 0, w: MAP_W, h: MAP_H });
+
+  // Click handlers on shapes consult dragRef.current?.moved before
+  // committing — so a 5px drag-and-release doesn't accidentally select.
+  const wasDrag = () => dragRef.current?.moved === true;
+
+  const showTip = (e: React.MouseEvent, label: string, sub: string) => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const rect = wrap.getBoundingClientRect();
+    setHover({ label, sub, px: e.clientX - rect.left, py: e.clientY - rect.top });
+  };
+  const moveTip = (e: React.MouseEvent) => {
+    if (!hover) return;
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const rect = wrap.getBoundingClientRect();
+    setHover({ ...hover, px: e.clientX - rect.left, py: e.clientY - rect.top });
+  };
+  const hideTip = () => setHover(null);
+
+  const playerOrigin = playerLocation ? projectedById.get(playerLocation) ?? null : null;
+  const playerDest = playerDestination ? projectedById.get(playerDestination) ?? null : null;
+
   return (
-    <svg className="atlas-map" viewBox={`0 0 ${MAP_W} ${MAP_H}`} role="img" aria-label="Station map">
-      <defs>
-        <radialGradient id="atlasGlow" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="rgba(255,255,255,0.35)" />
-          <stop offset="100%" stopColor="rgba(255,255,255,0)" />
-        </radialGradient>
-      </defs>
-      <rect className="atlas-map-bg" x="0" y="0" width={MAP_W} height={MAP_H} rx="0" />
-      <g className="atlas-gridlines">
-        {[0.25, 0.5, 0.75].map(v => (
-          <g key={v}>
-            <line x1={MAP_W * v} y1={0} x2={MAP_W * v} y2={MAP_H} />
-            <line x1={0} y1={MAP_H * v} x2={MAP_W} y2={MAP_H * v} />
+    <div ref={wrapRef} className="atlas-map-wrap">
+      <svg
+        ref={svgRef}
+        className="atlas-map"
+        viewBox={`${vbox.x} ${vbox.y} ${vbox.w} ${vbox.h}`}
+        role="img"
+        aria-label="Station map"
+        onWheel={onWheel}
+        onMouseDown={onMouseDown}
+        onMouseMove={onMouseMove}
+        onMouseUp={releaseDrag}
+        onMouseLeave={() => { releaseDrag(); hideTip(); }}
+        onDoubleClick={onDoubleClick}
+      >
+        <defs>
+          <radialGradient id="atlasGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="rgba(255,255,255,0.35)" />
+            <stop offset="100%" stopColor="rgba(255,255,255,0)" />
+          </radialGradient>
+        </defs>
+        <rect className="atlas-map-bg" x={-MAP_W} y={-MAP_H} width={MAP_W * 3} height={MAP_H * 3} />
+        <g className="atlas-gridlines">
+          {[0.25, 0.5, 0.75].map(v => (
+            <g key={v}>
+              <line x1={MAP_W * v} y1={0} x2={MAP_W * v} y2={MAP_H} />
+              <line x1={0} y1={MAP_H * v} x2={MAP_W} y2={MAP_H * v} />
+            </g>
+          ))}
+        </g>
+        <g className="atlas-links">
+          {links.map(link => {
+            const a = projectedById.get(link.a);
+            const b = projectedById.get(link.b);
+            if (!a || !b) return null;
+            const traffic = laneTraffic.get(laneKey(link.a, link.b));
+            const intensity = traffic ? Math.min(1, 0.2 + (traffic.count / peakLaneTraffic) * 0.8) : 0.2;
+            return (
+              <line
+                key={`${link.a}-${link.b}`}
+                className={traffic && traffic.count > 0 ? "atlas-link traffic" : "atlas-link"}
+                x1={a.x}
+                y1={a.y}
+                x2={b.x}
+                y2={b.y}
+                style={{ opacity: intensity }}
+                onMouseEnter={(e) => showTip(e, `${a.loc.name} ↔ ${b.loc.name}`, traffic && traffic.count > 0 ? `${traffic.count} ship${traffic.count === 1 ? "" : "s"} in transit` : "no traffic")}
+                onMouseMove={moveTip}
+                onMouseLeave={hideTip}
+              />
+            );
+          })}
+        </g>
+        {playerOrigin && playerDest && (
+          <g className="atlas-player-route">
+            <line x1={playerOrigin.x} y1={playerOrigin.y} x2={playerDest.x} y2={playerDest.y} />
           </g>
-        ))}
-      </g>
-      <g className="atlas-links">
-        {links.map(link => {
-          const a = projectedById.get(link.a);
-          const b = projectedById.get(link.b);
-          if (!a || !b) return null;
-          return <line key={`${link.a}-${link.b}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} />;
-        })}
-      </g>
-      {playerLocation && playerDestination && (
-        <TransitTrace shipLocation={playerLocation} destination={playerDestination} projectedById={projectedById} />
+        )}
+        <g className="atlas-nodes">
+          {projected.map(p => (
+            <g
+              key={p.loc.id}
+              className={`atlas-node atlas-node-${p.kind} ${selectedId === p.loc.id ? "selected" : ""}`}
+              role="button"
+              tabIndex={0}
+              onClick={() => { if (!wasDrag()) onSelect(p.loc.id); }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onSelect(p.loc.id);
+                }
+              }}
+              onMouseEnter={(e) => showTip(e, p.loc.name, `${kindLabel(p.kind)} · ${formatPopulation(p.loc.population)} pop`)}
+              onMouseMove={moveTip}
+              onMouseLeave={hideTip}
+            >
+              <circle className="atlas-node-glow" cx={p.x} cy={p.y} r={p.r * 3.4} />
+              <circle className="atlas-node-core" cx={p.x} cy={p.y} r={p.r} />
+              {selectedId === p.loc.id && <circle className="atlas-node-ring" cx={p.x} cy={p.y} r={p.r + 9} />}
+            </g>
+          ))}
+        </g>
+        <g className="atlas-ships">
+          {ships.map(ship => {
+            const isSelected = selectedTraderId === ship.id;
+            return (
+              <g
+                key={ship.id}
+                className={`atlas-ship ${ship.isTransit ? "transit" : "idle"} ${ship.isPlayer ? "player" : ""} ${isSelected ? "selected" : ""}`}
+                onClick={(e) => {
+                  if (wasDrag()) return;
+                  e.stopPropagation();
+                  onSelectTrader(ship.id);
+                }}
+                onMouseEnter={(e) => {
+                  const dst = ship.destination ? world.locations[ship.destination]?.name ?? "—" : null;
+                  const sub = ship.isTransit
+                    ? `transit → ${dst} · ETA ${ship.trader.ticksRemaining}t`
+                    : `docked at ${world.locations[ship.origin]?.name ?? "—"}`;
+                  showTip(e, ship.trader.name, sub);
+                }}
+                onMouseMove={moveTip}
+                onMouseLeave={hideTip}
+              >
+                {ship.isPlayer ? (
+                  <path
+                    className="atlas-player-marker"
+                    d={`M ${ship.x} ${ship.y - 9} L ${ship.x + 9} ${ship.y} L ${ship.x} ${ship.y + 9} L ${ship.x - 9} ${ship.y} Z`}
+                  />
+                ) : (
+                  <circle cx={ship.x} cy={ship.y} r={ship.isTransit ? 3.4 : 2.6} />
+                )}
+                {isSelected && <circle className="atlas-ship-ring" cx={ship.x} cy={ship.y} r={11} />}
+              </g>
+            );
+          })}
+        </g>
+      </svg>
+      {hover && (
+        <div className="atlas-tooltip" style={{ transform: `translate(${hover.px + 12}px, ${hover.py + 12}px)` }}>
+          <div className="atlas-tooltip-title">{hover.label}</div>
+          <div className="atlas-tooltip-sub dim">{hover.sub}</div>
+        </div>
       )}
-      <g className="atlas-nodes">
-        {projected.map(p => (
-          <g
-            key={p.loc.id}
-            className={`atlas-node atlas-node-${p.kind} ${selectedId === p.loc.id ? "selected" : ""}`}
-            role="button"
-            tabIndex={0}
-            onClick={() => onSelect(p.loc.id)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                onSelect(p.loc.id);
-              }
-            }}
-          >
-            <title>{p.loc.name}</title>
-            <circle className="atlas-node-glow" cx={p.x} cy={p.y} r={p.r * 3.4} />
-            <circle className="atlas-node-core" cx={p.x} cy={p.y} r={p.r} />
-            {selectedId === p.loc.id && <circle className="atlas-node-ring" cx={p.x} cy={p.y} r={p.r + 9} />}
-          </g>
-        ))}
-      </g>
-      {playerLocation && projectedById.get(playerLocation) && (
-        <PlayerMarker p={projectedById.get(playerLocation)!} />
-      )}
-    </svg>
+    </div>
   );
 }
 
-function TransitTrace({ shipLocation, destination, projectedById }: {
-  shipLocation: LocationId; destination: LocationId; projectedById: Map<LocationId, ProjectedLocation>;
-}) {
-  const a = projectedById.get(shipLocation);
-  const b = projectedById.get(destination);
-  if (!a || !b) return null;
-  return (
-    <g className="atlas-player-route">
-      <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} />
-    </g>
-  );
+// Stable key for an unordered lane between two locations.
+function laneKey(a: LocationId, b: LocationId): string {
+  return a < b ? `${a}|${b}` : `${b}|${a}`;
 }
 
-function PlayerMarker({ p }: { p: ProjectedLocation }) {
-  const size = 10;
-  const d = `M ${p.x} ${p.y - size} L ${p.x + size} ${p.y} L ${p.x} ${p.y + size} L ${p.x - size} ${p.y} Z`;
-  return <path className="atlas-player-marker" d={d}><title>Player ship</title></path>;
+// Build a marker per ship — idle ships sit on their station, transit
+// ships are interpolated along the lane from origin to destination using
+// `(1 - ticksRemaining/totalTicks)`. Total trip ticks are recomputed
+// from `routeDistance` and `speed` (the same formula traders.ts uses).
+function buildShipMarkers(
+  world: World,
+  projectedById: Map<LocationId, ProjectedLocation>,
+): ShipMarker[] {
+  const playerIds = new Set(world.player?.shipIds ?? []);
+  const out: ShipMarker[] = [];
+  // Cluster idle ships at the station: stack them in a small spiral so
+  // multiple traders parked at the same dock don't render on top of one
+  // another. The order is stable per station via the trader id sort.
+  const idleByStation = new Map<LocationId, Trader[]>();
+  for (const t of Object.values(world.traders)) {
+    if (t.state !== "idle") continue;
+    const list = idleByStation.get(t.location) ?? [];
+    list.push(t);
+    idleByStation.set(t.location, list);
+  }
+  for (const [, list] of idleByStation) list.sort((a, b) => a.id.localeCompare(b.id));
+
+  for (const t of Object.values(world.traders)) {
+    if (t.state === "transit" && t.destination) {
+      const a = projectedById.get(t.location);
+      const b = projectedById.get(t.destination);
+      if (!a || !b) continue;
+      const dist = routeDistance(world, t.location, t.destination);
+      const total = dist != null && t.speed > 0 ? Math.max(1, Math.ceil(dist / t.speed)) : Math.max(1, t.ticksRemaining);
+      const progress = Math.max(0, Math.min(1, 1 - t.ticksRemaining / total));
+      out.push({
+        id: t.id,
+        trader: t,
+        x: a.x + (b.x - a.x) * progress,
+        y: a.y + (b.y - a.y) * progress,
+        origin: t.location,
+        destination: t.destination,
+        isPlayer: playerIds.has(t.id),
+        isTransit: true,
+      });
+      continue;
+    }
+    const station = projectedById.get(t.location);
+    if (!station) continue;
+    const list = idleByStation.get(t.location) ?? [];
+    const idx = list.indexOf(t);
+    // Spiral offsets so 0..N idle ships visibly fan around the dock.
+    const angle = idx * 0.8;
+    const radius = idx === 0 ? 0 : station.r * 1.6 + (idx - 1) * 4;
+    out.push({
+      id: t.id,
+      trader: t,
+      x: station.x + Math.cos(angle) * radius,
+      y: station.y + Math.sin(angle) * radius,
+      origin: t.location,
+      destination: null,
+      isPlayer: playerIds.has(t.id),
+      isTransit: false,
+    });
+  }
+  return out;
+}
+
+// Per-lane traffic map: count + ids of all ships in transit between the
+// two endpoints (direction-agnostic, keyed by sorted-id lane key).
+function buildLaneTraffic(world: World): Map<string, LaneTraffic> {
+  const map = new Map<string, LaneTraffic>();
+  for (const t of Object.values(world.traders)) {
+    if (t.state !== "transit" || !t.destination) continue;
+    const key = laneKey(t.location, t.destination);
+    const cur = map.get(key) ?? { count: 0, ships: [] };
+    cur.count += 1;
+    cur.ships.push(t.id);
+    map.set(key, cur);
+  }
+  return map;
 }
 
 function AtlasSummary({ icon: Icon, label, value }: { icon: IconType; label: string; value: ReactNode }) {
