@@ -1015,6 +1015,49 @@
   flex: 0 0 auto;
 }
 
+.ship-card.art-card,
+.exchange-card.art-card,
+.travel-card.art-card {
+  --card-art-height: 190px;
+  --card-art-opacity: 0.18;
+  --card-art-position: center 16%;
+}
+
+.ship-card.art-card {
+  --card-art-height: 100%;
+  --card-art-opacity: 0.28;
+  --card-art-position: center 4%;
+}
+
+.ship-card.art-card::before,
+.exchange-card.art-card::before,
+.travel-card.art-card::before {
+  filter: saturate(0.86) contrast(0.96);
+}
+
+.ship-card.art-card::before {
+  inset: -3px;
+  height: auto;
+  background-image:
+    linear-gradient(to bottom, rgba(21, 24, 29, 0.38), rgba(21, 24, 29, 0.58)),
+    linear-gradient(90deg, rgba(21, 24, 29, 0.62), rgba(21, 24, 29, 0.28) 50%, rgba(21, 24, 29, 0.66)),
+    var(--card-art);
+  filter: saturate(0.82) contrast(0.94);
+}
+
+.exchange-card.art-card .bridge-card-tabs,
+.travel-card.art-card .travel-panel-head {
+  backdrop-filter: blur(1px);
+}
+
+.ship-card.art-card :is(.cargo-table, .upgrade-table, .crew-table) th {
+  border-bottom-color: rgba(232, 242, 252, 0.13);
+}
+
+.ship-card.art-card :is(.cargo-table, .upgrade-table, .crew-table) td {
+  border-bottom-color: rgba(232, 242, 252, 0.09);
+}
+
 .bridge-tab {
   appearance: none;
   background: transparent;
@@ -1061,6 +1104,47 @@
   margin: 0 calc(var(--bridge-card-pad-x) * -1);
   padding: 12px 14px;
   border-bottom: 1px solid var(--ship-line-soft);
+}
+
+.bridge-section-intro.art-panel-head {
+  position: relative;
+  overflow: hidden;
+  min-height: 60px;
+  background: var(--ship-surface);
+  box-shadow: inset 0 -1px rgba(220, 235, 250, 0.08);
+}
+
+.bridge-section-intro.art-panel-head::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  background-image:
+    linear-gradient(to bottom, rgba(13, 17, 22, 0.16), rgba(13, 17, 22, 0.70)),
+    linear-gradient(90deg, rgba(13, 17, 22, 0.84), rgba(13, 17, 22, 0.38) 55%, rgba(13, 17, 22, 0.82)),
+    var(--card-art);
+  background-position: center center, center center, var(--header-art-pan-x, 50%) var(--header-art-pan-y, 50%);
+  background-repeat: no-repeat;
+  background-size: 100% 100%, 100% 100%, 104% auto;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.bridge-section-intro.art-panel-head > * {
+  position: relative;
+  z-index: 1;
+}
+
+.bridge-section-intro.art-panel-head .bridge-section-title,
+.bridge-section-intro.art-panel-head .bridge-section-subtitle {
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.88), 0 0 1px rgba(0, 0, 0, 0.95);
+}
+
+.bridge-section-intro.art-panel-head .bridge-section-title {
+  color: rgba(230, 240, 250, 0.92);
+}
+
+.bridge-section-intro.art-panel-head .bridge-section-subtitle {
+  color: rgba(183, 198, 212, 0.82);
 }
 
 .bridge-section-intro > div {
@@ -1362,6 +1446,22 @@
   font-weight: 500;
 }
 
+.contract-title-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.crew-offer-copy {
+  display: inline-block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .crew-mods {
   font-size: 11px;
 }
@@ -1401,6 +1501,22 @@
 
 .job-kind { font-weight: 500; }
 
+.row-art-thumb {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 22px;
+  overflow: hidden;
+  border: 1px solid rgba(220, 235, 250, 0.12);
+  border-radius: 3px;
+  background:
+    linear-gradient(to bottom, rgba(12, 15, 20, 0.08), rgba(12, 15, 20, 0.44)),
+    var(--card-art);
+  background-position: center 20%;
+  background-size: cover;
+  box-shadow: inset 0 -1px rgba(255, 255, 255, 0.06);
+  filter: saturate(0.9) contrast(0.96);
+}
+
 .job-kind-tag {
   display: inline-block;
   margin-left: 6px;
@@ -1433,15 +1549,6 @@
 
 .jobs-table.contract-table {
   margin-top: 0;
-}
-
-.contract-title-row {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 100%;
-  min-width: 0;
-  vertical-align: middle;
 }
 
 .contract-good {

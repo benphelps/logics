@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import { useMemo, type CSSProperties, type ReactNode } from "react";
 import type { IconType } from "react-icons";
 import {
   GiCargoCrate,
@@ -10,6 +10,7 @@ import { useStore } from "../store";
 import { reachableNeighbors, routeSegments } from "../../sim/geometry";
 import { netProductionRate } from "../../sim/locations";
 import type { LocationDef, LocationId, World } from "../../sim/types";
+import { headerArtUrl, stationArtUrl } from "../art";
 import "./LocationsView.css";
 
 const MAP_W = 1000;
@@ -84,7 +85,7 @@ export function LocationsView() {
     <section className="atlas-view">
       <div className="atlas-grid">
         <section className="atlas-sheet-panel">
-          <div className="atlas-panel-head">
+          <div className="atlas-panel-head art-panel-head" style={artCardStyle(headerArtUrl("atlasStations"))}>
             <div>
               <span className="atlas-panel-label">Stations</span>
               <span className="dim">{locations.length} known ports, sorted by route pressure</span>
@@ -167,7 +168,7 @@ export function LocationsView() {
 
         <aside className="atlas-side">
           <section className="atlas-map-panel">
-            <div className="atlas-panel-head compact">
+            <div className="atlas-panel-head compact art-panel-head" style={artCardStyle(headerArtUrl("sectorMap"))}>
               <div>
                 <span className="atlas-panel-label">Sector Inset</span>
                 <span className="dim">Plotted trade routes; click nodes or rows to inspect</span>
@@ -184,7 +185,10 @@ export function LocationsView() {
             />
           </section>
 
-          <section className="atlas-detail-panel">
+          <section
+            className={`atlas-detail-panel ${selected ? "atlas-info-card" : ""}`}
+            style={selected ? artCardStyle(stationArtUrl(selected)) : undefined}
+          >
             {selected && (
               <>
                 <div className="atlas-detail-head">
@@ -227,6 +231,10 @@ export function LocationsView() {
       </div>
     </section>
   );
+}
+
+function artCardStyle(url: string): CSSProperties {
+  return { "--card-art": `url("${url}")` } as CSSProperties;
 }
 
 function SectorMap({ projected, projectedById, links, selectedId, playerLocation, playerDestination, onSelect }: {

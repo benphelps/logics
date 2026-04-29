@@ -1,8 +1,9 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import type { IconType } from "react-icons";
 import { GiCargoCrate, GiFactory, GiTrade, GiUpgrade, GiWallet } from "react-icons/gi";
 import { useStore } from "../store";
 import type { Good, GoodCategory, GoodId, LocationDef, LocationId, World } from "../../sim/types";
+import { goodArtUrl, headerArtUrl } from "../art";
 import "./MarketsView.css";
 
 type CommodityTone = "short" | "surplus" | "";
@@ -92,7 +93,7 @@ export function MarketsView() {
               </button>
             ))}
           </div>
-          <div className="markets-panel-head">
+          <div className="markets-panel-head art-panel-head" style={artCardStyle(headerArtUrl("marketBazaar"))}>
             <div>
               <span className="markets-panel-label">Board</span>
               <span className="dim">{activeCategory === "all" ? "Aggregate sector stock, demand, and station quotes" : `${CATEGORY_LABEL[activeCategory]} quotes across every station`}</span>
@@ -171,7 +172,10 @@ export function MarketsView() {
           </div>
         </section>
 
-        <aside className="commodity-detail">
+        <aside
+          className={`commodity-detail ${selected ? "market-info-card" : ""}`}
+          style={selected ? artCardStyle(goodArtUrl(world, selected.good.id)) : undefined}
+        >
           {selected && (
             <>
               <div className="commodity-detail-head">
@@ -202,6 +206,10 @@ export function MarketsView() {
       </div>
     </section>
   );
+}
+
+function artCardStyle(url: string): CSSProperties {
+  return { "--card-art": `url("${url}")` } as CSSProperties;
 }
 
 function MarketSummary({ icon: Icon, label, value }: { icon: IconType; label: string; value: ReactNode }) {

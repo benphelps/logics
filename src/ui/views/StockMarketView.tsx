@@ -16,7 +16,7 @@ import {
   totalUnrealizedPnl,
   unrealizedPnl,
 } from "../../sim/stock";
-import { shipArtUrl, stationArtUrl, stationKind, stationKindLabel, stationScale, stationScaleLabel, stationSubtype, stationSubtypeLabel } from "../art";
+import { headerArtUrl, shipArtUrl, stationArtUrl, stationKind, stationKindLabel, stationScale, stationScaleLabel, stationSubtype, stationSubtypeLabel } from "../art";
 import "./StockMarketView.css";
 
 interface EquityRow {
@@ -115,7 +115,7 @@ export function StockMarketView() {
             </div>
 
             <section className={`stocks-board stocks-tab-panel ${activePanel !== "tape" ? "stocks-panel-hidden" : ""}`}>
-              <div className="stocks-panel-head">
+              <div className="stocks-panel-head art-panel-head" style={artCardStyle(headerArtUrl("stockTape"))}>
                 <div>
                   <span className="stocks-panel-label">Tape</span>
                   <span className="dim">{tapeRows.reachable.length} reachable · {tapeRows.far.length} out of range</span>
@@ -142,7 +142,7 @@ export function StockMarketView() {
             </section>
 
             <section className={`stocks-positions-panel stocks-tab-panel ${focusedPositionId ? "focused" : ""} ${activePanel !== "positions" ? "stocks-panel-hidden" : ""}`}>
-              <div className="stocks-panel-head">
+              <div className="stocks-panel-head art-panel-head" style={artCardStyle(headerArtUrl("portfolioPositions"))}>
                 <div>
                   <span className="stocks-panel-label">Positions</span>
                   <span className="dim">
@@ -196,7 +196,7 @@ export function StockMarketView() {
             </section>
 
             <section className={`stocks-trades-panel stocks-tab-panel ${activePanel !== "trades" ? "stocks-panel-hidden" : ""}`}>
-              <div className="stocks-panel-head">
+              <div className="stocks-panel-head art-panel-head" style={artCardStyle(headerArtUrl("tradeLedger"))}>
                 <div>
                   <span className="stocks-panel-label">Trades</span>
                   <span className="dim">most recent first ({trades.length} entries)</span>
@@ -950,9 +950,9 @@ function equityArtUrl(world: World, eq: Equity): string | null {
     const loc = world.locations[eq.underlyingId];
     return loc ? stationArtUrl(loc) : null;
   }
-  const synd = world.syndicates[eq.underlyingId];
-  const leadShip = synd?.memberShipIds.map(id => world.traders[id]).find(Boolean);
-  return leadShip ? shipArtUrl(leadShip) : null;
+  const syndicate = world.syndicates[eq.underlyingId];
+  const leadShipId = syndicate?.memberShipIds.find(id => world.traders[id]);
+  return leadShipId ? shipArtUrl(world.traders[leadShipId]) : null;
 }
 
 function buildRows(world: World): EquityRow[] {

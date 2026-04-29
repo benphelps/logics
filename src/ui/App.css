@@ -48,3 +48,9 @@
   color: var(--text-dim);
   margin: 0 0 12px;
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .art-panel-head {
+    background-position: center center, center center, 50% 50% !important;
+  }
+}

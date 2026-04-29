@@ -28,7 +28,7 @@ import { selectRefuelType } from "../../sim/traders";
 import { UPGRADE_SLOTS, installedUpgrade, isUpgradeGood, upgradeDef, upgradeEffectText } from "../../sim/upgrades";
 import type { CrewModifiers, CrewRole } from "../../sim/types";
 import type { GoodId, Job, JobId, LocationDef, LocationId, Trader, UpgradeSlot, World } from "../../sim/types";
-import { goodArtUrl, shipArtUrl, stationArtUrl, stationKind, stationKindLabel, stationScale, stationScaleLabel, stationSubtype, stationSubtypeLabel } from "../art";
+import { goodArtUrl, headerArtUrl, jobArtUrl, shipArtUrl, shipTabArtUrl, stationArtUrl, stationKind, stationKindLabel, stationScale, stationScaleLabel, stationSubtype, stationSubtypeLabel, type HeaderArtKey, type ShipTabArtKey } from "../art";
 import "./PlayerView.css";
 
 const SHOW_DEV_SHIP_PLAN_PANEL = false;
@@ -36,6 +36,7 @@ const SHOW_DEV_SHIP_LOG_PANEL = false;
 const GUIDANCE_LOCKED_TEXT = "Hire a navigator for guided suggestions.";
 const DEPART_SUGGESTION_GUARD_MS = 1800;
 const SUGGESTION_PULSE_MS = 3700;
+type ShipCargoTab = Extract<ShipTabArtKey, "cargo" | "upgrades" | "crew">;
 const INFO_HOVER_CLEAR_DELAY_MS = 90;
 
 export function PlayerView() {
@@ -157,7 +158,11 @@ function SuggestedMarker({ tip, critical, label = "Suggested" }: { tip: string; 
 }
 
 function ActionCell({ suggested, hintText, critical, label, children }: {
-  suggested: boolean; hintText: string; critical?: boolean; label?: string; children: ReactNode;
+  suggested: boolean;
+  hintText: string;
+  critical?: boolean;
+  label?: string;
+  children: ReactNode;
 }) {
   return (
     <span className="action-cell">
@@ -431,13 +436,14 @@ function infoFocusLabel(focus: InfoFocus, world: World): string {
   return world.locations[focus.loc]?.name ?? focus.loc;
 }
 
-function SectionIntro({ title, subtitle, trailing }: {
+function SectionIntro({ title, subtitle, trailing, art }: {
   title: string;
   subtitle?: string;
   trailing?: ReactNode;
+  art?: HeaderArtKey;
 }) {
   return (
-    <div className="bridge-section-intro">
+    <div className={`bridge-section-intro ${art ? "art-panel-head" : ""}`} style={art ? artCardStyle(headerArtUrl(art)) : undefined}>
       <div>
         <span className="bridge-section-title">{title}</span>
         {subtitle && <span className="bridge-section-subtitle">{subtitle}</span>}
@@ -716,6 +722,7 @@ function ContractsTab({ ship, world, loc, target, hintText, cueText, interaction
           <SectionIntro
             title="Active"
             subtitle={`${activeJobs.length} contract${activeJobs.length === 1 ? "" : "s"} assigned to ${ship.name}`}
+            art="contractBoard"
           />
           <ActiveContractsTab ship={ship} world={world} jobs={activeJobs} target={target} cueText={cueText} hintText={hintText} />
         </>
@@ -745,6 +752,7 @@ function LocalJobRow({ job, world, ship, suggested, hintText, showAction, intera
       <td><span className={`tier-badge tier-${job.tier}`}>{job.tier.toUpperCase()}</span></td>
       <td>
         <span className="contract-title-row">
+          <span className="row-art-thumb contract-art-thumb" style={artCardStyle(jobArtUrl(world, job))} aria-hidden="true" />
           <span className="contract-good">{good}</span>
           {job.kind === "rescue" && (
             <span className="job-kind-tag" title={job.rescueTarget ? `Rescue ${world.traders[job.rescueTarget]?.name ?? job.rescueTarget}` : "Rescue contract"}>
@@ -1048,15 +1056,27 @@ function ShipCard({ ship, world, loc, guidedPlan, target, hintText, cueText, cri
   const mass = cargoMassFn(ship, world);
   const cargoPct = (mass / ship.capacity) * 100;
   const groups = groupCargoByGood(ship);
+  const [shipTab, setShipTab] = useState<ShipCargoTab>("cargo");
 
   const debt = ship.maintenanceDebt ?? 0;
   const canRepair = debt > 0 && ship.state === "idle";
 
   return (
-    <section className="bridge-card ship-card">
+    <section className="bridge-card ship-card art-card" style={artCardStyle(shipTabArtUrl(shipTab))}>
       <div className="ship-status-tabs bridge-card-tabs">
-        <ShipFuelStatusEntry ship={ship} world={world} target={target} hintText={cueText.refuel ?? hintText} critical={critical} inTransit={inTransit} />
-        <ShipMaintenanceStatusEntry debt={debt} canRepair={canRepair} onRepair={() => repairShip(ship.id)} />
+        <ShipFuelStatusEntry
+          ship={ship}
+          world={world}
+          target={target}
+          hintText={cueText.refuel ?? hintText}
+          critical={critical}
+          inTransit={inTransit}
+        />
+        <ShipMaintenanceStatusEntry
+          debt={debt}
+          canRepair={canRepair}
+          onRepair={() => repairShip(ship.id)}
+        />
       </div>
       <ShipCargoTabs
         ship={ship}
@@ -1073,6 +1093,8 @@ function ShipCard({ ship, world, loc, guidedPlan, target, hintText, cueText, cri
         pinnedGoods={pinnedGoods}
         onSelectGood={onSelectGood}
         onHoverGood={onHoverGood}
+        tab={shipTab}
+        onTabChange={setShipTab}
       />
       {SHOW_DEV_SHIP_PLAN_PANEL && <ShipPlanPanel ship={ship} world={world} guidedPlan={guidedPlan} hintText={hintText} />}
     </section>
@@ -1084,7 +1106,12 @@ function meterTabStyle(pct: number): CSSProperties {
 }
 
 function ShipFuelStatusEntry({ ship, world, target, hintText, critical, inTransit }: {
-  ship: Trader; world: World; target: HintTarget; hintText: string; critical: boolean; inTransit: boolean;
+  ship: Trader;
+  world: World;
+  target: HintTarget;
+  hintText: string;
+  critical: boolean;
+  inTransit: boolean;
 }) {
   const refuel = useStore((s) => s.refuel);
   const manualActions = ship.pilot !== "auto";
@@ -1144,7 +1171,11 @@ function ShipFuelStatusEntry({ ship, world, target, hintText, critical, inTransi
   );
 }
 
-function ShipMaintenanceStatusEntry({ debt, canRepair, onRepair }: { debt: number; canRepair: boolean; onRepair: () => void }) {
+function ShipMaintenanceStatusEntry({ debt, canRepair, onRepair }: {
+  debt: number;
+  canRepair: boolean;
+  onRepair: () => void;
+}) {
   const damagePct = Math.max(0, Math.min(100, (debt / MAINTENANCE_DEBT_TRAVEL_BLOCK) * 100));
   const conditionPct = Math.max(0, 100 - damagePct);
   const grounded = debt >= MAINTENANCE_DEBT_TRAVEL_BLOCK;
@@ -1438,24 +1469,31 @@ function StationExchangeCard({ ship, world, loc, target, hintText, cueText, sele
     ? {
         title: "Station goods",
         subtitle: `${marketGoodsCount} tradable good${marketGoodsCount === 1 ? "" : "s"} at ${loc.name}`,
+        art: "marketBazaar" as const,
       }
     : tab === "upgrades"
       ? {
           title: "Station modules",
           subtitle: `${upgradeCount} upgrade module${upgradeCount === 1 ? "" : "s"} stocked`,
+          art: "shipyardUpgrades" as const,
         }
       : tab === "offers"
         ? {
             title: "Crew board",
             subtitle: `${offers.length} posted hire offer${offers.length === 1 ? "" : "s"}`,
+            art: "crewMarket" as const,
           }
         : {
             title: "Local",
             subtitle: `${localContractCount} contract${localContractCount === 1 ? "" : "s"} posted for ${loc.name}`,
+            art: "contractBoard" as const,
           };
 
   return (
-    <section className={`bridge-card market-card exchange-card ${inTransit ? "transit-preview-card" : ""}`}>
+    <section
+      className={`bridge-card market-card exchange-card art-card ${inTransit ? "transit-preview-card" : ""}`}
+      style={artCardStyle(stationArtUrl(loc))}
+    >
       <div className="bridge-card-tabs">
         <button
           className={`bridge-tab ${tab === "markets" ? "active" : ""} ${marketsSuggested ? "has-suggestion" : ""}`}
@@ -2253,7 +2291,7 @@ function TradeGoodInfoContent({ ship, world, loc, focus, target, hint }: {
   );
 }
 
-function ShipCargoTabs({ ship, world, loc, groups, inTransit, target, hintText, cueText, cargoUsed, cargoPct, selectedGood, pinnedGoods, onSelectGood, onHoverGood }: {
+function ShipCargoTabs({ ship, world, loc, groups, inTransit, target, hintText, cueText, cargoUsed, cargoPct, selectedGood, pinnedGoods, onSelectGood, onHoverGood, tab, onTabChange }: {
   ship: Trader;
   world: World;
   loc: LocationDef;
@@ -2268,8 +2306,9 @@ function ShipCargoTabs({ ship, world, loc, groups, inTransit, target, hintText, 
   pinnedGoods: Set<GoodId>;
   onSelectGood: (good: GoodId) => void;
   onHoverGood: (good: GoodId | null) => void;
+  tab: ShipCargoTab;
+  onTabChange: (tab: ShipCargoTab) => void;
 }) {
-  const [tab, setTab] = useState<"cargo" | "upgrades" | "crew">("cargo");
   const installedCount = Object.keys(ship.upgrades ?? {}).length;
   const crewCount = Object.keys(ship.crew ?? {}).length;
   const manualActions = ship.pilot !== "auto";
@@ -2282,7 +2321,7 @@ function ShipCargoTabs({ ship, world, loc, groups, inTransit, target, hintText, 
         <button
           className={`bridge-tab ship-meter-tab cargo-meter-tab ${tab === "cargo" ? "active" : ""} ${cargoSuggested ? "has-suggestion" : ""}`}
           style={meterTabStyle(cargoPct)}
-          onClick={() => setTab("cargo")}
+          onClick={() => onTabChange("cargo")}
           title={cargoSuggested ? cargoHintText : `${cargoPct.toFixed(0)}% cargo capacity used`}
         >
           Cargo
@@ -2290,13 +2329,13 @@ function ShipCargoTabs({ ship, world, loc, groups, inTransit, target, hintText, 
         </button>
         <button
           className={`bridge-tab ${tab === "upgrades" ? "active" : ""}`}
-          onClick={() => setTab("upgrades")}
+          onClick={() => onTabChange("upgrades")}
         >
           Upgrades <span className="bridge-tab-count">{installedCount}/5</span>
         </button>
         <button
           className={`bridge-tab ${tab === "crew" ? "active" : ""}`}
-          onClick={() => setTab("crew")}
+          onClick={() => onTabChange("crew")}
         >
           Crew <span className="bridge-tab-count">{crewCount}/3</span>
         </button>
@@ -2839,6 +2878,7 @@ function ActiveContractsTab({ ship, world, jobs, target, cueText, hintText }: {
                   <td><span className={`tier-badge tier-${j.tier}`}>{j.tier.toUpperCase()}</span></td>
                   <td>
                     <span className="contract-title-row">
+                      <span className="row-art-thumb contract-art-thumb" style={artCardStyle(jobArtUrl(world, j))} aria-hidden="true" />
                       <span className="contract-good">{good}</span>
                       {j.kind === "rescue" && <span className="job-kind-tag">rescue</span>}
                       {isTradeJob && (
@@ -2939,8 +2979,10 @@ function HireOffersTab({ ship, world, loc, interactionLocked }: { ship: Trader; 
               <td><span className={`tier-badge tier-${tierClass(h.tier)}`}>T{h.tier}</span></td>
               <td>{ROLE_SHORT[h.role]}</td>
               <td>
-                <span className="crew-name">{h.name}</span>
-                {mods && <span className="crew-mods dim" title={mods}> · {mods}</span>}
+                <span className="crew-offer-copy">
+                  <span className="crew-name">{h.name}</span>
+                  {mods && <span className="crew-mods dim" title={mods}> · {mods}</span>}
+                </span>
               </td>
               <td className="numeric mono dim">Ç{h.wagePerTick}/t</td>
               <td className="numeric mono">Ç{h.hireCost.toLocaleString()}</td>
@@ -3058,7 +3100,10 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
     : `${neighborDests.length} reachable station${neighborDests.length === 1 ? "" : "s"}, departing ${world.locations[routeFrom]?.name ?? loc.name}`;
 
   return (
-    <section className="bridge-card travel-card">
+    <section
+      className={`bridge-card travel-card ${currentLocation ? "art-card" : ""}`}
+      style={currentLocation ? artCardStyle(stationArtUrl(currentLocation)) : undefined}
+    >
       <header className={`travel-panel-head ${travelSuggested ? "has-suggestion" : ""}`} title={travelSuggested ? travelHintText : undefined}>
         <div>
           <span className="travel-panel-label">{travelTitle}</span>

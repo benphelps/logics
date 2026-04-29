@@ -8,6 +8,8 @@ import type { LocationDef, Trader } from "../sim/types";
 import { UPGRADE_SLOTS, isUpgradeGood } from "../sim/upgrades";
 import {
   GOOD_ART,
+  HEADER_ART,
+  SHIP_TAB_ART,
   SHIP_ART,
   SHIP_FAMILY_TERMS,
   STATION_ART,
@@ -136,6 +138,8 @@ function main(): void {
     ...Object.values(STATION_ART),
     ...Object.values(GOOD_ART),
     ...Object.values(UPGRADE_ART),
+    ...Object.values(HEADER_ART),
+    ...Object.values(SHIP_TAB_ART),
   ]);
   const missingAssets = [...assetUrls].filter(url => !artExists(url)).sort();
 
@@ -163,7 +167,8 @@ function main(): void {
     ];
   });
 
-  const stationScaleRows = STATION_ARCHETYPES.flatMap(({ kind }) => {
+  const stationScaleKinds = [...STATION_ARCHETYPES.map(entry => entry.kind), "station"] as StationKind[];
+  const stationScaleRows = stationScaleKinds.flatMap(kind => {
     return (["compact", "standard", "large"] as StationScale[]).map(scale => {
       const loc = fakeStation(kind, `${kind} ${scale}`, scale);
       const candidates = stationArtCandidates(loc);
@@ -194,6 +199,16 @@ function main(): void {
     return [slot, url, status(url)];
   });
 
+  const headerRows = (Object.keys(HEADER_ART) as Array<keyof typeof HEADER_ART>).map(key => {
+    const url = HEADER_ART[key];
+    return [key, url, status(url)];
+  });
+
+  const shipTabRows = (Object.keys(SHIP_TAB_ART) as Array<keyof typeof SHIP_TAB_ART>).map(key => {
+    const url = SHIP_TAB_ART[key];
+    return [key, url, status(url)];
+  });
+
   const sections = [
     "# Art Coverage",
     "",
@@ -208,6 +223,8 @@ function main(): void {
       summarize("Trade goods", goodRows.length, goodRows.filter(row => row[5] === "covered").length).slice(2, -2).split(" | "),
       summarize("Trade goods exact art", goodRows.length, goodRows.filter(row => row[3] === "exact").length).slice(2, -2).split(" | "),
       summarize("Upgrade slots", upgradeRows.length, upgradeRows.filter(row => row[2] === "covered").length).slice(2, -2).split(" | "),
+      summarize("Header backdrops", headerRows.length, headerRows.filter(row => row[2] === "covered").length).slice(2, -2).split(" | "),
+      summarize("Ship tab backdrops", shipTabRows.length, shipTabRows.filter(row => row[2] === "covered").length).slice(2, -2).split(" | "),
     ]),
     "",
     "## Missing Asset Files",
@@ -237,6 +254,14 @@ function main(): void {
     "## Upgrade Slots",
     "",
     lineTable(["Slot", "Art", "Status"], upgradeRows),
+    "",
+    "## Header Backdrops",
+    "",
+    lineTable(["Key", "Art", "Status"], headerRows),
+    "",
+    "## Ship Tab Backdrops",
+    "",
+    lineTable(["Key", "Art", "Status"], shipTabRows),
     "",
   ];
 

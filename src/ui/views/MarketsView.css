@@ -189,8 +189,48 @@
 }
 
 .commodity-detail {
+  position: relative;
   padding: 14px;
+  overflow-x: hidden;
   overflow-y: auto;
+}
+
+.commodity-detail.market-info-card {
+  --card-art-height: 152px;
+  --card-art-position: center 12%;
+}
+
+.commodity-detail.market-info-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: var(--card-art-height);
+  background-image:
+    linear-gradient(to bottom, rgba(12, 15, 20, 0.14), rgba(12, 15, 20, 0.34) 56%, rgba(21, 24, 29, 0.88) 100%),
+    linear-gradient(90deg, rgba(12, 15, 20, 0.70), rgba(12, 15, 20, 0.24) 52%, rgba(12, 15, 20, 0.76)),
+    var(--card-art);
+  background-position: var(--card-art-position);
+  background-size: cover;
+  box-shadow: inset 0 -1px rgba(138, 158, 178, 0.22), 0 1px 0 rgba(0, 0, 0, 0.28);
+  filter: saturate(1.12) contrast(1.04);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.commodity-detail > * {
+  position: relative;
+  z-index: 1;
+}
+
+.market-info-card .commodity-detail-head,
+.market-info-card .category-pill {
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.82), 0 0 1px rgba(0, 0, 0, 0.9);
+}
+
+.market-info-card .category-pill {
+  background: transparent;
+  border-color: rgba(220, 235, 250, 0.34);
+  color: rgba(228, 238, 248, 0.86);
 }
 
 .markets-panel-head {
@@ -200,6 +240,24 @@
   gap: 12px;
   padding: 12px 14px;
   border-bottom: 1px solid var(--market-line);
+}
+
+.markets-panel-head.art-panel-head {
+  min-height: 62px;
+  background-image:
+    linear-gradient(to bottom, rgba(13, 17, 22, 0.12), rgba(13, 17, 22, 0.72)),
+    linear-gradient(90deg, rgba(13, 17, 22, 0.86), rgba(13, 17, 22, 0.40) 58%, rgba(13, 17, 22, 0.84)),
+    var(--card-art);
+  background-position: center center, center center, var(--header-art-pan-x, 50%) var(--header-art-pan-y, 50%);
+  background-repeat: no-repeat;
+  background-size: 100% 100%, 100% 100%, 104% auto;
+  box-shadow: inset 0 -1px rgba(220, 235, 250, 0.08);
+}
+
+.markets-panel-head.art-panel-head,
+.markets-panel-head.art-panel-head .dim,
+.markets-panel-head.art-panel-head .markets-legend {
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.88), 0 0 1px rgba(0, 0, 0, 0.95);
 }
 
 .markets-panel-head .dim {

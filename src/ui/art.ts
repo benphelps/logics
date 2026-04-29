@@ -1,5 +1,5 @@
 import { upgradeDef } from "../sim/upgrades";
-import type { GoodId, LocationDef, Trader, UpgradeSlot, World } from "../sim/types";
+import type { GoodId, Job, LocationDef, Trader, UpgradeSlot, World } from "../sim/types";
 
 export type StationKind = "hub" | "mining" | "agri" | "frontier" | "research" | "station";
 export type StationScale = "compact" | "standard" | "large";
@@ -16,6 +16,17 @@ export type StationSubtype =
   | "lab";
 
 export type ShipArtFamily = "freighter" | "hauler" | "courier" | "scout" | "tanker";
+export type ShipTabArtKey = "fuel" | "hull" | "cargo" | "upgrades" | "crew";
+export type HeaderArtKey =
+  | "marketBazaar"
+  | "shipyardUpgrades"
+  | "crewMarket"
+  | "contractBoard"
+  | "stockTape"
+  | "portfolioPositions"
+  | "tradeLedger"
+  | "atlasStations"
+  | "sectorMap";
 
 export const SHIP_ART: Record<ShipArtFamily | "default", string> = {
   default: "/art/ships/voyager-freighter.webp",
@@ -60,6 +71,8 @@ export const STATION_ART: Record<string, string> = {
   "research:lab": "/art/stations/research-lab.webp",
   "research:compact": "/art/stations/research-lab.webp",
   "research:large": "/art/stations/research-spire.webp",
+  "station:compact": "/art/stations/frontier-rim.webp",
+  "station:large": "/art/stations/trade-hub.webp",
   station: "/art/stations/trade-hub.webp",
 };
 
@@ -118,6 +131,26 @@ export const UPGRADE_ART: Record<UpgradeSlot, string> = {
   fuel: "/art/upgrades/fuel-tank.webp",
   hull: "/art/upgrades/hull-plating.webp",
   weapon: "/art/upgrades/weapon-mount.webp",
+};
+
+export const HEADER_ART: Record<HeaderArtKey, string> = {
+  marketBazaar: "/art/headers/market-bazaar.webp",
+  shipyardUpgrades: "/art/headers/shipyard-upgrades.webp",
+  crewMarket: "/art/headers/crew-market.webp",
+  contractBoard: "/art/headers/contract-board.webp",
+  stockTape: "/art/headers/stock-tape.webp",
+  portfolioPositions: "/art/headers/portfolio-positions.webp",
+  tradeLedger: "/art/headers/trade-ledger.webp",
+  atlasStations: "/art/headers/atlas-stations.webp",
+  sectorMap: "/art/headers/sector-map.webp",
+};
+
+export const SHIP_TAB_ART: Record<ShipTabArtKey, string> = {
+  fuel: "/art/ship-tabs/fuel-plasma.webp",
+  hull: "/art/ship-tabs/hull-damage.webp",
+  cargo: "/art/ship-tabs/cargo-hold.webp",
+  upgrades: "/art/ship-tabs/upgrade-bay.webp",
+  crew: "/art/ship-tabs/crew-quarters.webp",
 };
 
 export function shipArtUrl(ship: Trader): string {
@@ -249,4 +282,27 @@ export function goodArtUrl(world: World, good: GoodId): string {
 
   const category = world.goods[good]?.category;
   return (category && GOOD_ART[category]) || GOOD_ART.generic;
+}
+
+export function jobArtUrl(world: World, job: Pick<Job, "kind" | "good" | "destination" | "rescueTarget">): string {
+  if (job.kind === "shortage" && job.good) return goodArtUrl(world, job.good);
+
+  if (job.kind === "rescue" && job.rescueTarget) {
+    const target = world.traders[job.rescueTarget];
+    if (target) return shipArtUrl(target);
+  }
+
+  const destination = world.locations[job.destination];
+  if (destination) return stationArtUrl(destination);
+
+  if (job.good) return goodArtUrl(world, job.good);
+  return STATION_ART.station;
+}
+
+export function headerArtUrl(key: HeaderArtKey): string {
+  return HEADER_ART[key];
+}
+
+export function shipTabArtUrl(key: ShipTabArtKey): string {
+  return SHIP_TAB_ART[key];
 }

@@ -1,6 +1,6 @@
 # Art Workflow
 
-This project uses subtle background art only in the info card area. Primary ship, travel, market, cargo, and station cards should stay standard UI unless the design direction changes again.
+This project uses subtle background art on focused/detail surfaces and a small set of primary fleet cards. The info card remains the reference pattern: upper-card art, dark lower content, and readable text overlays.
 
 ## Source Of Truth
 
@@ -10,8 +10,13 @@ Runtime art selection lives in `src/ui/art.ts`.
 - Stations resolve by archetype, generated name-root subtype, and scale, then fall back to the broad archetype.
 - Goods resolve by exact good id first, then category fallback.
 - Upgrade goods resolve by upgrade slot.
+- Contract row art derives from existing goods, ships, or destination stations.
+- Syndicate company art derives from the syndicate's lead ship until dedicated company art exists.
+- Header backdrops resolve by semantic section key, such as market bazaar, shipyard upgrades, or stock tape.
 
 The coverage report uses the same resolver, so update `src/ui/art.ts` before generating or judging missing art.
+
+Placement notes live in `docs/ART_PLACEMENT_REPORT.md`.
 
 ## Asset Layout
 
@@ -21,6 +26,7 @@ Project-bound images live under `public/art/`.
 - `public/art/stations/` for station archetype, subtype, and scale images.
 - `public/art/goods/` for exact goods and category fallback images.
 - `public/art/upgrades/` for upgrade slot fallback images.
+- `public/art/headers/` for section and table header backdrops.
 
 Use stable lowercase kebab-case filenames. Prefer WebP for repo assets.
 
@@ -47,7 +53,7 @@ Avoid: text, logos, signage, UI, characters, close-up cockpit, huge planet, over
 ## Adding New Art
 
 1. Add or update the resolver mapping in `src/ui/art.ts`.
-2. Generate the image with the built-in image tool.
+2. Generate the image with the built-in image tool using existing assets as the style target.
 3. Copy or convert the chosen output into `public/art/...`.
 4. Use WebP, roughly quality `82`, unless a different format is needed.
 5. Run `npm run art:coverage -- --write`.
@@ -77,6 +83,7 @@ The report checks:
 - the default starting universe stations resolve to existing art
 - trade goods resolve to exact or fallback art
 - upgrade slots resolve to existing art
+- header backdrops resolve to existing art
 
 If the report is below 100%, work from the missing asset list first. If a missing row is covered only by a generic fallback and that feels too repetitive in the UI, add a more specific mapping and asset.
 
