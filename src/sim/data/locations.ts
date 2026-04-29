@@ -36,6 +36,8 @@ export const LOCATIONS: Record<string, LocationDef> = {
       // Civilian-flavored alternatives that fit a hub/transit station.
       upg_cargo_modular_1: 1, upg_engine_solar_1: 1, upg_fuel_solar_1: 1,
       upg_systems_haggler_1: 1,
+      // Phase-B mid-tier amenities: passive idle perks fit a calm core hub.
+      upg_fuel_regen_2: 1, upg_systems_dock_2: 1, upg_systems_haggler_2: 1,
     },
   },
 
@@ -154,6 +156,8 @@ export const LOCATIONS: Record<string, LocationDef> = {
       upg_cargo_atlas_3: 1, upg_engine_singularity_3: 1,
       upg_hull_stealth_2: 1, upg_hull_nano_3: 1,
       upg_weapon_emp_3: 1, upg_systems_ticker_2: 1, upg_systems_pressure_3: 1,
+      // Phase-B premium systems modules — investor / treasury fare.
+      upg_systems_treasury_2: 1, upg_systems_dividend_3: 1,
     },
   },
 };

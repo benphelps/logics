@@ -67,4 +67,11 @@ export const GOODS: Record<string, Good> = {
   upg_systems_ticker_2:     { id: "upg_systems_ticker_2",     name: "Bridge Ticker Tape",    category: "upgrade", basePrice:  47_000, weight: 1.0 },
   upg_systems_oracle_3:     { id: "upg_systems_oracle_3",     name: "Oracle Trade Core",     category: "upgrade", basePrice: 130_000, weight: 1.0 },
   upg_systems_pressure_3:   { id: "upg_systems_pressure_3",   name: "Pressure Atlas Console", category: "upgrade", basePrice: 118_000, weight: 1.0 },
+
+  // --- phase B variants (new effects) -------------------------------------
+  upg_fuel_regen_2:         { id: "upg_fuel_regen_2",         name: "Hyperion Bloom Reclaimer", category: "upgrade", basePrice:  28_500, weight: 2.5 },
+  upg_systems_treasury_2:   { id: "upg_systems_treasury_2",   name: "Bonded Treasury Module",   category: "upgrade", basePrice:  62_000, weight: 1.0 },
+  upg_systems_dock_2:       { id: "upg_systems_dock_2",       name: "Diplomatic Beacon",        category: "upgrade", basePrice:  45_000, weight: 1.0 },
+  upg_systems_dividend_3:   { id: "upg_systems_dividend_3",   name: "Shareholder Relations Suite", category: "upgrade", basePrice: 124_000, weight: 1.0 },
+  upg_systems_haggler_2:    { id: "upg_systems_haggler_2",    name: "Negotiator's Console",     category: "upgrade", basePrice:  58_000, weight: 1.0 },
 };

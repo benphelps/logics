@@ -1,5 +1,12 @@
 import type { LocationDef, MarketState, Trader, World } from "./types";
-import { combinedShipModifiers, hasCrew, totalCrewWage } from "./crew";
+import {
+  combinedShipModifiers,
+  dockingDiscountFraction,
+  fuelRegenPerTick,
+  hasCrew,
+  totalCrewWage,
+  treasuryYieldRate,
+} from "./crew";
 
 export const MAINTENANCE_PER_CAPACITY = 0.5;
 export const MAINTENANCE_IDLE_FACTOR = 0;
@@ -232,7 +239,8 @@ export function chargeOperationalCosts(world: World): void {
 
 export function chargeDockingFee(world: World, trader: Trader): number {
   if (trader.funds <= 0) return 0;
-  const fee = trader.capacity * DOCKING_FEE_PER_CAPACITY;
+  const baseFee = trader.capacity * DOCKING_FEE_PER_CAPACITY;
+  const fee = baseFee * (1 - dockingDiscountFraction(trader));
   const paid = Math.min(fee, trader.funds);
   trader.funds = Math.max(0, trader.funds - fee);
   // Docking fee transfers to local treasury — the city earns from each
@@ -240,6 +248,35 @@ export function chargeDockingFee(world: World, trader: Trader): number {
   const market = world.markets[trader.location];
   if (market) depositToTreasury(market, paid);
   return paid;
+}
+
+// Per-tick passive perks for idle/docked ships: fuel regen tops up the
+// tank, treasury yield credits a small interest on the ship's idle
+// funds. Both are no-ops unless the corresponding upgrade modifier is
+// installed. Called from the same per-tick pass as chargeOperationalCosts.
+export function applyIdlePerks(world: World): void {
+  for (const trader of Object.values(world.traders)) {
+    if (trader.state !== "idle") continue;
+
+    const regen = fuelRegenPerTick(trader);
+    if (regen > 0 && trader.currentFuel) {
+      const next = Math.min(trader.fuelCapacity, trader.currentFuel.qty + regen);
+      trader.currentFuel = { good: trader.currentFuel.good, qty: next };
+    }
+
+    const yieldRate = treasuryYieldRate(trader);
+    if (yieldRate > 0 && trader.funds > 0) {
+      // Yield is funded by the dock's market treasury (a "money-market
+      // sweep" feel) so the float stays conserved.
+      const market = world.markets[trader.location];
+      if (market) {
+        const want = trader.funds * yieldRate;
+        const paid = withdrawFromTreasury(market, want);
+        if (paid > 0) trader.funds += paid;
+      }
+    }
+  }
+  void world;
 }
 
 export const chargeMaintenance = chargeOperationalCosts;

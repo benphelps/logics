@@ -1,7 +1,7 @@
 import type { GoodId, Hire, HireId, Job, LocationDef, MarketState, World } from "./types";
 import { recomputePrices } from "./pricing";
 import { stepTraders, type TraderEvent } from "./traders";
-import { chargeMaintenance, chargeNpcWealthCarry, consumptionDemand, productionScale, tickTreasuries } from "./economy";
+import { applyIdlePerks, chargeMaintenance, chargeNpcWealthCarry, consumptionDemand, productionScale, tickTreasuries } from "./economy";
 import { expireJobs, generateJobs, type JobExpiryEvent } from "./jobs";
 import { expireHires, generateHires } from "./hires";
 import { tickStockMarket } from "./stock";
@@ -69,6 +69,11 @@ export function tickWorld(world: World): TickReport {
   }
 
   chargeMaintenance(world);
+
+  // Idle-only perks (fuel regen, treasury yield) for ships docked at a
+  // station. Runs after maintenance so yield doesn't pay for the same
+  // tick's wages.
+  applyIdlePerks(world);
 
   // Wealth-proportional carry tax on NPC traders flows back to local
   // treasuries — a soft cap on long-run NPC fleet wealth.

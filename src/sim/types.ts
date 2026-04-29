@@ -98,10 +98,15 @@ export interface CrewModifiers {
   remoteSettlementCollection?: number;// >=1 = completed exchange settlements pay immediately
   instantTravel?: number;             // >=1 = plotted travel resolves on departure
   fuelFreeTravel?: number;            // >=1 = travel needs/burns no fuel
-  buyDiscount?: number;               // 0.05 = 5% off buy price (NOT YET WIRED)
-  sellPremium?: number;               // 0.05 = 5% bonus on sell (NOT YET WIRED)
+  buyDiscount?: number;               // 0.05 = 5% off buy price at markets
+  sellPremium?: number;               // 0.05 = 5% bonus on sell to markets
   maintenanceDiscount?: number;       // 0.10 = 10% off maintenance/tick
-  contractRewardBonus?: number;       // 0.10 = +10% contract reward (NOT YET WIRED)
+  contractRewardBonus?: number;       // 0.10 = +10% contract reward on completion
+  // Phase B additions — passive perks that tick alongside the trader pass.
+  dockingDiscount?: number;           // 0.10 = 10% off docking fee
+  fuelRegenIdle?: number;             // 0.5 = +0.5 fuel/tick passive top-up while docked
+  treasuryYield?: number;             // 0.0005 = +0.05%/tick interest on idle ship funds
+  dividendBonus?: number;             // 0.05 = +5% bonus on long-position dividend payouts
 }
 
 export interface CrewMember {

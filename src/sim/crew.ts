@@ -83,6 +83,40 @@ export function travelTicksFor(ship: Trader, dist: number): number {
   return Math.max(1, Math.ceil(dist / ship.speed));
 }
 
+// --- phase-B effect helpers --------------------------------------------
+// Each helper folds a single CrewModifier key into a usable scalar so
+// callers don't repeat the modifier-fold + clamp logic.
+
+export function buyDiscountFraction(ship: Trader): number {
+  return Math.max(0, Math.min(0.5, combinedShipModifiers(ship).buyDiscount ?? 0));
+}
+
+export function sellPremiumFraction(ship: Trader): number {
+  return Math.max(0, Math.min(0.5, combinedShipModifiers(ship).sellPremium ?? 0));
+}
+
+export function dockingDiscountFraction(ship: Trader): number {
+  return Math.max(0, Math.min(0.9, combinedShipModifiers(ship).dockingDiscount ?? 0));
+}
+
+export function contractRewardFraction(ship: Trader): number {
+  return Math.max(0, combinedShipModifiers(ship).contractRewardBonus ?? 0);
+}
+
+export function dividendBonusFraction(ship: Trader): number {
+  return Math.max(0, combinedShipModifiers(ship).dividendBonus ?? 0);
+}
+
+export function fuelRegenPerTick(ship: Trader): number {
+  return Math.max(0, combinedShipModifiers(ship).fuelRegenIdle ?? 0);
+}
+
+export function treasuryYieldRate(ship: Trader): number {
+  // Caps idle interest at 1% per tick to avoid a runaway compounding
+  // loop if a build stacks several yield modifiers.
+  return Math.max(0, Math.min(0.01, combinedShipModifiers(ship).treasuryYield ?? 0));
+}
+
 // --- hire / fire actions ---------------------------------------------------
 
 export type CrewActionResult = { ok: true } | { ok: false; reason: string };

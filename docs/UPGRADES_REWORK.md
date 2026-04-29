@@ -48,14 +48,30 @@ instead of the tier numeral.
   (existing), Haggler's Earpiece (T1 contracts), Bridge Ticker Tape
   (T2 watcher), Pressure Atlas Console (T3 contracts + maint).
 
-## Phase B — new mechanics (later)
+## Phase B — new mechanics (done)
 
-- New `CrewModifiers` keys: `fuelRegenIdle` (passive top-up at dock),
-  `dockingDiscount` (% off docking fee), `treasuryYield` (idle
-  interest on cash), `dividendBonus` (% bump on equity payouts),
-  `routeReveal` (visibility into far stations' contracts).
-- Wire each through the relevant sim path with tests.
-- Extend `upgradeEffectText` to render the new effect strings.
+- [x] New `CrewModifiers` keys: `dockingDiscount` (% off docking fee),
+  `fuelRegenIdle` (passive fuel top-up while docked), `treasuryYield`
+  (per-tick interest on idle ship funds), `dividendBonus` (% bump on
+  long-position dividend payouts).
+- [x] Wired the previously-unused keys: `buyDiscount` (cuts buy price
+  at `buyAtLocation`), `sellPremium` (raises unitPrice into
+  `settleSale`), `contractRewardBonus` (folds into both
+  `creditJobOnDelivery` and `collectExchangeSettlement`).
+- [x] Per-tick `applyIdlePerks` runs alongside `chargeMaintenance`,
+  iterates idle traders, applies fuel regen and treasury yield. Yield
+  is sourced from the dock's market treasury (float-conserved);
+  dividend bonus is paid on top of the base payout (small subsidy).
+- [x] `upgradeEffectText` extended for all new keys.
+- [x] Five new upgrade variants exercising the new effects:
+  *Hyperion Bloom Reclaimer* (fuel regen), *Bonded Treasury Module*
+  (treasury yield), *Diplomatic Beacon* (docking discount),
+  *Shareholder Relations Suite* (dividend bonus), *Negotiator's
+  Console* (buy discount + sell premium).
+- [x] Per-effect tests (7 new) — full suite 303 tests green.
+
+`routeReveal` deferred — it's a visibility/UI hook rather than a sim
+effect; better suited to phase C.
 
 ## Phase C — UI
 

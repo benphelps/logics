@@ -268,6 +268,40 @@ export const SHIP_UPGRADES: Record<GoodId, ShipUpgradeDef> = {
     description: "Sector-wide shortage map; shaves costs and fattens contracts.",
     effects: { contractRewardBonus: 0.10, maintenanceDiscount: 0.06 },
   },
+
+  // --- phase B: variants that exercise the new effect keys ----------------
+  // (also a couple that wire up buyDiscount / sellPremium since those keys
+  // were defined but unused before phase B.)
+  upg_fuel_regen_2: {
+    id: "upg_fuel_regen_2", slot: "fuel", tier: 2,
+    name: "Hyperion Bloom Reclaimer",
+    description: "Soaks ambient gases at dock; tank slowly tops itself up.",
+    effects: { fuelCapacityBonus: 18, fuelRegenIdle: 0.5 },
+  },
+  upg_systems_treasury_2: {
+    id: "upg_systems_treasury_2", slot: "systems", tier: 2,
+    name: "Bonded Treasury Module",
+    description: "Sweeps idle cash into station bonds for a tiny per-tick yield.",
+    effects: { treasuryYield: 0.0008, contractRewardBonus: 0.04 },
+  },
+  upg_systems_dock_2: {
+    id: "upg_systems_dock_2", slot: "systems", tier: 2,
+    name: "Diplomatic Beacon",
+    description: "Posh credentials; harbormasters cut your docking fee.",
+    effects: { dockingDiscount: 0.30 },
+  },
+  upg_systems_dividend_3: {
+    id: "upg_systems_dividend_3", slot: "systems", tier: 3,
+    name: "Shareholder Relations Suite",
+    description: "Investor-grade comms; every dividend pays a little extra.",
+    effects: { dividendBonus: 0.12, treasuryYield: 0.0005 },
+  },
+  upg_systems_haggler_2: {
+    id: "upg_systems_haggler_2", slot: "systems", tier: 2,
+    name: "Negotiator's Console",
+    description: "AI counters every bid. Stations price you a touch lower, pay you a touch higher.",
+    effects: { buyDiscount: 0.04, sellPremium: 0.04 },
+  },
 };
 
 export function isUpgradeGood(good: GoodId): boolean {
@@ -315,6 +349,10 @@ export function upgradeEffectText(def: ShipUpgradeDef): string {
   if (effects.sellPremium) parts.push(`+${(effects.sellPremium * 100).toFixed(0)}% sell`);
   if (effects.maintenanceDiscount) parts.push(`−${(effects.maintenanceDiscount * 100).toFixed(0)}% maintenance`);
   if (effects.contractRewardBonus) parts.push(`+${(effects.contractRewardBonus * 100).toFixed(0)}% contracts`);
+  if (effects.dockingDiscount) parts.push(`−${(effects.dockingDiscount * 100).toFixed(0)}% docking`);
+  if (effects.fuelRegenIdle) parts.push(`+${effects.fuelRegenIdle.toFixed(1)} fuel/tick docked`);
+  if (effects.treasuryYield) parts.push(`+${(effects.treasuryYield * 100).toFixed(2)}%/tick yield`);
+  if (effects.dividendBonus) parts.push(`+${(effects.dividendBonus * 100).toFixed(0)}% dividends`);
   return parts.join(" · ");
 }
 

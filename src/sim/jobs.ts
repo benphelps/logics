@@ -1,5 +1,14 @@
 import type { EquityId, GoodId, Job, JobId, JobTier, LocationId, TradeAction, Trader, TraderId, World } from "./types";
 import { pushJobAbandoned, pushJobAccepted, pushJobCompleted, pushJobExpired } from "./log";
+import { contractRewardFraction } from "./crew";
+
+// Fold the trader's contractRewardBonus modifier into the base reward.
+// Floors at 0 so a malformed modifier can't pay the player to leave.
+function rewardWithBonus(ship: Trader, baseReward: number): number {
+  if (baseReward <= 0) return 0;
+  const bonus = contractRewardFraction(ship);
+  return Math.max(0, baseReward * (1 + bonus));
+}
 
 // --- tunables --------------------------------------------------------------
 
@@ -398,8 +407,9 @@ export function collectTradeJob(world: World, jobId: JobId, traderId: TraderId):
     const dst = world.locations[job.destination]?.name ?? job.destination;
     return { ok: false, reason: `Collect this settlement at ${dst}.` };
   }
-  ship.funds += job.reward;
-  pushJobCompleted(world, ship, { reward: job.reward, partial: false }, job);
+  const reward = rewardWithBonus(ship, job.reward);
+  ship.funds += reward;
+  pushJobCompleted(world, ship, { reward, partial: false }, job);
   delete world.jobs[job.id];
   return { ok: true };
 }
@@ -459,8 +469,9 @@ export function creditJobOnDelivery(
     job.delivered += credit;
     remaining -= credit;
     if (job.delivered >= job.qty) {
-      if (ship) ship.funds += job.reward;
-      const ev = { jobId: job.id, tier: job.tier, reward: job.reward, partial: false, delivered: job.delivered };
+      const reward = ship ? rewardWithBonus(ship, job.reward) : job.reward;
+      if (ship) ship.funds += reward;
+      const ev = { jobId: job.id, tier: job.tier, reward, partial: false, delivered: job.delivered };
       if (ship) pushJobCompleted(world, ship, ev, job);
       events.push(ev);
       delete world.jobs[job.id];

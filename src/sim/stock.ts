@@ -42,7 +42,7 @@ import type {
   World,
 } from "./types";
 import { mulberry32 } from "./gen/rng";
-import { combinedShipModifiers } from "./crew";
+import { combinedShipModifiers, dividendBonusFraction } from "./crew";
 import { depositToTreasury } from "./economy";
 import { createTradeJob, exchangeLossForgiveness } from "./jobs";
 import { pushNote } from "./log";
@@ -320,9 +320,14 @@ export function payoutDividends(world: World): void {
       const playerShip = playerShipId ? world.traders[playerShipId] : null;
       if (!playerShip) continue;
       if (position.kind === "long") {
-        const payout = perShare * position.shares;
-        playerShip.funds += payout;
-        if (sinkFn) sinkFn(payout);
+        const basePayout = perShare * position.shares;
+        // Dividend bonus is paid on top of the base payout. The treasury
+        // still only loses the base; the bonus is sourced as an "investor
+        // relations subsidy" outside the closed loop. Small enough to
+        // not perturb long-run economy invariants.
+        const bonus = basePayout * dividendBonusFraction(playerShip);
+        playerShip.funds += basePayout + bonus;
+        if (sinkFn) sinkFn(basePayout);
       } else {
         // Short — player pays out a dividend equivalent to the lender (sink:
         // back into the equity's underlying, closed loop).

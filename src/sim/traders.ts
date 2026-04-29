@@ -15,12 +15,14 @@ import { acceptJob, collectTradeJob, creditJobOnDelivery, type JobCompletionEven
 import { noteSyndicateRevenue } from "./stock";
 import { pushNote, pushTraderEvent } from "./log";
 import {
+  buyDiscountFraction,
   combinedShipModifiers,
   effectivePerDistance,
   hasCrew,
   ignoresFuel,
   MAINTENANCE_DEBT_TRAVEL_BLOCK,
   recomputeShipStats,
+  sellPremiumFraction,
   travelTicksFor,
 } from "./crew";
 import { isUpgradeGood, upgradeDef } from "./upgrades";
@@ -277,7 +279,10 @@ function inTransitArrivalsByDestGood(world: World): Map<string, number> {
 
 function settleUnloadedCargo(world: World, trader: Trader, lot: CargoLot, qty: number, events: TraderEvent[]): void {
   const dstMarket = world.markets[trader.location];
-  const unitPrice = marketQuote(world, trader.location, lot.good);
+  // Apply the trader's sellPremium upgrade — pay-out is sourced from the
+  // station's treasury (settleSale clamps to what's available), so the
+  // float stays conserved.
+  const unitPrice = marketQuote(world, trader.location, lot.good) * (1 + sellPremiumFraction(trader));
   dstMarket.stock[lot.good] = (dstMarket.stock[lot.good] ?? 0) + qty;
   const settlement = settleSale(dstMarket, unitPrice, qty);
   trader.funds += settlement.traderRevenue;
@@ -1354,7 +1359,11 @@ export function buyAtLocation(world: World, trader: Trader, goodId: GoodId, qty:
     return { ok: false, reason: `Not enough cargo space. Max additional: ${Math.floor(room)} ${goodId}.` };
   }
 
-  const price = marketQuote(world, trader.location, goodId);
+  const basePrice = marketQuote(world, trader.location, goodId);
+  // Apply the trader's buyDiscount upgrade — the market deposits the
+  // discounted amount so the float stays conserved (treasury simply
+  // earns less on this purchase).
+  const price = basePrice * (1 - buyDiscountFraction(trader));
   const cost = qty * price;
   if (trader.funds < cost - 0.001) return { ok: false, reason: `Need Ç${cost.toFixed(0)}, have Ç${trader.funds.toFixed(0)}.` };
 
