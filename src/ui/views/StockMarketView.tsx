@@ -18,6 +18,7 @@ import {
   BROKER_FEE_RATE,
   DIVIDEND_INTERVAL,
   EXCHANGE_TRADE_MAX_HOPS,
+  basisSpreadVsSpot,
   equityTradeHopDistance,
   equityTradeStation,
   listEquities,
@@ -25,6 +26,7 @@ import {
   listPositions,
   listTradeRecords,
   maxShortableShares,
+  parseBasisUnderlying,
   priceChangePct,
   totalUnrealizedPnl,
   unrealizedPnl,
@@ -50,6 +52,7 @@ const KIND_LABEL: Record<EquityKind, string> = {
   station: "Station",
   syndicate: "Syndicate",
   commodity: "Commodity",
+  basis: "Basis",
 };
 
 export function StockMarketView() {
@@ -1107,6 +1110,7 @@ function EquityInfoHeader({ row, world, access }: { row: EquityRow; world: World
   let eyebrow = "Listed company";
   if (eq.kind === "station") eyebrow = "Listed station";
   else if (eq.kind === "commodity") eyebrow = "Listed commodity";
+  else if (eq.kind === "basis") eyebrow = "Listed basis pair";
 
   let pillLabel = "Syndicate";
   let pillClass = "stocks-kind-syndicate";
@@ -1116,6 +1120,9 @@ function EquityInfoHeader({ row, world, access }: { row: EquityRow; world: World
   } else if (eq.kind === "commodity") {
     pillLabel = "Commodity";
     pillClass = "stocks-kind-commodity";
+  } else if (eq.kind === "basis") {
+    pillLabel = "Basis";
+    pillClass = "stocks-kind-basis";
   }
 
   return (
@@ -1181,6 +1188,30 @@ function CompanyUnderlying({ eq, world }: { eq: Equity; world: World }) {
           <FleetStat label="base price" value={`Ç${good.basePrice.toFixed(2)}`} />
           <FleetStat label="spot index" value={`Ç${spot.toFixed(2)}`} />
           <FleetStat label="universe stock" value={fmtBig(totalStock)} />
+        </dl>
+      </section>
+    );
+  }
+  if (eq.kind === "basis") {
+    const parts = parseBasisUnderlying(eq.underlyingId);
+    if (!parts) return null;
+    const loc = world.locations[parts.locationId];
+    const good = world.goods[parts.goodId];
+    const market = world.markets[parts.locationId];
+    if (!loc || !good || !market) return null;
+    const local = market.prices[good.id] ?? good.basePrice;
+    const stock = market.stock[good.id] ?? 0;
+    const spread = basisSpreadVsSpot(world, eq);
+    const spreadPct = local > 0 ? (spread / local) * 100 : 0;
+    return (
+      <section className="trade-helper-section">
+        <div className="exchange-section-title">Underlying</div>
+        <dl className="trade-helper-grid station-info-grid">
+          <FleetStat label="station" value={loc.name} />
+          <FleetStat label="good" value={good.name} />
+          <FleetStat label="local price" value={`Ç${local.toFixed(2)}`} />
+          <FleetStat label="vs spot" value={`${spread >= 0 ? "+" : ""}${spread.toFixed(2)} (${spreadPct.toFixed(1)}%)`} />
+          <FleetStat label="local stock" value={fmtBig(stock)} />
         </dl>
       </section>
     );
@@ -2189,7 +2220,7 @@ function buildRows(world: World): EquityRow[] {
         underlyingHealthLabel = `${(underlyingHealth * 100).toFixed(0)}%`;
       }
     } else {
-      // commodity — health = current spot vs anchor.
+      // commodity / basis — health = current price vs anchor.
       underlyingHealth = eq.anchorPrice > 0 ? eq.price / eq.anchorPrice : 1;
       underlyingHealthLabel = `${(underlyingHealth * 100).toFixed(0)}%`;
     }

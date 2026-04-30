@@ -133,6 +133,97 @@ export function createCommodityEquity(good: { id: string; name: string; basePric
   };
 }
 
+// C-2: Basis pair listing — tracks one station's local price for one good.
+// Long the listing = bullish on that station's local price relative to its
+// anchor (good.basePrice). The "basis" vs the universe spot is a derived
+// number shown in the UI; the listing itself trades on the station's local
+// price directly so the existing clamp / EMA / order-book infrastructure
+// applies unchanged.
+//
+// underlyingId composite: "<locationId>::<goodId>". Helpers below parse
+// it back out. Sticking to a string keeps the Equity shape unchanged.
+export function basisUnderlying(loc: string, good: string): string {
+  return `${loc}::${good}`;
+}
+export function parseBasisUnderlying(underlyingId: string): { locationId: string; goodId: string } | null {
+  const idx = underlyingId.indexOf("::");
+  if (idx < 0) return null;
+  return { locationId: underlyingId.slice(0, idx), goodId: underlyingId.slice(idx + 2) };
+}
+export function createBasisEquity(
+  loc: { id: string; name: string },
+  good: { id: string; name: string; basePrice: number },
+): Equity {
+  const anchor = Math.max(1, good.basePrice);
+  const stationTag = (loc.name.match(/[A-Za-z]+/)?.[0] ?? loc.id).slice(0, 3).toUpperCase();
+  const goodTag = (good.name.match(/[A-Za-z]+/)?.[0] ?? good.id).slice(0, 3).toUpperCase();
+  return {
+    id: `eq_bas_${loc.id}_${good.id}`,
+    kind: "basis",
+    name: `${loc.name} ${good.name} basis`,
+    ticker: `${stationTag}${goodTag}`.slice(0, 6),
+    sharesOutstanding: SHARES_OUTSTANDING_DEFAULT,
+    price: anchor,
+    anchorPrice: anchor,
+    underlyingId: basisUnderlying(loc.id, good.id),
+    history: [{ tick: 0, price: anchor }],
+  };
+}
+
+// C-2: cap on basis-pair listings created at world creation. Bounded so
+// the Exchange screen stays browsable on big worlds. Two pairs per
+// location (top exporter + top consumer good) bounded by this global
+// cap.
+export const BASIS_PAIRS_PER_LOCATION = 2;
+export const BASIS_PAIRS_GLOBAL_CAP = 20;
+
+function seedBasisPairs(world: World): void {
+  const created = new Set<string>();
+  let total = 0;
+
+  // Stable iteration: sort locations by id so the same world seeds the
+  // same pairs run-to-run.
+  const locations = Object.values(world.locations).sort((a, b) => a.id.localeCompare(b.id));
+  for (const loc of locations) {
+    if (total >= BASIS_PAIRS_GLOBAL_CAP) break;
+    // Score every good by absolute net-production rate at this station.
+    // Top |net rate| = "most-tradable" basis pair from this station.
+    const scored: { goodId: string; absRate: number; net: number }[] = [];
+    for (const good of Object.values(world.goods)) {
+      if (good.category === "upgrade") continue;
+      const produced = loc.produces.find(p => p.good === good.id)?.ratePerTick ?? 0;
+      const consumed = loc.consumes.find(c => c.good === good.id)?.ratePerTick ?? 0;
+      const net = produced - consumed;
+      if (net === 0) continue;
+      scored.push({ goodId: good.id, absRate: Math.abs(net), net });
+    }
+    // Pick the top exporter and top importer. (If a location only
+    // produces or only consumes, just take the top |net|.)
+    scored.sort((a, b) => b.absRate - a.absRate);
+    const picks: string[] = [];
+    const exporter = scored.find(s => s.net > 0);
+    const importer = scored.find(s => s.net < 0);
+    if (exporter) picks.push(exporter.goodId);
+    if (importer && importer.goodId !== exporter?.goodId) picks.push(importer.goodId);
+    // Round out to BASIS_PAIRS_PER_LOCATION with the next-best |net|.
+    for (const s of scored) {
+      if (picks.length >= BASIS_PAIRS_PER_LOCATION) break;
+      if (!picks.includes(s.goodId)) picks.push(s.goodId);
+    }
+    for (const goodId of picks) {
+      if (total >= BASIS_PAIRS_GLOBAL_CAP) break;
+      const good = world.goods[goodId];
+      if (!good) continue;
+      const key = basisUnderlying(loc.id, goodId);
+      if (created.has(key)) continue;
+      created.add(key);
+      const eq = createBasisEquity(loc, good);
+      world.equities[eq.id] = eq;
+      total++;
+    }
+  }
+}
+
 // --- syndicate construction & assignment ----------------------------------
 
 const SYNDICATE_NAMES = [
@@ -201,6 +292,12 @@ export function ensureStockMarket(world: World, opts: { syndicateCount?: number;
     const eq = createCommodityEquity(good);
     world.equities[eq.id] = eq;
   }
+  // C-2: basis pairs — a handful of (station, good) listings tracking
+  // each station's local price vs the spot index. We seed two pairs per
+  // location (top exporter good + top consumer good) up to a soft global
+  // cap. This keeps the listing count bounded on big worlds while
+  // surfacing the most-tradable basis spreads.
+  seedBasisPairs(world);
   // Phase 2 (MM-less): distribute the float across NPC agents and warm up
   // the book — each agent posts both a bid and an ask on every equity using
   // noise-style passive offsets — so depth exists on both sides from frame
@@ -274,6 +371,19 @@ function commodityFundamental(world: World, eq: Equity): number {
   return numerator / denom;
 }
 
+// Basis fundamental — the station's local market price for the good.
+// Falls back to the anchor (= good.basePrice) when the station's market
+// is missing or the good isn't priced there.
+function basisFundamental(world: World, eq: Equity): number {
+  const parts = parseBasisUnderlying(eq.underlyingId);
+  if (!parts) return eq.anchorPrice;
+  const market = world.markets[parts.locationId];
+  if (!market) return eq.anchorPrice;
+  const local = market.prices[parts.goodId];
+  if (local == null || !Number.isFinite(local)) return eq.anchorPrice;
+  return local;
+}
+
 // Compute the "fundamental" price for an equity from underlying signals.
 // Every signal is converted to a multiplier on anchorPrice. The tick-by-tick
 // EMA blend toward this fundamental drives the visible price.
@@ -282,7 +392,30 @@ export function computeFundamental(world: World, eq: Equity): number {
     case "station":   return stationFundamental(world, eq);
     case "syndicate": return syndicateFundamental(world, eq);
     case "commodity": return commodityFundamental(world, eq);
+    case "basis":     return basisFundamental(world, eq);
   }
+}
+
+// C-2 helper for the UI — current spread of a basis listing's local
+// price vs the universe spot index. Positive = local is more expensive
+// than the spot. Returns the absolute difference, not a ratio.
+export function basisSpreadVsSpot(world: World, eq: Equity): number {
+  const parts = parseBasisUnderlying(eq.underlyingId);
+  if (!parts) return 0;
+  const local = world.markets[parts.locationId]?.prices[parts.goodId];
+  if (local == null) return 0;
+  // Build a synthetic commodity equity to reuse commodityFundamental.
+  const goodId = parts.goodId;
+  let numerator = 0, denom = 0;
+  for (const market of Object.values(world.markets)) {
+    const stock = market.stock[goodId] ?? 0;
+    const price = market.prices[goodId];
+    if (price == null || stock <= 0) continue;
+    numerator += price * stock;
+    denom += stock;
+  }
+  const spot = denom > 0 ? numerator / denom : eq.anchorPrice;
+  return local - spot;
 }
 
 function deterministicNoise(eq: Equity, tick: number): number {
@@ -361,8 +494,9 @@ export function payoutDividends(world: World): void {
       sourceFunds = synd.treasury * DIVIDEND_PAYOUT_FRACTION;
       sinkFn = (amount) => { synd.treasury -= amount; };
     } else {
-      // C-1: commodity equities pay no dividends. They have no underlying
-      // treasury — value comes from price moves and short borrow fees.
+      // C-1/C-2: commodity + basis equities pay no dividends. They have no
+      // underlying treasury — value comes from price moves and short
+      // borrow fees.
       continue;
     }
 
@@ -556,6 +690,7 @@ export function equityTradabilityReason(
     }
     case "syndicate":
     case "commodity":
+    case "basis":
       return null;
   }
 }
@@ -885,9 +1020,9 @@ export function maxShortableShares(world: World, eq: Equity): number {
     if (!synd) return 0;
     availableCash = Math.max(0, synd.treasury);
   } else {
-    // C-1: commodity. No underlying treasury — shorts are capped only by
-    // float and live ask depth (which the caller checks via
-    // previewBookCost). Aggregate agent stockWallet cash gives a
+    // C-1/C-2: commodity + basis. No underlying treasury — shorts are
+    // capped only by float and live ask depth (which the caller checks
+    // via previewBookCost). Aggregate agent stockWallet cash gives a
     // conservative upper bound for the funding cap.
     for (const t of Object.values(world.traders)) {
       availableCash += t.stockState?.stockWallet ?? 0;
@@ -1401,9 +1536,9 @@ function routeShareCashFlow(world: World, eq: Equity, amount: number): void {
     if (synd) synd.treasury += amount;
     return;
   }
-  // C-1: commodity has no underlying treasury — this path is only reached
-  // when the dormant MM is a counterparty, which doesn't happen in
-  // practice. No-op.
+  // C-1/C-2: commodity + basis have no underlying treasury — this path
+  // is only reached when the dormant MM is a counterparty, which doesn't
+  // happen in practice. No-op.
 }
 
 function drawShareCashFlow(world: World, eq: Equity, amount: number): number {
@@ -1426,8 +1561,8 @@ function drawShareCashFlow(world: World, eq: Equity, amount: number): number {
     synd.treasury -= paid;
     return paid;
   }
-  // C-1: commodity has no treasury. Same as routeShareCashFlow above —
-  // dormant MM-counterparty path; no-op.
+  // C-1/C-2: commodity + basis have no treasury. Same as
+  // routeShareCashFlow above — dormant MM-counterparty path; no-op.
   return 0;
 }
 
