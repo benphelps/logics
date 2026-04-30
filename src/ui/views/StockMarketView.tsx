@@ -2091,6 +2091,13 @@ function Sparkline({ equity, position }: { equity: Equity; position: StockPositi
   const priceSeriesRef = useRef<ISeriesApi<"Area"> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const priceLinesRef = useRef<IPriceLine[]>([]);
+  // Bumps when the container first acquires a non-zero width. The chart
+  // is created at mount-time, sometimes when the panel layout hasn't
+  // settled and clientWidth = 0 — at that point the initial setData
+  // gets accepted but the chart can't render anything against zero
+  // pixels. When the width finally becomes real we bump this counter
+  // so the data effect re-fires with a fresh full setData.
+  const [layoutGen, setLayoutGen] = useState(0);
 
   const history = equity.history ?? [];
   const trades = equity.recentTrades ?? [];
@@ -2145,15 +2152,25 @@ function Sparkline({ equity, position }: { equity: Equity; position: StockPositi
     priceSeriesRef.current = price;
     volumeSeriesRef.current = volume;
 
+    let sawNonZero = div.clientWidth > 0;
     const ro = new ResizeObserver(() => {
       if (!chartRef.current) return;
-      chartRef.current.applyOptions({ width: div.clientWidth });
+      const w = div.clientWidth;
+      chartRef.current.applyOptions({ width: w });
       // First time the panel's layout settles after mount, the chart was
       // created at width=0, so its time-axis range was computed against
       // empty space — points then render compressed to a single column
       // until you hit some other refresh. Refit on every resize to keep
       // the visible range in sync with the canvas.
       chartRef.current.timeScale().fitContent();
+      // Width transitioned 0 → real: the initial setData ran against a
+      // zero-width canvas, so the chart effectively has no data. Force
+      // the data effect to re-fire with a fresh full setData by bumping
+      // layoutGen.
+      if (!sawNonZero && w > 0) {
+        sawNonZero = true;
+        setLayoutGen(g => g + 1);
+      }
     });
     ro.observe(div);
 
@@ -2179,6 +2196,7 @@ function Sparkline({ equity, position }: { equity: Equity; position: StockPositi
   const lastTick = history.length > 0 ? history[history.length - 1].tick : -1;
   const lastSeenTickRef = useRef<number>(-1);
   const lastSeenEquityRef = useRef<string>("");
+  const lastLayoutGenRef = useRef<number>(0);
   useEffect(() => {
     const price = priceSeriesRef.current;
     const volume = volumeSeriesRef.current;
@@ -2189,13 +2207,15 @@ function Sparkline({ equity, position }: { equity: Equity; position: StockPositi
       volume.setData([]);
       lastSeenTickRef.current = -1;
       lastSeenEquityRef.current = equity.id;
+      lastLayoutGenRef.current = layoutGen;
       return;
     }
 
     const equityChanged = lastSeenEquityRef.current !== equity.id;
+    const layoutSettled = lastLayoutGenRef.current !== layoutGen;
     const seen = lastSeenTickRef.current;
     const newest = points[points.length - 1].tick;
-    const canAppend = !equityChanged && seen >= 0 && newest >= seen;
+    const canAppend = !equityChanged && !layoutSettled && seen >= 0 && newest >= seen;
 
     // Build per-tick volume map once — used by both append and full reset.
     const buyVol: Record<number, number> = {};
@@ -2233,8 +2253,9 @@ function Sparkline({ equity, position }: { equity: Equity; position: StockPositi
     }
     lastSeenTickRef.current = newest;
     lastSeenEquityRef.current = equity.id;
+    lastLayoutGenRef.current = layoutGen;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [equity.id, histLen, tradesLen, lastPrice, lastTick]);
+  }, [equity.id, histLen, tradesLen, lastPrice, lastTick, layoutGen]);
 
   // Position lines (avg entry / SL / TP). Re-create on every position
   // change rather than tracking individual line refs — there are at most
