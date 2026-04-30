@@ -14,7 +14,7 @@ import {
 } from "lightweight-charts";
 import { useStore } from "../store";
 import type { BookTrade, Equity, EquityKind, FuturesPosition, Order, OrderBook, StockPosition, TradeRecord, World } from "../../sim/types";
-import { listPlayerFutures, unrealizedFuturesPnl } from "../../sim/stock/futures";
+import { canDeliverPhysical, listPlayerFutures, unrealizedFuturesPnl } from "../../sim/stock/futures";
 import {
   BROKER_FEE_RATE,
   DIVIDEND_INTERVAL,
@@ -1615,6 +1615,13 @@ function FuturesPositionsList({ world, futures, docked, onSelectEquity }: {
         const pnl = unrealizedFuturesPnl(world, fp);
         const pnlClass = pnl > 0 ? "good" : pnl < 0 ? "bad" : "";
         const ttx = Math.max(0, c.expiryTick - world.tick);
+        // C-4: physical-delivery readiness indicator. Eligible only for
+        // shorts when the player ship is at the delivery station with
+        // sufficient cargo.
+        const playerShipId = world.player?.shipIds[0];
+        const ship = playerShipId ? world.traders[playerShipId] : null;
+        const canDeliver = ship ? canDeliverPhysical(world, c, fp, ship) : false;
+        const deliveryName = world.locations[c.deliveryStation]?.name ?? c.deliveryStation;
         return (
           <div key={fp.contractId} className="stocks-pno-row positions">
             <button className="stocks-pno-cell ticker mono" onClick={() => onSelectEquity(eq.id)}>{eq.ticker}</button>
@@ -1622,7 +1629,12 @@ function FuturesPositionsList({ world, futures, docked, onSelectEquity }: {
             <span className="stocks-pno-cell numeric mono">{fp.contracts}</span>
             <span className="stocks-pno-cell numeric mono">Ç{spot.toFixed(2)}</span>
             <span className={`stocks-pno-cell numeric mono ${pnlClass}`}>{pnl >= 0 ? "+" : ""}Ç{Math.round(pnl).toLocaleString()}</span>
-            <span className="stocks-pno-cell dim small">expires {ttx}t · margin Ç{Math.round(fp.marginPosted).toLocaleString()}</span>
+            <span className="stocks-pno-cell dim small">
+              expires {ttx}t · margin Ç{Math.round(fp.marginPosted).toLocaleString()}
+              {fp.side === "short" && (canDeliver
+                ? <> · <span className="good">physical ready @ {deliveryName}</span></>
+                : <> · delivery: {deliveryName}</>)}
+            </span>
             <button
               className="btn-action small"
               disabled={!docked}

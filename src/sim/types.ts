@@ -321,7 +321,12 @@ export interface FuturesContract {
   marginFraction: number;       // initial margin as fraction of notional
   openInterest: number;         // sum of |player + agent net long contracts|
   clearing: number;             // small reconciliation float (≤ ε)
-  settled?: { spotAtExpiry: number; tick: number };
+  // C-4 — designated delivery station for physical settlement. Set at
+  // listing time (largest-population station). A short holder with
+  // contractSize × contracts units of goodId in cargo at this location
+  // can settle by physical delivery instead of cash MtM.
+  deliveryStation: LocationId;
+  settled?: { spotAtExpiry: number; tick: number; physical?: number };
 }
 
 export interface FuturesPosition {

@@ -110,6 +110,17 @@ export function ensureFuturesContainer(world: World): Record<EquityId, FuturesCo
   return world.contracts;
 }
 
+// Pick a delivery station for a contract: the largest-population
+// location in the world. Stable across runs because we sort by id on
+// ties. Used for C-4 physical settlement.
+function pickDeliveryStation(world: World): string {
+  const locs = Object.values(world.locations).slice().sort((a, b) => {
+    if (a.population !== b.population) return b.population - a.population;
+    return a.id.localeCompare(b.id);
+  });
+  return locs[0]?.id ?? "";
+}
+
 // Create a futures Equity row + matching contract metadata. Anchor +
 // initial price = current spot.
 function createFuturesPair(
@@ -145,6 +156,7 @@ function createFuturesPair(
     marginFraction: marginFractionFor(goodId),
     openInterest: 0,
     clearing: 0,
+    deliveryStation: pickDeliveryStation(world),
   };
   world.equities[id] = equity;
   ensureFuturesContainer(world)[id] = contract;
@@ -255,15 +267,24 @@ function settleContract(world: World, c: FuturesContract): void {
     const shipId = player.shipIds[0];
     const ship = shipId ? world.traders[shipId] : null;
     if (ship) {
-      // Final MtM cash transfer (balanced by clearing pool).
-      const delta = spotAtExpiry - fp.lastMarkPrice;
-      const pnl = delta * c.contractSize * fp.contracts * sign;
-      ship.funds += pnl;
-      c.clearing -= pnl;
-      // Refund margin (also balanced — margin came from ship.funds at
-      // open and is now returned, but to keep totalSystemCash invariant
-      // when reservedFutures was being counted, we don't double-account).
-      ship.funds += fp.marginPosted;
+      // C-4: physical-delivery path. Player short holding cargo at the
+      // delivery station gets to settle at the strike (avgEntryPrice)
+      // by handing over the cargo. Cargo is removed; player receives
+      // strike × contractSize × contracts cash; MtM is skipped (the
+      // strike payment serves in lieu of cash MtM). Margin still
+      // refunded.
+      const physical = tryPhysicalDelivery(world, ship, c, fp);
+      if (physical.applied) {
+        ship.funds += fp.marginPosted;
+        c.settled = { spotAtExpiry, tick: world.tick, physical: physical.qtyDelivered };
+      } else {
+        // Standard cash settle.
+        const delta = spotAtExpiry - fp.lastMarkPrice;
+        const pnl = delta * c.contractSize * fp.contracts * sign;
+        ship.funds += pnl;
+        c.clearing -= pnl;
+        ship.funds += fp.marginPosted;
+      }
     }
     if (player.reservedFutures) delete player.reservedFutures[c.id];
     delete player.futures[c.id];
@@ -309,6 +330,54 @@ export function tickFutures(world: World): void {
   for (const c of Object.values({ ...contracts })) {
     if (world.tick >= c.expiryTick) settleContract(world, c);
   }
+}
+
+// --- C-4: physical delivery helpers --------------------------------------
+
+// True when a player short can settle physically: ship at the contract's
+// delivery station, holding ≥ contractSize × contracts of the goodId.
+export function canDeliverPhysical(world: World, c: FuturesContract, fp: FuturesPosition, ship: Trader): boolean {
+  if (fp.side !== "short") return false;
+  if (ship.location !== c.deliveryStation) return false;
+  const required = c.contractSize * fp.contracts;
+  let onHand = 0;
+  for (const lot of ship.cargo) if (lot.good === c.goodId) onHand += lot.qty;
+  return onHand >= required;
+}
+
+// Remove `requested` units of `goodId` from the ship's cargo, FIFO across
+// lots. Returns the qty actually removed (which equals `requested` if
+// the precondition `canDeliverPhysical` was satisfied).
+function consumeCargo(ship: Trader, goodId: string, requested: number): number {
+  let remaining = requested;
+  for (let i = ship.cargo.length - 1; i >= 0 && remaining > 0; i--) {
+    const lot = ship.cargo[i];
+    if (lot.good !== goodId) continue;
+    const take = Math.min(lot.qty, remaining);
+    lot.qty -= take;
+    remaining -= take;
+    if (lot.qty <= 0) ship.cargo.splice(i, 1);
+  }
+  return requested - remaining;
+}
+
+// Attempt physical delivery on a player short. On success: removes cargo,
+// credits the player's ship.funds with strike × size × contracts cash
+// (the contract's locked-in price), debits the contract's clearing pool
+// to balance.
+function tryPhysicalDelivery(
+  world: World,
+  ship: Trader,
+  c: FuturesContract,
+  fp: FuturesPosition,
+): { applied: boolean; qtyDelivered: number } {
+  if (!canDeliverPhysical(world, c, fp, ship)) return { applied: false, qtyDelivered: 0 };
+  const qty = c.contractSize * fp.contracts;
+  consumeCargo(ship, c.goodId, qty);
+  const strikePayout = fp.avgEntryPrice * qty;
+  ship.funds += strikePayout;
+  c.clearing -= strikePayout;
+  return { applied: true, qtyDelivered: qty };
 }
 
 // --- player API ----------------------------------------------------------
