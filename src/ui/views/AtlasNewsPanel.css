@@ -18,7 +18,7 @@
    reads cleanly in any tone. */
 .atlas-news-row {
   position: relative;
-  background: var(--atlas-surface, #15191f);
+  background: #13181e;
   border: 1px solid var(--atlas-line, rgba(255, 255, 255, 0.08));
   border-radius: 5px;
   padding: 9px 11px 11px;
@@ -27,12 +27,13 @@
   overflow: hidden;
 }
 
-/* Top line: tone dot · category · headline · time-remaining chip */
-.atlas-news-row-head {
+/* Eyebrow row: tone dot + category + time-remaining chip on the right.
+   Headline gets its own line below for legibility. */
+.atlas-news-eyebrow {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 5px;
+  gap: 7px;
+  margin-bottom: 4px;
   min-width: 0;
 }
 
@@ -50,23 +51,24 @@
 .atlas-news-row.tone-info .atlas-news-tone { background: var(--accent, #4fb6ff); }
 
 .atlas-news-cat {
-  flex: 0 0 auto;
+  flex: 1 1 auto;
   font-size: 9.5px;
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--text-faint, #4a5666);
   font-weight: 700;
-}
-
-.atlas-news-headline {
-  flex: 1 1 auto;
-  font-weight: 600;
-  font-size: 13px;
-  color: var(--text, #d6e0ec);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+}
+
+.atlas-news-headline {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text, #d6e0ec);
+  line-height: 1.35;
+  margin-bottom: 5px;
 }
 
 .atlas-news-ticks {
