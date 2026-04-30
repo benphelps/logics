@@ -1,0 +1,225 @@
+{
+  "url": "http://127.0.0.1:5173/",
+  "generatedAt": "2026-04-30T05:31:10.365Z",
+  "shots": [
+    {
+      "id": "screen-layout",
+      "section": "screen-layout",
+      "image": "/site/screenshots/wiki/exchange/screen-layout.png",
+      "alt": "Exchange screen showing listing browser, positions and orders panel, and the selected market detail column",
+      "label": "Layout",
+      "title": "Exchange split view",
+      "text": "The Exchange pairs the listing browser and player account panels with a detail column for the selected market.",
+      "focus": {
+        "x": 61,
+        "y": 1,
+        "width": 38.3,
+        "height": 99
+      }
+    },
+    {
+      "id": "listing-browser",
+      "section": "listing-browser",
+      "image": "/site/screenshots/wiki/exchange/listing-browser.png",
+      "alt": "Exchange listing browser with asset filter tabs, tickers, prices, deltas, and an out of range divider",
+      "label": "Listings",
+      "title": "Listing browser and asset filters",
+      "text": "The selector groups station, syndicate, commodity, basis, futures, and index listings while keeping out-of-range station books visible.",
+      "focus": {
+        "x": 1.2,
+        "y": 11.8,
+        "width": 97.6,
+        "height": 86.3
+      }
+    },
+    {
+      "id": "asset-filters",
+      "section": "asset-types",
+      "image": "/site/screenshots/wiki/exchange/asset-filters.png",
+      "alt": "Exchange listing filter tabs for all assets, stations, syndicates, commodities, basis, futures, and indices",
+      "label": "Asset tabs",
+      "title": "Major asset classes",
+      "text": "The top filter row is the fastest way to move between physical logistics signals and pure market instruments.",
+      "focus": {
+        "x": 1.2,
+        "y": 5.2,
+        "width": 97.6,
+        "height": 16.3
+      }
+    },
+    {
+      "id": "info-column",
+      "section": "detail-column",
+      "image": "/site/screenshots/wiki/exchange/info-column.png",
+      "alt": "Exchange detail column with quote header, chart, KPI, underlying panel, order book, time and sales, and order form",
+      "label": "Detail",
+      "title": "Selected market workspace",
+      "text": "The right column combines the listing art, quote, chart, KPI, underlying data, book, tape, and order entry."
+    },
+    {
+      "id": "kpi-underlying",
+      "section": "kpi-and-underlying",
+      "image": "/site/screenshots/wiki/exchange/kpi-underlying.png",
+      "alt": "Exchange KPI and underlying panels showing bid ask spread volume shares dividend and commodity fundamentals",
+      "label": "KPI",
+      "title": "KPI and underlying panels",
+      "text": "KPI summarizes quote quality and activity; Underlying explains what economic signal backs the selected listing.",
+      "focus": {
+        "x": 1.8,
+        "y": 20,
+        "width": 48.2,
+        "height": 60.4
+      }
+    },
+    {
+      "id": "order-book",
+      "section": "order-book-and-tape",
+      "image": "/site/screenshots/wiki/exchange/order-book.png",
+      "alt": "Exchange order book showing ask rows, spread, bid rows, sizes, and cumulative depth bars",
+      "label": "Book",
+      "title": "Order book depth ladder",
+      "text": "Asks stack above the spread, bids stack below it, and cumulative size shows how much depth sits away from the spread.",
+      "focus": {
+        "x": 3.5,
+        "y": 8.9,
+        "width": 88.9,
+        "height": 88
+      }
+    },
+    {
+      "id": "time-and-sales",
+      "section": "order-book-and-tape",
+      "image": "/site/screenshots/wiki/exchange/time-and-sales.png",
+      "alt": "Exchange time and sales panel showing recent ticks, prices, quantities, and buy or sell side markers",
+      "label": "Tape",
+      "title": "Time and sales tape",
+      "text": "The tape lists recent fills with tick, price, quantity, and whether the buyer or seller took liquidity.",
+      "focus": {
+        "x": 7.6,
+        "y": 8.9,
+        "width": 89,
+        "height": 88
+      }
+    },
+    {
+      "id": "order-form",
+      "section": "placing-orders",
+      "image": "/site/screenshots/wiki/exchange/order-form.png",
+      "alt": "Exchange place order form with Buy Sell Short side buttons quantity price use spot quick chips and submit button",
+      "label": "Orders",
+      "title": "Buy, sell, and short order form",
+      "text": "Spot assets use one compact form for buy limits, sell limits from held shares, and market shorts.",
+      "focus": {
+        "x": 1.8,
+        "y": 12.7,
+        "width": 96.4,
+        "height": 13.4
+      }
+    },
+    {
+      "id": "positions-tab",
+      "section": "positions-tab",
+      "image": "/site/screenshots/wiki/exchange/positions-tab.png",
+      "alt": "Exchange Positions tab with expanded long position showing stats close controls stop loss take profit and abandon action",
+      "label": "Positions",
+      "title": "Open long and short positions",
+      "text": "Expanding a position exposes mark, entry, value, P&L, close controls, stop-loss, take-profit, and abandon.",
+      "focus": {
+        "x": 1.2,
+        "y": 11.8,
+        "width": 97.6,
+        "height": 56.8
+      }
+    },
+    {
+      "id": "orders-tab",
+      "section": "orders-tab",
+      "image": "/site/screenshots/wiki/exchange/orders-tab.png",
+      "alt": "Exchange Orders tab with an expanded limit order showing quantity price adjust cancel and quick chips",
+      "label": "Limits",
+      "title": "Open limit orders",
+      "text": "The Orders tab lists player resting limits and lets each order be adjusted or canceled from its expanded row.",
+      "focus": {
+        "x": 1.2,
+        "y": 11.8,
+        "width": 97.6,
+        "height": 22.5
+      }
+    },
+    {
+      "id": "futures-order-form",
+      "section": "futures-contracts",
+      "image": "/site/screenshots/wiki/exchange/futures-order-form.png",
+      "alt": "Exchange futures order form showing contracts, contract size, notional, margin, fee, expiry, and open long or short buttons",
+      "label": "Futures",
+      "title": "Futures contract order form",
+      "text": "Futures orders show contract count, spot mark, size, notional, margin, fee, expiry, and long or short open buttons.",
+      "focus": {
+        "x": 1.8,
+        "y": 67.4,
+        "width": 96.4,
+        "height": 11.5
+      }
+    },
+    {
+      "id": "futures-positions-tab",
+      "section": "futures-positions-tab",
+      "image": "/site/screenshots/wiki/exchange/futures-positions-tab.png",
+      "alt": "Exchange Futures tab with an expanded short futures position showing mark entry contract size margin P and L expiry delivery and close action",
+      "label": "Futures P&L",
+      "title": "Open futures positions",
+      "text": "The Futures tab tracks contracts, mark-to-market P&L, margin, expiry, delivery station, and physical delivery readiness.",
+      "focus": {
+        "x": 1.2,
+        "y": 11.8,
+        "width": 97.6,
+        "height": 38.2
+      }
+    },
+    {
+      "id": "history-tab",
+      "section": "history-tab",
+      "image": "/site/screenshots/wiki/exchange/history-tab.png",
+      "alt": "Exchange History tab showing tick action ticker quantity price cash flow and realized P and L columns",
+      "label": "Ledger",
+      "title": "Trade history ledger",
+      "text": "History records opens, adds, closes, covers, cash flow, realized P&L, and stop or take-profit tags when a trigger fires.",
+      "focus": {
+        "x": 1.2,
+        "y": 7.5,
+        "width": 97.6,
+        "height": 42.4
+      }
+    },
+    {
+      "id": "basis-underlying",
+      "section": "basis-pairs",
+      "image": "/site/screenshots/wiki/exchange/basis-underlying.png",
+      "alt": "Exchange basis listing selected with underlying panel showing station, good, local price, spread versus spot, and local stock",
+      "label": "Basis",
+      "title": "Station basis listing",
+      "text": "Basis listings tie one station and one good together, exposing local price, spread versus universe spot, and local stock.",
+      "focus": {
+        "x": 6.3,
+        "y": 46.4,
+        "width": 87.4,
+        "height": 27.8
+      }
+    },
+    {
+      "id": "index-underlying",
+      "section": "indices",
+      "image": "/site/screenshots/wiki/exchange/index-underlying.png",
+      "alt": "Exchange index listing selected with underlying panel showing sector basket member prices",
+      "label": "Index",
+      "title": "Sector and treasury indices",
+      "text": "Index listings summarize baskets such as sector commodities or overall station treasury health.",
+      "focus": {
+        "x": 6.3,
+        "y": 46.4,
+        "width": 87.4,
+        "height": 27.8
+      }
+    }
+  ]
+}

@@ -22,7 +22,7 @@ const screenshots = [
     title: "Exchange",
     label: "Asset market",
     image: "/site/screenshots/exchange.png",
-    description: "Trade station and syndicate shares in a full stock market, with commodity assets planned next.",
+    description: "Trade station, syndicate, commodity, basis, futures, and index assets in a full market desk.",
   },
   {
     title: "Markets",
@@ -75,19 +75,39 @@ const stats = [
 const footerGroups = [
   {
     title: "Game",
-    links: ["Screenshots", "Gameplay loop", "Systems", "Current build"],
+    links: [
+      { label: "Screenshots", href: "#screens" },
+      { label: "Gameplay loop", href: "#loop" },
+      { label: "Systems", href: "#systems" },
+      { label: "Wiki", href: "/wiki.html" },
+    ],
   },
   {
     title: "Community",
-    links: ["Discord", "Steam page", "Dev updates", "Press kit"],
+    links: [
+      { label: "Discord", href: "/website.html" },
+      { label: "Steam page", href: "/website.html" },
+      { label: "Dev updates", href: "/website.html" },
+      { label: "Press kit", href: "/website.html" },
+    ],
   },
   {
     title: "Build",
-    links: ["Roadmap", "Design notes", "Changelog", "Bug reports"],
+    links: [
+      { label: "Roadmap", href: "/website.html" },
+      { label: "Wiki", href: "/wiki.html" },
+      { label: "Changelog", href: "/website.html" },
+      { label: "Bug reports", href: "/website.html" },
+    ],
   },
   {
     title: "Legal",
-    links: ["Privacy", "Terms", "Contact", "Credits"],
+    links: [
+      { label: "Privacy", href: "/website.html" },
+      { label: "Terms", href: "/website.html" },
+      { label: "Contact", href: "/website.html" },
+      { label: "Credits", href: "/website.html" },
+    ],
   },
 ];
 
@@ -104,6 +124,7 @@ export function Site() {
             <a href="#screens">Screens</a>
             <a href="#loop">Loop</a>
             <a href="#systems">Systems</a>
+            <a href="/wiki.html">Wiki</a>
           </nav>
           <a className="site-link-button" href="/" aria-label="Open game">
             <MdPlayArrow aria-hidden="true" />
@@ -269,7 +290,7 @@ export function Site() {
               <section key={group.title} aria-labelledby={`footer-${group.title.toLowerCase()}`}>
                 <h3 id={`footer-${group.title.toLowerCase()}`}>{group.title}</h3>
                 {group.links.map((link) => (
-                  <a href="/website.html" key={link}>{link}</a>
+                  <a href={link.href} key={link.label}>{link.label}</a>
                 ))}
               </section>
             ))}

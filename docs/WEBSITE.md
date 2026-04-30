@@ -32,3 +32,16 @@ Start the app with `npm run dev`, open the game, and capture these views into `p
 - `exchange.png` — Exchange
 
 The screenshots should come from the running game UI so the site reflects the current build instead of drifting into mockups.
+
+## Wiki Screenshots
+
+Use the capture script for reusable wiki screenshots:
+
+```sh
+npm run screenshots:wiki
+npm run screenshots:wiki:exchange
+```
+
+The script tries the common Vite ports from 5173 through 5179. Pass `--url=http://127.0.0.1:5176/` when you need a specific server. It launches a temporary headless Chrome session, loads the game's developer state, shapes it into a documentation-ready scenario for the requested wiki view, captures focused UI elements, and writes images plus `manifest.json` under that view's folder in `public/site/screenshots/wiki/`.
+
+The wiki screenshot component uses the `focus` rectangle from the manifest to dim the surrounding image on hover while leaving the explained UI area clear. The capture script hides navigator suggestion markers in normal screenshots and leaves them visible in the dedicated Suggestions capture.

@@ -10,6 +10,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "screenshots:wiki": "node scripts/capture-wiki-screenshots.mjs",
+    "screenshots:wiki:exchange": "node scripts/capture-wiki-screenshots.mjs --view=exchange",
     "sim": "tsx src/sim/scenarios/run.ts",
     "bench": "tsx src/sim/scenarios/bench.ts",
     "audit": "tsx src/sim/scenarios/audit.ts",

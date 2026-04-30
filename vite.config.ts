@@ -11,6 +11,7 @@ export default defineConfig({
       input: {
         game: resolve(__dirname, "index.html"),
         website: resolve(__dirname, "website.html"),
+        wiki: resolve(__dirname, "wiki.html"),
       },
     },
   },

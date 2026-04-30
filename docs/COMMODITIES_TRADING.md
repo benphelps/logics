@@ -1,12 +1,13 @@
-# Commodities Trading — Design Plan
+# Commodities Trading - Implementation Notes
 
-A planned extension to the exchange that adds **commodity / futures
-markets** for every transport good in the game. This is the next major
-beat after Phase 4 (player limit orders) of the order-book migration —
-see `docs/STOCK_ORDERBOOK.md` for the prior phases.
+Commodity, basis, futures, and index markets are now implemented on the
+Exchange screen. For the player-facing guide, see
+`docs/wiki/EXCHANGE.md`.
 
-> **Status:** design only. No code yet. The intent of this doc is to
-> capture the design decisions before any of it is built.
+> **Status:** implementation reference and design history. The phase notes
+> below are useful background, but the current source of truth is the code
+> in `src/sim/stock.ts`, `src/sim/stock/futures.ts`, and
+> `src/ui/views/StockMarketView.tsx`.
 
 ## Why
 
@@ -18,7 +19,7 @@ local-market price is set by `priceFor(stock, target)` on a 0.25× / 5× clamp.
 
 Commodities trading adds a **second layer** on top of the physical market:
 a per-good order book where the player (and NPC agents) can take positions
-on the *forward* price of a good without ever touching cargo. Done well,
+on the _forward_ price of a good without ever touching cargo. Done well,
 this:
 
 1. Couples the existing cargo / station economy to the existing equity
@@ -54,7 +55,7 @@ and a working UI panel.
 
 ### Phase C-1 — Spot index per good
 
-The simplest commodity instrument: a *spot index* tracking the
+The simplest commodity instrument: a _spot index_ tracking the
 volume-weighted average market price of a good across all stations.
 
 - Listing per good: `commodity_<goodId>` (e.g. `commodity_grain`).
@@ -94,15 +95,15 @@ market.
 ### Phase C-2 — Station basis exposure
 
 Each station's local price for a good is `basis = local_price - spot_index`.
-A glutted producer trades at a *negative basis* (cheaper than spot) and
-a hungry consumer at a *positive basis*.
+A glutted producer trades at a _negative basis_ (cheaper than spot) and
+a hungry consumer at a _positive basis_.
 
 We add **basis pairs** as a derived listing: one per (good, station),
 priced as the station's local price minus the spot index. Long basis =
 "this station's good is going to be more expensive relative to spot".
 
 - No new order books per pair (would explode count). Instead:
-  basis pairs are *synthetic* — long basis = long the station's
+  basis pairs are _synthetic_ — long basis = long the station's
   commodity-station-pair (a virtual equity) priced as
   `local - spot`. Cash settlement only.
 - Limited to a handful of "blue chip" pairs (3-5 most-traded
@@ -110,7 +111,7 @@ priced as the station's local price minus the spot index. Long basis =
 - UI: basis pairs appear in the Commodities tab grouped under their
   good.
 
-This phase is the *information game* layer — players who watch
+This phase is the _information game_ layer — players who watch
 production / consumption flows have an edge.
 
 ### Phase C-3 — Futures contracts (margin + expiry)
@@ -133,16 +134,18 @@ Each good has **two contracts listed at any time**: a near-month
 near expires, a new far is listed.
 
 **At expiry:**
+
 - Long contract holders are paid `(spot_at_expiry - entry_price) × contractSize`.
 - Short holders pay (or receive, if spot fell) the same amount.
 - Margin is released back to the player on settlement; PnL flows
   through `ship.funds`.
 
 **Cash flow accounting:**
+
 - Margin reserved at open: locked in `player.reservedFunds` (or
   similar; mirrors `reservedShares`).
 - Daily mark-to-market: each tick, agent and player MtM PnL is
-  computed, and *variation margin* is moved between `stockWallet` /
+  computed, and _variation margin_ is moved between `stockWallet` /
   `ship.funds` and the contract's clearing pool.
 - The clearing pool is a per-good escrow that nets out longs and
   shorts. Total system cash is conserved (longs' gains == shorts'
@@ -158,7 +161,7 @@ short grain at expiry can choose to settle with **physical delivery**
 instead of cash:
 
 - Have grain in the ship's cargo at the listed delivery station, and
-  the contract settles at the *contract's strike price*, not the spot.
+  the contract settles at the _contract's strike price_, not the spot.
 - Otherwise, default to cash settlement.
 
 This reproduces the most interesting real-world futures mechanic: the
@@ -167,6 +170,7 @@ goods cheaper elsewhere. It turns cargo trading into a multi-tick
 financial game.
 
 **Implementation notes:**
+
 - Contract has a `deliveryStation: LocationId` field set at creation
   (defaults to a major hub).
 - When short is the seller, system polls the seller's cargo at the
@@ -186,12 +190,12 @@ at expiry.
 ### Phase C-5 — Station ratings / commodity exposure on equity prices
 
 The existing station-equity fundamental is purely treasury-driven. C-5
-makes commodity flow visible as a *modifier* on the station fundamental:
+makes commodity flow visible as a _modifier_ on the station fundamental:
 
 - `fundamental(station_eq) ×=` healthy-of-net-trade modifier.
 - Net trade = `Σ exports - Σ imports` (in basis-point cash terms),
   smoothed across N ticks.
-- A station that is consistently a *productive seller* (positive net
+- A station that is consistently a _productive seller_ (positive net
   trade) trades at a premium to a station with the same treasury but
   zero export.
 
@@ -219,7 +223,7 @@ This phase is about giving the late-game player something to scale into.
 
 ### Fairness with cargo trading
 
-A player can always do better by *physically delivering* goods than by
+A player can always do better by _physically delivering_ goods than by
 trading paper futures, because physical trade pockets the
 station-vs-spot basis (which is exactly what C-2 surfaces). Futures are
 a leverage / abstraction layer for players who want to express price
@@ -235,8 +239,8 @@ We must preserve total-cash conservation modulo the broker-fee burn:
 
 - Per-trade cash flows on commodity trades go through the same
   `stockWallet ↔ stockWallet` (agent ↔ agent) and `ship.funds ↔
-  stockWallet` (player ↔ agent) paths as equity trades. No new pools.
-- Futures clearing (variation margin) is a *transfer* between long and
+stockWallet` (player ↔ agent) paths as equity trades. No new pools.
+- Futures clearing (variation margin) is a _transfer_ between long and
   short positions through a per-contract escrow. Net zero.
 - Broker fee on contract opens / closes is the only burn, same as
   equities.
@@ -252,7 +256,7 @@ loops branch on `equity.kind`:
 - `station` / `syndicate` → existing fundamentals.
 - `commodity` → spot-index fundamental (C-1) or futures-discounted
   fundamental (C-3+, where the contract's fundamental is the spot
-  + carry cost to expiry).
+  - carry cost to expiry).
 
 Agent style biases stay identical:
 
@@ -306,6 +310,7 @@ These mirror the existing borrow fee on shorts (`SHORT_BORROW_RATE_PER_TICK`).
 ## UI surface
 
 ### Phase C-1
+
 A new **"Commodities"** tab in `StockMarketView.tsx` next to the
 existing equity listings. Each commodity row shows ticker (e.g.
 "GRN"), name, current spot, anchor (good.basePrice), 24-tick change,
@@ -313,15 +318,18 @@ and depth. Clicking opens the same right-pane chart / book / T&S /
 order form layout.
 
 ### Phase C-3
+
 Add a futures sub-tab. Futures rows additionally show expiry tick,
 contract size, margin requirement, open interest. Player position rows
 show notional + margin + MtM PnL.
 
 ### Phase C-4
+
 A "Settle physical" toggle on shorts approaching expiry, with a
 summary of cargo on hand at the delivery station.
 
 ### Phase C-5
+
 The station equity card surfaces a new line: "Net-trade modifier:
 +8.2%". Click for a breakdown of which goods are contributing.
 
@@ -331,13 +339,17 @@ The station equity card surfaces a new line: "Net-trade modifier:
 
 1. **Will the spot-index fundamental be too stable?** A volume-weighted
    average across stations is naturally smoothed. We may want to add
-   sensitivity to *recent* trade flow (similar to syndicate
+   sensitivity to _recent_ trade flow (similar to syndicate
    `recentRevenue`) to give it more wiggle.
+
+1.a We can unsmooth it or tweak things as needed, levers are good.
 
 2. **Margin sizing.** Too small → player gets liquidated on noise;
    too large → futures are no different from cash spot. Need to tune
    against measured volatility per good — likely 5-10% of notional
    for a stable food good, 15-20% for a luxury or fuel.
+
+2.a Another great place for levers, we can tweak the margin formula as needed.
 
 3. **Delivery loophole audit.** Can a sufficiently clever player
    trigger a long-delivery for cargo they didn't actually have to
@@ -345,16 +357,22 @@ The station equity card surfaces a new line: "Net-trade modifier:
    verifiable on-chain — the cargo lot's `boughtAt` station / tick
    suggests the ship made the trip.
 
+3.a We can track this as a possible issue and patch if we find an exploit.
+
 4. **Display density.** Adding 14 commodity rows + ~5 basis pairs +
    28 futures listings (14 goods × 2 expiries) = ~47 new listings
    on top of the existing 7-15. Need a tab structure or filter UI
    so the screen doesn't overload. Likely "All / Equities / Stations
    / Syndicates / Commodities" filter chips.
 
+4.a This is exactly what I was thinking UI wise, we can reuse the top-tab panel style for the tab bar.
+
 5. **Save migration.** Adding `kind: "commodity"` to `Equity` is
    straightforward. Adding futures contracts requires a new top-level
    `world.contracts: Record<ContractId, Contract>` map. Save
    versioning will need to bump.
+
+5.a Nuke them, doesn't matter. Saves never matter until I'm clear they do.
 
 6. **Agent style for commodities is imperfect.** A futures contract's
    "fair value" depends on time to expiry (it converges to spot at
@@ -362,6 +380,8 @@ The station equity card surfaces a new line: "Net-trade modifier:
    spot. Phase C-3 will need a `computeContractFundamental` that
    handles roll convergence; this is the only non-trivial new pricing
    math.
+
+6.a As long as it feels good, doesn't break the game, and gives the player a reasonable chance to out-trade the bots, it's good enough. We can iterate on the agent logic as needed.
 
 ---
 
@@ -380,14 +400,14 @@ The station equity card surfaces a new line: "Net-trade modifier:
 
 ## Summary roadmap
 
-| Phase | Adds | Rough effort |
-|---|---|---|
-| C-1 | Spot-index commodities (cash-only longs/shorts per good) | small — extends `Equity.kind` |
-| C-2 | Station basis pairs (synthetic listings) | small |
-| C-3 | Futures contracts with margin + expiry | medium-large — new contract types, mark-to-market loop |
-| C-4 | Physical cargo delivery on short settle | medium — couples cargo + futures |
-| C-5 | Net-trade modifier on station equity fundamentals | small |
-| C-6 | Sector indices + Treasury Index Notes | small (composes from C-1–C-3) |
+| Phase | Adds                                                     | Rough effort                                           |
+| ----- | -------------------------------------------------------- | ------------------------------------------------------ |
+| C-1   | Spot-index commodities (cash-only longs/shorts per good) | small — extends `Equity.kind`                          |
+| C-2   | Station basis pairs (synthetic listings)                 | small                                                  |
+| C-3   | Futures contracts with margin + expiry                   | medium-large — new contract types, mark-to-market loop |
+| C-4   | Physical cargo delivery on short settle                  | medium — couples cargo + futures                       |
+| C-5   | Net-trade modifier on station equity fundamentals        | small                                                  |
+| C-6   | Sector indices + Treasury Index Notes                    | small (composes from C-1–C-3)                          |
 
 The work is **incremental and stop-able at any phase**. C-1 alone is a
 shippable feature that doubles the size of the exchange.

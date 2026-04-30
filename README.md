@@ -32,6 +32,7 @@ npm run audit          # long-horizon stability + stock-market audit (default 10
 npm run audit -- 25000 # 25k-tick audit
 npm run bench          # scale benchmark: 10 → 1000 locations, ms/tick
 npm run dev            # Vite dev server (full UI)
+npm run screenshots:wiki # refresh wiki UI captures from an active Vite server
 ```
 
 ## Where things live
@@ -71,6 +72,7 @@ public/site/                      website logo + gameplay screenshots
 ## Docs
 
 - [`docs/VISION.md`](docs/VISION.md) — what the game is, what it isn't, the design pillars
+- [`docs/WIKI.md`](docs/WIKI.md) — player-facing wiki for the main tabs and mechanics
 - [`docs/SIM.md`](docs/SIM.md) — current simulation model in detail (economy, geometry, ships, supply chains, treasuries, equity exchange)
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — what's done, what's queued, what's deferred, and what we've discussed but parked
 - [`docs/WEBSITE.md`](docs/WEBSITE.md) — website entry point, assets, and screenshot refresh notes

@@ -1,0 +1,213 @@
+{
+  "url": "http://127.0.0.1:5173/",
+  "generatedAt": "2026-04-30T02:26:52.548Z",
+  "shots": [
+    {
+      "id": "screen-layout",
+      "section": "screen-layout",
+      "image": "/site/screenshots/wiki/my-fleet/screen-layout.png",
+      "alt": "My Fleet screen showing the ship card, station travel card, station exchange card, and info card",
+      "label": "Layout",
+      "title": "My Fleet bridge layout",
+      "text": "The selected ship sits above the station exchange and info card, with travel controls on the right."
+    },
+    {
+      "id": "game-menu",
+      "section": "game-menu",
+      "image": "/site/screenshots/wiki/my-fleet/game-menu.png",
+      "alt": "Expanded game menu showing save slots, save actions, and developer actions",
+      "label": "Menu",
+      "title": "Game menu and save controls",
+      "text": "The menu exposes save slots, fleet value, tick, reset, new game, and the local developer state."
+    },
+    {
+      "id": "top-controls",
+      "section": "top-controls",
+      "image": "/site/screenshots/wiki/my-fleet/top-controls.png",
+      "alt": "Top controls showing main tabs, tick speed, selected ship, wallet summary, and pilot mode",
+      "label": "Controls",
+      "title": "Navigation, speed, ship picker, and pilot mode",
+      "text": "The top bar selects the main tab, controls time, changes ships, and switches the focused ship between manual and auto."
+    },
+    {
+      "id": "fuel-hull-status",
+      "section": "fuel",
+      "image": "/site/screenshots/wiki/my-fleet/fuel-hull-status.png",
+      "alt": "Ship card status strip showing fuel percentage and hull damage percentage",
+      "label": "Status",
+      "title": "Fuel and hull damage actions",
+      "text": "The top strip of the ship card doubles as status readout and dockside action surface.",
+      "focus": {
+        "x": 1.2,
+        "y": 4.2,
+        "width": 97.7,
+        "height": 13.1
+      }
+    },
+    {
+      "id": "cargo-tab",
+      "section": "cargo-tab",
+      "image": "/site/screenshots/wiki/my-fleet/cargo-tab.png",
+      "alt": "Ship cargo tab showing a loaded good with quantity, profit and loss, and sell controls",
+      "label": "Cargo",
+      "title": "Cargo lots and sell actions",
+      "text": "Cargo rows show quantity, route-aware profit and loss, and a manual sell action when docked.",
+      "focus": {
+        "x": 1.2,
+        "y": 22.3,
+        "width": 97.7,
+        "height": 61.8
+      }
+    },
+    {
+      "id": "ship-upgrades-tab",
+      "section": "upgrades-tab",
+      "image": "/site/screenshots/wiki/my-fleet/ship-upgrades-tab.png",
+      "alt": "Ship upgrades tab showing module slots and installed upgrades",
+      "label": "Ship modules",
+      "title": "Installed upgrade slots",
+      "text": "The ship upgrades tab separates installed modules from upgrade cargo waiting to be installed or sold.",
+      "focus": {
+        "x": 2.4,
+        "y": 16.5,
+        "width": 95.2,
+        "height": 49.5
+      }
+    },
+    {
+      "id": "crew-tab",
+      "section": "crew-tab",
+      "image": "/site/screenshots/wiki/my-fleet/crew-tab.png",
+      "alt": "Ship crew tab showing pilot, navigator, and mechanic crew cards",
+      "label": "Crew",
+      "title": "Crew stations on the ship",
+      "text": "Pilot, navigator, and mechanic roles live on the ship and unlock automation, guidance, and maintenance behavior.",
+      "focus": {
+        "x": 0.8,
+        "y": 20.3,
+        "width": 97.7,
+        "height": 63.3
+      }
+    },
+    {
+      "id": "stations-travel",
+      "section": "stations-and-travel",
+      "image": "/site/screenshots/wiki/my-fleet/stations-travel.png",
+      "alt": "Stations travel card showing reachable destinations, fuel needs, travel time, and depart buttons",
+      "label": "Travel",
+      "title": "Reachable stations and departure checks",
+      "text": "Each route row shows destination, distance, fuel needed, travel time, local notes, and the depart action.",
+      "focus": {
+        "x": 1.9,
+        "y": 15.6,
+        "width": 96.3,
+        "height": 81.5
+      }
+    },
+    {
+      "id": "station-markets",
+      "section": "markets",
+      "image": "/site/screenshots/wiki/my-fleet/station-markets.png",
+      "alt": "Station exchange Markets tab showing goods, stock, held quantity, price, net sell value, and buy controls",
+      "label": "Market",
+      "title": "Station goods market",
+      "text": "Markets list local commodity stock, held cargo, buy price, net sell value after tax, and buy controls.",
+      "focus": {
+        "x": 1.2,
+        "y": 13.6,
+        "width": 97.7,
+        "height": 63.6
+      }
+    },
+    {
+      "id": "station-upgrades",
+      "section": "upgrades",
+      "image": "/site/screenshots/wiki/my-fleet/station-upgrades.png",
+      "alt": "Station exchange Upgrades tab showing upgrade modules for sale with prices and buy buttons",
+      "label": "Modules",
+      "title": "Station upgrade stock",
+      "text": "Buying from this subtab puts the module into cargo. Installing still happens from the ship card.",
+      "focus": {
+        "x": 2.4,
+        "y": 14.6,
+        "width": 95.2,
+        "height": 68.5
+      }
+    },
+    {
+      "id": "station-offers",
+      "section": "offers",
+      "image": "/site/screenshots/wiki/my-fleet/station-offers.png",
+      "alt": "Station exchange Offers tab showing local crew hire cards and hire buttons",
+      "label": "Crew board",
+      "title": "Local hire offers",
+      "text": "Crew offers show role, name, tier, modifiers, cost, wage context, and a hire action.",
+      "focus": {
+        "x": 2.4,
+        "y": 14.6,
+        "width": 95.2,
+        "height": 28.5
+      }
+    },
+    {
+      "id": "station-contracts",
+      "section": "contracts",
+      "image": "/site/screenshots/wiki/my-fleet/station-contracts.png",
+      "alt": "Station exchange Contracts tab showing available work with tier, route, reward, penalty, expiry, and accept controls",
+      "label": "Contracts",
+      "title": "Station contract board",
+      "text": "Contracts show tier, requested good, destination, held amount, reward, penalty, expiry, and accept controls."
+    },
+    {
+      "id": "ship-info",
+      "section": "ship-info",
+      "image": "/site/screenshots/wiki/my-fleet/ship-info.png",
+      "alt": "Info card showing default ship statistics, systems, service debt, and crew wages",
+      "label": "Info",
+      "title": "Default ship info",
+      "text": "The default info card summarizes wallet, cargo, fuel, hull damage, speed, systems, and upkeep."
+    },
+    {
+      "id": "station-info",
+      "section": "station-info",
+      "image": "/site/screenshots/wiki/my-fleet/station-info.png",
+      "alt": "Info card showing station details, profile, station flow, market pressure, and nearby routes",
+      "label": "Station",
+      "title": "Pinned station context",
+      "text": "Clicking a station row turns the info card into station context with tags, traffic, market pressure, and nearby routes."
+    },
+    {
+      "id": "trade-helper",
+      "section": "trade-helper",
+      "image": "/site/screenshots/wiki/my-fleet/trade-helper.png",
+      "alt": "Info card showing a trade helper for a selected commodity with market signals and route profit",
+      "label": "Helper",
+      "title": "Route-aware trade helper",
+      "text": "Clicking a good opens the trade helper with stock, prices, max buy, demand, route profit, flow, and related contracts."
+    },
+    {
+      "id": "suggestions",
+      "section": "suggestions",
+      "image": "/site/screenshots/wiki/my-fleet/suggestions.png",
+      "alt": "My Fleet station exchange showing suggested actions and highlighted guidance markers",
+      "label": "Guidance",
+      "title": "Navigator suggestion highlights",
+      "text": "With a navigator hired, suggested tabs and action buttons receive route-aware guidance markers."
+    },
+    {
+      "id": "auto-pilot",
+      "section": "auto-pilot",
+      "image": "/site/screenshots/wiki/my-fleet/auto-pilot.png",
+      "alt": "Top controls showing the selected ship and manual versus auto pilot mode buttons",
+      "label": "Automation",
+      "title": "Manual and Auto pilot modes",
+      "text": "Auto mode is per ship. It becomes available once a pilot is hired and moves dockside actions under crew control.",
+      "focus": {
+        "x": 87,
+        "y": 25.9,
+        "width": 12.1,
+        "height": 48.3
+      }
+    }
+  ]
+}
