@@ -293,19 +293,19 @@ function PnoPanel(props: {
     <section className="stocks-shell-panel stocks-pno">
       <div className="bridge-card-tabs stocks-pno-tabs">
         <button
-          className={`bridge-tab ${tab === "positions" ? "active" : ""} ${props.positions.length > 0 ? "has-suggestion" : ""}`}
+          className={`bridge-tab ${tab === "positions" ? "active" : ""}`}
           onClick={() => setTab("positions")}
         >
           Positions <span className="bridge-tab-count">{props.positions.length}</span>
         </button>
         <button
-          className={`bridge-tab ${tab === "orders" ? "active" : ""} ${limits.length > 0 ? "has-suggestion" : ""}`}
+          className={`bridge-tab ${tab === "orders" ? "active" : ""}`}
           onClick={() => setTab("orders")}
         >
           Orders <span className="bridge-tab-count">{limits.length}</span>
         </button>
         <button
-          className={`bridge-tab ${tab === "futures" ? "active" : ""} ${futures.length > 0 ? "has-suggestion" : ""}`}
+          className={`bridge-tab ${tab === "futures" ? "active" : ""}`}
           onClick={() => setTab("futures")}
         >
           Futures <span className="bridge-tab-count">{futures.length}</span>
