@@ -199,29 +199,22 @@ function EquitySelector({ rows, tapeRows, selectedId, onSelect }: {
   const reachable = tapeRows.reachable.filter(filterRow);
   const far = tapeRows.far.filter(filterRow);
   // Counts for the tab bar — same kindFilter applied to the unfiltered total.
-  const counts: Record<KindFilter, number> = { all: 0, station: 0, syndicate: 0, commodity: 0, basis: 0, futures: 0 };
+  const counts: Record<KindFilter, number> = { all: 0, station: 0, syndicate: 0, commodity: 0, basis: 0, futures: 0, index: 0 };
   for (const r of [...tapeRows.reachable, ...tapeRows.far]) {
     counts.all++;
     counts[r.equity.kind]++;
   }
   return (
     <section className="stocks-shell-panel stocks-selector">
-      <div className="stocks-panel-head art-panel-head" style={artCardStyle(headerArtUrl("stockTape"))}>
-        <div>
-          <span className="stocks-panel-label">Listings</span>
-          <span className="dim">{reachable.length} reachable · {far.length} far</span>
-        </div>
-      </div>
-      <div className="stocks-kind-tabs">
+      <div className="bridge-card-tabs stocks-pno-tabs">
         {KIND_FILTERS.map(kf => counts[kf] > 0 && (
           <button
             key={kf}
             type="button"
-            className={`stocks-kind-tab ${kindFilter === kf ? "active" : ""}`}
+            className={`bridge-tab ${kindFilter === kf ? "active" : ""}`}
             onClick={() => setKindFilter(kf)}
           >
-            <span>{KIND_FILTER_LABEL[kf]}</span>
-            <span className="stocks-kind-tab-count dim">{counts[kf]}</span>
+            {KIND_FILTER_LABEL[kf]} <span className="bridge-tab-count">{counts[kf]}</span>
           </button>
         ))}
       </div>
