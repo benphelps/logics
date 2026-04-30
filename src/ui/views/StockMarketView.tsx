@@ -1022,6 +1022,12 @@ function FuturesOrderForm({ equity, world, docked, access }: {
   const openLongFuture = useStore(s => s.openLongFuture);
   const openShortFuture = useStore(s => s.openShortFuture);
   const [count, setCount] = useState<number>(1);
+  // The +N chips behave as "set to N" on the first click and as
+  // "add N to current" thereafter — labels switch from "N" to "+N"
+  // accordingly. Reset whenever the user changes count by another
+  // means (typing or % chip), so the next +N click starts a fresh
+  // "set" interaction.
+  const [incrementMode, setIncrementMode] = useState(false);
   const c = world.contracts?.[equity.id];
   const playerShipId = world.player?.shipIds[0];
   const ship = playerShipId ? world.traders[playerShipId] : null;
@@ -1064,7 +1070,10 @@ function FuturesOrderForm({ equity, world, docked, access }: {
         <label style={{ gridColumn: "1 / span 3" }}>
           <span>Contracts</span>
           <input type="number" min={1} value={count}
-            onChange={e => setCount(Math.max(1, Math.floor(Number(e.target.value) || 0)))} />
+            onChange={e => {
+              setCount(Math.max(1, Math.floor(Number(e.target.value) || 0)));
+              setIncrementMode(false);
+            }} />
         </label>
       </div>
 
@@ -1077,7 +1086,10 @@ function FuturesOrderForm({ equity, world, docked, access }: {
                 key={pct}
                 label={`${pct}%`}
                 hoverLabel={maxContracts > 0 ? `${target} ct (Ç${Math.round((marginPerContract + feePerContract) * target).toLocaleString()})` : "—"}
-                onClick={() => maxContracts > 0 && setCount(target)}
+                onClick={() => {
+                  if (maxContracts > 0) setCount(target);
+                  setIncrementMode(false);
+                }}
               />
             );
           })}
@@ -1086,9 +1098,12 @@ function FuturesOrderForm({ equity, world, docked, access }: {
           {[1, 5, 10].map(n => (
             <QuickChip
               key={n}
-              label={`+${n}`}
-              hoverLabel={`+${n} contracts`}
-              onClick={() => setCount(c => c + n)}
+              label={incrementMode ? `+${n}` : `${n}`}
+              hoverLabel={incrementMode ? `+${n} contracts` : `${n} contracts`}
+              onClick={() => {
+                setCount(c => incrementMode ? c + n : n);
+                setIncrementMode(true);
+              }}
             />
           ))}
         </div>
