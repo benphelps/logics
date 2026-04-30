@@ -85,7 +85,8 @@ export function LocationsView() {
   const selectTrader = useStore((s) => s.selectTrader);
   useStore((s) => s.tickEpoch);
 
-  const [sheetTab, setSheetTab] = useState<"systems" | "ships" | "news">("systems");
+  const sheetTab = useStore((s) => s.atlasSheetTab);
+  const setSheetTab = useStore((s) => s.setAtlasSheetTab);
   const newsCount = world.newsEvents?.active.length ?? 0;
 
   const locations = Object.values(world.locations);

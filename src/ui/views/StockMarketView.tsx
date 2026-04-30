@@ -176,7 +176,7 @@ export function StockMarketView() {
 
 // --- new shell components ----------------------------------------------
 
-type KindFilter = "all" | EquityKind;
+import type { StockKindFilter as KindFilter } from "../viewTabs";
 const KIND_FILTERS: KindFilter[] = ["all", "station", "syndicate", "commodity", "basis", "futures", "index"];
 const KIND_FILTER_LABEL: Record<KindFilter, string> = {
   all: "All",
@@ -195,7 +195,8 @@ function EquitySelector({ rows, tapeRows, selectedId, onSelect }: {
   onSelect: (eqId: string) => void;
 }) {
   void rows;
-  const [kindFilter, setKindFilter] = useState<KindFilter>("all");
+  const kindFilter = useStore((s) => s.stockKindFilter);
+  const setKindFilter = useStore((s) => s.setStockKindFilter);
   const filterRow = (r: EquityRow) => kindFilter === "all" || r.equity.kind === kindFilter;
   const reachable = tapeRows.reachable.filter(filterRow);
   const far = tapeRows.far.filter(filterRow);

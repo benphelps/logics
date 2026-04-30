@@ -37,8 +37,8 @@ import {
 export type Tab = "player" | "markets" | "locations" | "stocks";
 export type Speed = 0 | 1 | 4 | 16;
 
-import { DEFAULT_VIEW_TABS, type CommodityTab, type FleetTab, type PnoTab, type ViewTabs } from "./viewTabs";
-export type { FleetTab, CommodityTab, PnoTab, ViewTabs };
+import { DEFAULT_VIEW_TABS, type AtlasSheetTab, type CommodityTab, type FleetTab, type PnoTab, type StockKindFilter, type ViewTabs } from "./viewTabs";
+export type { AtlasSheetTab, FleetTab, CommodityTab, PnoTab, StockKindFilter, ViewTabs };
 
 const initialGame = loadInitialGame(() => createStartingWorld());
 const AUTOSAVE_THROTTLE_MS = 2_000;
@@ -132,6 +132,8 @@ interface UiState {
   fleetTab: FleetTab;
   commodityTab: CommodityTab;
   pnoTab: PnoTab;
+  atlasSheetTab: AtlasSheetTab;
+  stockKindFilter: StockKindFilter;
   lastError: string | null;
   // Toast queue — populated when tickWorld() returns spawned news events.
   // The toast component drains entries via dismissNewsToast as they auto-fade.
@@ -151,6 +153,8 @@ interface UiState {
   setFleetTab: (t: FleetTab) => void;
   setCommodityTab: (t: CommodityTab) => void;
   setPnoTab: (t: PnoTab) => void;
+  setAtlasSheetTab: (t: AtlasSheetTab) => void;
+  setStockKindFilter: (t: StockKindFilter) => void;
   selectLocation: (id: LocationId | null) => void;
   selectGood: (id: GoodId | null) => void;
   selectTrader: (id: TraderId | null) => void;
@@ -210,6 +214,8 @@ export const useStore = create<UiState>((set, get) => {
       fleetTab: tabs.fleetTab,
       commodityTab: tabs.commodityTab,
       pnoTab: tabs.pnoTab,
+      atlasSheetTab: tabs.atlasSheetTab,
+      stockKindFilter: tabs.stockKindFilter,
       lastError: null,
     });
   };
@@ -231,6 +237,8 @@ export const useStore = create<UiState>((set, get) => {
     fleetTab: state.fleetTab,
     commodityTab: state.commodityTab,
     pnoTab: state.pnoTab,
+    atlasSheetTab: state.atlasSheetTab,
+    stockKindFilter: state.stockKindFilter,
   });
 
   const persistCurrentGame = (updates: Partial<Pick<UiState, "lastError" | "speed">> = {}, bumpEpoch = true, immediate = false) => {
@@ -272,6 +280,8 @@ export const useStore = create<UiState>((set, get) => {
     fleetTab: initialGame.viewTabs?.fleetTab ?? DEFAULT_VIEW_TABS.fleetTab,
     commodityTab: initialGame.viewTabs?.commodityTab ?? DEFAULT_VIEW_TABS.commodityTab,
     pnoTab: initialGame.viewTabs?.pnoTab ?? DEFAULT_VIEW_TABS.pnoTab,
+    atlasSheetTab: initialGame.viewTabs?.atlasSheetTab ?? DEFAULT_VIEW_TABS.atlasSheetTab,
+    stockKindFilter: initialGame.viewTabs?.stockKindFilter ?? DEFAULT_VIEW_TABS.stockKindFilter,
     lastError: null,
     newsToasts: [],
 
@@ -353,6 +363,8 @@ export const useStore = create<UiState>((set, get) => {
     setFleetTab: (t) => { set({ fleetTab: t }); persistCurrentGame({}, false); },
     setCommodityTab: (t) => { set({ commodityTab: t }); persistCurrentGame({}, false); },
     setPnoTab: (t) => { set({ pnoTab: t }); persistCurrentGame({}, false); },
+    setAtlasSheetTab: (t) => { set({ atlasSheetTab: t }); persistCurrentGame({}, false); },
+    setStockKindFilter: (t) => { set({ stockKindFilter: t }); persistCurrentGame({}, false); },
     selectLocation: (id) => set({ selectedLocation: id }),
     selectGood: (id) => set({ selectedGood: id }),
     selectTrader: (id) => set({ selectedTrader: id }),
