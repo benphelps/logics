@@ -2204,6 +2204,26 @@
   margin-top: 6px;
 }
 
+/* Variant used on the futures order form: chips sit tight under their
+   input and don't react to hover (no label swap, no color/background
+   shift). */
+.stocks-quick-row-flat {
+  margin-top: 2px;
+}
+
+.stocks-quick-row-flat .stocks-trigger-chip:hover {
+  color: var(--text-dim);
+  background: var(--stock-surface);
+}
+
+.stocks-quick-row-flat .stocks-trigger-chip:hover .chip-default {
+  display: inline-block;
+}
+
+.stocks-quick-row-flat .stocks-trigger-chip:hover .chip-hover {
+  display: none;
+}
+
 .stocks-position-quick-group {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

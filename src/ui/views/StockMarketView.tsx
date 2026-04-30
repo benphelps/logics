@@ -1068,7 +1068,7 @@ function FuturesOrderForm({ equity, world, docked, access }: {
         </label>
       </div>
 
-      <div className="stocks-position-quick-row">
+      <div className="stocks-position-quick-row stocks-quick-row-flat">
         <div className="stocks-position-quick-group">
           {[25, 50, 100].map(pct => {
             const target = Math.max(1, Math.round(maxContracts * pct / 100));
