@@ -76,24 +76,19 @@ function cloneWorld(world: World): World {
 // a price history capped at SHARE_PRICE_HISTORY_MAX, and an order book
 // of agent quotes. Across multiple save slots that can blow past the
 // ~5 MB localStorage origin quota, at which point setItem throws and
-// the save silently fails — the registry on disk doesn't pick up the
-// new slot, and on the next read the user's just-created save vanishes
-// from the list.
+// the save silently fails.
 //
-// Strip everything that's purely cosmetic or rebuilt within a few ticks
-// of running, but KEEP price history so the chart on the info pane is
-// continuous across reloads:
-//   - Equity.recentTrades — rebuilt on the very next agent fill.
-//   - Equity.history — kept (capped at SHARE_PRICE_HISTORY_MAX = 150).
-//   - Order book entries with a TTL — those are agent orders that
-//     re-post on a 4-tick cadence. Player orders (no TTL) survive.
+// Strip only the things rebuilt within ~4 ticks of running:
+//   - Order book entries with a TTL — agent quotes that re-post on a
+//     4-tick cadence. Player limit orders (no TTL) survive untouched.
 //   - Trader logs trimmed to the most recent entries.
+// Keep:
+//   - Equity.history (the sparkline data, capped at 150 in the sim).
+//   - Equity.recentTrades (Time & Sales tape, capped at 100). Useful
+//     to see immediately after a reload.
+//   - Player trade ledger (capped at TRADE_LEDGER_MAX in the sim).
 function compactWorldForSave(world: World): World {
   const w = cloneWorld(world);
-  for (const eq of Object.values(w.equities)) {
-    eq.recentTrades = [];
-    // history is already capped in the sim; no further trimming.
-  }
   if (w.orderBooks) {
     for (const book of Object.values(w.orderBooks)) {
       book.bids = book.bids.filter(o => o.ttl == null);
