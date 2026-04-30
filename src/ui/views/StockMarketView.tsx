@@ -2146,7 +2146,14 @@ function Sparkline({ equity, position }: { equity: Equity; position: StockPositi
     volumeSeriesRef.current = volume;
 
     const ro = new ResizeObserver(() => {
-      if (chartRef.current) chartRef.current.applyOptions({ width: div.clientWidth });
+      if (!chartRef.current) return;
+      chartRef.current.applyOptions({ width: div.clientWidth });
+      // First time the panel's layout settles after mount, the chart was
+      // created at width=0, so its time-axis range was computed against
+      // empty space — points then render compressed to a single column
+      // until you hit some other refresh. Refit on every resize to keep
+      // the visible range in sync with the canvas.
+      chartRef.current.timeScale().fitContent();
     });
     ro.observe(div);
 
