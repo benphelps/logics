@@ -46,6 +46,11 @@ Trade settlement is per-fill:
 | **3** | Couple agents to ship lifecycle: docking edge on station equities, syndicate revenue exposure, bankruptcy liquidation. | **complete** |
 | **4** | Player limit-order UI (place/cancel buy and sell limits with funds + share reservations). Share-lend mechanic for shorts deferred to a follow-up. | **complete** |
 | 5 | (Deferred) Explicit share-lend mechanic for shorts: name a specific lender (agent or treasury) at short open, route borrow fees to them, surface borrow availability per lender. Currently shorts work via implicit float adjustment with borrow fees flowing to treasury — fine in practice. | not started |
+| 6 | (Deferred) Commodities / futures market — see `docs/COMMODITIES_TRADING.md`. Adds a parallel order book per traded good with cargo-delivery settlement, station basis exposure, and futures-style margin. | planned |
+
+A full audit covering fairness, fun, and 10k+ tick stability lives in
+`docs/STOCK_MARKET_REVIEW.md`. Long-horizon stress diagnostic at
+`src/tools/stockLongRun.ts`.
 
 ---
 
@@ -143,20 +148,30 @@ src/tools/stockBookDemo.ts       — Phase 1 price-impact demo (still useful)
 
 ---
 
-## Known rough edges (after Phase 2.5)
+## Known rough edges (after Phase 4)
 
 - **Occasional one-sided book.** Without an MM, a side can deplete for a tick
   or two before agents repopulate. The player can hit "book too thin" briefly.
-  Phase 3 should reduce this; if it stays annoying, we could put back a thin
-  fallback MM.
+  Phase 3 reduced this; some thinning still appears late in 50k+ tick games as
+  bankrupt agents stop posting. See `STOCK_MARKET_REVIEW.md` for measured
+  numbers (6.3% of equity-snapshots one-sided over 20k ticks, climbing to
+  ~30% by 100k ticks).
 - **Aggressive trade prices snap eq.price around.** The take-profit / stop-loss
   tests had to be relaxed because PnL sign now depends on real depth at the
   trigger moment, not on mutating `eq.price`.
 - **Stations see less volume than syndicates.** Stations have slow-moving
   fundamentals (treasury health) so value/momentum agents trigger less often
-  there. Phase 3's docking-edge mechanic should help.
-- **No player limit orders yet.** Player trades are still pure market orders.
-  Phase 4 picks this up.
+  there. Phase 3's docking-edge mechanic helps but does not fully close the
+  gap.
+- **Bankruptcy can become a one-way trap.** An agent that exhausts both
+  `held` shares and `stockWallet` can no longer trade. `decideLiquidate`
+  returns `[]` when `held = 0`, and there is no recovery path. Observed:
+  4 / 18 agents permanently bankrupt at tick 100k.
+- **Syndicate fundamental anchor is too small.** `fairWealth = members × 20_000`
+  is exceeded easily, pinning small-syndicate equities at the 10× ceiling.
+- **Style mix is hash-bucketed.** `STYLE_CYCLE[hashStr(id) % 4]` produces
+  lopsided distributions on small worlds (default 6-NPC world ends up
+  `noise=4 / value=2`).
 - **Settlement-job test was relaxed** to accept either profit or
   loss_forgiveness depending on agent depth at sell time. The settlement-job
   *mechanism* is verified, but not the sign.
