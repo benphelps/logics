@@ -7,19 +7,30 @@ import type { Plugin } from "vite";
 
 type HeadshotQuality = "low" | "medium" | "high";
 type HeadshotSize = "1024x1024" | "1024x1536" | "1536x1024";
+export type HeadshotSex = "female" | "male" | "nonbinary";
+export type HeadshotAge = "young adult" | "adult" | "middle aged" | "elderly";
+export type HeadshotRace = "human" | "alien";
 
 interface HeadshotRequest {
   role?: string;
+  race?: string;
+  sex?: string;
+  age?: string;
   clothing?: string;
 }
 
 export interface HeadshotSeedInput {
   role: string;
-  clothing?: string;
+  race: HeadshotRace;
+  sex: HeadshotSex;
+  age: HeadshotAge;
 }
 
 interface NormalizedHeadshotInput {
   role: string;
+  race: HeadshotRace;
+  sex: HeadshotSex;
+  age: HeadshotAge;
   clothing?: string;
   quality: HeadshotQuality;
   size: HeadshotSize;
@@ -34,20 +45,27 @@ interface HeadshotCacheEntry {
   id: string;
   poolKey: string;
   role: string;
+  race: HeadshotRace;
+  sex: HeadshotSex;
+  age: HeadshotAge;
   clothing?: string;
-  fileName: string;
-  mimeType: string;
+  fileName?: string;
+  mimeType?: string;
   createdAt: string;
+  updatedAt: string;
   model: string;
   size: string;
   quality: string;
   promptVersion?: number;
   prompt: string;
+  status: "pending" | "ready" | "failed";
+  unique: boolean;
+  error?: string;
   uses: HeadshotUse[];
 }
 
 interface HeadshotCache {
-  version: 3;
+  version: 6;
   entries: HeadshotCacheEntry[];
 }
 
@@ -58,7 +76,7 @@ interface OpenAIImageResponse {
   }>;
 }
 
-const CACHE_VERSION = 3;
+const CACHE_VERSION = 6;
 const CACHE_ROOT = resolve(process.cwd(), process.env.HEADSHOT_CACHE_DIR ?? ".logics-cache/headshots");
 const CACHE_INDEX_PATH = join(CACHE_ROOT, "index.json");
 const IMAGE_DIR = join(CACHE_ROOT, "images");
@@ -66,11 +84,20 @@ const DEFAULT_MODEL = process.env.HEADSHOT_IMAGE_MODEL ?? "gpt-image-1.5";
 const DEFAULT_OUTPUT_FORMAT = process.env.HEADSHOT_IMAGE_FORMAT ?? "webp";
 const DEFAULT_QUALITY: HeadshotQuality = "low";
 const DEFAULT_SIZE: HeadshotSize = "1024x1024";
-const PROMPT_VERSION = 2;
+const PROMPT_VERSION = 4;
 const POOL_LOW_WATERMARK = 1;
 const POOL_REFILL_COUNT = 2;
 const activeRefills = new Set<string>();
 let cacheMutationQueue = Promise.resolve();
+
+class HeadshotRequestError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
 
 const ROLES = [
   "pilot",
@@ -85,6 +112,9 @@ const ROLES = [
 
 const QUALITIES: HeadshotQuality[] = ["low", "medium", "high"];
 const SIZES: HeadshotSize[] = ["1024x1024", "1024x1536", "1536x1024"];
+const RACES: HeadshotRace[] = ["human", "alien"];
+const SEXES: HeadshotSex[] = ["female", "male", "nonbinary"];
+const AGES: HeadshotAge[] = ["young adult", "adult", "middle aged", "elderly"];
 
 const ROLE_PROMPTS: Record<string, {
   background: string;
@@ -159,7 +189,7 @@ export function headshotDevServerPlugin(): Plugin {
         void handleHeadshotRequest(req, res).then((handled) => {
           if (!handled) next();
         }).catch((error: unknown) => {
-          sendError(res, 500, error instanceof Error ? error.message : "Unexpected headshot server error.");
+          sendError(res, error instanceof HeadshotRequestError ? error.status : 500, error instanceof Error ? error.message : "Unexpected headshot server error.");
         });
       });
     },
@@ -168,7 +198,7 @@ export function headshotDevServerPlugin(): Plugin {
         void handleHeadshotRequest(req, res).then((handled) => {
           if (!handled) next();
         }).catch((error: unknown) => {
-          sendError(res, 500, error instanceof Error ? error.message : "Unexpected headshot server error.");
+          sendError(res, error instanceof HeadshotRequestError ? error.status : 500, error instanceof Error ? error.message : "Unexpected headshot server error.");
         });
       });
     },
@@ -178,6 +208,9 @@ export function headshotDevServerPlugin(): Plugin {
 export function getHeadshotSeedOptions() {
   return {
     roles: ROLES,
+    races: RACES,
+    sexes: SEXES,
+    ages: AGES,
     qualities: QUALITIES,
     sizes: SIZES,
     promptVersion: PROMPT_VERSION,
@@ -185,7 +218,7 @@ export function getHeadshotSeedOptions() {
 }
 
 export async function seedCachedHeadshot(rawInput: HeadshotSeedInput) {
-  const input = normalizeInput(rawInput);
+  const input = parseHeadshotInput(rawInput);
   const entry = await createCachedEntry(getApiKey(), input);
   const available = await mutateCache((cache) => {
     cache.entries.push(entry);
@@ -224,21 +257,26 @@ async function handleHeadshotRequest(req: IncomingMessage, res: ServerResponse):
     return true;
   }
 
+  if (req.method === "GET" && url.pathname.startsWith("/api/headshots/status/")) {
+    await serveHeadshotStatus(url.pathname, res);
+    return true;
+  }
+
   if ((req.method === "GET" || req.method === "HEAD") && url.pathname.startsWith("/api/headshots/image/")) {
     await serveHeadshotImage(url.pathname, res, req.method === "HEAD");
     return true;
   }
 
   if (req.method === "POST" && url.pathname === "/api/headshots/generate") {
-    const result = await generatePreviewHeadshot(normalizeInput(await readJsonBody<HeadshotRequest>(req)));
+    const result = await generatePreviewHeadshot(parseHeadshotInput(await readJsonBody<HeadshotRequest>(req)));
     sendJson(res, 200, result);
     return true;
   }
 
   const gameRoute = parseGameRoute(url.pathname);
   if (req.method === "POST" && gameRoute?.action === "allocate") {
-    const result = await allocateHeadshot(gameRoute.gameId, normalizeInput(await readJsonBody<HeadshotRequest>(req)));
-    sendJson(res, 200, result);
+    const result = await allocateHeadshot(gameRoute.gameId, parseHeadshotInput(await readJsonBody<HeadshotRequest>(req)));
+    sendJson(res, result.source === "pending" ? 202 : 200, result);
     return true;
   }
 
@@ -262,6 +300,18 @@ async function generatePreviewHeadshot(input: NormalizedHeadshotInput) {
 }
 
 async function allocateHeadshot(gameId: number, input: NormalizedHeadshotInput) {
+  if (input.clothing) {
+    const entry = await createPendingUniqueEntry(gameId, input);
+    void generatePendingEntry(entry.id, input);
+    return {
+      source: "pending" as const,
+      entry: toClientEntry(entry),
+      prompt: entry.prompt,
+      claimed: true,
+      refill: { queued: false, available: 0 },
+    };
+  }
+
   const result = await mutateCache(async (cache) => {
     const existing = findReusableEntry(cache, input, gameId);
     if (existing) {
@@ -297,6 +347,67 @@ async function allocateHeadshot(gameId: number, input: NormalizedHeadshotInput) 
   };
 }
 
+async function createPendingUniqueEntry(gameId: number, input: NormalizedHeadshotInput): Promise<HeadshotCacheEntry> {
+  const prompt = buildPrompt(input);
+  const now = new Date().toISOString();
+  const entry: HeadshotCacheEntry = {
+    id: randomUUID(),
+    poolKey: `unique__${randomUUID()}`,
+    role: input.role,
+    race: input.race,
+    sex: input.sex,
+    age: input.age,
+    clothing: input.clothing,
+    createdAt: now,
+    updatedAt: now,
+    model: DEFAULT_MODEL,
+    size: input.size,
+    quality: input.quality,
+    promptVersion: PROMPT_VERSION,
+    prompt,
+    status: "pending",
+    unique: true,
+    uses: [{
+      gameId,
+      claimedAt: now,
+    }],
+  };
+
+  await mutateCache((cache) => {
+    cache.entries.push(entry);
+  });
+
+  return entry;
+}
+
+async function generatePendingEntry(entryId: string, input: NormalizedHeadshotInput): Promise<void> {
+  try {
+    const prompt = buildPrompt(input);
+    const image = await generateImage(getApiKey(), prompt, input);
+    const extension = extensionFor(image.mimeType);
+    const fileName = `${entryId}${extension}`;
+    await ensureCacheDirs();
+    await writeFile(join(IMAGE_DIR, fileName), image.bytes);
+    await mutateCache((cache) => {
+      const entry = cache.entries.find((item) => item.id === entryId);
+      if (!entry) return;
+      entry.fileName = fileName;
+      entry.mimeType = image.mimeType;
+      entry.status = "ready";
+      entry.error = undefined;
+      entry.updatedAt = new Date().toISOString();
+    });
+  } catch (error) {
+    await mutateCache((cache) => {
+      const entry = cache.entries.find((item) => item.id === entryId);
+      if (!entry) return;
+      entry.status = "failed";
+      entry.error = error instanceof Error ? error.message : "Headshot generation failed.";
+      entry.updatedAt = new Date().toISOString();
+    });
+  }
+}
+
 async function createCachedEntry(apiKey: string, input: NormalizedHeadshotInput): Promise<HeadshotCacheEntry> {
   const prompt = buildPrompt(input);
   const image = await generateImage(apiKey, prompt, input);
@@ -305,20 +416,27 @@ async function createCachedEntry(apiKey: string, input: NormalizedHeadshotInput)
   const fileName = `${id}${extension}`;
   await ensureCacheDirs();
   await writeFile(join(IMAGE_DIR, fileName), image.bytes);
+  const now = new Date().toISOString();
 
   return {
     id,
     poolKey: poolKey(input),
     role: input.role,
+    race: input.race,
+    sex: input.sex,
+    age: input.age,
     clothing: input.clothing,
     fileName,
     mimeType: image.mimeType,
-    createdAt: new Date().toISOString(),
+    createdAt: now,
+    updatedAt: now,
     model: DEFAULT_MODEL,
     size: input.size,
     quality: input.quality,
     promptVersion: PROMPT_VERSION,
     prompt,
+    status: "ready",
+    unique: false,
     uses: [],
   };
 }
@@ -385,11 +503,16 @@ function buildPrompt(input: NormalizedHeadshotInput): string {
   const clothing = input.clothing
     ? `Clothing: ${input.clothing}.`
     : `Clothing: ${role.clothing}.`;
+  const raceGuidance = input.race === "alien"
+    ? "Species design: humanoid alien with original, elegant sci-fi facial features, expressive eyes, believable skin texture, not horror, not monstrous, not a mask or helmet."
+    : "Species design: human, grounded facial structure, believable skin texture, natural expression.";
 
   return [
     "Create one original fictional character headshot for Logics, a sci-fi spreadsheet trading sim.",
     "Style: consistent dark cinematic space-station concept art, semi-realistic digital painting, subtle painterly texture, cool industrial lighting, restrained teal and amber accents, polished game portrait.",
-    `Subject: adult ${input.role}. Unique fictional face, not resembling any real person or celebrity.`,
+    `Subject: ${identityDescription(input)} ${input.role}. Unique fictional face, not resembling any real person or celebrity.`,
+    `Identity details: race ${input.race}; age band ${input.age}; sex or gender presentation ${input.sex}. Show the age band naturally through facial structure and styling, without caricature.`,
+    raceGuidance,
     `Role identity: the character must read unmistakably as a ${input.role}, not a generic crew portrait.`,
     `Set and background: ${role.background}.`,
     `Props and frame details: ${role.props}.`,
@@ -401,36 +524,65 @@ function buildPrompt(input: NormalizedHeadshotInput): string {
   ].join("\n");
 }
 
-function rolePrompt(role: string) {
-  return ROLE_PROMPTS[role.toLowerCase()] ?? {
-    background: `specialized ${role} workstation inside a lived-in space station, with visible tools and environment details specific to that job`,
-    clothing: `role-specific ${role} workwear, practical sci-fi fabric, subtle station insignia with no readable text`,
-    props: "one clear occupational prop at the edge of frame, abstract instrument lights, no readable displays",
-    lighting: "cool industrial key light with a small warm practical accent",
-    posture: "confident and grounded, shaped by the work they do",
-  };
+function identityDescription(input: Pick<NormalizedHeadshotInput, "age" | "race" | "sex">): string {
+  return `${input.age} ${input.sex} ${input.race}`;
 }
 
-function normalizeInput(body: HeadshotRequest): NormalizedHeadshotInput {
-  const role = normalizeText(body.role, "pilot", 48);
-  const clothing = body.clothing ? normalizeText(body.clothing, "", 120) : undefined;
+function rolePrompt(role: string) {
+  const prompt = ROLE_PROMPTS[role];
+  if (!prompt) throw new Error(`Missing headshot prompt for role: ${role}.`);
+  return prompt;
+}
+
+function parseHeadshotInput(body: HeadshotRequest): NormalizedHeadshotInput {
+  const role = requireOneOf(body.role, ROLES, "role");
+  const race = requireOneOf(body.race, RACES, "race");
+  const sex = requireOneOf(body.sex, SEXES, "sex");
+  const age = requireOneOf(body.age, AGES, "age");
+  const clothing = optionalText(body.clothing, 120);
   return {
     role,
+    race,
+    sex,
+    age,
     clothing: clothing || undefined,
     quality: DEFAULT_QUALITY,
     size: DEFAULT_SIZE,
   };
 }
 
-function normalizeText(value: string | undefined, fallback: string, maxLength: number): string {
-  const text = (value ?? fallback).trim().replace(/\s+/g, " ").toLowerCase();
-  return (text || fallback).slice(0, maxLength);
+function requireOneOf<T extends string>(value: unknown, allowed: readonly T[], label: string): T {
+  if (typeof value !== "string") {
+    throw new HeadshotRequestError(400, `${label} is required. Allowed: ${allowed.join(", ")}.`);
+  }
+
+  const text = value.trim();
+  const match = allowed.find((item) => item === text);
+  if (!match) {
+    throw new HeadshotRequestError(400, `Invalid ${label}: ${text}. Allowed: ${allowed.join(", ")}.`);
+  }
+  return match;
+}
+
+function optionalText(value: unknown, maxLength: number): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "string") {
+    throw new HeadshotRequestError(400, "clothing must be a string.");
+  }
+  const text = value.trim().replace(/\s+/g, " ");
+  if (!text) return undefined;
+  if (text.length > maxLength) {
+    throw new HeadshotRequestError(400, `clothing must be ${maxLength} characters or fewer.`);
+  }
+  return text;
 }
 
 function poolKey(input: NormalizedHeadshotInput): string {
   return [
     slug(input.role),
-    input.clothing ? slug(input.clothing) : "default-clothing",
+    input.race,
+    input.sex,
+    slug(input.age),
     input.quality,
     input.size,
     PROMPT_VERSION,
@@ -438,11 +590,13 @@ function poolKey(input: NormalizedHeadshotInput): string {
 }
 
 function slug(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "any";
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
 function matchesPoolSettings(entry: HeadshotCacheEntry, input: NormalizedHeadshotInput): boolean {
-  return entry.poolKey === poolKey(input)
+  return !entry.unique
+    && entry.status === "ready"
+    && entry.poolKey === poolKey(input)
     && (entry.promptVersion ?? 1) === PROMPT_VERSION;
 }
 
@@ -493,7 +647,7 @@ function findReusableEntry(cache: HeadshotCache, input: NormalizedHeadshotInput,
 }
 
 function isUnusedEntry(entry: HeadshotCacheEntry): boolean {
-  return entry.uses.length === 0;
+  return entry.status === "ready" && entry.uses.length === 0;
 }
 
 function claimForGame(entry: HeadshotCacheEntry, gameId: number): boolean {
@@ -508,6 +662,12 @@ function claimForGame(entry: HeadshotCacheEntry, gameId: number): boolean {
 function matchesQuery(entry: HeadshotCacheEntry, params: URLSearchParams): boolean {
   const role = params.get("role");
   if (role && entry.role !== role) return false;
+  const race = params.get("race");
+  if (race && entry.race !== race) return false;
+  const sex = params.get("sex");
+  if (sex && entry.sex !== sex) return false;
+  const age = params.get("age");
+  if (age && entry.age !== age) return false;
   return true;
 }
 
@@ -522,13 +682,21 @@ function toClientEntry(entry: HeadshotCacheEntry) {
     id: entry.id,
     poolKey: entry.poolKey,
     role: entry.role,
+    race: entry.race,
+    sex: entry.sex,
+    age: entry.age,
     clothing: entry.clothing,
     imageUrl: `/api/headshots/image/${entry.id}`,
+    statusUrl: `/api/headshots/status/${entry.id}`,
     createdAt: entry.createdAt,
+    updatedAt: entry.updatedAt,
     model: entry.model,
     size: entry.size,
     quality: entry.quality,
     promptVersion: entry.promptVersion ?? 1,
+    status: entry.status,
+    unique: entry.unique,
+    error: entry.error,
     uses: entry.uses,
     available: isUnusedEntry(entry),
   };
@@ -544,13 +712,20 @@ function toClientGeneratedEntry(options: {
     id: options.id,
     poolKey: poolKey(options.input),
     role: options.input.role,
+    race: options.input.race,
+    sex: options.input.sex,
+    age: options.input.age,
     clothing: options.input.clothing,
     imageUrl: options.imageUrl,
+    statusUrl: `/api/headshots/status/${options.id}`,
     createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
     model: DEFAULT_MODEL,
     size: options.input.size,
     quality: options.input.quality,
     promptVersion: PROMPT_VERSION,
+    status: "ready",
+    unique: true,
     uses: [],
     available: true,
     mimeType: options.mimeType,
@@ -592,12 +767,44 @@ async function ensureCacheDirs(): Promise<void> {
   await mkdir(IMAGE_DIR, { recursive: true });
 }
 
+async function serveHeadshotStatus(pathname: string, res: ServerResponse): Promise<void> {
+  const id = basename(pathname);
+  const cache = await readCache();
+  const entry = cache.entries.find((item) => item.id === id);
+  if (!entry) {
+    sendError(res, 404, "Headshot not found.");
+    return;
+  }
+  sendJson(res, entry.status === "pending" ? 202 : entry.status === "failed" ? 500 : 200, { entry: toClientEntry(entry) });
+}
+
 async function serveHeadshotImage(pathname: string, res: ServerResponse, headOnly = false): Promise<void> {
   const id = basename(pathname);
   const cache = await readCache();
   const entry = cache.entries.find((item) => item.id === id);
   if (!entry) {
     sendError(res, 404, "Headshot not found.");
+    return;
+  }
+
+  if (entry.status === "pending") {
+    if (headOnly) {
+      res.statusCode = 202;
+      setCorsHeaders(res);
+      res.end();
+      return;
+    }
+    sendJson(res, 202, { entry: toClientEntry(entry) });
+    return;
+  }
+
+  if (entry.status === "failed") {
+    sendError(res, 500, entry.error ?? "Headshot generation failed.");
+    return;
+  }
+
+  if (!entry.fileName || !entry.mimeType) {
+    sendError(res, 500, "Headshot image file is not ready.");
     return;
   }
 
