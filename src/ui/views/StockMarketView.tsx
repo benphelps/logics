@@ -23,6 +23,7 @@ import {
   equityTradeHopDistance,
   equityTradeStation,
   listEquities,
+  listSectorIndices,
   listPlayerLimits,
   listPositions,
   listTradeRecords,
@@ -56,6 +57,7 @@ const KIND_LABEL: Record<EquityKind, string> = {
   commodity: "Commodity",
   basis: "Basis",
   futures: "Futures",
+  index: "Index",
 };
 
 export function StockMarketView() {
@@ -174,7 +176,7 @@ export function StockMarketView() {
 // --- new shell components ----------------------------------------------
 
 type KindFilter = "all" | EquityKind;
-const KIND_FILTERS: KindFilter[] = ["all", "station", "syndicate", "commodity", "basis", "futures"];
+const KIND_FILTERS: KindFilter[] = ["all", "station", "syndicate", "commodity", "basis", "futures", "index"];
 const KIND_FILTER_LABEL: Record<KindFilter, string> = {
   all: "All",
   station: "Stations",
@@ -182,6 +184,7 @@ const KIND_FILTER_LABEL: Record<KindFilter, string> = {
   commodity: "Commodities",
   basis: "Basis",
   futures: "Futures",
+  index: "Indices",
 };
 
 function EquitySelector({ rows, tapeRows, selectedId, onSelect }: {
@@ -1218,6 +1221,7 @@ function EquityInfoHeader({ row, world, access }: { row: EquityRow; world: World
   else if (eq.kind === "commodity") eyebrow = "Listed commodity";
   else if (eq.kind === "basis") eyebrow = "Listed basis pair";
   else if (eq.kind === "futures") eyebrow = "Listed futures contract";
+  else if (eq.kind === "index") eyebrow = "Listed index";
 
   let pillLabel = "Syndicate";
   let pillClass = "stocks-kind-syndicate";
@@ -1233,6 +1237,9 @@ function EquityInfoHeader({ row, world, access }: { row: EquityRow; world: World
   } else if (eq.kind === "futures") {
     pillLabel = "Futures";
     pillClass = "stocks-kind-futures";
+  } else if (eq.kind === "index") {
+    pillLabel = "Index";
+    pillClass = "stocks-kind-index";
   }
 
   return (
@@ -1301,6 +1308,53 @@ function CompanyUnderlying({ eq, world }: { eq: Equity; world: World }) {
           <FleetStat label="base price" value={`Ç${good.basePrice.toFixed(2)}`} />
           <FleetStat label="spot index" value={`Ç${spot.toFixed(2)}`} />
           <FleetStat label="universe stock" value={fmtBig(totalStock)} />
+        </dl>
+      </section>
+    );
+  }
+  if (eq.kind === "index") {
+    // C-6: index card. Sector indices show member commodities + their
+    // current spot. Treasury Index Note (TIN) shows aggregate health.
+    const isTin = eq.id === "eq_idx_tin";
+    if (isTin) {
+      const markets = Object.values(world.markets);
+      let healthy = 0, total = 0, sumRatio = 0;
+      for (const m of markets) {
+        if (m.treasuryTarget <= 0) continue;
+        total++;
+        sumRatio += m.treasury / m.treasuryTarget;
+        if (m.treasury >= m.treasuryTarget) healthy++;
+      }
+      const avg = total > 0 ? sumRatio / total : 1;
+      return (
+        <section className="trade-helper-section">
+          <div className="exchange-section-title">Underlying</div>
+          <dl className="trade-helper-grid station-info-grid">
+            <FleetStat label="stations" value={total.toLocaleString()} />
+            <FleetStat label="healthy (≥target)" value={`${healthy}/${total}`} />
+            <FleetStat label="avg health" value={`${(avg * 100).toFixed(0)}%`} />
+          </dl>
+        </section>
+      );
+    }
+    // Sector index — list members + their commodity equity prices.
+    const def = listSectorIndices().find(s => s.id === eq.id);
+    if (!def) return null;
+    return (
+      <section className="trade-helper-section">
+        <div className="exchange-section-title">Underlying — sector basket</div>
+        <dl className="trade-helper-grid station-info-grid">
+          {def.members.map(m => {
+            const mEq = world.equities[`eq_com_${m.goodId}`];
+            const good = world.goods[m.goodId];
+            return (
+              <FleetStat
+                key={m.goodId}
+                label={good?.name ?? m.goodId}
+                value={mEq ? `Ç${mEq.price.toFixed(2)}` : "—"}
+              />
+            );
+          })}
         </dl>
       </section>
     );

@@ -308,6 +308,17 @@ export function ensureStockMarket(world: World, opts: { syndicateCount?: number;
   seedBasisPairs(world);
   // C-3: futures listings — near + far per traded good.
   ensureFuturesListings(world);
+  // C-6: sector indices + Treasury Index Note. Indices are cash-settled
+  // weighted baskets of commodities (sectors) or aggregate treasury
+  // health (TIN).
+  for (const def of SECTOR_INDICES) {
+    const eq = createSectorIndexEquity(world, def);
+    world.equities[eq.id] = eq;
+  }
+  {
+    const tin = createTreasuryIndexEquity();
+    world.equities[tin.id] = tin;
+  }
   // Phase 2 (MM-less): distribute the float across NPC agents and warm up
   // the book — each agent posts both a bid and an ask on every equity using
   // noise-style passive offsets — so depth exists on both sides from frame
@@ -436,7 +447,162 @@ export function computeFundamental(world: World, eq: Equity): number {
     case "commodity": return commodityFundamental(world, eq);
     case "basis":     return basisFundamental(world, eq);
     case "futures":   return futuresFundamental(world, eq);
+    case "index":     return indexFundamental(world, eq);
   }
+}
+
+// --- C-6: sector indices + Treasury Index Note --------------------------
+
+// Sector composition table. Each sector aggregates ~3-4 commodity equities
+// into a basket priced as a weighted average of underlying spots. Cash-
+// settled like commodity equities. Tradable from anywhere.
+export interface IndexDef {
+  id: EquityId;
+  name: string;
+  ticker: string;
+  members: { goodId: string; weight: number }[]; // weights normalized to 1 internally
+}
+
+const SECTOR_INDICES: IndexDef[] = [
+  {
+    id: "eq_idx_food",
+    name: "Food Sector Index",
+    ticker: "FOOD",
+    members: [
+      { goodId: "grain", weight: 1 },
+      { goodId: "protein", weight: 1 },
+      { goodId: "vatmeat", weight: 1 },
+    ],
+  },
+  {
+    id: "eq_idx_raw",
+    name: "Raw Materials Index",
+    ticker: "RAW",
+    members: [
+      { goodId: "ore", weight: 1 },
+      { goodId: "polymer", weight: 1 },
+      { goodId: "fiber", weight: 1 },
+    ],
+  },
+  {
+    id: "eq_idx_advanced",
+    name: "Advanced Goods Index",
+    ticker: "ADV",
+    members: [
+      { goodId: "electronics", weight: 1 },
+      { goodId: "weapons", weight: 1 },
+      { goodId: "luxury_goods", weight: 1 },
+      { goodId: "medkits", weight: 1 },
+    ],
+  },
+  {
+    id: "eq_idx_fuel",
+    name: "Fuel Index",
+    ticker: "FUEL",
+    members: [
+      { goodId: "plasma", weight: 1 },
+      { goodId: "antimatter", weight: 1 },
+    ],
+  },
+];
+
+// Treasury Index Note — aggregate treasury health across all stations.
+// Constant id; underlying is "all stations".
+const TREASURY_INDEX_ID: EquityId = "eq_idx_tin";
+const TREASURY_INDEX_TICKER = "TIN";
+const TREASURY_INDEX_NAME = "Treasury Index Note";
+const TREASURY_INDEX_ANCHOR = 100;
+
+export function listSectorIndices(): IndexDef[] {
+  return SECTOR_INDICES;
+}
+
+export function isIndexEquity(id: EquityId): boolean {
+  return id === TREASURY_INDEX_ID || SECTOR_INDICES.some(s => s.id === id);
+}
+
+// Weighted-spot index. anchor = weighted sum of member basePrices so that
+// at world creation, when each commodity is at anchor, the index sits at
+// 1.0× (i.e., price = anchor).
+export function createSectorIndexEquity(world: World, def: IndexDef): Equity {
+  const totalWeight = def.members.reduce((s, m) => s + m.weight, 0) || 1;
+  let anchor = 0;
+  for (const m of def.members) {
+    const good = world.goods[m.goodId];
+    if (!good) continue;
+    anchor += (m.weight / totalWeight) * Math.max(1, good.basePrice);
+  }
+  if (anchor <= 0) anchor = 100;
+  return {
+    id: def.id,
+    kind: "index",
+    name: def.name,
+    ticker: def.ticker,
+    sharesOutstanding: SHARES_OUTSTANDING_DEFAULT,
+    price: anchor,
+    anchorPrice: anchor,
+    underlyingId: def.id,
+    history: [{ tick: 0, price: anchor }],
+  };
+}
+
+export function createTreasuryIndexEquity(): Equity {
+  return {
+    id: TREASURY_INDEX_ID,
+    kind: "index",
+    name: TREASURY_INDEX_NAME,
+    ticker: TREASURY_INDEX_TICKER,
+    sharesOutstanding: SHARES_OUTSTANDING_DEFAULT,
+    price: TREASURY_INDEX_ANCHOR,
+    anchorPrice: TREASURY_INDEX_ANCHOR,
+    underlyingId: TREASURY_INDEX_ID,
+    history: [{ tick: 0, price: TREASURY_INDEX_ANCHOR }],
+  };
+}
+
+// Lookup the IndexDef for a sector index. Returns null for non-sector
+// indices (TIN) or unknown ids.
+function indexDefById(id: EquityId): IndexDef | null {
+  return SECTOR_INDICES.find(s => s.id === id) ?? null;
+}
+
+// Sector index fundamental — weighted sum of member commodity prices.
+function sectorIndexFundamental(world: World, eq: Equity): number {
+  const def = indexDefById(eq.id);
+  if (!def) return eq.anchorPrice;
+  const totalWeight = def.members.reduce((s, m) => s + m.weight, 0) || 1;
+  let value = 0;
+  for (const m of def.members) {
+    const memberEq = world.equities[`eq_com_${m.goodId}`];
+    if (!memberEq) continue;
+    value += (m.weight / totalWeight) * memberEq.price;
+  }
+  if (value <= 0) return eq.anchorPrice;
+  return value;
+}
+
+// Treasury Index fundamental — average treasury health across stations,
+// scaled to the anchor (100). Health = treasury / target, clamped to a
+// reasonable band so a single station deficit can't swing the index.
+function treasuryIndexFundamental(world: World, eq: Equity): number {
+  const markets = Object.values(world.markets);
+  if (markets.length === 0) return eq.anchorPrice;
+  let healthSum = 0;
+  let n = 0;
+  for (const m of markets) {
+    if (m.treasuryTarget <= 0) continue;
+    const ratio = m.treasury / m.treasuryTarget;
+    healthSum += Math.max(-2, Math.min(2, ratio)); // bound contributions
+    n++;
+  }
+  if (n === 0) return eq.anchorPrice;
+  const avg = healthSum / n;
+  return eq.anchorPrice * Math.max(0.1, Math.min(2, avg));
+}
+
+function indexFundamental(world: World, eq: Equity): number {
+  if (eq.id === TREASURY_INDEX_ID) return treasuryIndexFundamental(world, eq);
+  return sectorIndexFundamental(world, eq);
 }
 
 // C-2 helper for the UI — current spread of a basis listing's local
@@ -735,6 +901,7 @@ export function equityTradabilityReason(
     case "commodity":
     case "basis":
     case "futures":
+    case "index":
       return null;
   }
 }

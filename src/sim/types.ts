@@ -355,7 +355,7 @@ export interface AgentFuturesPosition {
 // --- stock market types ----------------------------------------------------
 
 export type EquityId = string;
-export type EquityKind = "station" | "syndicate" | "commodity" | "basis" | "futures";
+export type EquityKind = "station" | "syndicate" | "commodity" | "basis" | "futures" | "index";
 
 export interface Equity {
   id: EquityId;
