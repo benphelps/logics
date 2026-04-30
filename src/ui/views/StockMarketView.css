@@ -2324,6 +2324,16 @@
   padding-bottom: 0;
 }
 
+/* When the KPI / Underlying row is followed directly by the Book /
+   T&S row, butt them together: no divider, no padding between. */
+.stocks-info-body > .stocks-info-row + .stocks-info-row {
+  padding-top: 0;
+}
+.stocks-info-body > .stocks-info-row:has(+ .stocks-info-row) {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
 .stocks-info-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
