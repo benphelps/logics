@@ -36,6 +36,7 @@ import {
   type PlayerLimitView,
 } from "../../sim/stock";
 import { goodArtUrl, headerArtUrl, shipArtUrl, stationArtUrl, stationKind, stationKindLabel, stationScale, stationScaleLabel, stationSubtype, stationSubtypeLabel } from "../art";
+import { SortableHeaderButton, SortableRows, SortableTh } from "../components/SortableTable";
 import "./StockMarketView.css";
 
 interface EquityRow {
@@ -198,6 +199,7 @@ function EquitySelector({ rows, tapeRows, selectedId, onSelect }: {
   const filterRow = (r: EquityRow) => kindFilter === "all" || r.equity.kind === kindFilter;
   const reachable = tapeRows.reachable.filter(filterRow);
   const far = tapeRows.far.filter(filterRow);
+  const sortableRows = [...reachable, ...far];
   // Counts for the tab bar — same kindFilter applied to the unfiltered total.
   const counts: Record<KindFilter, number> = { all: 0, station: 0, syndicate: 0, commodity: 0, basis: 0, futures: 0, index: 0 };
   for (const r of [...tapeRows.reachable, ...tapeRows.far]) {
@@ -205,39 +207,56 @@ function EquitySelector({ rows, tapeRows, selectedId, onSelect }: {
     counts[r.equity.kind]++;
   }
   return (
-    <section className="stocks-shell-panel stocks-selector">
-      <div className="bridge-card-tabs stocks-pno-tabs">
-        {KIND_FILTERS.map(kf => counts[kf] > 0 && (
-          <button
-            key={kf}
-            type="button"
-            className={`bridge-tab ${kindFilter === kf ? "active" : ""}`}
-            onClick={() => setKindFilter(kf)}
-          >
-            {KIND_FILTER_LABEL[kf]} <span className="bridge-tab-count">{counts[kf]}</span>
-          </button>
-        ))}
-      </div>
-      <div className="stocks-selector-header">
-        <span>Ticker</span>
-        <span>Listing</span>
-        <span className="numeric">Price</span>
-        <span className="numeric">Δ</span>
-      </div>
-      <div className="stocks-selector-list">
-        {reachable.map(r => (
-          <SelectorRow key={r.equity.id} row={r} selected={r.equity.id === selectedId} onSelect={onSelect} />
-        ))}
-        {far.length > 0 && (
-          <>
-            <div className="stocks-selector-divider">Out of range</div>
-            {far.map(r => (
-              <SelectorRow key={r.equity.id} row={r} selected={r.equity.id === selectedId} onSelect={onSelect} farRow />
-            ))}
-          </>
-        )}
-      </div>
-    </section>
+    <SortableRows
+      rows={sortableRows}
+      columns={[
+        { id: "ticker", label: "ticker", getValue: row => row.equity.ticker },
+        { id: "listing", label: "listing", getValue: row => row.equity.name },
+        { id: "price", label: "price", getValue: row => row.equity.price, defaultDirection: "desc" },
+        { id: "change", label: "change", getValue: row => row.changePct, defaultDirection: "desc" },
+      ]}
+    >
+      {(sortedRows, sort) => {
+        const reachableIds = new Set(reachable.map(r => r.equity.id));
+        const sortedReachable = sortedRows.filter(r => reachableIds.has(r.equity.id));
+        const sortedFar = sortedRows.filter(r => !reachableIds.has(r.equity.id));
+        return (
+          <section className="stocks-shell-panel stocks-selector">
+            <div className="bridge-card-tabs stocks-pno-tabs">
+              {KIND_FILTERS.map(kf => counts[kf] > 0 && (
+                <button
+                  key={kf}
+                  type="button"
+                  className={`bridge-tab ${kindFilter === kf ? "active" : ""}`}
+                  onClick={() => setKindFilter(kf)}
+                >
+                  {KIND_FILTER_LABEL[kf]} <span className="bridge-tab-count">{counts[kf]}</span>
+                </button>
+              ))}
+            </div>
+            <div className="stocks-selector-header">
+              <SortableHeaderButton sort={sort} columnId="ticker">Ticker</SortableHeaderButton>
+              <SortableHeaderButton sort={sort} columnId="listing">Listing</SortableHeaderButton>
+              <SortableHeaderButton sort={sort} columnId="price" className="numeric">Price</SortableHeaderButton>
+              <SortableHeaderButton sort={sort} columnId="change" className="numeric">Δ</SortableHeaderButton>
+            </div>
+            <div className="stocks-selector-list">
+              {sortedReachable.map(r => (
+                <SelectorRow key={r.equity.id} row={r} selected={r.equity.id === selectedId} onSelect={onSelect} />
+              ))}
+              {sortedFar.length > 0 && (
+                <>
+                  <div className="stocks-selector-divider">Out of range</div>
+                  {sortedFar.map(r => (
+                    <SelectorRow key={r.equity.id} row={r} selected={r.equity.id === selectedId} onSelect={onSelect} farRow />
+                  ))}
+                </>
+              )}
+            </div>
+          </section>
+        );
+      }}
+    </SortableRows>
   );
 }
 
@@ -370,41 +389,54 @@ function PositionsAccordion(props: {
     return <div className="stocks-pno-empty dim">No open positions.</div>;
   }
   return (
-    <div className="stocks-pno-list">
-      <div className="stocks-pno-header positions">
-        <span>Ticker</span>
-        <span>Side</span>
-        <span className="numeric">Shares</span>
-        <span className="numeric">Avg</span>
-        <span className="numeric">P&amp;L</span>
-      </div>
-      {props.positions.map(pos => {
-        const eq = props.world.equities[pos.equityId];
-        if (!eq) return null;
-        const isOpen = expandedId === pos.equityId;
-        return (
-          <PositionAccordionItem
-            key={pos.equityId}
-            world={props.world}
-            equity={eq}
-            position={pos}
-            shipId={props.shipId}
-            cash={props.cash}
-            docked={props.docked}
-            isOpen={isOpen}
-            onToggle={() => {
-              setExpandedId(isOpen ? null : pos.equityId);
-              props.onSelectEquity(pos.equityId);
-            }}
-            onSell={(qty) => props.onSell(pos.equityId, qty)}
-            onCover={(qty) => props.onCover(pos.equityId, qty)}
-            onAbandon={() => props.onAbandon(pos.equityId)}
-            onSetStopLoss={(price) => props.onSetStopLoss(pos.equityId, price)}
-            onSetTakeProfit={(price) => props.onSetTakeProfit(pos.equityId, price)}
-          />
-        );
-      })}
-    </div>
+    <SortableRows
+      rows={props.positions}
+      columns={[
+        { id: "ticker", label: "ticker", getValue: pos => props.world.equities[pos.equityId]?.ticker ?? pos.equityId },
+        { id: "side", label: "side", getValue: pos => pos.kind },
+        { id: "shares", label: "shares", getValue: pos => pos.shares, defaultDirection: "desc" },
+        { id: "avg", label: "average", getValue: pos => pos.avgEntryPrice, defaultDirection: "desc" },
+        { id: "pnl", label: "profit/loss", getValue: pos => unrealizedPnl(props.world, pos), defaultDirection: "desc" },
+      ]}
+    >
+      {(sortedPositions, sort) => (
+        <div className="stocks-pno-list">
+          <div className="stocks-pno-header positions">
+            <SortableHeaderButton sort={sort} columnId="ticker">Ticker</SortableHeaderButton>
+            <SortableHeaderButton sort={sort} columnId="side">Side</SortableHeaderButton>
+            <SortableHeaderButton sort={sort} columnId="shares" className="numeric">Shares</SortableHeaderButton>
+            <SortableHeaderButton sort={sort} columnId="avg" className="numeric">Avg</SortableHeaderButton>
+            <SortableHeaderButton sort={sort} columnId="pnl" className="numeric">P&amp;L</SortableHeaderButton>
+          </div>
+          {sortedPositions.map(pos => {
+            const eq = props.world.equities[pos.equityId];
+            if (!eq) return null;
+            const isOpen = expandedId === pos.equityId;
+            return (
+              <PositionAccordionItem
+                key={pos.equityId}
+                world={props.world}
+                equity={eq}
+                position={pos}
+                shipId={props.shipId}
+                cash={props.cash}
+                docked={props.docked}
+                isOpen={isOpen}
+                onToggle={() => {
+                  setExpandedId(isOpen ? null : pos.equityId);
+                  props.onSelectEquity(pos.equityId);
+                }}
+                onSell={(qty) => props.onSell(pos.equityId, qty)}
+                onCover={(qty) => props.onCover(pos.equityId, qty)}
+                onAbandon={() => props.onAbandon(pos.equityId)}
+                onSetStopLoss={(price) => props.onSetStopLoss(pos.equityId, price)}
+                onSetTakeProfit={(price) => props.onSetTakeProfit(pos.equityId, price)}
+              />
+            );
+          })}
+        </div>
+      )}
+    </SortableRows>
   );
 }
 
@@ -677,32 +709,45 @@ function OrdersAccordion({ world, limits, onSelectEquity }: {
 
   if (limits.length === 0) return <div className="stocks-pno-empty dim">No open orders.</div>;
   return (
-    <div className="stocks-pno-list">
-      <div className="stocks-pno-header orders">
-        <span>Ticker</span>
-        <span>Side</span>
-        <span className="numeric">Shares</span>
-        <span className="numeric">Limit</span>
-        <span className="numeric">Age</span>
-      </div>
-      {limits.map(o => {
-        const isOpen = expandedId === o.orderId;
-        return (
-          <OrderAccordionItem
-            key={o.orderId}
-            world={world}
-            order={o}
-            isOpen={isOpen}
-            onToggle={() => {
-              setExpandedId(isOpen ? null : o.orderId);
-              onSelectEquity(o.equityId);
-            }}
-            onCancel={() => cancelLimit(o.equityId, o.orderId)}
-            onAdjust={(qty, price) => adjustLimit(o.equityId, o.orderId, qty, price)}
-          />
-        );
-      })}
-    </div>
+    <SortableRows
+      rows={limits}
+      columns={[
+        { id: "ticker", label: "ticker", getValue: order => order.ticker },
+        { id: "side", label: "side", getValue: order => order.side },
+        { id: "shares", label: "shares", getValue: order => order.qty, defaultDirection: "desc" },
+        { id: "limit", label: "limit", getValue: order => order.limitPrice, defaultDirection: "desc" },
+        { id: "age", label: "age", getValue: order => world.tick - order.postedAt, defaultDirection: "desc" },
+      ]}
+    >
+      {(sortedLimits, sort) => (
+        <div className="stocks-pno-list">
+          <div className="stocks-pno-header orders">
+            <SortableHeaderButton sort={sort} columnId="ticker">Ticker</SortableHeaderButton>
+            <SortableHeaderButton sort={sort} columnId="side">Side</SortableHeaderButton>
+            <SortableHeaderButton sort={sort} columnId="shares" className="numeric">Shares</SortableHeaderButton>
+            <SortableHeaderButton sort={sort} columnId="limit" className="numeric">Limit</SortableHeaderButton>
+            <SortableHeaderButton sort={sort} columnId="age" className="numeric">Age</SortableHeaderButton>
+          </div>
+          {sortedLimits.map(o => {
+            const isOpen = expandedId === o.orderId;
+            return (
+              <OrderAccordionItem
+                key={o.orderId}
+                world={world}
+                order={o}
+                isOpen={isOpen}
+                onToggle={() => {
+                  setExpandedId(isOpen ? null : o.orderId);
+                  onSelectEquity(o.equityId);
+                }}
+                onCancel={() => cancelLimit(o.equityId, o.orderId)}
+                onAdjust={(qty, price) => adjustLimit(o.equityId, o.orderId, qty, price)}
+              />
+            );
+          })}
+        </div>
+      )}
+    </SortableRows>
   );
 }
 
@@ -1157,67 +1202,82 @@ function StockRowsTable({ rows, selectedId, onSelect, outOfRange = false }: {
     return <div className="stocks-detail-empty dim">No reachable listings.</div>;
   }
   return (
-    <table className={`stocks-table ${outOfRange ? "out-of-range" : ""}`}>
-      <colgroup>
-        <col className="col-ticker" />
-        <col className="col-name" />
-        <col className="col-kind" />
-        <col className="col-price" />
-        <col className="col-change" />
-        <col className="col-health" />
-        <col className="col-yield" />
-      </colgroup>
-      <thead>
-        <tr>
-          <th>Ticker</th>
-          <th>Listing</th>
-          <th>Kind</th>
-          <th>Price</th>
-          <th>Δ</th>
-          <th>Health</th>
-          <th>Last Div</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map(row => (
-          <tr
-            key={row.equity.id}
-            className={[
-              selectedId === row.equity.id ? "active" : "",
-              row.changePct > 0.0005 ? "up" : row.changePct < -0.0005 ? "down" : "",
-              row.position?.kind === "long" ? "owned" : "",
-              row.position?.kind === "short" ? "shorted" : "",
-              outOfRange ? "out-of-range" : "",
-            ].filter(Boolean).join(" ")}
-            onClick={() => onSelect(row.equity.id)}
-          >
-            <td><span className="ticker mono">{row.equity.ticker}</span></td>
-            <td>
-              <span className="stock-name-cell">
-                <span className="stock-name">{row.equity.name}</span>
-              </span>
-            </td>
-            <td><span className={`kind-pill kind-${row.equity.kind}`}>{row.kindLabel}</span></td>
-            <td>
-              <span className="stock-stack">
-                <span className="mono price">Ç{fmtPrice(row.equity.price)}</span>
-              </span>
-            </td>
-            <td><ChangeCell pct={row.changePct} /></td>
-            <td><HealthBar value={row.underlyingHealth} label={row.underlyingHealthLabel} /></td>
-            <td>
-              {row.lastDividendPerShare > 0 ? (
-                <span className="mono" title={`${row.ticksUntilDividend}t to next dividend`}>
-                  Ç{row.lastDividendPerShare.toFixed(2)}/sh
-                </span>
-              ) : (
-                <span className="dim">—</span>
-              )}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <SortableRows
+      rows={rows}
+      columns={[
+        { id: "ticker", label: "ticker", getValue: row => row.equity.ticker },
+        { id: "listing", label: "listing", getValue: row => row.equity.name },
+        { id: "kind", label: "kind", getValue: row => row.kindLabel },
+        { id: "price", label: "price", getValue: row => row.equity.price, defaultDirection: "desc" },
+        { id: "change", label: "change", getValue: row => row.changePct, defaultDirection: "desc" },
+        { id: "health", label: "health", getValue: row => row.underlyingHealth, defaultDirection: "desc" },
+        { id: "dividend", label: "last dividend", getValue: row => row.lastDividendPerShare, defaultDirection: "desc" },
+      ]}
+    >
+      {(sortedRows, sort) => (
+        <table className={`stocks-table ${outOfRange ? "out-of-range" : ""}`}>
+          <colgroup>
+            <col className="col-ticker" />
+            <col className="col-name" />
+            <col className="col-kind" />
+            <col className="col-price" />
+            <col className="col-change" />
+            <col className="col-health" />
+            <col className="col-yield" />
+          </colgroup>
+          <thead>
+            <tr>
+              <SortableTh sort={sort} columnId="ticker">Ticker</SortableTh>
+              <SortableTh sort={sort} columnId="listing">Listing</SortableTh>
+              <SortableTh sort={sort} columnId="kind">Kind</SortableTh>
+              <SortableTh sort={sort} columnId="price">Price</SortableTh>
+              <SortableTh sort={sort} columnId="change">Δ</SortableTh>
+              <SortableTh sort={sort} columnId="health">Health</SortableTh>
+              <SortableTh sort={sort} columnId="dividend">Last Div</SortableTh>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedRows.map(row => (
+              <tr
+                key={row.equity.id}
+                className={[
+                  selectedId === row.equity.id ? "active" : "",
+                  row.changePct > 0.0005 ? "up" : row.changePct < -0.0005 ? "down" : "",
+                  row.position?.kind === "long" ? "owned" : "",
+                  row.position?.kind === "short" ? "shorted" : "",
+                  outOfRange ? "out-of-range" : "",
+                ].filter(Boolean).join(" ")}
+                onClick={() => onSelect(row.equity.id)}
+              >
+                <td><span className="ticker mono">{row.equity.ticker}</span></td>
+                <td>
+                  <span className="stock-name-cell">
+                    <span className="stock-name">{row.equity.name}</span>
+                  </span>
+                </td>
+                <td><span className={`kind-pill kind-${row.equity.kind}`}>{row.kindLabel}</span></td>
+                <td>
+                  <span className="stock-stack">
+                    <span className="mono price">Ç{fmtPrice(row.equity.price)}</span>
+                  </span>
+                </td>
+                <td><ChangeCell pct={row.changePct} /></td>
+                <td><HealthBar value={row.underlyingHealth} label={row.underlyingHealthLabel} /></td>
+                <td>
+                  {row.lastDividendPerShare > 0 ? (
+                    <span className="mono" title={`${row.ticksUntilDividend}t to next dividend`}>
+                      Ç{row.lastDividendPerShare.toFixed(2)}/sh
+                    </span>
+                  ) : (
+                    <span className="dim">—</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </SortableRows>
   );
 }
 
@@ -1628,50 +1688,66 @@ function PositionsPanel({ positions, world, shipId, focusedId, cash, docked, onS
   const list = focused ? [focused] : positions;
   return (
     <div className="stocks-positions-list">
-      <table className="stocks-positions-table">
-        <thead>
-          <tr>
-            <th>Ticker</th>
-            <th>Side</th>
-            <th>Shares</th>
-            <th>Entry</th>
-            <th>Mark</th>
-            <th>P&L</th>
-            <th>Stop</th>
-            <th>Take</th>
-          </tr>
-        </thead>
-        <tbody>
-          {list.map(pos => {
-            const eq = world.equities[pos.equityId];
-            if (!eq) return null;
-            const pnl = unrealizedPnl(world, pos);
-            const cls = pnl > 0 ? "stock-pnl-up" : pnl < 0 ? "stock-pnl-down" : "";
-            const isFocused = focused?.equityId === pos.equityId;
-            const access = exchangeAccess(world, eq, shipId);
-            return (
-              <PositionRowFragment
-                key={pos.equityId}
-                pos={pos}
-                eq={eq}
-                pnl={pnl}
-                pnlClass={cls}
-                isFocused={isFocused}
-                cash={cash}
-                docked={docked}
-                accessOk={access.ok}
-                accessReason={access.reason}
-                onSelect={() => onSelect(pos.equityId)}
-                onSell={(qty) => onSell(pos.equityId, qty)}
-                onCover={(qty) => onCover(pos.equityId, qty)}
-                onAbandon={() => onAbandon(pos.equityId)}
-                onSetStopLoss={(price) => onSetStopLoss(pos.equityId, price)}
-                onSetTakeProfit={(price) => onSetTakeProfit(pos.equityId, price)}
-              />
-            );
-          })}
-        </tbody>
-      </table>
+      <SortableRows
+        rows={list}
+        columns={[
+          { id: "ticker", label: "ticker", getValue: pos => world.equities[pos.equityId]?.ticker ?? pos.equityId },
+          { id: "side", label: "side", getValue: pos => pos.kind },
+          { id: "shares", label: "shares", getValue: pos => pos.shares, defaultDirection: "desc" },
+          { id: "entry", label: "entry", getValue: pos => pos.avgEntryPrice, defaultDirection: "desc" },
+          { id: "mark", label: "mark", getValue: pos => world.equities[pos.equityId]?.price ?? null, defaultDirection: "desc" },
+          { id: "pnl", label: "profit/loss", getValue: pos => unrealizedPnl(world, pos), defaultDirection: "desc" },
+          { id: "stop", label: "stop", getValue: pos => pos.stopLoss ?? null },
+          { id: "take", label: "take", getValue: pos => pos.takeProfit ?? null, defaultDirection: "desc" },
+        ]}
+      >
+        {(sortedPositions, sort) => (
+          <table className="stocks-positions-table">
+            <thead>
+              <tr>
+                <SortableTh sort={sort} columnId="ticker">Ticker</SortableTh>
+                <SortableTh sort={sort} columnId="side">Side</SortableTh>
+                <SortableTh sort={sort} columnId="shares">Shares</SortableTh>
+                <SortableTh sort={sort} columnId="entry">Entry</SortableTh>
+                <SortableTh sort={sort} columnId="mark">Mark</SortableTh>
+                <SortableTh sort={sort} columnId="pnl">P&amp;L</SortableTh>
+                <SortableTh sort={sort} columnId="stop">Stop</SortableTh>
+                <SortableTh sort={sort} columnId="take">Take</SortableTh>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedPositions.map(pos => {
+                const eq = world.equities[pos.equityId];
+                if (!eq) return null;
+                const pnl = unrealizedPnl(world, pos);
+                const cls = pnl > 0 ? "stock-pnl-up" : pnl < 0 ? "stock-pnl-down" : "";
+                const isFocused = focused?.equityId === pos.equityId;
+                const access = exchangeAccess(world, eq, shipId);
+                return (
+                  <PositionRowFragment
+                    key={pos.equityId}
+                    pos={pos}
+                    eq={eq}
+                    pnl={pnl}
+                    pnlClass={cls}
+                    isFocused={isFocused}
+                    cash={cash}
+                    docked={docked}
+                    accessOk={access.ok}
+                    accessReason={access.reason}
+                    onSelect={() => onSelect(pos.equityId)}
+                    onSell={(qty) => onSell(pos.equityId, qty)}
+                    onCover={(qty) => onCover(pos.equityId, qty)}
+                    onAbandon={() => onAbandon(pos.equityId)}
+                    onSetStopLoss={(price) => onSetStopLoss(pos.equityId, price)}
+                    onSetTakeProfit={(price) => onSetTakeProfit(pos.equityId, price)}
+                  />
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </SortableRows>
     </div>
   );
 }
@@ -1787,36 +1863,57 @@ function FuturesPositionsList({ world, futures, docked, onSelectEquity }: {
     return <div className="stocks-pno-empty dim">No open futures.</div>;
   }
   return (
-    <div className="stocks-pno-list">
-      <div className="stocks-pno-header positions">
-        <span>Ticker</span>
-        <span>Side</span>
-        <span className="numeric">Contracts</span>
-        <span className="numeric">Mark</span>
-        <span className="numeric">P&amp;L</span>
-      </div>
-      {futures.map(fp => {
-        const c = world.contracts?.[fp.contractId];
-        const eq = world.equities[fp.contractId];
-        if (!c || !eq) return null;
-        const isOpen = expandedId === fp.contractId;
-        return (
-          <FuturesAccordionItem
-            key={fp.contractId}
-            world={world}
-            equity={eq}
-            contract={c}
-            position={fp}
-            docked={docked}
-            isOpen={isOpen}
-            onToggle={() => {
-              setExpandedId(isOpen ? null : fp.contractId);
-              onSelectEquity(fp.contractId);
-            }}
-          />
-        );
-      })}
-    </div>
+    <SortableRows
+      rows={futures}
+      columns={[
+        { id: "ticker", label: "ticker", getValue: fp => world.equities[fp.contractId]?.ticker ?? fp.contractId },
+        { id: "side", label: "side", getValue: fp => fp.side },
+        { id: "contracts", label: "contracts", getValue: fp => fp.contracts, defaultDirection: "desc" },
+        {
+          id: "mark",
+          label: "mark",
+          getValue: fp => {
+            const c = world.contracts?.[fp.contractId];
+            return c ? world.equities[c.underlyingEquityId]?.price ?? world.equities[fp.contractId]?.price ?? null : null;
+          },
+          defaultDirection: "desc",
+        },
+        { id: "pnl", label: "profit/loss", getValue: fp => unrealizedFuturesPnl(world, fp), defaultDirection: "desc" },
+      ]}
+    >
+      {(sortedFutures, sort) => (
+        <div className="stocks-pno-list">
+          <div className="stocks-pno-header positions">
+            <SortableHeaderButton sort={sort} columnId="ticker">Ticker</SortableHeaderButton>
+            <SortableHeaderButton sort={sort} columnId="side">Side</SortableHeaderButton>
+            <SortableHeaderButton sort={sort} columnId="contracts" className="numeric">Contracts</SortableHeaderButton>
+            <SortableHeaderButton sort={sort} columnId="mark" className="numeric">Mark</SortableHeaderButton>
+            <SortableHeaderButton sort={sort} columnId="pnl" className="numeric">P&amp;L</SortableHeaderButton>
+          </div>
+          {sortedFutures.map(fp => {
+            const c = world.contracts?.[fp.contractId];
+            const eq = world.equities[fp.contractId];
+            if (!c || !eq) return null;
+            const isOpen = expandedId === fp.contractId;
+            return (
+              <FuturesAccordionItem
+                key={fp.contractId}
+                world={world}
+                equity={eq}
+                contract={c}
+                position={fp}
+                docked={docked}
+                isOpen={isOpen}
+                onToggle={() => {
+                  setExpandedId(isOpen ? null : fp.contractId);
+                  onSelectEquity(fp.contractId);
+                }}
+              />
+            );
+          })}
+        </div>
+      )}
+    </SortableRows>
   );
 }
 
@@ -1901,41 +1998,56 @@ function TradesList({ trades, onSelect }: { trades: TradeRecord[]; onSelect: (eq
   }
   return (
     <div className="stocks-trades-list">
-      <table className="stocks-trades-table">
-        <thead>
-          <tr>
-            <th>Tick</th>
-            <th>Action</th>
-            <th>Ticker</th>
-            <th>Qty</th>
-            <th>Price</th>
-            <th>Cash</th>
-            <th>P&L</th>
-          </tr>
-        </thead>
-        <tbody>
-          {trades.map(tr => {
-            const cls = (tr.realizedPnl ?? 0) > 0 ? "stock-pnl-up" : (tr.realizedPnl ?? 0) < 0 ? "stock-pnl-down" : "";
-            return (
-              <tr key={tr.id} onClick={() => onSelect(tr.equityId)}>
-                <td className="mono dim">{tr.tick.toLocaleString()}</td>
-                <td><ActionTag action={tr.action} trigger={tr.trigger} /></td>
-                <td><span className="ticker mono">{tr.ticker}</span></td>
-                <td className="mono">{tr.shares.toLocaleString()}</td>
-                <td className="mono dim">Ç{fmtPrice(tr.price)}</td>
-                <td className={`mono ${tr.cashFlow >= 0 ? "stock-pnl-up" : ""}`}>
-                  {tr.cashFlow >= 0 ? "+" : ""}Ç{Math.round(tr.cashFlow).toLocaleString()}
-                </td>
-                <td className={`mono ${cls}`}>
-                  {tr.realizedPnl != null ? (
-                    `${tr.realizedPnl >= 0 ? "+" : ""}Ç${Math.round(tr.realizedPnl).toLocaleString()}`
-                  ) : <span className="dim">—</span>}
-                </td>
+      <SortableRows
+        rows={trades}
+        columns={[
+          { id: "tick", label: "tick", getValue: trade => trade.tick, defaultDirection: "desc" },
+          { id: "action", label: "action", getValue: trade => trade.action },
+          { id: "ticker", label: "ticker", getValue: trade => trade.ticker },
+          { id: "qty", label: "quantity", getValue: trade => trade.shares, defaultDirection: "desc" },
+          { id: "price", label: "price", getValue: trade => trade.price, defaultDirection: "desc" },
+          { id: "cash", label: "cash", getValue: trade => trade.cashFlow, defaultDirection: "desc" },
+          { id: "pnl", label: "profit/loss", getValue: trade => trade.realizedPnl ?? null, defaultDirection: "desc" },
+        ]}
+      >
+        {(sortedTrades, sort) => (
+          <table className="stocks-trades-table">
+            <thead>
+              <tr>
+                <SortableTh sort={sort} columnId="tick">Tick</SortableTh>
+                <SortableTh sort={sort} columnId="action">Action</SortableTh>
+                <SortableTh sort={sort} columnId="ticker">Ticker</SortableTh>
+                <SortableTh sort={sort} columnId="qty">Qty</SortableTh>
+                <SortableTh sort={sort} columnId="price">Price</SortableTh>
+                <SortableTh sort={sort} columnId="cash">Cash</SortableTh>
+                <SortableTh sort={sort} columnId="pnl">P&amp;L</SortableTh>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
+            </thead>
+            <tbody>
+              {sortedTrades.map(tr => {
+                const cls = (tr.realizedPnl ?? 0) > 0 ? "stock-pnl-up" : (tr.realizedPnl ?? 0) < 0 ? "stock-pnl-down" : "";
+                return (
+                  <tr key={tr.id} onClick={() => onSelect(tr.equityId)}>
+                    <td className="mono dim">{tr.tick.toLocaleString()}</td>
+                    <td><ActionTag action={tr.action} trigger={tr.trigger} /></td>
+                    <td><span className="ticker mono">{tr.ticker}</span></td>
+                    <td className="mono">{tr.shares.toLocaleString()}</td>
+                    <td className="mono dim">Ç{fmtPrice(tr.price)}</td>
+                    <td className={`mono ${tr.cashFlow >= 0 ? "stock-pnl-up" : ""}`}>
+                      {tr.cashFlow >= 0 ? "+" : ""}Ç{Math.round(tr.cashFlow).toLocaleString()}
+                    </td>
+                    <td className={`mono ${cls}`}>
+                      {tr.realizedPnl != null ? (
+                        `${tr.realizedPnl >= 0 ? "+" : ""}Ç${Math.round(tr.realizedPnl).toLocaleString()}`
+                      ) : <span className="dim">—</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </SortableRows>
     </div>
   );
 }
@@ -2477,15 +2589,29 @@ function TimeAndSalesPanel({ equity }: { equity: Equity }) {
         <div className="stocks-tape-empty dim">No trades yet.</div>
       ) : (
         <div className="stocks-tape-rows">
-          <div className="stocks-tape-head">
-            <span>Tick</span>
-            <span className="numeric">Price</span>
-            <span className="numeric">Qty</span>
-            <span>Side</span>
-          </div>
-          {trades.map((t, i) => (
-            <TapeRow key={`${t.tick}-${i}`} trade={t} />
-          ))}
+          <SortableRows
+            rows={trades}
+            columns={[
+              { id: "tick", label: "tick", getValue: trade => trade.tick, defaultDirection: "desc" },
+              { id: "price", label: "price", getValue: trade => trade.price, defaultDirection: "desc" },
+              { id: "qty", label: "quantity", getValue: trade => trade.qty, defaultDirection: "desc" },
+              { id: "side", label: "side", getValue: trade => trade.takerSide },
+            ]}
+          >
+            {(sortedTrades, sort) => (
+              <>
+                <div className="stocks-tape-head">
+                  <SortableHeaderButton sort={sort} columnId="tick">Tick</SortableHeaderButton>
+                  <SortableHeaderButton sort={sort} columnId="price" className="numeric">Price</SortableHeaderButton>
+                  <SortableHeaderButton sort={sort} columnId="qty" className="numeric">Qty</SortableHeaderButton>
+                  <SortableHeaderButton sort={sort} columnId="side">Side</SortableHeaderButton>
+                </div>
+                {sortedTrades.map((t, i) => (
+                  <TapeRow key={`${t.tick}-${t.price}-${t.qty}-${i}`} trade={t} />
+                ))}
+              </>
+            )}
+          </SortableRows>
         </div>
       )}
     </section>

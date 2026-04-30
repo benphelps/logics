@@ -16,6 +16,8 @@ import {
 } from "../sim/traders";
 import { abandonJob, acceptJob, collectTradeJob } from "../sim/jobs";
 import { fireCrew, hireCrew, recomputeShipStats } from "../sim/crew";
+import { deriveCrewIdentity } from "../sim/crewIdentity";
+import { releaseCrewHeadshots } from "./headshots";
 import { abandonPosition, adjustPlayerLimit, buyShares, cancelPlayerLimit, coverShares, placeLimitBuy, placeLimitSell, sellShares, setStopLoss, setTakeProfit, shortShares } from "../sim/stock";
 import { openLongFuture as simOpenLongFuture, openShortFuture as simOpenShortFuture, closeFuture as simCloseFuture } from "../sim/stock/futures";
 import {
@@ -58,14 +60,19 @@ function selectedPlayerShipId(world: World, selectedTrader: TraderId | null): Tr
 }
 
 function devCrew(role: CrewRole, name: string, tier: number, modifiers: CrewMember["modifiers"]): CrewMember {
+  const id = `dev-${role}`;
+  const identity = deriveCrewIdentity(id);
   return {
-    id: `dev-${role}`,
+    id,
     role,
     name,
     tier,
     hireCost: 0,
     wagePerTick: role === "captain" ? 120 : role === "navigator" ? 40 : 55,
     modifiers,
+    sex: identity.sex,
+    age: identity.age,
+    race: identity.race,
   };
 }
 
@@ -243,12 +250,20 @@ export const useStore = create<UiState>((set, get) => {
     togglePause: () => set({ speed: get().speed === 0 ? 1 : 0 }),
     step: () => {
       const w = get().world;
-      tickWorld(w);
+      const report = tickWorld(w);
+      if (report.hiresExpired.length > 0) {
+        releaseCrewHeadshots(get().activeSaveId, report.hiresExpired);
+      }
       persistCurrentGame();
     },
     stepN: (n) => {
       const w = get().world;
-      for (let i = 0; i < n; i++) tickWorld(w);
+      const expired: string[] = [];
+      for (let i = 0; i < n; i++) {
+        const report = tickWorld(w);
+        if (report.hiresExpired.length > 0) expired.push(...report.hiresExpired);
+      }
+      if (expired.length > 0) releaseCrewHeadshots(get().activeSaveId, expired);
       persistCurrentGame();
     },
     reset: () => {
@@ -360,13 +375,20 @@ export const useStore = create<UiState>((set, get) => {
     hireCrew: (traderId, candidateId) => {
       const w = get().world;
       const t = w.traders[traderId]; if (!t) return;
+      const offer = w.hires[candidateId];
+      const displacedId = offer ? t.crew?.[offer.role]?.id : undefined;
       const r = hireCrew(w, t, candidateId);
+      if (r.ok && displacedId && displacedId !== candidateId) {
+        releaseCrewHeadshots(get().activeSaveId, [displacedId]);
+      }
       persistCurrentGame({ lastError: r.ok ? null : r.reason });
     },
     fireCrew: (traderId, role) => {
       const w = get().world;
       const t = w.traders[traderId]; if (!t) return;
+      const firedId = t.crew?.[role]?.id;
       const r = fireCrew(t, role);
+      if (r.ok && firedId) releaseCrewHeadshots(get().activeSaveId, [firedId]);
       persistCurrentGame({ lastError: r.ok ? null : r.reason });
     },
     repairShip: (traderId) => {

@@ -17,6 +17,11 @@ interface HeadshotRequest {
   sex?: string;
   age?: string;
   clothing?: string;
+  subjectId?: string;
+}
+
+interface ReleaseRequest {
+  subjectId?: string;
 }
 
 export interface HeadshotSeedInput {
@@ -32,12 +37,20 @@ interface NormalizedHeadshotInput {
   sex: HeadshotSex;
   age: HeadshotAge;
   clothing?: string;
+  subjectId?: string;
   quality: HeadshotQuality;
   size: HeadshotSize;
 }
 
+// `subjectId` scopes a claim to a specific in-game entity (a CrewMember
+// or a Hire offer), so two offers with the same role/race/sex/age in the
+// same save get distinct portraits. Legacy entries written before this
+// field was introduced have it absent — we treat that as a wildcard
+// "this game" claim and only allow one such per game (the original
+// behavior).
 interface HeadshotUse {
   gameId: number;
+  subjectId?: string;
   claimedAt: string;
 }
 
@@ -280,6 +293,12 @@ async function handleHeadshotRequest(req: IncomingMessage, res: ServerResponse):
     return true;
   }
 
+  if (req.method === "POST" && gameRoute?.action === "release") {
+    const result = await releaseHeadshot(gameRoute.gameId, await readJsonBody<ReleaseRequest>(req));
+    sendJson(res, 200, result);
+    return true;
+  }
+
   sendError(res, 404, "Unknown headshot API route.");
   return true;
 }
@@ -312,31 +331,41 @@ async function allocateHeadshot(gameId: number, input: NormalizedHeadshotInput) 
     };
   }
 
-  const result = await mutateCache(async (cache) => {
-    const existing = findReusableEntry(cache, input, gameId);
+  // Cache lookup + (if needed) inserting a pending placeholder are the
+  // only mutations done under the cache lock — no OpenAI calls. This
+  // keeps the vite middleware queue responsive: every allocate returns
+  // within a single fs read+write, and the slow image generation runs
+  // afterwards in the background.
+  const result = await mutateCache((cache) => {
+    const existing = findReusableEntry(cache, input, gameId, input.subjectId);
     if (existing) {
-      const claimed = claimForGame(existing, gameId);
+      const claimed = claimForGame(existing, gameId, input.subjectId);
+      const source = existing.status === "ready" ? "cache" as const : "pending" as const;
       return {
         entry: existing,
-        source: "cache" as const,
+        source,
         prompt: existing.prompt,
         claimed,
         available: countUnusedEntries(cache, input),
+        startGeneration: false,
       };
     }
 
-    const entry = await createCachedEntry(getApiKey(), input);
-    claimForGame(entry, gameId);
+    const entry = createPendingPoolEntry(input, gameId, input.subjectId);
     cache.entries.push(entry);
     return {
       entry,
-      source: "generated" as const,
+      source: "pending" as const,
       prompt: entry.prompt,
       claimed: true,
       available: countUnusedEntries(cache, input),
+      startGeneration: true,
     };
   });
 
+  if (result.startGeneration) {
+    void generatePendingEntry(result.entry.id, input);
+  }
   const refill = schedulePoolRefill(input, result.available);
   return {
     source: result.source,
@@ -345,6 +374,39 @@ async function allocateHeadshot(gameId: number, input: NormalizedHeadshotInput) 
     claimed: result.claimed,
     refill,
   };
+}
+
+function createPendingPoolEntry(input: NormalizedHeadshotInput, gameId: number, subjectId?: string): HeadshotCacheEntry {
+  const prompt = buildPrompt(input);
+  const now = new Date().toISOString();
+  return {
+    id: randomUUID(),
+    poolKey: poolKey(input),
+    role: input.role,
+    race: input.race,
+    sex: input.sex,
+    age: input.age,
+    clothing: input.clothing,
+    createdAt: now,
+    updatedAt: now,
+    model: DEFAULT_MODEL,
+    size: input.size,
+    quality: input.quality,
+    promptVersion: PROMPT_VERSION,
+    prompt,
+    status: "pending",
+    unique: false,
+    uses: [{ gameId, subjectId, claimedAt: now }],
+  };
+}
+
+async function releaseHeadshot(gameId: number, body: ReleaseRequest): Promise<{ released: number }> {
+  const subjectId = optionalText(body.subjectId, 80);
+  if (!subjectId) {
+    throw new HeadshotRequestError(400, "subjectId is required to release a headshot.");
+  }
+  const released = await mutateCache((cache) => releaseSubject(cache, gameId, subjectId));
+  return { released };
 }
 
 async function createPendingUniqueEntry(gameId: number, input: NormalizedHeadshotInput): Promise<HeadshotCacheEntry> {
@@ -369,6 +431,7 @@ async function createPendingUniqueEntry(gameId: number, input: NormalizedHeadsho
     unique: true,
     uses: [{
       gameId,
+      subjectId: input.subjectId,
       claimedAt: now,
     }],
   };
@@ -540,12 +603,14 @@ function parseHeadshotInput(body: HeadshotRequest): NormalizedHeadshotInput {
   const sex = requireOneOf(body.sex, SEXES, "sex");
   const age = requireOneOf(body.age, AGES, "age");
   const clothing = optionalText(body.clothing, 120);
+  const subjectId = optionalText(body.subjectId, 80);
   return {
     role,
     race,
     sex,
     age,
     clothing: clothing || undefined,
+    subjectId: subjectId || undefined,
     quality: DEFAULT_QUALITY,
     size: DEFAULT_SIZE,
   };
@@ -624,21 +689,60 @@ function schedulePoolRefill(input: NormalizedHeadshotInput, available: number) {
 }
 
 async function refillHeadshotPool(input: NormalizedHeadshotInput): Promise<void> {
-  const apiKey = getApiKey();
-  await mutateCache(async (cache) => {
-    if (countUnusedEntries(cache, input) > POOL_LOW_WATERMARK) return;
+  // Insert pending pool entries under the cache lock so the next
+  // allocate sees them as already-pending; then run generation outside
+  // the lock so the vite middleware queue isn't held up.
+  const pendingIds = await mutateCache((cache) => {
+    if (countUnusedEntries(cache, input) > POOL_LOW_WATERMARK) return [] as string[];
+    const ids: string[] = [];
     for (let index = 0; index < POOL_REFILL_COUNT; index += 1) {
-      cache.entries.push(await createCachedEntry(apiKey, input));
+      const entry = createPendingPoolRefillEntry(input);
+      cache.entries.push(entry);
+      ids.push(entry.id);
     }
+    return ids;
   });
+  for (const id of pendingIds) {
+    void generatePendingEntry(id, input);
+  }
 }
 
-function findReusableEntry(cache: HeadshotCache, input: NormalizedHeadshotInput, gameId: number): HeadshotCacheEntry | null {
-  const existingForGame = cache.entries.find((entry) =>
-    matchesPoolSettings(entry, input)
-    && entry.uses.some((use) => use.gameId === gameId)
+function createPendingPoolRefillEntry(input: NormalizedHeadshotInput): HeadshotCacheEntry {
+  const prompt = buildPrompt(input);
+  const now = new Date().toISOString();
+  return {
+    id: randomUUID(),
+    poolKey: poolKey(input),
+    role: input.role,
+    race: input.race,
+    sex: input.sex,
+    age: input.age,
+    clothing: input.clothing,
+    createdAt: now,
+    updatedAt: now,
+    model: DEFAULT_MODEL,
+    size: input.size,
+    quality: input.quality,
+    promptVersion: PROMPT_VERSION,
+    prompt,
+    status: "pending",
+    unique: false,
+    uses: [],
+  };
+}
+
+function findReusableEntry(cache: HeadshotCache, input: NormalizedHeadshotInput, gameId: number, subjectId?: string): HeadshotCacheEntry | null {
+  // Same (game, subject) hitting the same pool key always gets back the
+  // entry it already owns — keeps a crew member's face stable across
+  // re-renders and reloads. We check this *before* filtering by status so
+  // a pending entry mid-generation is returned to subsequent polls
+  // instead of triggering a duplicate generation.
+  const existingForSubject = cache.entries.find((entry) =>
+    matchesPoolKey(entry, input)
+    && entry.status !== "failed"
+    && entry.uses.some((use) => use.gameId === gameId && use.subjectId === subjectId)
   );
-  if (existingForGame) return existingForGame;
+  if (existingForSubject) return existingForSubject;
 
   const candidates = cache.entries
     .filter((entry) => matchesPoolSettings(entry, input))
@@ -646,17 +750,34 @@ function findReusableEntry(cache: HeadshotCache, input: NormalizedHeadshotInput,
   return candidates[Math.floor(Math.random() * candidates.length)] ?? null;
 }
 
+function matchesPoolKey(entry: HeadshotCacheEntry, input: NormalizedHeadshotInput): boolean {
+  return !entry.unique
+    && entry.poolKey === poolKey(input)
+    && (entry.promptVersion ?? 1) === PROMPT_VERSION;
+}
+
 function isUnusedEntry(entry: HeadshotCacheEntry): boolean {
   return entry.status === "ready" && entry.uses.length === 0;
 }
 
-function claimForGame(entry: HeadshotCacheEntry, gameId: number): boolean {
-  if (entry.uses.some((use) => use.gameId === gameId)) return false;
+function claimForGame(entry: HeadshotCacheEntry, gameId: number, subjectId?: string): boolean {
+  if (entry.uses.some((use) => use.gameId === gameId && use.subjectId === subjectId)) return false;
   entry.uses.push({
     gameId,
+    subjectId,
     claimedAt: new Date().toISOString(),
   });
   return true;
+}
+
+function releaseSubject(cache: HeadshotCache, gameId: number, subjectId: string): number {
+  let removed = 0;
+  for (const entry of cache.entries) {
+    const before = entry.uses.length;
+    entry.uses = entry.uses.filter((use) => !(use.gameId === gameId && use.subjectId === subjectId));
+    removed += before - entry.uses.length;
+  }
+  return removed;
 }
 
 function matchesQuery(entry: HeadshotCacheEntry, params: URLSearchParams): boolean {

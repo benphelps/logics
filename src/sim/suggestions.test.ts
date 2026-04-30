@@ -21,6 +21,9 @@ function assignAutoCrew(ship: ReturnType<typeof playerShip>): void {
     hireCost: 0,
     wagePerTick: 0,
     modifiers: {},
+    sex: "nonbinary",
+    age: "adult",
+    race: "human",
   });
   ship.crew = {
     ...(ship.crew ?? {}),

@@ -240,7 +240,7 @@
   justify-content: space-between;
   gap: 12px;
   padding: 12px 14px;
-  border-bottom: 1px solid var(--atlas-line);
+  border-bottom: 0;
 }
 
 .atlas-panel-head.art-panel-head {
@@ -257,7 +257,7 @@
   background-repeat: no-repeat;
   background-size: 100% 100%, 100% 100%, 104% auto;
   background-clip: padding-box;
-  box-shadow: inset 0 -1px rgba(220, 235, 250, 0.08);
+  box-shadow: none;
 }
 
 .atlas-panel-head.compact.art-panel-head {
@@ -334,7 +334,7 @@
   gap: 2px;
   padding: 3px;
   background: var(--atlas-surface-soft);
-  border-bottom: 1px solid var(--atlas-line);
+  border-bottom: 0;
   border-radius: 0;
 }
 
@@ -376,9 +376,10 @@
   position: sticky;
   top: 0;
   z-index: 2;
-  background: #171d24;
+  background: var(--atlas-surface-soft);
+  border-top: 1px solid var(--atlas-line);
   color: var(--text-faint);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 750;
   letter-spacing: 0.08em;
   text-align: left;
@@ -573,9 +574,10 @@
   position: sticky;
   top: 0;
   z-index: 2;
-  background: #171d24;
+  background: var(--atlas-surface-soft);
+  border-top: 1px solid var(--atlas-line);
   color: var(--text-faint);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 750;
   letter-spacing: 0.08em;
   text-align: left;

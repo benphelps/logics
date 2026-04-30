@@ -5,6 +5,7 @@ import { reachableNeighbors, routeDistance, routeSegments } from "../../sim/geom
 import { netProductionRate } from "../../sim/locations";
 import type { LocationDef, LocationId, Trader, TraderId, World } from "../../sim/types";
 import { headerArtUrl, stationArtUrl } from "../art";
+import { SortableRows, SortableTh } from "../components/SortableTable";
 import "./LocationsView.css";
 
 const MAP_W = 1000;
@@ -522,74 +523,88 @@ function SystemsTable(props: {
   onSelect: (id: LocationId) => void;
 }) {
   return (
-    <table className="atlas-sheet-table">
-      <colgroup>
-        <col className="col-station" />
-        <col className="col-kind" />
-        <col className="col-activity" />
-        <col className="col-jobs" />
-        <col className="col-pressure" />
-        <col className="col-focus" />
-      </colgroup>
-      <thead>
-        <tr>
-          <th>Station</th>
-          <th>Class</th>
-          <th className="numeric">Ships</th>
-          <th className="numeric">Jobs</th>
-          <th>Pressure</th>
-          <th>Focus</th>
-        </tr>
-      </thead>
-      <tbody>
-        {props.rows.map(row => {
-          const selectedRow = props.selectedId === row.loc.id;
-          const totalShips = row.counts.docked + row.counts.inbound;
-          return (
-            <tr
-              key={row.loc.id}
-              className={selectedRow ? "active" : ""}
-              onClick={() => props.onSelect(row.loc.id)}
-            >
-              <td>
-                <span className="atlas-station-cell">
-                  <span className={`atlas-kind-dot atlas-kind-${row.kind}`} />
-                  <span>
-                    <span className="atlas-station-name">{row.loc.name}</span>
-                    <span className="atlas-station-sub dim">{row.loc.traits.faction ?? "Independent"}</span>
-                  </span>
-                </span>
-              </td>
-              <td><span className={`atlas-kind atlas-kind-${row.kind}`}>{kindLabel(row.kind)}</span></td>
-              <td className="numeric mono">
-                <span className={totalShips > 0 ? "" : "dim"}>{totalShips}</span>
-                <span className="atlas-cell-sub dim">{row.counts.docked}d + {row.counts.inbound}i</span>
-              </td>
-              <td className="numeric mono">
-                <span className={row.counts.jobs > 0 ? "" : "dim"}>{row.counts.jobs}</span>
-              </td>
-              <td>
-                <span className="atlas-pressure-cell">
-                  {row.pressure.short > 0 && <span className="bad">{row.pressure.short}↓</span>}
-                  {row.pressure.surplus > 0 && <span className="good">{row.pressure.surplus}↑</span>}
-                  {row.pressure.avgSkew > 0 && (
-                    <span className={row.pressure.tone === "short" ? "bad" : row.pressure.tone === "surplus" ? "good" : "dim"}>
-                      {(row.pressure.avgSkew * 100).toFixed(0)}%
-                    </span>
-                  )}
-                  {row.pressure.short === 0 && row.pressure.surplus === 0 && (
-                    <span className="dim">balanced</span>
-                  )}
-                </span>
-              </td>
-              <td>
-                <span className={`atlas-focus ${row.pressure.tone}`}>{row.pressure.focusGood}</span>
-              </td>
+    <SortableRows
+      rows={props.rows}
+      columns={[
+        { id: "station", label: "station", getValue: row => row.loc.name },
+        { id: "class", label: "class", getValue: row => kindLabel(row.kind) },
+        { id: "ships", label: "ships", getValue: row => row.counts.docked + row.counts.inbound, defaultDirection: "desc" },
+        { id: "jobs", label: "jobs", getValue: row => row.counts.jobs, defaultDirection: "desc" },
+        { id: "pressure", label: "pressure", getValue: row => (row.pressure.short + row.pressure.surplus) * 1000 + row.pressure.avgSkew, defaultDirection: "desc" },
+        { id: "focus", label: "focus", getValue: row => row.pressure.focusGood },
+      ]}
+    >
+      {(sortedRows, sort) => (
+        <table className="atlas-sheet-table">
+          <colgroup>
+            <col className="col-station" />
+            <col className="col-kind" />
+            <col className="col-activity" />
+            <col className="col-jobs" />
+            <col className="col-pressure" />
+            <col className="col-focus" />
+          </colgroup>
+          <thead>
+            <tr>
+              <SortableTh sort={sort} columnId="station">Station</SortableTh>
+              <SortableTh sort={sort} columnId="class">Class</SortableTh>
+              <SortableTh sort={sort} columnId="ships" className="numeric">Ships</SortableTh>
+              <SortableTh sort={sort} columnId="jobs" className="numeric">Jobs</SortableTh>
+              <SortableTh sort={sort} columnId="pressure">Pressure</SortableTh>
+              <SortableTh sort={sort} columnId="focus">Focus</SortableTh>
             </tr>
-          );
-        })}
-      </tbody>
-    </table>
+          </thead>
+          <tbody>
+            {sortedRows.map(row => {
+              const selectedRow = props.selectedId === row.loc.id;
+              const totalShips = row.counts.docked + row.counts.inbound;
+              return (
+                <tr
+                  key={row.loc.id}
+                  className={selectedRow ? "active" : ""}
+                  onClick={() => props.onSelect(row.loc.id)}
+                >
+                  <td>
+                    <span className="atlas-station-cell">
+                      <span className={`atlas-kind-dot atlas-kind-${row.kind}`} />
+                      <span>
+                        <span className="atlas-station-name">{row.loc.name}</span>
+                        <span className="atlas-station-sub dim">{row.loc.traits.faction ?? "Independent"}</span>
+                      </span>
+                    </span>
+                  </td>
+                  <td><span className={`atlas-kind atlas-kind-${row.kind}`}>{kindLabel(row.kind)}</span></td>
+                  <td className="numeric mono">
+                    <span className={totalShips > 0 ? "" : "dim"}>{totalShips}</span>
+                    <span className="atlas-cell-sub dim">{row.counts.docked}d + {row.counts.inbound}i</span>
+                  </td>
+                  <td className="numeric mono">
+                    <span className={row.counts.jobs > 0 ? "" : "dim"}>{row.counts.jobs}</span>
+                  </td>
+                  <td>
+                    <span className="atlas-pressure-cell">
+                      {row.pressure.short > 0 && <span className="bad">{row.pressure.short}↓</span>}
+                      {row.pressure.surplus > 0 && <span className="good">{row.pressure.surplus}↑</span>}
+                      {row.pressure.avgSkew > 0 && (
+                        <span className={row.pressure.tone === "short" ? "bad" : row.pressure.tone === "surplus" ? "good" : "dim"}>
+                          {(row.pressure.avgSkew * 100).toFixed(0)}%
+                        </span>
+                      )}
+                      {row.pressure.short === 0 && row.pressure.surplus === 0 && (
+                        <span className="dim">balanced</span>
+                      )}
+                    </span>
+                  </td>
+                  <td>
+                    <span className={`atlas-focus ${row.pressure.tone}`}>{row.pressure.focusGood}</span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </SortableRows>
   );
 }
 
@@ -613,79 +628,93 @@ function ShipsTable(props: {
     return a.name.localeCompare(b.name);
   });
   return (
-    <table className="atlas-sheet-table">
-      <colgroup>
-        <col className="col-ship" />
-        <col className="col-state" />
-        <col className="col-route" />
-        <col className="col-eta" />
-        <col className="col-cargo" />
-        <col className="col-pilot" />
-      </colgroup>
-      <thead>
-        <tr>
-          <th>Ship</th>
-          <th>State</th>
-          <th>Where</th>
-          <th className="numeric">ETA</th>
-          <th className="numeric">Cargo</th>
-          <th>Pilot</th>
-        </tr>
-      </thead>
-      <tbody>
-        {ships.map(t => {
-          const isSelected = props.selectedTraderId === t.id;
-          const isPlayer = playerIds.has(t.id);
-          const cargoQty = t.cargo.reduce((s, l) => s + l.qty, 0);
-          const cargoPct = t.capacity > 0 ? (cargoQty / t.capacity) * 100 : 0;
-          const cur = props.world.locations[t.location]?.name ?? "—";
-          const dst = t.destination ? props.world.locations[t.destination]?.name ?? "—" : null;
-          return (
-            <tr
-              key={t.id}
-              className={`${isSelected ? "active" : ""} ${isPlayer ? "player" : ""} ${t.state}`}
-              onClick={() => {
-                props.onSelectTrader(t.id);
-                if (t.state === "idle") props.onSelectLocation(t.location);
-                else if (t.destination) props.onSelectLocation(t.destination);
-              }}
-            >
-              <td>
-                <span className="atlas-ship-cell">
-                  {isPlayer && <span className="atlas-ship-pill player">YOU</span>}
-                  <span className="atlas-ship-name">{t.name}</span>
-                </span>
-              </td>
-              <td>
-                <span className={`atlas-state-pill ${t.state}`}>
-                  {t.state === "transit" ? "TRANSIT" : "DOCKED"}
-                </span>
-              </td>
-              <td className="atlas-route-cell">
-                {t.state === "transit" && dst ? (
-                  <span className="atlas-route">
-                    <span className="dim">{cur}</span>
-                    <span className="atlas-route-arrow">→</span>
-                    <span>{dst}</span>
-                  </span>
-                ) : (
-                  <span className="mono">{cur}</span>
-                )}
-              </td>
-              <td className="numeric mono">
-                {t.state === "transit" ? `${t.ticksRemaining}t` : <span className="dim">—</span>}
-              </td>
-              <td className="numeric mono">
-                <CargoBar pct={cargoPct} qty={cargoQty} cap={t.capacity} />
-              </td>
-              <td>
-                <span className={`atlas-pilot-pill pilot-${t.pilot}`}>{t.pilot}</span>
-              </td>
+    <SortableRows
+      rows={ships}
+      columns={[
+        { id: "ship", label: "ship", getValue: ship => ship.name },
+        { id: "state", label: "state", getValue: ship => ship.state === "transit" ? 0 : 1 },
+        { id: "where", label: "location", getValue: ship => ship.destination ? props.world.locations[ship.destination]?.name ?? ship.destination : props.world.locations[ship.location]?.name ?? ship.location },
+        { id: "eta", label: "eta", getValue: ship => ship.state === "transit" ? ship.ticksRemaining : null },
+        { id: "cargo", label: "cargo", getValue: ship => ship.capacity > 0 ? ship.cargo.reduce((s, l) => s + l.qty, 0) / ship.capacity : 0, defaultDirection: "desc" },
+        { id: "pilot", label: "pilot", getValue: ship => ship.pilot },
+      ]}
+    >
+      {(sortedShips, sort) => (
+        <table className="atlas-sheet-table">
+          <colgroup>
+            <col className="col-ship" />
+            <col className="col-state" />
+            <col className="col-route" />
+            <col className="col-eta" />
+            <col className="col-cargo" />
+            <col className="col-pilot" />
+          </colgroup>
+          <thead>
+            <tr>
+              <SortableTh sort={sort} columnId="ship">Ship</SortableTh>
+              <SortableTh sort={sort} columnId="state">State</SortableTh>
+              <SortableTh sort={sort} columnId="where">Where</SortableTh>
+              <SortableTh sort={sort} columnId="eta" className="numeric">ETA</SortableTh>
+              <SortableTh sort={sort} columnId="cargo" className="numeric">Cargo</SortableTh>
+              <SortableTh sort={sort} columnId="pilot">Pilot</SortableTh>
             </tr>
-          );
-        })}
-      </tbody>
-    </table>
+          </thead>
+          <tbody>
+            {sortedShips.map(t => {
+              const isSelected = props.selectedTraderId === t.id;
+              const isPlayer = playerIds.has(t.id);
+              const cargoQty = t.cargo.reduce((s, l) => s + l.qty, 0);
+              const cargoPct = t.capacity > 0 ? (cargoQty / t.capacity) * 100 : 0;
+              const cur = props.world.locations[t.location]?.name ?? "—";
+              const dst = t.destination ? props.world.locations[t.destination]?.name ?? "—" : null;
+              return (
+                <tr
+                  key={t.id}
+                  className={`${isSelected ? "active" : ""} ${isPlayer ? "player" : ""} ${t.state}`}
+                  onClick={() => {
+                    props.onSelectTrader(t.id);
+                    if (t.state === "idle") props.onSelectLocation(t.location);
+                    else if (t.destination) props.onSelectLocation(t.destination);
+                  }}
+                >
+                  <td>
+                    <span className="atlas-ship-cell">
+                      {isPlayer && <span className="atlas-ship-pill player">YOU</span>}
+                      <span className="atlas-ship-name">{t.name}</span>
+                    </span>
+                  </td>
+                  <td>
+                    <span className={`atlas-state-pill ${t.state}`}>
+                      {t.state === "transit" ? "TRANSIT" : "DOCKED"}
+                    </span>
+                  </td>
+                  <td className="atlas-route-cell">
+                    {t.state === "transit" && dst ? (
+                      <span className="atlas-route">
+                        <span className="dim">{cur}</span>
+                        <span className="atlas-route-arrow">→</span>
+                        <span>{dst}</span>
+                      </span>
+                    ) : (
+                      <span className="mono">{cur}</span>
+                    )}
+                  </td>
+                  <td className="numeric mono">
+                    {t.state === "transit" ? `${t.ticksRemaining}t` : <span className="dim">—</span>}
+                  </td>
+                  <td className="numeric mono">
+                    <CargoBar pct={cargoPct} qty={cargoQty} cap={t.capacity} />
+                  </td>
+                  <td>
+                    <span className={`atlas-pilot-pill pilot-${t.pilot}`}>{t.pilot}</span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </SortableRows>
   );
 }
 

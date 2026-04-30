@@ -1,5 +1,6 @@
 import type { CrewModifiers, CrewRole, Hire, HireId, LocationDef, World } from "./types";
 import { mulberry32, type Rng } from "./gen/rng";
+import { rollCrewIdentity } from "./crewIdentity";
 
 // --- tunables --------------------------------------------------------------
 
@@ -173,6 +174,7 @@ function generateHire(rng: Rng, loc: LocationDef, world: World): Hire {
 
   const first = FIRST_NAMES[Math.floor(rng() * FIRST_NAMES.length)];
   const last = LAST_NAMES[Math.floor(rng() * LAST_NAMES.length)];
+  const identity = rollCrewIdentity(rng);
   const id: HireId = `h${world.nextHireId++}`;
   return {
     id,
@@ -182,6 +184,9 @@ function generateHire(rng: Rng, loc: LocationDef, world: World): Hire {
     hireCost,
     wagePerTick,
     modifiers,
+    sex: identity.sex,
+    age: identity.age,
+    race: identity.race,
     location: loc.id,
     postedTick: world.tick,
     expiresAt: world.tick + (EXPIRY_BY_TIER[tier] ?? 100),
@@ -242,6 +247,9 @@ export function snapshotFromHire(h: Hire): import("./types").CrewMember {
     hireCost: h.hireCost,
     wagePerTick: h.wagePerTick,
     modifiers: { ...h.modifiers },
+    sex: h.sex,
+    age: h.age,
+    race: h.race,
   };
 }
 

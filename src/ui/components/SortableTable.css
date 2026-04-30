@@ -1,0 +1,74 @@
+.sortable-th {
+  user-select: none;
+}
+
+.sortable-th-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  width: auto;
+  max-width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: max(1em, 10.5px);
+  line-height: 1.25;
+  letter-spacing: inherit;
+  text-align: inherit;
+  text-transform: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.sortable-th-button:focus-visible {
+  outline: 1px solid currentColor;
+  outline-offset: 2px;
+}
+
+.sortable-th-button:hover,
+.sortable-th-button:hover:not(:disabled),
+.sortable-th-button:focus-visible {
+  background: transparent;
+  color: var(--text, currentColor);
+}
+
+.sortable-th-label {
+  display: inline-block;
+  min-width: 0;
+  overflow: hidden;
+  text-decoration-color: currentColor;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sortable-th-button:hover .sortable-th-label,
+.sortable-th-button:focus-visible .sortable-th-label {
+  text-decoration-line: underline;
+  text-decoration-style: solid;
+}
+
+.sortable-th.is-sorted .sortable-th-label,
+.sortable-th-button.is-sorted .sortable-th-label,
+.sortable-th.is-sorted .sortable-th-button:hover .sortable-th-label,
+.sortable-th.is-sorted .sortable-th-button:focus-visible .sortable-th-label {
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+}
+
+.sortable-th-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 1em;
+  height: 1em;
+  margin-inline-end: -0.15em;
+}
+
+.sortable-th-icon svg {
+  width: 1em;
+  height: 1em;
+}

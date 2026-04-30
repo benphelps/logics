@@ -111,6 +111,9 @@ describe("ship upgrades", () => {
         hireCost: 0,
         wagePerTick: 0,
         modifiers: { cargoCapacityBonus: 5 },
+        sex: "nonbinary",
+        age: "adult",
+        race: "human",
       },
     };
     recomputeShipStats(ship);

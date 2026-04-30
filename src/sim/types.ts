@@ -86,6 +86,19 @@ export interface CargoLot {
 
 export type CrewRole = "captain" | "navigator" | "mechanic";    // captain is displayed as Pilot; mercenary reserved for combat-era
 
+// Identity attributes — drive crew portrait generation via the headshot
+// service. Values are kept identical to the headshot API contract so they
+// pass through without mapping.
+export type CrewSex = "female" | "male" | "nonbinary";
+export type CrewAge = "young adult" | "adult" | "middle aged" | "elderly";
+export type CrewRace = "human" | "alien";
+
+export interface CrewIdentity {
+  sex: CrewSex;
+  age: CrewAge;
+  race: CrewRace;
+}
+
 // Modifiers a crew member contributes to the ship. Each field is additive
 // across all hired crew. Stat-touching fields (cargo/speed/fuel/range) are
 // recomputed onto the ship via recomputeShipStats(); action-time fields
@@ -122,6 +135,9 @@ export interface CrewMember {
   hireCost: number;                   // one-time cost to sign on
   wagePerTick: number;                // ongoing cost charged each tick
   modifiers: CrewModifiers;
+  sex: CrewSex;
+  age: CrewAge;
+  race: CrewRace;
 }
 
 export type ShipCrew = Partial<Record<CrewRole, CrewMember>>;
@@ -139,6 +155,9 @@ export interface Hire {
   hireCost: number;
   wagePerTick: number;
   modifiers: CrewModifiers;
+  sex: CrewSex;
+  age: CrewAge;
+  race: CrewRace;
   location: LocationId;
   postedTick: number;
   expiresAt: number;

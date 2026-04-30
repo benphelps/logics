@@ -1,6 +1,7 @@
-import type { World } from "../sim/types";
+import type { CrewMember, Hire, World } from "../sim/types";
 import { ensureStockMarket } from "../sim/stock";
 import { warmUpBook } from "../sim/stock/agents";
+import { deriveCrewIdentity } from "../sim/crewIdentity";
 
 const SAVE_REGISTRY_KEY = "logics.saveGames.v1";
 const SAVE_VERSION = 1;
@@ -110,6 +111,7 @@ function migrateLoadedWorld(world: World): World {
   if (!world.equities) world.equities = {};
   if (!world.syndicates) world.syndicates = {};
   ensureStockMarket(world);
+  backfillCrewIdentity(world);
   // After loading a compacted save (orderBooks have player orders only),
   // give every equity at least one round of agent quotes so the player
   // can trade immediately. Idempotent — agents post at most one bid +
@@ -140,6 +142,36 @@ function migrateLoadedWorld(world: World): World {
     }
   }
   return world;
+}
+
+// Pre-identity saves don't have sex/age/race on crew or hires. Derive the
+// values from the stable id so portrait lookups produce a consistent face
+// for crew the player already knows by name.
+function backfillCrewIdentity(world: World): void {
+  const fillCrew = (member: CrewMember): void => {
+    if (member.sex && member.age && member.race) return;
+    const id = member.sex ?? member.age ?? member.race ? `${member.id}-fill` : member.id;
+    const identity = deriveCrewIdentity(id);
+    if (!member.sex)  member.sex = identity.sex;
+    if (!member.age)  member.age = identity.age;
+    if (!member.race) member.race = identity.race;
+  };
+  const fillHire = (hire: Hire): void => {
+    if (hire.sex && hire.age && hire.race) return;
+    const identity = deriveCrewIdentity(hire.id);
+    if (!hire.sex)  hire.sex = identity.sex;
+    if (!hire.age)  hire.age = identity.age;
+    if (!hire.race) hire.race = identity.race;
+  };
+  for (const trader of Object.values(world.traders)) {
+    if (!trader.crew) continue;
+    for (const member of Object.values(trader.crew)) {
+      if (member) fillCrew(member);
+    }
+  }
+  if (world.hires) {
+    for (const hire of Object.values(world.hires)) fillHire(hire);
+  }
 }
 
 function readRegistry(): SaveRegistry | null {

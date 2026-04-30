@@ -634,9 +634,10 @@
 }
 
 .wiki-table-wrap th {
-  background: rgba(255, 255, 255, 0.045);
+  background: var(--site-panel-soft);
+  border-top: 1px solid var(--site-line);
   color: var(--site-text);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;

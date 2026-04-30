@@ -29,8 +29,10 @@ import { listHiresAt } from "../../sim/hires";
 import { selectRefuelType, UNLOAD_TICKS, unloadTicksRemainingFor } from "../../sim/traders";
 import { UPGRADE_SLOTS, installedUpgrade, isUpgradeGood, upgradeDef, upgradeEffectText } from "../../sim/upgrades";
 import type { CrewModifiers, CrewRole } from "../../sim/types";
-import type { GoodId, Job, JobId, LocationDef, LocationId, Trader, UpgradeSlot, World } from "../../sim/types";
-import { goodArtUrl, headerArtUrl, jobArtUrl, shipArtUrl, shipTabArtUrl, stationArtUrl, stationKind, stationKindLabel, stationScale, stationScaleLabel, stationSubtype, stationSubtypeLabel, type HeaderArtKey, type ShipTabArtKey } from "../art";
+import type { CrewMember, GoodId, Job, JobId, LocationDef, LocationId, Trader, TraderId, UpgradeSlot, World } from "../../sim/types";
+import { useCrewHeadshot } from "../headshots";
+import { goodArtUrl, jobArtUrl, shipArtUrl, stationArtUrl, stationKind, stationKindLabel, stationScale, stationScaleLabel, stationSubtype, stationSubtypeLabel } from "../art";
+import { SortableRows, SortableTh } from "../components/SortableTable";
 import "./PlayerView.css";
 
 const SHOW_DEV_SHIP_PLAN_PANEL = false;
@@ -38,7 +40,7 @@ const SHOW_DEV_SHIP_LOG_PANEL = false;
 const GUIDANCE_LOCKED_TEXT = "Hire a navigator for guided suggestions.";
 const DEPART_SUGGESTION_GUARD_MS = 1800;
 const SUGGESTION_PULSE_MS = 3700;
-type ShipCargoTab = Extract<ShipTabArtKey, "cargo" | "upgrades" | "crew">;
+type ShipCargoTab = "cargo" | "upgrades" | "crew" | "contracts";
 const INFO_HOVER_CLEAR_DELAY_MS = 90;
 
 export function PlayerView() {
@@ -438,23 +440,6 @@ function infoFocusLabel(focus: InfoFocus, world: World): string {
   return world.locations[focus.loc]?.name ?? focus.loc;
 }
 
-function SectionIntro({ title, subtitle, trailing, art }: {
-  title: string;
-  subtitle?: string;
-  trailing?: ReactNode;
-  art?: HeaderArtKey;
-}) {
-  return (
-    <div className={`bridge-section-intro ${art ? "art-panel-head" : ""}`} style={art ? artCardStyle(headerArtUrl(art)) : undefined}>
-      <div>
-        <span className="bridge-section-title">{title}</span>
-        {subtitle && <span className="bridge-section-subtitle">{subtitle}</span>}
-      </div>
-      {trailing}
-    </div>
-  );
-}
-
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="cargo-stat">
@@ -653,7 +638,6 @@ function ContractsTab({ ship, world, loc, target, hintText, cueText, interaction
 }) {
   const acceptJob = useStore((s) => s.acceptJob);
   const manualActions = ship.pilot !== "auto";
-  const activeJobs = Object.values(world.jobs).filter(j => j.acceptedBy === ship.id);
   // Keep this as a station-local board. Remote jobs only appear here when the
   // guidance engine is explicitly pointing at their Accept button.
   const local = listLocalJobs(world, loc.id);
@@ -677,57 +661,63 @@ function ContractsTab({ ship, world, loc, target, hintText, cueText, interaction
       {jobs.length === 0 ? (
         <div className="contract-empty">No open contracts here.</div>
       ) : (
-        <table className="jobs-table contract-table available-contracts-table">
-          <colgroup>
-            <col className="col-tier" />
-            <col />
-            <col className="col-dest" />
-            <col className="col-num" />
-            <col className="col-held" />
-            <col className="col-money" />
-            <col className="col-money" />
-            <col className="col-expires" />
-            {manualActions && <col className="col-action" />}
-          </colgroup>
-          <thead>
-            <tr>
-              <th>Tier</th>
-              <th>Contract</th>
-              <th>Route</th>
-              <th className="numeric">Qty</th>
-              <th className="numeric">Held</th>
-              <th className="numeric">Reward</th>
-              <th className="numeric">Penalty</th>
-              <th className="numeric">Expires</th>
-              {manualActions && <th></th>}
-            </tr>
-          </thead>
-          <tbody>
-            {jobs.map((j) => (
-              <LocalJobRow
-                key={j.id}
-                job={j}
-                world={world}
-                ship={ship}
-                suggested={target.acceptJobId === j.id || target.acceptJobIds?.includes(j.id) === true}
-                hintText={cueText.acceptJobs[j.id] ?? hintText}
-                showAction={manualActions}
-                interactionLocked={interactionLocked}
-                onAccept={() => acceptJob(j.id, ship.id)}
-              />
-            ))}
-          </tbody>
-        </table>
-      )}
-      {activeJobs.length > 0 && (
-        <>
-          <SectionIntro
-            title="Active"
-            subtitle={`${activeJobs.length} contract${activeJobs.length === 1 ? "" : "s"} assigned to ${ship.name}`}
-            art="contractBoard"
-          />
-          <ActiveContractsTab ship={ship} world={world} jobs={activeJobs} target={target} cueText={cueText} hintText={hintText} />
-        </>
+        <SortableRows
+          rows={jobs}
+          columns={[
+            { id: "tier", label: "tier", getValue: j => TIER_RANK[j.tier] },
+            { id: "contract", label: "contract", getValue: j => j.good ? world.goods[j.good]?.name ?? j.good : j.kind },
+            { id: "route", label: "route", getValue: j => world.locations[j.destination]?.name ?? j.destination },
+            { id: "qty", label: "quantity", getValue: j => j.qty, defaultDirection: "desc" },
+            { id: "held", label: "held cargo", getValue: j => j.good ? ship.cargo.filter(l => l.good === j.good).reduce((s, l) => s + l.qty, 0) : 0, defaultDirection: "desc" },
+            { id: "reward", label: "reward", getValue: j => j.reward, defaultDirection: "desc" },
+            { id: "penalty", label: "penalty", getValue: j => j.penalty, defaultDirection: "desc" },
+            { id: "expires", label: "expiry", getValue: j => Math.max(0, j.expiresAt - world.tick) },
+          ]}
+        >
+          {(sortedJobs, sort) => (
+            <table className="jobs-table contract-table available-contracts-table">
+              <colgroup>
+                <col className="col-tier" />
+                <col />
+                <col className="col-dest" />
+                <col className="col-num" />
+                <col className="col-held" />
+                <col className="col-money" />
+                <col className="col-money" />
+                <col className="col-expires" />
+                {manualActions && <col className="col-action" />}
+              </colgroup>
+              <thead>
+                <tr>
+                  <SortableTh sort={sort} columnId="tier">Tier</SortableTh>
+                  <SortableTh sort={sort} columnId="contract">Contract</SortableTh>
+                  <SortableTh sort={sort} columnId="route">Route</SortableTh>
+                  <SortableTh sort={sort} columnId="qty" className="numeric">Qty</SortableTh>
+                  <SortableTh sort={sort} columnId="held" className="numeric">Held</SortableTh>
+                  <SortableTh sort={sort} columnId="reward" className="numeric">Reward</SortableTh>
+                  <SortableTh sort={sort} columnId="penalty" className="numeric">Penalty</SortableTh>
+                  <SortableTh sort={sort} columnId="expires" className="numeric">Expires</SortableTh>
+                  {manualActions && <th></th>}
+                </tr>
+              </thead>
+              <tbody>
+                {sortedJobs.map((j) => (
+                  <LocalJobRow
+                    key={j.id}
+                    job={j}
+                    world={world}
+                    ship={ship}
+                    suggested={target.acceptJobId === j.id || target.acceptJobIds?.includes(j.id) === true}
+                    hintText={cueText.acceptJobs[j.id] ?? hintText}
+                    showAction={manualActions}
+                    interactionLocked={interactionLocked}
+                    onAccept={() => acceptJob(j.id, ship.id)}
+                  />
+                ))}
+              </tbody>
+            </table>
+          )}
+        </SortableRows>
       )}
     </div>
   );
@@ -984,26 +974,38 @@ function StationTradeHelperInfoContent({ loc, world }: { loc: LocationDef; world
         {pressureRows.length === 0 ? (
           <div className="trade-helper-line muted"><span>Stock</span><span>Markets are near target</span></div>
         ) : (
-          <table className="trade-helper-market-table">
-            <thead>
-              <tr>
-                <th>Good</th>
-                <th className="numeric">Stock</th>
-                <th className="numeric">Price</th>
-                <th className="numeric">State</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pressureRows.map(row => (
-                <tr key={row.good}>
-                  <td title={row.name}>{row.name}</td>
-                  <td className="numeric mono">{row.stock.toFixed(0)} / {row.target.toFixed(0)}</td>
-                  <td className="numeric mono">Ç{row.price.toFixed(1)}</td>
-                  <td className={`numeric ${row.tone}`}>{row.tone}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <SortableRows
+            rows={pressureRows}
+            columns={[
+              { id: "good", label: "good", getValue: row => row.name },
+              { id: "stock", label: "stock", getValue: row => row.stock, defaultDirection: "desc" },
+              { id: "price", label: "price", getValue: row => row.price, defaultDirection: "desc" },
+              { id: "state", label: "state", getValue: row => row.tone },
+            ]}
+          >
+            {(sortedRows, sort) => (
+              <table className="trade-helper-market-table">
+                <thead>
+                  <tr>
+                    <SortableTh sort={sort} columnId="good">Good</SortableTh>
+                    <SortableTh sort={sort} columnId="stock" className="numeric">Stock</SortableTh>
+                    <SortableTh sort={sort} columnId="price" className="numeric">Price</SortableTh>
+                    <SortableTh sort={sort} columnId="state" className="numeric">State</SortableTh>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedRows.map(row => (
+                    <tr key={row.good}>
+                      <td title={row.name}>{row.name}</td>
+                      <td className="numeric mono">{row.stock.toFixed(0)} / {row.target.toFixed(0)}</td>
+                      <td className="numeric mono">Ç{row.price.toFixed(1)}</td>
+                      <td className={`numeric ${row.tone}`}>{row.tone}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </SortableRows>
         )}
       </div>
 
@@ -1012,31 +1014,42 @@ function StationTradeHelperInfoContent({ loc, world }: { loc: LocationDef; world
         {routeRows.length === 0 ? (
           <div className="trade-helper-line muted"><span>Routes</span><span>No direct lanes</span></div>
         ) : (
-          <table className="trade-helper-market-table station-routes-table">
-            <thead>
-              <tr>
-                <th>Station</th>
-                <th className="numeric">Dist</th>
-                <th className="numeric">Jobs</th>
-              </tr>
-            </thead>
-            <tbody>
-              {routeRows.map(row => {
-                const jobs = Object.values(world.jobs).filter(job => job.destination === row.to && job.acceptedBy == null).length;
-                return (
-                  <tr key={row.to}>
-                    <td>
-                      <span title={world.locations[row.to]?.name ?? row.to}>
-                        {world.locations[row.to]?.name ?? row.to}
-                      </span>
-                    </td>
-                    <td className="numeric mono">{row.dist.toFixed(1)}</td>
-                    <td className="numeric mono">{jobs}</td>
+          <SortableRows
+            rows={routeRows}
+            columns={[
+              { id: "station", label: "station", getValue: row => world.locations[row.to]?.name ?? row.to },
+              { id: "dist", label: "distance", getValue: row => row.dist },
+              { id: "jobs", label: "jobs", getValue: row => Object.values(world.jobs).filter(job => job.destination === row.to && job.acceptedBy == null).length, defaultDirection: "desc" },
+            ]}
+          >
+            {(sortedRows, sort) => (
+              <table className="trade-helper-market-table station-routes-table">
+                <thead>
+                  <tr>
+                    <SortableTh sort={sort} columnId="station">Station</SortableTh>
+                    <SortableTh sort={sort} columnId="dist" className="numeric">Dist</SortableTh>
+                    <SortableTh sort={sort} columnId="jobs" className="numeric">Jobs</SortableTh>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                </thead>
+                <tbody>
+                  {sortedRows.map(row => {
+                    const jobs = Object.values(world.jobs).filter(job => job.destination === row.to && job.acceptedBy == null).length;
+                    return (
+                      <tr key={row.to}>
+                        <td>
+                          <span title={world.locations[row.to]?.name ?? row.to}>
+                            {world.locations[row.to]?.name ?? row.to}
+                          </span>
+                        </td>
+                        <td className="numeric mono">{row.dist.toFixed(1)}</td>
+                        <td className="numeric mono">{jobs}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </SortableRows>
         )}
       </div>
     </InfoPanelFrame>
@@ -1068,7 +1081,7 @@ function ShipCard({ ship, world, loc, guidedPlan, target, hintText, cueText, cri
   const canRepair = debt > 0 && ship.state === "idle";
 
   return (
-    <section className="bridge-card ship-card art-card" style={artCardStyle(shipTabArtUrl(shipTab))}>
+    <section className="bridge-card ship-card">
       <div className="ship-status-tabs bridge-card-tabs">
         <ShipFuelStatusEntry
           ship={ship}
@@ -1407,7 +1420,7 @@ function targetSuggestsMarketAction(target: HintTarget): boolean {
 }
 
 function targetSuggestsContracts(target: HintTarget): boolean {
-  return target.acceptJobId != null || (target.acceptJobIds?.length ?? 0) > 0 || target.collectJobId != null;
+  return target.acceptJobId != null || (target.acceptJobIds?.length ?? 0) > 0;
 }
 
 function targetSuggestsLocalContracts(world: World, target: HintTarget, ship: Trader): boolean {
@@ -1458,48 +1471,20 @@ function StationExchangeCard({ ship, world, loc, target, hintText, cueText, sele
   const market = world.markets[loc.id];
   const offers = listHiresAt(world, loc.id);
   const localContractCount = listLocalJobs(world, loc.id).length;
-  const activeContractCount = Object.values(world.jobs).filter(j => j.acceptedBy === ship.id).length;
   const marketGoodsCount = Object.keys(world.goods).filter(gid =>
     !isUpgradeGood(gid)
     && ((market.stock[gid] ?? 0) > 0.001 || findCargoLot(ship, gid) != null)
   ).length;
   const upgradeCount = Object.keys(world.goods).filter(gid => isUpgradeGood(gid) && (market.stock[gid] ?? 0) >= 1).length;
-  const contractCount = localContractCount + activeContractCount;
   const marketsSuggested = manualActions && targetSuggestsMarketAction(target);
   const upgradesSuggested = manualActions && targetSuggestsUpgradeBuy(target);
   const contractsSuggested = manualActions && targetSuggestsContracts(target);
   const marketHintText = cueText.sections.market ?? hintText;
   const upgradeHintText = cueText.sections.upgrades ?? hintText;
   const contractHintText = cueText.sections.contracts ?? hintText;
-  const sectionIntro = tab === "markets"
-    ? {
-        title: "Station goods",
-        subtitle: `${marketGoodsCount} tradable good${marketGoodsCount === 1 ? "" : "s"} at ${loc.name}`,
-        art: "marketBazaar" as const,
-      }
-    : tab === "upgrades"
-      ? {
-          title: "Station modules",
-          subtitle: `${upgradeCount} upgrade module${upgradeCount === 1 ? "" : "s"} stocked`,
-          art: "shipyardUpgrades" as const,
-        }
-      : tab === "offers"
-        ? {
-            title: "Crew board",
-            subtitle: `${offers.length} posted hire offer${offers.length === 1 ? "" : "s"}`,
-            art: "crewMarket" as const,
-          }
-        : {
-            title: "Local",
-            subtitle: `${localContractCount} contract${localContractCount === 1 ? "" : "s"} posted for ${loc.name}`,
-            art: "contractBoard" as const,
-          };
 
   return (
-    <section
-      className={`bridge-card market-card exchange-card art-card ${inTransit ? "transit-preview-card" : ""}`}
-      style={artCardStyle(stationArtUrl(loc))}
-    >
+    <section className={`bridge-card market-card exchange-card ${inTransit ? "transit-preview-card" : ""}`}>
       <div className="bridge-card-tabs">
         <button
           className={`bridge-tab ${tab === "markets" ? "active" : ""} ${marketsSuggested ? "has-suggestion" : ""}`}
@@ -1523,10 +1508,9 @@ function StationExchangeCard({ ship, world, loc, target, hintText, cueText, sele
           onClick={() => setTab("contracts")}
           title={contractsSuggested ? contractHintText : undefined}
         >
-          Contracts <span className="bridge-tab-count">{contractCount}</span>
+          Contracts <span className="bridge-tab-count">{localContractCount}</span>
         </button>
       </div>
-      <SectionIntro {...sectionIntro} />
       <div className={`exchange-card-tab-body ${inTransit ? "transit-preview-content" : ""}`}>
         {tab === "markets" && (
           <MarketTableBody
@@ -1579,83 +1563,96 @@ function MarketTableBody({ ship, world, loc, target, hintText, cueText, selected
         if (!(next instanceof Node) || !event.currentTarget.contains(next)) onHoverGood(null);
       }}
     >
-      <table className={`market-table ${!manualActions ? "market-table-readonly" : ""}`}>
-        <colgroup>
-          <col className="col-good" />
-          <col className="col-num" />
-          <col className="col-held" />
-          <col className="col-num" />
-          <col className="col-net-sell" />
-          {manualActions && <col className="col-action" />}
-        </colgroup>
-        <thead>
-          <tr>
-            <th>Good</th>
-            <th className="numeric">Stock</th>
-            <th className="numeric">Held</th>
-            <th className="numeric">Price</th>
-            <th className="numeric">Net Sell*</th>
-            {manualActions && <th>Action</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {goodsOrdered.map((gid) => {
-            const stock = market.stock[gid] ?? 0;
-            const price = market.prices[gid] ?? 0;
-            const netSell = price * (1 - 0.15);
-            const matchingLot = findCargoLot(ship, gid);
-            const isCargo = matchingLot != null;
-            const cargoQty = matchingLot?.qty ?? 0;
-            const isFuel = ship.fuelTypes.some(f => f.good === gid);
-            const suggestedBuyQty = target.buyGoods?.[gid] ?? (target.buyGood === gid ? target.buyQty : undefined);
-            const isBuyTarget = suggestedBuyQty != null;
-            const pinned = pinnedGoods.has(gid);
-            return (
-              <tr
-                key={gid}
-                aria-selected={selectedGood === gid}
-              >
-                <td>
-                  <button
-                    type="button"
-                    className="row-title-with-pin info-focus-trigger"
-                    aria-pressed={pinned}
-                    onMouseEnter={() => onHoverGood(gid)}
-                    onMouseLeave={() => onHoverGood(null)}
-                    onFocus={() => onHoverGood(gid)}
-                    onBlur={() => onHoverGood(null)}
-                    onClick={() => onSelectGood(gid)}
-                  >
-                    <span className="good-name">{world.goods[gid].name}</span>
-                    {pinned && <MdPushPin className="ui-icon row-pin-icon" aria-hidden="true" focusable="false" />}
-                  </button>
-                  {isFuel && <span className="row-meta-pill muted">fuel</span>}
-                </td>
-                <td className="numeric mono">{stock.toFixed(0)}</td>
-                <td className={`numeric mono market-held-cell ${isCargo ? "" : "dim"}`}>{isCargo ? cargoQty.toFixed(0) : "—"}</td>
-                <td className="numeric mono">Ç{price.toFixed(1)}</td>
-                <td className="numeric mono dim">Ç{netSell.toFixed(1)}</td>
-                {manualActions && (
-                  <td>
-                    <BuyControls
-                      ship={ship}
-                      world={world}
-                      goodId={gid}
-                      stock={stock}
-                      price={price}
-                      suggestedBuy={isBuyTarget}
-                      hintText={cueText.buyGoods[gid] ?? hintText}
-                      recommendedBuyQty={suggestedBuyQty}
-                      disabledReason={interactionLocked ? "Arrive before trading" : undefined}
-                      onBuy={(qty) => buy(ship.id, gid, qty)}
-                    />
-                  </td>
-                )}
+      <SortableRows
+        rows={goodsOrdered}
+        columns={[
+          { id: "good", label: "good", getValue: gid => world.goods[gid].name },
+          { id: "stock", label: "stock", getValue: gid => market.stock[gid] ?? 0, defaultDirection: "desc" },
+          { id: "held", label: "held cargo", getValue: gid => findCargoLot(ship, gid)?.qty ?? 0, defaultDirection: "desc" },
+          { id: "price", label: "price", getValue: gid => market.prices[gid] ?? 0, defaultDirection: "desc" },
+          { id: "net-sell", label: "net sell", getValue: gid => (market.prices[gid] ?? 0) * (1 - 0.15), defaultDirection: "desc" },
+        ]}
+      >
+        {(sortedGoods, sort) => (
+          <table className={`market-table ${!manualActions ? "market-table-readonly" : ""}`}>
+            <colgroup>
+              <col className="col-good" />
+              <col className="col-num" />
+              <col className="col-held" />
+              <col className="col-num" />
+              <col className="col-net-sell" />
+              {manualActions && <col className="col-action" />}
+            </colgroup>
+            <thead>
+              <tr>
+                <SortableTh sort={sort} columnId="good">Good</SortableTh>
+                <SortableTh sort={sort} columnId="stock" className="numeric">Stock</SortableTh>
+                <SortableTh sort={sort} columnId="held" className="numeric">Held</SortableTh>
+                <SortableTh sort={sort} columnId="price" className="numeric">Price</SortableTh>
+                <SortableTh sort={sort} columnId="net-sell" className="numeric">Net Sell*</SortableTh>
+                {manualActions && <th>Action</th>}
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
+            </thead>
+            <tbody>
+              {sortedGoods.map((gid) => {
+                const stock = market.stock[gid] ?? 0;
+                const price = market.prices[gid] ?? 0;
+                const netSell = price * (1 - 0.15);
+                const matchingLot = findCargoLot(ship, gid);
+                const isCargo = matchingLot != null;
+                const cargoQty = matchingLot?.qty ?? 0;
+                const isFuel = ship.fuelTypes.some(f => f.good === gid);
+                const suggestedBuyQty = target.buyGoods?.[gid] ?? (target.buyGood === gid ? target.buyQty : undefined);
+                const isBuyTarget = suggestedBuyQty != null;
+                const pinned = pinnedGoods.has(gid);
+                return (
+                  <tr
+                    key={gid}
+                    aria-selected={selectedGood === gid}
+                  >
+                    <td>
+                      <button
+                        type="button"
+                        className="row-title-with-pin info-focus-trigger"
+                        aria-pressed={pinned}
+                        onMouseEnter={() => onHoverGood(gid)}
+                        onMouseLeave={() => onHoverGood(null)}
+                        onFocus={() => onHoverGood(gid)}
+                        onBlur={() => onHoverGood(null)}
+                        onClick={() => onSelectGood(gid)}
+                      >
+                        <span className="good-name">{world.goods[gid].name}</span>
+                        {pinned && <MdPushPin className="ui-icon row-pin-icon" aria-hidden="true" focusable="false" />}
+                      </button>
+                      {isFuel && <span className="row-meta-pill muted">fuel</span>}
+                    </td>
+                    <td className="numeric mono">{stock.toFixed(0)}</td>
+                    <td className={`numeric mono market-held-cell ${isCargo ? "" : "dim"}`}>{isCargo ? cargoQty.toFixed(0) : "—"}</td>
+                    <td className="numeric mono">Ç{price.toFixed(1)}</td>
+                    <td className="numeric mono dim">Ç{netSell.toFixed(1)}</td>
+                    {manualActions && (
+                      <td>
+                        <BuyControls
+                          ship={ship}
+                          world={world}
+                          goodId={gid}
+                          stock={stock}
+                          price={price}
+                          suggestedBuy={isBuyTarget}
+                          hintText={cueText.buyGoods[gid] ?? hintText}
+                          recommendedBuyQty={suggestedBuyQty}
+                          disabledReason={interactionLocked ? "Arrive before trading" : undefined}
+                          onBuy={(qty) => buy(ship.id, gid, qty)}
+                        />
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </SortableRows>
       <div className="market-footnote faint">
         * Net Sell = listed price minus 15% port tax. What you'd actually receive if you sold here.
       </div>
@@ -2165,26 +2162,38 @@ function TradeGoodInfoContent({ ship, world, loc, focus, target, hint }: {
             <span>Sources</span>
             <span>{[...cargo.sources].map(source => world.locations[source]?.name ?? source).join(", ")}</span>
           </div>
-          <table className="trade-helper-market-table trade-helper-lot-table">
-            <thead>
-              <tr>
-                <th>From</th>
-                <th className="numeric">Qty</th>
-                <th className="numeric">Paid</th>
-                <th className="numeric">Age</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lotRows.map((lot, i) => (
-                <tr key={`${lot.source}-${lot.purchasedAt}-${i}`}>
-                  <td title={world.locations[lot.source]?.name ?? lot.source}>{world.locations[lot.source]?.name ?? lot.source}</td>
-                  <td className="numeric mono">{lot.qty.toFixed(0)}</td>
-                  <td className="numeric mono">Ç{lot.unitPrice.toFixed(1)}</td>
-                  <td className="numeric mono">{world.tick - lot.purchasedAt}t</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <SortableRows
+            rows={lotRows}
+            columns={[
+              { id: "from", label: "source", getValue: lot => world.locations[lot.source]?.name ?? lot.source },
+              { id: "qty", label: "quantity", getValue: lot => lot.qty, defaultDirection: "desc" },
+              { id: "paid", label: "paid price", getValue: lot => lot.unitPrice, defaultDirection: "desc" },
+              { id: "age", label: "age", getValue: lot => world.tick - lot.purchasedAt, defaultDirection: "desc" },
+            ]}
+          >
+            {(sortedLots, sort) => (
+              <table className="trade-helper-market-table trade-helper-lot-table">
+                <thead>
+                  <tr>
+                    <SortableTh sort={sort} columnId="from">From</SortableTh>
+                    <SortableTh sort={sort} columnId="qty" className="numeric">Qty</SortableTh>
+                    <SortableTh sort={sort} columnId="paid" className="numeric">Paid</SortableTh>
+                    <SortableTh sort={sort} columnId="age" className="numeric">Age</SortableTh>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedLots.map((lot, i) => (
+                    <tr key={`${lot.source}-${lot.purchasedAt}-${i}`}>
+                      <td title={world.locations[lot.source]?.name ?? lot.source}>{world.locations[lot.source]?.name ?? lot.source}</td>
+                      <td className="numeric mono">{lot.qty.toFixed(0)}</td>
+                      <td className="numeric mono">Ç{lot.unitPrice.toFixed(1)}</td>
+                      <td className="numeric mono">{world.tick - lot.purchasedAt}t</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </SortableRows>
           {cargo.lots.length > lotRows.length && (
             <div className="trade-helper-note">+{cargo.lots.length - lotRows.length} older lot{cargo.lots.length - lotRows.length === 1 ? "" : "s"} folded into the weighted average.</div>
           )}
@@ -2233,41 +2242,54 @@ function TradeGoodInfoContent({ ship, world, loc, focus, target, hint }: {
         {orderRows.length === 0 ? (
           <div className="trade-helper-line muted"><span>Routes</span><span>No reachable stations</span></div>
         ) : (
-          <table className="trade-helper-market-table">
-            <thead>
-              <tr>
-                <th>Station</th>
-                <th className="numeric">Dist</th>
-                <th className="numeric">Sell</th>
-                <th className="numeric">Demand</th>
-                <th className="numeric">Profit/loss</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orderRows.map(row => {
-                const demandText = row.demandGap >= 1
-                  ? row.demandGap.toFixed(0)
-                  : row.consumed > row.produced
-                    ? "flow"
-                    : "—";
-                const routeTone = routeQty > 0 && row.netAtQty > 0 ? "good" : routeQty > 0 && row.netAtQty < 0 ? "bad" : "";
-                const routeText = routeQty > 0
-                  ? `${row.netAtQty >= 0 ? "+" : ""}Ç${Math.round(row.netAtQty).toLocaleString()}`
-                  : row.breakEvenQty != null
-                    ? `${row.breakEvenQty.toLocaleString()}u`
-                    : "—";
-                return (
-                  <tr key={row.to}>
-                    <td title={row.name}>{row.name}</td>
-                    <td className="numeric mono">{row.dist.toFixed(1)}</td>
-                    <td className="numeric mono">Ç{row.netSell.toFixed(1)}</td>
-                    <td className="numeric mono">{demandText}</td>
-                    <td className={`numeric mono ${routeTone}`}>{routeText}</td>
+          <SortableRows
+            rows={orderRows}
+            columns={[
+              { id: "station", label: "station", getValue: row => row.name },
+              { id: "dist", label: "distance", getValue: row => row.dist },
+              { id: "sell", label: "sell price", getValue: row => row.netSell, defaultDirection: "desc" },
+              { id: "demand", label: "demand", getValue: row => row.demandGap, defaultDirection: "desc" },
+              { id: "profit", label: "profit/loss", getValue: row => routeQty > 0 ? row.netAtQty : row.breakEvenQty ?? null, defaultDirection: "desc" },
+            ]}
+          >
+            {(sortedRows, sort) => (
+              <table className="trade-helper-market-table">
+                <thead>
+                  <tr>
+                    <SortableTh sort={sort} columnId="station">Station</SortableTh>
+                    <SortableTh sort={sort} columnId="dist" className="numeric">Dist</SortableTh>
+                    <SortableTh sort={sort} columnId="sell" className="numeric">Sell</SortableTh>
+                    <SortableTh sort={sort} columnId="demand" className="numeric">Demand</SortableTh>
+                    <SortableTh sort={sort} columnId="profit" className="numeric">Profit/loss</SortableTh>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                </thead>
+                <tbody>
+                  {sortedRows.map(row => {
+                    const demandText = row.demandGap >= 1
+                      ? row.demandGap.toFixed(0)
+                      : row.consumed > row.produced
+                        ? "flow"
+                        : "—";
+                    const routeTone = routeQty > 0 && row.netAtQty > 0 ? "good" : routeQty > 0 && row.netAtQty < 0 ? "bad" : "";
+                    const routeText = routeQty > 0
+                      ? `${row.netAtQty >= 0 ? "+" : ""}Ç${Math.round(row.netAtQty).toLocaleString()}`
+                      : row.breakEvenQty != null
+                        ? `${row.breakEvenQty.toLocaleString()}u`
+                        : "—";
+                    return (
+                      <tr key={row.to}>
+                        <td title={row.name}>{row.name}</td>
+                        <td className="numeric mono">{row.dist.toFixed(1)}</td>
+                        <td className="numeric mono">Ç{row.netSell.toFixed(1)}</td>
+                        <td className="numeric mono">{demandText}</td>
+                        <td className={`numeric mono ${routeTone}`}>{routeText}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </SortableRows>
         )}
       </div>
 
@@ -2317,9 +2339,12 @@ function ShipCargoTabs({ ship, world, loc, groups, inTransit, target, hintText, 
 }) {
   const installedCount = Object.keys(ship.upgrades ?? {}).length;
   const crewCount = Object.keys(ship.crew ?? {}).length;
+  const activeContracts = Object.values(world.jobs).filter(j => j.acceptedBy === ship.id);
   const manualActions = ship.pilot !== "auto";
   const cargoSuggested = manualActions && targetSuggestsCargoAction(target);
+  const contractsSuggested = manualActions && target.collectJobId != null && activeContracts.some(j => j.id === target.collectJobId);
   const cargoHintText = cueText.sections.cargo ?? hintText;
+  const contractHintText = target.collectJobId ? cueText.collectJobs[target.collectJobId] ?? hintText : hintText;
 
   return (
     <div className="ship-cargo-section">
@@ -2345,6 +2370,13 @@ function ShipCargoTabs({ ship, world, loc, groups, inTransit, target, hintText, 
         >
           Crew <span className="bridge-tab-count">{crewCount}/3</span>
         </button>
+        <button
+          className={`bridge-tab ${tab === "contracts" ? "active" : ""} ${contractsSuggested ? "has-suggestion" : ""}`}
+          onClick={() => onTabChange("contracts")}
+          title={contractsSuggested ? contractHintText : undefined}
+        >
+          Contracts <span className="bridge-tab-count">{activeContracts.length}</span>
+        </button>
       </div>
       {tab === "cargo" && (
         <CargoTab
@@ -2364,6 +2396,7 @@ function ShipCargoTabs({ ship, world, loc, groups, inTransit, target, hintText, 
       )}
       {tab === "upgrades" && <ShipUpgradesTab ship={ship} />}
       {tab === "crew" && <CrewTab ship={ship} />}
+      {tab === "contracts" && <ActiveContractsTab ship={ship} world={world} jobs={activeContracts} target={target} cueText={cueText} hintText={hintText} />}
     </div>
   );
 }
@@ -2685,46 +2718,62 @@ function CargoTab({ ship, world, loc, groups, inTransit, target, hintText, cueTe
 
   return (
     <div className="cargo-table-zone">
-      <table className="cargo-table">
-        <colgroup>
-          <col />
-          <col className="col-num" />
-          <col className="cargo-col-pnl" />
-          {manualActions && <col className="cargo-col-action" />}
-        </colgroup>
-        <thead>
-          <tr>
-            <th>Good</th>
-            <th className="numeric">Qty</th>
-            <th className="numeric">P&amp;L <span className="dim">({inTransit ? "on arrival" : "here"})</span></th>
-            {manualActions && <th>Action</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {groups.length === 0 ? (
-            <tr><td colSpan={manualActions ? 4 : 3} className="cargo-row-empty">Cargo bay empty</td></tr>
-          ) : (
-            groups.map((g) => (
-              <CargoRow
-                key={g.good}
-                group={g}
-                ship={ship}
-                world={world}
-                refLocId={loc.id}
-                inTransit={inTransit}
-                suggested={target.sellGood === g.good || target.sellGoods?.includes(g.good) === true}
-                hintText={cueText.sellGoods[g.good] ?? hintText}
-                selected={selectedGood === g.good}
-                pinned={pinnedGoods.has(g.good)}
-                showAction={manualActions}
-                onSelect={() => onSelectGood(g.good)}
-                onHover={(good) => onHoverGood(good)}
-                onSell={() => sell(ship.id, g.good, g.totalQty)}
-              />
-            ))
-          )}
-        </tbody>
-      </table>
+      <SortableRows
+        rows={groups}
+        columns={[
+          { id: "good", label: "good", getValue: group => world.goods[group.good]?.name ?? group.good },
+          { id: "qty", label: "quantity", getValue: group => group.totalQty + group.unloadingQty, defaultDirection: "desc" },
+          {
+            id: "pnl",
+            label: "profit/loss",
+            getValue: group => group.totalQty * marketQuote(world, loc.id, group.good) * (1 - SALES_TAX_RATE) - group.totalCost,
+            defaultDirection: "desc",
+          },
+        ]}
+      >
+        {(sortedGroups, sort) => (
+          <table className="cargo-table">
+            <colgroup>
+              <col />
+              <col className="col-num" />
+              <col className="cargo-col-pnl" />
+              {manualActions && <col className="cargo-col-action" />}
+            </colgroup>
+            <thead>
+              <tr>
+                <SortableTh sort={sort} columnId="good">Good</SortableTh>
+                <SortableTh sort={sort} columnId="qty" className="numeric">Qty</SortableTh>
+                <SortableTh sort={sort} columnId="pnl" className="numeric">P&amp;L <span className="dim">({inTransit ? "on arrival" : "here"})</span></SortableTh>
+                {manualActions && <th>Action</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {sortedGroups.length === 0 ? (
+                <tr><td colSpan={manualActions ? 4 : 3} className="cargo-row-empty">Cargo bay empty</td></tr>
+              ) : (
+                sortedGroups.map((g) => (
+                  <CargoRow
+                    key={g.good}
+                    group={g}
+                    ship={ship}
+                    world={world}
+                    refLocId={loc.id}
+                    inTransit={inTransit}
+                    suggested={target.sellGood === g.good || target.sellGoods?.includes(g.good) === true}
+                    hintText={cueText.sellGoods[g.good] ?? hintText}
+                    selected={selectedGood === g.good}
+                    pinned={pinnedGoods.has(g.good)}
+                    showAction={manualActions}
+                    onSelect={() => onSelectGood(g.good)}
+                    onHover={(good) => onHoverGood(good)}
+                    onSell={() => sell(ship.id, g.good, g.totalQty)}
+                  />
+                ))
+              )}
+            </tbody>
+          </table>
+        )}
+      </SortableRows>
     </div>
   );
 }
@@ -2859,7 +2908,6 @@ function ModifierPills({ mods }: { mods: CrewModifiers }) {
 // who's hired (or vacant) with a Fire button. Hiring happens from the
 // "Hire offers" tab next to the market.
 function CrewTab({ ship }: { ship: Trader }) {
-  const fire = useStore((s) => s.fireCrew);
   const docked = ship.state === "idle";
   const roles: { role: CrewRole; label: string }[] = [
     { role: "captain",   label: "Pilot" },
@@ -2872,43 +2920,80 @@ function CrewTab({ ship }: { ship: Trader }) {
       {roles.map(({ role, label }) => {
         const member = ship.crew?.[role];
         return (
-          <article key={role} className={`crew-card ${member ? "filled" : "empty"}`}>
-            <div className="crew-card-main">
-              <div className="crew-card-head">
-                <span className="crew-role-label">{label}</span>
-                {!member && <span className="upgrade-source-pill">Vacant</span>}
-              </div>
-              <div className="crew-card-name">{member?.name ?? "Open crew station"}</div>
-              <div className="crew-card-bottom">
-                {member ? <ModifierPills mods={member.modifiers} /> : <span className="crew-empty-bottom">Vacant berth</span>}
-              </div>
-            </div>
-            {member && (
-              <div className="crew-card-actions">
-                <span className={`tier-badge crew-action-tier tier-${tierClass(member.tier)}`}>T{member.tier}</span>
-                <div className="crew-action-stack">
-                  <span className="crew-action-price mono">Ç{member.wagePerTick}/t</span>
-                  <button
-                    className="btn-action crew-card-action"
-                    onClick={() => fire(ship.id, role)}
-                    disabled={!docked}
-                    title={docked ? "Stop wages. No refund." : "Dock to fire"}
-                  >
-                    <span className="btn-label">Fire</span>
-                  </button>
-                </div>
-              </div>
-            )}
-          </article>
+          <CrewRoleCard
+            key={role}
+            shipId={ship.id}
+            role={role}
+            label={label}
+            member={member}
+            docked={docked}
+          />
         );
       })}
     </div>
   );
 }
 
-// Accepted-contract list for this ship — lives in the Cargo|Crew|Active tab
-// strip rather than in the Jobs sidebar tab. Per-ship view lets the player
-// see at-a-glance what their currently-focused ship is committed to.
+function CrewRoleCard({
+  shipId, role, label, member, docked,
+}: {
+  shipId: string;
+  role: CrewRole;
+  label: string;
+  member: CrewMember | undefined;
+  docked: boolean;
+}) {
+  const fire = useStore((s) => s.fireCrew);
+  const activeSaveId = useStore((s) => s.activeSaveId);
+  const headshot = useCrewHeadshot(activeSaveId, member);
+  const showImage = !!member && headshot?.status === "ready";
+  const cardStyle: CSSProperties | undefined = showImage && headshot.status === "ready"
+    ? { backgroundImage: `url(${headshot.url})` }
+    : undefined;
+  const headshotStateClass = !member
+    ? ""
+    : headshot?.status === "ready"
+      ? "has-headshot"
+      : headshot?.status === "loading"
+        ? "headshot-loading"
+        : "";
+  return (
+    <article
+      className={`crew-card ${member ? "filled" : "empty"} ${headshotStateClass}`.trim()}
+      style={cardStyle}
+    >
+      <div className="crew-card-main">
+        <div className="crew-card-head">
+          <span className="crew-role-label">{label}</span>
+          {!member && <span className="upgrade-source-pill">Vacant</span>}
+        </div>
+        <div className="crew-card-name">{member?.name ?? "Open crew station"}</div>
+        <div className="crew-card-bottom">
+          {member ? <ModifierPills mods={member.modifiers} /> : <span className="crew-empty-bottom">Vacant berth</span>}
+        </div>
+      </div>
+      {member && (
+        <div className="crew-card-actions">
+          <span className={`tier-badge crew-action-tier tier-${tierClass(member.tier)}`}>T{member.tier}</span>
+          <div className="crew-action-stack">
+            <span className="crew-action-price mono">Ç{member.wagePerTick}/t</span>
+            <button
+              className="btn-action crew-card-action"
+              onClick={() => fire(shipId, role)}
+              disabled={!docked}
+              title={docked ? "Stop wages. No refund." : "Dock to fire"}
+            >
+              <span className="btn-label">Fire</span>
+            </button>
+          </div>
+        </div>
+      )}
+    </article>
+  );
+}
+
+// Accepted-contract list for this ship. Per-ship view lets the player see
+// at-a-glance what their currently-focused ship is committed to.
 function ActiveContractsTab({ ship, world, jobs, target, cueText, hintText }: {
   ship: Trader; world: World; jobs: Job[]; target: HintTarget; cueText: CueTextMap; hintText: string;
 }) {
@@ -2925,99 +3010,114 @@ function ActiveContractsTab({ ship, world, jobs, target, cueText, hintText }: {
       {sorted.length === 0 ? (
         <div className="contract-empty">No active contracts.</div>
       ) : (
-        <table className="jobs-table contract-table active-contracts-table">
-          <colgroup>
-            <col className="col-tier" />
-            <col />
-            <col className="col-dest" />
-            <col className="col-progress" />
-            <col className="col-money" />
-            <col className="col-money" />
-            <col className="col-expires" />
-            <col className="col-action" />
-          </colgroup>
-          <thead>
-            <tr>
-              <th>Tier</th>
-              <th>Contract</th>
-              <th>Route</th>
-              <th>Progress</th>
-              <th className="numeric">Reward</th>
-              <th className="numeric">Penalty</th>
-              <th className="numeric">Expires</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((j) => {
-              const ticksLeft = Math.max(0, j.expiresAt - world.tick);
-              const expiringSoon = ticksLeft <= 10;
-              const dst = world.locations[j.destination]?.name ?? j.destination;
-              const isTradeJob = j.kind === "trade";
-              const good = isTradeJob
-                ? `${j.trade?.ticker ?? "Trade"} settlement`
-                : j.good ? world.goods[j.good]?.name ?? j.good : "Contract";
-              const away = j.destination !== ship.location;
-              const pct = j.qty > 0 ? Math.max(0, Math.min(100, (j.delivered / j.qty) * 100)) : 0;
-              const suggestedCollect = target.collectJobId === j.id && j.destination === ship.location;
-              return (
-                <tr key={j.id} className={`contract-row contract-tier-${j.tier}`}>
-                  <td><span className={`tier-badge tier-${j.tier}`}>{j.tier.toUpperCase()}</span></td>
-                  <td>
-                    <span className="contract-title-row">
-                      <span className="row-art-thumb contract-art-thumb" style={artCardStyle(jobArtUrl(world, j))} aria-hidden="true" />
-                      <span className="contract-good">{good}</span>
-                      {j.kind === "rescue" && <span className="job-kind-tag">rescue</span>}
-                      {isTradeJob && (
-                        <span className="job-kind-tag">
-                          {j.trade?.settlementKind === "loss_forgiveness" ? "loss review" : "trade"}
-                        </span>
-                      )}
-                    </span>
-                  </td>
-                  <td className="dim mono">{away ? `to ${dst}` : "here"}</td>
-                  <td>
-                    {isTradeJob ? (
-                      <span className={`mono ${away ? "dim" : "good"}`}>{away ? "travel" : "ready"}</span>
-                    ) : (
-                      <div className="contract-progress">
-                        <div className="contract-progress-bar">
-                          <div className="contract-progress-fill" style={{ width: `${pct}%` }} />
-                        </div>
-                        <span className="mono dim">{j.delivered.toFixed(0)}/{j.qty}</span>
-                      </div>
-                    )}
-                  </td>
-                  <td className="numeric mono good">Ç{j.reward.toLocaleString()}</td>
-                  <td className={`numeric mono ${j.penalty > 0 ? "bad" : "faint"}`}>{j.penalty > 0 ? `Ç${j.penalty.toLocaleString()}` : "—"}</td>
-                  <td className={`numeric mono ${expiringSoon ? "warn" : "dim"}`}>{ticksLeft}t</td>
-                  <td>
-                    {isTradeJob ? (
-                      <ActionCell suggested={suggestedCollect} hintText={cueText.collectJobs[j.id] ?? hintText} label="Collect">
-                        <button
-                          className={`btn-action ${suggestedCollect ? "btn-suggested" : "primary"}`}
-                          onClick={() => collectJob(j.id, ship.id)}
-                          disabled={away}
-                          title={away ? `Collect at ${dst}` : undefined}
-                        >
-                          <span className="btn-label">Collect</span>
-                        </button>
-                      </ActionCell>
-                    ) : (
-                      <button
-                        className="btn-action"
-                        onClick={() => abandonJob(j.id)}
-                        title={j.penalty > 0 ? `Abandoning costs Ç${j.penalty.toLocaleString()}` : "Abandon (no penalty)"}
-                      >
-                        <span className="btn-label">Abandon</span>
-                      </button>
-                    )}
-                  </td>
+        <SortableRows
+          rows={sorted}
+          columns={[
+            { id: "tier", label: "tier", getValue: j => TIER_RANK[j.tier] },
+            { id: "contract", label: "contract", getValue: j => j.kind === "trade" ? `${j.trade?.ticker ?? "Trade"} settlement` : j.good ? world.goods[j.good]?.name ?? j.good : j.kind },
+            { id: "route", label: "route", getValue: j => world.locations[j.destination]?.name ?? j.destination },
+            { id: "progress", label: "progress", getValue: j => j.kind === "trade" ? Number(j.destination === ship.location) : j.qty > 0 ? j.delivered / j.qty : 0, defaultDirection: "desc" },
+            { id: "reward", label: "reward", getValue: j => j.reward, defaultDirection: "desc" },
+            { id: "penalty", label: "penalty", getValue: j => j.penalty, defaultDirection: "desc" },
+            { id: "expires", label: "expiry", getValue: j => Math.max(0, j.expiresAt - world.tick) },
+          ]}
+        >
+          {(sortedJobs, sort) => (
+            <table className="jobs-table contract-table active-contracts-table">
+              <colgroup>
+                <col className="col-tier" />
+                <col />
+                <col className="col-dest" />
+                <col className="col-progress" />
+                <col className="col-money" />
+                <col className="col-money" />
+                <col className="col-expires" />
+                <col className="col-action" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <SortableTh sort={sort} columnId="tier">Tier</SortableTh>
+                  <SortableTh sort={sort} columnId="contract">Contract</SortableTh>
+                  <SortableTh sort={sort} columnId="route">Route</SortableTh>
+                  <SortableTh sort={sort} columnId="progress">Progress</SortableTh>
+                  <SortableTh sort={sort} columnId="reward" className="numeric">Reward</SortableTh>
+                  <SortableTh sort={sort} columnId="penalty" className="numeric">Penalty</SortableTh>
+                  <SortableTh sort={sort} columnId="expires" className="numeric">Expires</SortableTh>
+                  <th></th>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              </thead>
+              <tbody>
+                {sortedJobs.map((j) => {
+                  const ticksLeft = Math.max(0, j.expiresAt - world.tick);
+                  const expiringSoon = ticksLeft <= 10;
+                  const dst = world.locations[j.destination]?.name ?? j.destination;
+                  const isTradeJob = j.kind === "trade";
+                  const good = isTradeJob
+                    ? `${j.trade?.ticker ?? "Trade"} settlement`
+                    : j.good ? world.goods[j.good]?.name ?? j.good : "Contract";
+                  const away = j.destination !== ship.location;
+                  const pct = j.qty > 0 ? Math.max(0, Math.min(100, (j.delivered / j.qty) * 100)) : 0;
+                  const suggestedCollect = target.collectJobId === j.id && j.destination === ship.location;
+                  return (
+                    <tr key={j.id} className={`contract-row contract-tier-${j.tier}`}>
+                      <td><span className={`tier-badge tier-${j.tier}`}>{j.tier.toUpperCase()}</span></td>
+                      <td>
+                        <span className="contract-title-row">
+                          <span className="row-art-thumb contract-art-thumb" style={artCardStyle(jobArtUrl(world, j))} aria-hidden="true" />
+                          <span className="contract-good">{good}</span>
+                          {j.kind === "rescue" && <span className="job-kind-tag">rescue</span>}
+                          {isTradeJob && (
+                            <span className="job-kind-tag">
+                              {j.trade?.settlementKind === "loss_forgiveness" ? "loss review" : "trade"}
+                            </span>
+                          )}
+                        </span>
+                      </td>
+                      <td className="dim mono">{away ? `to ${dst}` : "here"}</td>
+                      <td>
+                        {isTradeJob ? (
+                          <span className={`mono ${away ? "dim" : "good"}`}>{away ? "travel" : "ready"}</span>
+                        ) : (
+                          <div className="contract-progress">
+                            <div className="contract-progress-bar">
+                              <div className="contract-progress-fill" style={{ width: `${pct}%` }} />
+                            </div>
+                            <span className="mono dim">{j.delivered.toFixed(0)}/{j.qty}</span>
+                          </div>
+                        )}
+                      </td>
+                      <td className="numeric mono good">Ç{j.reward.toLocaleString()}</td>
+                      <td className={`numeric mono ${j.penalty > 0 ? "bad" : "faint"}`}>{j.penalty > 0 ? `Ç${j.penalty.toLocaleString()}` : "—"}</td>
+                      <td className={`numeric mono ${expiringSoon ? "warn" : "dim"}`}>{ticksLeft}t</td>
+                      <td>
+                        {isTradeJob ? (
+                          <ActionCell suggested={suggestedCollect} hintText={cueText.collectJobs[j.id] ?? hintText} label="Collect">
+                            <button
+                              className={`btn-action ${suggestedCollect ? "btn-suggested" : "primary"}`}
+                              onClick={() => collectJob(j.id, ship.id)}
+                              disabled={away}
+                              title={away ? `Collect at ${dst}` : undefined}
+                            >
+                              <span className="btn-label">Collect</span>
+                            </button>
+                          </ActionCell>
+                        ) : (
+                          <button
+                            className="btn-action"
+                            onClick={() => abandonJob(j.id)}
+                            title={j.penalty > 0 ? `Abandoning costs Ç${j.penalty.toLocaleString()}` : "Abandon (no penalty)"}
+                          >
+                            <span className="btn-label">Abandon</span>
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </SortableRows>
       )}
     </>
   );
@@ -3027,7 +3127,6 @@ function ActiveContractsTab({ ship, world, jobs, target, cueText, hintText }: {
 // as Cargo|Crew above. Lists posted offers at the docked station with their
 // expiry countdown; rows are sorted tier asc / cost asc by listHiresAt.
 function HireOffersTab({ ship, world, loc, interactionLocked }: { ship: Trader; world: World; loc: LocationDef; interactionLocked: boolean }) {
-  const hire = useStore((s) => s.hireCrew);
   const offers = listHiresAt(world, loc.id);
   const docked = ship.state === "idle" && ship.location === loc.id && !interactionLocked;
 
@@ -3037,41 +3136,75 @@ function HireOffersTab({ ship, world, loc, interactionLocked }: { ship: Trader; 
         <div className="upgrade-empty-card">No crew posted at {loc.name}.</div>
       ) : (
         <div className="crew-offer-grid">
-          {offers.map((h) => {
-            const ticksLeft = Math.max(0, h.expiresAt - world.tick);
-            const mods = modifiersText(h.modifiers);
-            const canAfford = ship.funds >= h.hireCost;
-            return (
-              <article key={h.id} className={`crew-card crew-offer-card tier-${tierClass(h.tier)}`}>
-                <div className="crew-card-main">
-                  <div className="crew-card-head">
-                    <span className="crew-role-label">{ROLE_SHORT[h.role]}</span>
-                  </div>
-                  <div className="crew-card-name">{h.name}</div>
-                  <div className="crew-card-bottom" title={mods || undefined}>
-                    <ModifierPills mods={h.modifiers} />
-                  </div>
-                </div>
-                <div className="crew-card-actions">
-                  <span className={`tier-badge crew-action-tier tier-${tierClass(h.tier)}`}>T{h.tier}</span>
-                  <div className="crew-action-stack">
-                    <span className="crew-action-price mono" title={`Wage Ç${h.wagePerTick}/t · expires in ${ticksLeft}t`}>Ç{h.hireCost.toLocaleString()}</span>
-                    <button
-                      className={`btn-action crew-card-action ${canAfford && docked ? "primary" : ""}`}
-                      onClick={() => hire(ship.id, h.id)}
-                      disabled={!canAfford || !docked}
-                      title={!docked ? "Dock to hire" : !canAfford ? `Need Ç${h.hireCost.toLocaleString()}` : "Sign on (replaces any existing in this role)"}
-                    >
-                      <span className="btn-label">Hire</span>
-                    </button>
-                  </div>
-                </div>
-              </article>
-            );
-          })}
+          {offers.map((h) => (
+            <HireOfferCard
+              key={h.id}
+              hire={h}
+              shipId={ship.id}
+              shipFunds={ship.funds}
+              worldTick={world.tick}
+              docked={docked}
+            />
+          ))}
         </div>
       )}
     </div>
+  );
+}
+
+function HireOfferCard({
+  hire: h, shipId, shipFunds, worldTick, docked,
+}: {
+  hire: import("../../sim/types").Hire;
+  shipId: TraderId;
+  shipFunds: number;
+  worldTick: number;
+  docked: boolean;
+}) {
+  const hire = useStore((s) => s.hireCrew);
+  const activeSaveId = useStore((s) => s.activeSaveId);
+  const headshot = useCrewHeadshot(activeSaveId, h);
+  const ticksLeft = Math.max(0, h.expiresAt - worldTick);
+  const mods = modifiersText(h.modifiers);
+  const canAfford = shipFunds >= h.hireCost;
+  const showImage = headshot?.status === "ready";
+  const cardStyle: CSSProperties | undefined = showImage && headshot.status === "ready"
+    ? { backgroundImage: `url(${headshot.url})` }
+    : undefined;
+  const headshotStateClass = headshot?.status === "ready"
+    ? "has-headshot"
+    : headshot?.status === "loading"
+      ? "headshot-loading"
+      : "";
+  return (
+    <article
+      className={`crew-card crew-offer-card tier-${tierClass(h.tier)} ${headshotStateClass}`.trim()}
+      style={cardStyle}
+    >
+      <div className="crew-card-main">
+        <div className="crew-card-head">
+          <span className="crew-role-label">{ROLE_SHORT[h.role]}</span>
+        </div>
+        <div className="crew-card-name">{h.name}</div>
+        <div className="crew-card-bottom" title={mods || undefined}>
+          <ModifierPills mods={h.modifiers} />
+        </div>
+      </div>
+      <div className="crew-card-actions">
+        <span className={`tier-badge crew-action-tier tier-${tierClass(h.tier)}`}>T{h.tier}</span>
+        <div className="crew-action-stack">
+          <span className="crew-action-price mono" title={`Wage Ç${h.wagePerTick}/t · expires in ${ticksLeft}t`}>Ç{h.hireCost.toLocaleString()}</span>
+          <button
+            className={`btn-action crew-card-action ${canAfford && docked ? "primary" : ""}`}
+            onClick={() => hire(shipId, h.id)}
+            disabled={!canAfford || !docked}
+            title={!docked ? "Dock to hire" : !canAfford ? `Need Ç${h.hireCost.toLocaleString()}` : "Sign on (replaces any existing in this role)"}
+          >
+            <span className="btn-label">Hire</span>
+          </button>
+        </div>
+      </div>
+    </article>
   );
 }
 
@@ -3135,26 +3268,14 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
       const fuelCost = ft && !fuelFree ? fuelNeeded * (market.prices[ft.good] ?? 0) : 0;
       const travelTicks = travelTicksFor(ship, dist);
       const canFly = fuelFree || (ft != null && fuel >= fuelNeeded);
-      return { to, name: dst?.name ?? to, dist, fuelNeeded, fuelCost, travelTicks, canFly, isCurrent: false };
+      return { to, name: dst?.name ?? to, dist, fuelNeeded, fuelCost, travelTicks, canFly };
     })
     .sort((a, b) => a.dist - b.dist);
   const currentLocation = world.locations[routeFrom];
-  const dests = currentLocation
-    ? [
-        {
-          to: routeFrom,
-          name: currentLocation.name,
-          dist: 0,
-          fuelNeeded: 0,
-          fuelCost: 0,
-          travelTicks: 0,
-          canFly: false,
-          isCurrent: true,
-        },
-        ...neighborDests,
-      ]
-    : neighborDests;
-  const travelSuggested = !inTransit && manualActions && dests.some(d => target.travelTo === d.to && d.canFly);
+  const currentStationName = currentLocation?.name ?? world.locations[routeFrom]?.name ?? loc.name;
+  const currentStationJobs = activeJobsByDestination.get(routeFrom) ?? [];
+  const currentPinned = pinnedStations.has(routeFrom);
+  const travelSuggested = !inTransit && manualActions && neighborDests.some(d => target.travelTo === d.to && d.canFly);
   const travelHintText = target.travelTo ? cueText.travel[target.travelTo] ?? cueText.sections.travel ?? hintText : hintText;
   const quickTravelTab = inTransit && manualActions ? (
     <button
@@ -3165,125 +3286,155 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
       Quick Travel <span className="bridge-tab-count">{ship.ticksRemaining}t</span>
     </button>
   ) : null;
-  const travelTitle = inTransit ? "Arrival route" : "Stations";
+  const travelTitle = inTransit ? "Route origin" : "Current location";
   const travelSubtitle = inTransit
-    ? `In transit to ${world.locations[ship.destination ?? loc.id]?.name ?? loc.name} / ${ship.ticksRemaining} tick${ship.ticksRemaining === 1 ? "" : "s"} remaining`
-    : `${neighborDests.length} reachable station${neighborDests.length === 1 ? "" : "s"}, departing ${world.locations[routeFrom]?.name ?? loc.name}`;
+    ? `To ${world.locations[ship.destination ?? loc.id]?.name ?? loc.name} / ${ship.ticksRemaining} tick${ship.ticksRemaining === 1 ? "" : "s"} remaining`
+    : `${neighborDests.length} reachable station${neighborDests.length === 1 ? "" : "s"}`;
+  const currentMeta = currentStationJobs.length > 0
+    ? contractLine(currentStationJobs)
+    : inTransit
+      ? "Route origin"
+      : travelSubtitle;
 
   return (
-    <section
-      className={`bridge-card travel-card ${currentLocation ? "art-card" : ""}`}
-      style={currentLocation ? artCardStyle(stationArtUrl(currentLocation)) : undefined}
-    >
-      <header className={`travel-panel-head ${travelSuggested ? "has-suggestion" : ""}`} title={travelSuggested ? travelHintText : undefined}>
-        <div>
-          <span className="travel-panel-label">{travelTitle}</span>
-          <span className="travel-panel-subtitle dim">{travelSubtitle}</span>
+    <section className="bridge-card travel-card">
+      <header
+        className={`travel-panel-head art-panel-head ${travelSuggested ? "has-suggestion" : ""}`}
+        style={currentLocation ? artCardStyle(stationArtUrl(currentLocation)) : undefined}
+        title={travelSuggested ? travelHintText : undefined}
+      >
+        <div className="travel-panel-main">
+          <div className="travel-panel-kicker">
+            <span className="travel-panel-label">{travelTitle}</span>
+          </div>
+          <span className="travel-current-meta">
+            <span>{currentMeta}</span>
+            {currentMeta !== travelSubtitle && <span className="travel-panel-subtitle dim">{travelSubtitle}</span>}
+          </span>
+          <button
+            type="button"
+            className="travel-current-station row-title-with-pin info-focus-trigger"
+            aria-pressed={currentPinned}
+            onMouseEnter={() => onHoverStation(routeFrom)}
+            onMouseLeave={() => onHoverStation(null)}
+            onFocus={() => onHoverStation(routeFrom)}
+            onBlur={() => onHoverStation(null)}
+            onClick={() => onSelectStation(routeFrom)}
+          >
+            <span className="travel-current-name">{currentStationName}</span>
+            {currentPinned && <MdPushPin className="ui-icon row-pin-icon" aria-hidden="true" focusable="false" />}
+          </button>
         </div>
         {quickTravelTab}
       </header>
       <div className="travel-table-zone">
-      <table className={`travel-table ${!manualActions ? "travel-table-readonly" : ""} ${inTransit ? "transit-preview-content" : ""}`}>
-        <colgroup>
-          <col className="col-dest" />
-          <col className="col-num" />
-          <col className="col-num" />
-          <col className="col-num" />
-          {manualActions && <col className="col-action" />}
-        </colgroup>
-        <thead>
-          <tr>
-            <th>To</th>
-            <th className="numeric">Dist</th>
-            <th className="numeric">Fuel</th>
-            <th className="numeric">Time</th>
-            {manualActions && <th></th>}
-          </tr>
-        </thead>
-        <tbody>
-          {dests.map((d) => {
-            const suggested = target.travelTo === d.to;
-            const destinationJobs = activeJobsByDestination.get(d.to) ?? [];
-            const travelLabel = suggested ? target.travelLabel : undefined;
-            const pinned = pinnedStations.has(d.to);
-            const isCurrent = d.isCurrent === true;
-            const isPoi = travelLabel != null;
-            const departGuarded = !isCurrent && !inTransit && d.canFly && shouldGuardDepartureForSuggestions(world, target, d.to, ship);
-            const departArmed = armedDepart === d.to;
-            return (
-              <tr
-                key={d.to}
-                className={`${isCurrent ? "travel-current-location" : ""} ${isPoi ? "travel-is-poi" : ""} ${destinationJobs.length > 0 ? "travel-has-contract" : ""}`}
-                aria-selected={selectedStation === d.to}
-              >
-                <td>
-                  <div className="travel-dest-cell">
-                    <button
-                      type="button"
-                      className={`row-title-with-pin travel-dest-title info-focus-trigger ${isPoi ? "travel-dest-title-poi" : ""}`}
-                      aria-pressed={pinned}
-                      onMouseEnter={() => onHoverStation(d.to)}
-                      onMouseLeave={() => onHoverStation(null)}
-                      onFocus={() => onHoverStation(d.to)}
-                      onBlur={() => onHoverStation(null)}
-                      onClick={() => onSelectStation(d.to)}
+        <SortableRows
+          rows={neighborDests}
+          columns={[
+            { id: "to", label: "destination", getValue: d => d.name },
+            { id: "dist", label: "distance", getValue: d => d.dist },
+            { id: "fuel", label: "fuel", getValue: d => d.fuelNeeded },
+            { id: "time", label: "travel time", getValue: d => d.travelTicks },
+          ]}
+        >
+          {(sortedDests, sort) => (
+            <table className={`travel-table ${!manualActions ? "travel-table-readonly" : ""} ${inTransit ? "transit-preview-content" : ""}`}>
+              <colgroup>
+                <col className="col-dest" />
+                <col className="col-num" />
+                <col className="col-num" />
+                <col className="col-num" />
+                {manualActions && <col className="col-action" />}
+              </colgroup>
+              <thead>
+                <tr>
+                  <SortableTh sort={sort} columnId="to">To</SortableTh>
+                  <SortableTh sort={sort} columnId="dist" className="numeric">Dist</SortableTh>
+                  <SortableTh sort={sort} columnId="fuel" className="numeric">Fuel</SortableTh>
+                  <SortableTh sort={sort} columnId="time" className="numeric">Time</SortableTh>
+                  {manualActions && <th></th>}
+                </tr>
+              </thead>
+              <tbody>
+                {sortedDests.map((d) => {
+                  const suggested = target.travelTo === d.to;
+                  const destinationJobs = activeJobsByDestination.get(d.to) ?? [];
+                  const travelLabel = suggested ? target.travelLabel : undefined;
+                  const pinned = pinnedStations.has(d.to);
+                  const isPoi = travelLabel != null;
+                  const departGuarded = !inTransit && d.canFly && shouldGuardDepartureForSuggestions(world, target, d.to, ship);
+                  const departArmed = armedDepart === d.to;
+                  return (
+                    <tr
+                      key={d.to}
+                      className={`${isPoi ? "travel-is-poi" : ""} ${destinationJobs.length > 0 ? "travel-has-contract" : ""}`}
+                      aria-selected={selectedStation === d.to}
                     >
-                      <span className="travel-dest-name">{d.name}</span>
-                      {pinned && <MdPushPin className="ui-icon row-pin-icon" aria-hidden="true" focusable="false" />}
-                    </button>
-                    {(isCurrent || travelLabel || destinationJobs.length > 0) && (
-                      <span className="travel-contract-line">
-                        {isCurrent && <span className="travel-current-label">Current location</span>}
-                        {travelLabel && <span className="travel-poi-label">{travelLabel}</span>}
-                        {destinationJobs.length > 0 && <span>{contractLine(destinationJobs)}</span>}
-                      </span>
-                    )}
-                  </div>
-                </td>
-                <td className="numeric mono">{d.dist.toFixed(1)}</td>
-                <td className={`numeric mono ${!isCurrent && !d.canFly ? "bad" : isCurrent ? "dim" : ""}`}>{isCurrent ? "—" : d.fuelNeeded.toFixed(1)}</td>
-                <td className={`numeric mono ${isCurrent ? "dim" : ""}`}>{isCurrent ? "now" : `${d.travelTicks}t`}</td>
-                {manualActions && (
-                  <td>
-                    {isCurrent ? (
-                      <span className="travel-current-badge">Here</span>
-                    ) : (
-                      <ActionCell suggested={!inTransit && suggested && d.canFly} hintText={cueText.travel[d.to] ?? hintText}>
-                        <button
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            if (departGuarded && !departArmed) {
-                              setArmedDepart(d.to);
-                              onPulseSuggestions();
-                              if (departGuardTimer.current != null) window.clearTimeout(departGuardTimer.current);
-                              departGuardTimer.current = window.setTimeout(() => {
-                                setArmedDepart(current => current === d.to ? null : current);
-                                departGuardTimer.current = null;
-                              }, DEPART_SUGGESTION_GUARD_MS);
-                              return;
-                            }
-                            if (departGuardTimer.current != null) {
-                              window.clearTimeout(departGuardTimer.current);
-                              departGuardTimer.current = null;
-                            }
-                            setArmedDepart(null);
-                            travel(ship.id, d.to);
-                          }}
-                          disabled={inTransit || !d.canFly}
-                          className={`btn-action ${!inTransit && suggested && d.canFly ? "btn-suggested" : ""} ${departArmed ? "depart-armed" : ""}`}
-                          title={inTransit ? "Arrive before plotting another trip" : d.canFly ? departArmed ? "Click again to depart with suggested actions still pending" : "" : "Insufficient fuel for this trip"}
-                        >
-                          <span className="btn-label">{departArmed ? "Confirm" : "Depart"}</span>
-                        </button>
-                      </ActionCell>
-                    )}
-                  </td>
-                )}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                      <td>
+                        <div className="travel-dest-cell">
+                          <button
+                            type="button"
+                            className={`row-title-with-pin travel-dest-title info-focus-trigger ${isPoi ? "travel-dest-title-poi" : ""}`}
+                            aria-pressed={pinned}
+                            onMouseEnter={() => onHoverStation(d.to)}
+                            onMouseLeave={() => onHoverStation(null)}
+                            onFocus={() => onHoverStation(d.to)}
+                            onBlur={() => onHoverStation(null)}
+                            onClick={() => onSelectStation(d.to)}
+                          >
+                            <span className="travel-dest-name">{d.name}</span>
+                            {pinned && <MdPushPin className="ui-icon row-pin-icon" aria-hidden="true" focusable="false" />}
+                          </button>
+                          {(travelLabel || destinationJobs.length > 0) && (
+                            <span className="travel-contract-line">
+                              {travelLabel && <span className="travel-poi-label">{travelLabel}</span>}
+                              {destinationJobs.length > 0 && <span>{contractLine(destinationJobs)}</span>}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="numeric mono">{d.dist.toFixed(1)}</td>
+                      <td className={`numeric mono ${!d.canFly ? "bad" : ""}`}>{d.fuelNeeded.toFixed(1)}</td>
+                      <td className="numeric mono">{d.travelTicks}t</td>
+                      {manualActions && (
+                        <td>
+                          <ActionCell suggested={!inTransit && suggested && d.canFly} hintText={cueText.travel[d.to] ?? hintText}>
+                            <button
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                if (departGuarded && !departArmed) {
+                                  setArmedDepart(d.to);
+                                  onPulseSuggestions();
+                                  if (departGuardTimer.current != null) window.clearTimeout(departGuardTimer.current);
+                                  departGuardTimer.current = window.setTimeout(() => {
+                                    setArmedDepart(current => current === d.to ? null : current);
+                                    departGuardTimer.current = null;
+                                  }, DEPART_SUGGESTION_GUARD_MS);
+                                  return;
+                                }
+                                if (departGuardTimer.current != null) {
+                                  window.clearTimeout(departGuardTimer.current);
+                                  departGuardTimer.current = null;
+                                }
+                                setArmedDepart(null);
+                                travel(ship.id, d.to);
+                              }}
+                              disabled={inTransit || !d.canFly}
+                              className={`btn-action ${!inTransit && suggested && d.canFly ? "btn-suggested" : ""} ${departArmed ? "depart-armed" : ""}`}
+                              title={inTransit ? "Arrive before plotting another trip" : d.canFly ? departArmed ? "Click again to depart with suggested actions still pending" : "" : "Insufficient fuel for this trip"}
+                            >
+                              <span className="btn-label">{departArmed ? "Confirm" : "Depart"}</span>
+                            </button>
+                          </ActionCell>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </SortableRows>
       </div>
     </section>
   );

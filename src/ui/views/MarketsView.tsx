@@ -4,6 +4,7 @@ import { GiCargoCrate, GiFactory, GiTrade, GiUpgrade, GiWallet } from "react-ico
 import { useStore } from "../store";
 import type { Good, GoodCategory, GoodId, LocationDef, LocationId, World } from "../../sim/types";
 import { goodArtUrl, headerArtUrl } from "../art";
+import { SortableRows, SortableTh } from "../components/SortableTable";
 import "./MarketsView.css";
 
 type CommodityTone = "short" | "surplus" | "";
@@ -105,70 +106,85 @@ export function MarketsView() {
             </div>
           </div>
           <div className="commodity-scroll">
-            <table className="commodity-table">
-              <colgroup>
-                <col className="col-good" />
-                <col className="col-cat" />
-                <col className="col-price" />
-                <col className="col-depth" />
-                <col className="col-quote" />
-                <col className="col-quote" />
-                <col className="col-market" />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th>Commodity</th>
-                  <th>Class</th>
-                  <th>Price</th>
-                  <th>Depth</th>
-                  <th>Low Ask</th>
-                  <th>High Bid</th>
-                  <th>Market</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map(row => (
-                  <tr
-                    key={row.good.id}
-                    className={`${selectedId === row.good.id ? "active" : ""} ${row.tone}`}
-                    onClick={() => selectGood(row.good.id)}
-                  >
-                    <td>
-                      <span className="commodity-name-cell">
-                        <CommodityIcon category={row.category} />
-                        <span>
-                          <span className="commodity-name">{row.good.name}</span>
-                          <span className="commodity-id dim">{row.good.id}</span>
-                        </span>
-                      </span>
-                    </td>
-                    <td><span className={`category-pill category-${row.category}`}>{CATEGORY_LABEL[row.category]}</span></td>
-                    <td>
-                      <span className="market-stack">
-                        <span className="mono">Ç{row.avgPrice.toFixed(row.avgPrice >= 1000 ? 0 : 1)} avg</span>
-                        <span className="mono dim">Ç{row.good.basePrice.toLocaleString()} base</span>
-                      </span>
-                    </td>
-                    <td>
-                      <span className="market-stack">
-                        <span className="mono">{formatQty(row.totalStock)} stock</span>
-                        <span className="mono dim">{formatQty(row.totalTarget)} target</span>
-                      </span>
-                    </td>
-                    <td><QuoteCell quote={row.lowAsk} /></td>
-                    <td><QuoteCell quote={row.highBid} /></td>
-                    <td>
-                      <span className="market-stack">
-                        <span className={`mono ${row.spreadPct >= 75 ? "good" : row.spreadPct <= 10 ? "dim" : ""}`}>
-                          {row.spreadPct.toFixed(0)}% spread
-                        </span>
-                        <span className="mono dim">{row.activeMarkets} markets</span>
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <SortableRows
+              rows={rows}
+              columns={[
+                { id: "commodity", label: "commodity", getValue: row => row.good.name },
+                { id: "class", label: "class", getValue: row => CATEGORY_ORDER[row.category] },
+                { id: "price", label: "average price", getValue: row => row.avgPrice, defaultDirection: "desc" },
+                { id: "depth", label: "stock depth", getValue: row => row.totalStock, defaultDirection: "desc" },
+                { id: "low-ask", label: "low ask", getValue: row => row.lowAsk?.price ?? null },
+                { id: "high-bid", label: "high bid", getValue: row => row.highBid?.price ?? null, defaultDirection: "desc" },
+                { id: "market", label: "market spread", getValue: row => row.spreadPct, defaultDirection: "desc" },
+              ]}
+            >
+              {(sortedRows, sort) => (
+                <table className="commodity-table">
+                  <colgroup>
+                    <col className="col-good" />
+                    <col className="col-cat" />
+                    <col className="col-price" />
+                    <col className="col-depth" />
+                    <col className="col-quote" />
+                    <col className="col-quote" />
+                    <col className="col-market" />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <SortableTh sort={sort} columnId="commodity">Commodity</SortableTh>
+                      <SortableTh sort={sort} columnId="class">Class</SortableTh>
+                      <SortableTh sort={sort} columnId="price">Price</SortableTh>
+                      <SortableTh sort={sort} columnId="depth">Depth</SortableTh>
+                      <SortableTh sort={sort} columnId="low-ask">Low Ask</SortableTh>
+                      <SortableTh sort={sort} columnId="high-bid">High Bid</SortableTh>
+                      <SortableTh sort={sort} columnId="market">Market</SortableTh>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedRows.map(row => (
+                      <tr
+                        key={row.good.id}
+                        className={`${selectedId === row.good.id ? "active" : ""} ${row.tone}`}
+                        onClick={() => selectGood(row.good.id)}
+                      >
+                        <td>
+                          <span className="commodity-name-cell">
+                            <CommodityIcon category={row.category} />
+                            <span>
+                              <span className="commodity-name">{row.good.name}</span>
+                              <span className="commodity-id dim">{row.good.id}</span>
+                            </span>
+                          </span>
+                        </td>
+                        <td><span className={`category-pill category-${row.category}`}>{CATEGORY_LABEL[row.category]}</span></td>
+                        <td>
+                          <span className="market-stack">
+                            <span className="mono">Ç{row.avgPrice.toFixed(row.avgPrice >= 1000 ? 0 : 1)} avg</span>
+                            <span className="mono dim">Ç{row.good.basePrice.toLocaleString()} base</span>
+                          </span>
+                        </td>
+                        <td>
+                          <span className="market-stack">
+                            <span className="mono">{formatQty(row.totalStock)} stock</span>
+                            <span className="mono dim">{formatQty(row.totalTarget)} target</span>
+                          </span>
+                        </td>
+                        <td><QuoteCell quote={row.lowAsk} /></td>
+                        <td><QuoteCell quote={row.highBid} /></td>
+                        <td>
+                          <span className="market-stack">
+                            <span className={`mono ${row.spreadPct >= 75 ? "good" : row.spreadPct <= 10 ? "dim" : ""}`}>
+                              {row.spreadPct.toFixed(0)}% spread
+                            </span>
+                            <span className="mono dim">{row.activeMarkets} markets</span>
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </SortableRows>
           </div>
         </section>
 

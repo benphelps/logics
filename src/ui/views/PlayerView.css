@@ -984,6 +984,7 @@
   padding: 3px;
   background: var(--ship-surface-soft);
   border: 1px solid var(--ship-line);
+  border-bottom-width: 0;
   border-radius: 6px;
   flex: 1;
   min-width: 0;
@@ -997,13 +998,15 @@
 
 .ship-card > .ship-status-tabs.bridge-card-tabs {
   border-color: rgba(255, 255, 255, 0.08);
-  border-width: 0 0 1px;
+  border-width: 0;
+  border-top-width: 1px;
   border-radius: 6px 6px 0 0;
 }
 
 .ship-card .ship-cargo-tabs.bridge-card-tabs {
   border-color: rgba(255, 255, 255, 0.08);
-  border-width: 0 0 1px;
+  border-width: 0;
+  border-top-width: 1px;
   border-radius: 0 0 6px 6px;
 }
 
@@ -1042,16 +1045,28 @@
   filter: saturate(0.82) contrast(0.94);
 }
 
-.exchange-card.art-card .bridge-card-tabs,
-.travel-card.art-card .travel-panel-head {
+.exchange-card .bridge-card-tabs,
+.travel-card .travel-panel-head {
   backdrop-filter: blur(1px);
 }
 
-.ship-card.art-card :is(.cargo-table, .upgrade-table, .crew-table) th {
+:is(.exchange-card, .travel-card) :is(.market-table, .travel-table, .jobs-table) th {
+  border-top-color: rgba(232, 242, 252, 0.13);
   border-bottom-color: rgba(232, 242, 252, 0.13);
 }
 
-.ship-card.art-card :is(.cargo-table, .upgrade-table, .crew-table) td {
+:is(.exchange-card, .travel-card) :is(.market-table, .travel-table, .jobs-table) td {
+  border-top-color: rgba(232, 242, 252, 0.09);
+  border-bottom-color: rgba(232, 242, 252, 0.09);
+}
+
+.ship-card :is(.cargo-table, .upgrade-table, .crew-table, .jobs-table) th {
+  border-top-color: rgba(232, 242, 252, 0.13);
+  border-bottom-color: rgba(232, 242, 252, 0.13);
+}
+
+.ship-card :is(.cargo-table, .upgrade-table, .crew-table, .jobs-table) td {
+  border-top-color: rgba(232, 242, 252, 0.09);
   border-bottom-color: rgba(232, 242, 252, 0.09);
 }
 
@@ -1090,85 +1105,6 @@
 .bridge-tab.active {
   color: var(--text);
   background: var(--ship-surface-raised);
-}
-
-.bridge-section-intro {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--ship-line-soft);
-}
-
-.bridge-section-intro.art-panel-head {
-  position: relative;
-  overflow: hidden;
-  min-height: 60px;
-  background: var(--ship-surface);
-  box-shadow: inset 0 -1px rgba(220, 235, 250, 0.08);
-}
-
-.bridge-section-intro.art-panel-head::before {
-  content: "";
-  position: absolute;
-  inset: 1px;
-  background-image:
-    linear-gradient(to bottom, rgba(13, 17, 22, 0.16), rgba(13, 17, 22, 0.70)),
-    linear-gradient(90deg, rgba(13, 17, 22, 0.84), rgba(13, 17, 22, 0.38) 55%, rgba(13, 17, 22, 0.82)),
-    var(--card-art);
-  background-position: center center, center center, var(--header-art-pan-x, 50%) var(--header-art-pan-y, 50%);
-  background-repeat: no-repeat;
-  background-size: 100% 100%, 100% 100%, 104% auto;
-  pointer-events: none;
-  z-index: 0;
-}
-
-.bridge-section-intro.art-panel-head > * {
-  position: relative;
-  z-index: 1;
-}
-
-.bridge-section-intro.art-panel-head .bridge-section-title,
-.bridge-section-intro.art-panel-head .bridge-section-subtitle {
-  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.88), 0 0 1px rgba(0, 0, 0, 0.95);
-}
-
-.bridge-section-intro.art-panel-head .bridge-section-title {
-  color: rgba(230, 240, 250, 0.92);
-}
-
-.bridge-section-intro.art-panel-head .bridge-section-subtitle {
-  color: rgba(183, 198, 212, 0.82);
-}
-
-.bridge-section-intro > div {
-  min-width: 0;
-}
-
-.bridge-section-title {
-  display: block;
-  overflow: hidden;
-  color: var(--accent);
-  font-size: 10px;
-  font-weight: 750;
-  letter-spacing: 0.08em;
-  line-height: 1;
-  text-overflow: ellipsis;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.bridge-section-subtitle {
-  display: block;
-  overflow: hidden;
-  margin-top: 2px;
-  color: var(--text-dim);
-  font-size: 11px;
-  line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* Tabs with suggested-action content keep their normal tab styling — only the
@@ -1251,7 +1187,7 @@
 
 .upgrade-table {
   width: 100%;
-  margin: 2px 0 0;
+  margin: 0;
   border-collapse: collapse;
   font-size: 12px;
   table-layout: fixed;
@@ -1265,12 +1201,14 @@
 .upgrade-table th {
   position: relative;
   text-align: left;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   padding: 7px 8px;
+  background: var(--ship-surface-soft);
+  border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
@@ -1845,6 +1783,45 @@
   background: rgba(18, 25, 32, 0.48);
 }
 
+/* Crew + offer cards get a portrait headshot as background once the
+   headshot service responds. The image is anchored to the right (where
+   the action column lives) and a dark gradient over the left half keeps
+   role label / name / modifier pills legible. */
+.crew-card.filled,
+.crew-card.crew-offer-card {
+  background-repeat: no-repeat;
+  background-position: right 22%;
+  background-size: cover;
+  /* Stop the headshot at the inner border edge so the existing
+     semi-transparent border styling doesn't get overpainted by the
+     image. */
+  background-clip: padding-box;
+  transition: background-image 0.4s ease-in;
+}
+
+.crew-card.has-headshot::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg,
+      rgba(14, 18, 23, 0.95) 0%,
+      rgba(14, 18, 23, 0.78) 38%,
+      rgba(14, 18, 23, 0.48) 62%,
+      rgba(14, 18, 23, 0.30) 100%),
+    linear-gradient(180deg,
+      rgba(14, 18, 23, 0.10) 0%,
+      rgba(14, 18, 23, 0.45) 100%);
+}
+
+/* While the request is in flight, keep the static gradient — no harsh
+   pop when the image arrives. */
+.crew-card.headshot-loading {
+  background-image: none;
+}
+
 .crew-card-main {
   position: relative;
   z-index: 1;
@@ -1880,7 +1857,7 @@
 
 .crew-table {
   width: 100%;
-  margin: 2px 0 0;
+  margin: 0;
   border-collapse: collapse;
   font-size: 12px;
   table-layout: fixed;
@@ -1894,12 +1871,14 @@
 .crew-table th {
   position: relative;
   text-align: left;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   padding: 7px 8px;
+  background: var(--ship-surface-soft);
+  border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
@@ -2394,7 +2373,8 @@ button.upgrade-remove-pill {
   flex: 0 0 auto;
   width: 100%;
   border-color: rgba(255, 255, 255, 0.08);
-  border-width: 0 0 1px;
+  border-width: 0;
+  border-top-width: 1px;
   border-radius: 6px 6px 0 0;
 }
 
@@ -2948,13 +2928,17 @@ button.upgrade-remove-pill {
 }
 
 .trade-helper-market-table th {
-  padding: 0 6px 4px;
+  padding: 5px 6px;
+  background: var(--ship-surface-soft);
+  border-top: 1px solid var(--ship-line-soft);
+  border-bottom: 1px solid var(--ship-line-soft);
   color: var(--text-faint);
-  font-size: 8.5px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-align: left;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .trade-helper-market-table td {
@@ -3121,7 +3105,7 @@ button.upgrade-remove-pill {
 .upgrade-table,
 .crew-table {
   width: 100%;
-  margin: 2px 0 0;
+  margin: 0;
   border-collapse: collapse;
   font-size: 12px;
   table-layout: fixed;
@@ -3150,13 +3134,14 @@ button.upgrade-remove-pill {
 .crew-table th {
   position: relative;
   text-align: left;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   padding: 7px 9px;
   background: var(--ship-surface-soft);
+  border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
@@ -3250,34 +3235,122 @@ button.upgrade-remove-pill {
 
 .travel-panel-head {
   display: flex;
-  align-items: flex-start;
   justify-content: space-between;
+  align-items: center;
   gap: 12px;
   padding: 12px 14px;
-  border-bottom: 1px solid var(--ship-line-soft);
+  border-bottom: 0;
 }
 
-.travel-panel-head > div {
+.travel-panel-head.art-panel-head {
+  min-height: 62px;
+  background-image:
+    linear-gradient(to bottom, rgba(13, 17, 22, 0.14) 0%, rgba(13, 17, 22, 0.78) 88%, rgba(13, 17, 22, 1) 100%),
+    linear-gradient(90deg, rgba(13, 17, 22, 0.86), rgba(13, 17, 22, 0.38) 58%, rgba(13, 17, 22, 0.84)),
+    var(--card-art);
+  background-position: center center, center center, var(--header-art-pan-x, 50%) var(--header-art-pan-y, 50%);
+  background-repeat: no-repeat;
+  background-size: 100% 100%, 100% 100%, 104% auto;
+  background-clip: padding-box;
+  box-shadow: none;
+}
+
+.travel-panel-head.art-panel-head,
+.travel-panel-head.art-panel-head .dim,
+.travel-panel-head.art-panel-head .travel-current-meta {
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.88), 0 0 1px rgba(0, 0, 0, 0.95);
+}
+
+.travel-panel-main {
+  display: grid;
+  flex: 1;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 3px;
   min-width: 0;
+}
+
+.travel-panel-kicker {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  grid-column: 1;
+  grid-row: 1;
 }
 
 .travel-panel-label {
   display: block;
+  flex: 0 0 auto;
   color: var(--accent);
   font-size: 10px;
-  font-weight: 750;
+  font-weight: 600;
   letter-spacing: 0.08em;
-  line-height: 1;
   text-transform: uppercase;
 }
 
 .travel-panel-subtitle {
   display: block;
   overflow: hidden;
+  min-width: 0;
   margin-top: 2px;
   color: var(--text-dim);
   font-size: 11px;
-  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.travel-current-station {
+  grid-column: 1;
+  grid-row: 2;
+  justify-self: start;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  color: #eef6ff;
+  font-size: 16px;
+  font-weight: 650;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.82), 0 0 1px rgba(0, 0, 0, 0.9);
+}
+
+.travel-current-station.info-focus-trigger {
+  margin: 0;
+  padding: 0;
+  text-decoration-line: none;
+}
+
+.travel-current-station.info-focus-trigger:hover,
+.travel-current-station.info-focus-trigger:focus-visible,
+.travel-current-station.info-focus-trigger[aria-pressed="true"] {
+  color: #eef6ff;
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.travel-current-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.travel-current-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  grid-column: 2;
+  grid-row: 2;
+  justify-self: end;
+  align-self: end;
+  overflow: hidden;
+  min-width: 0;
+  max-width: 100%;
+  text-align: right;
+  color: var(--text-dim);
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -3303,10 +3376,6 @@ button.upgrade-remove-pill {
 .travel-panel-action:hover:not(:disabled) {
   background: var(--ship-surface-raised);
   color: var(--text);
-}
-
-.travel-table tbody tr.travel-current-location {
-  background: rgba(31, 111, 168, 0.018);
 }
 
 .travel-table tbody tr.travel-is-poi {
@@ -3351,8 +3420,7 @@ button.upgrade-remove-pill {
   text-overflow: ellipsis;
 }
 
-.travel-poi-label,
-.travel-current-label {
+.travel-poi-label {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -3366,36 +3434,13 @@ button.upgrade-remove-pill {
   flex-shrink: 0;
 }
 
-.travel-poi-label::before,
-.travel-current-label::before {
+.travel-poi-label::before {
   content: "";
   width: 5px;
   height: 5px;
   border-radius: 50%;
   background: currentColor;
   box-shadow: 0 0 8px rgba(157, 215, 255, 0.44);
-}
-
-.travel-current-label {
-  color: var(--text-faint);
-}
-
-.travel-current-label::before {
-  box-shadow: none;
-}
-
-.travel-current-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  min-height: 26px;
-  color: var(--text-faint);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  line-height: 1;
-  text-transform: uppercase;
 }
 
 .travel-table td:last-child {
@@ -3840,7 +3885,7 @@ button.upgrade-remove-pill {
 
 .cargo-table {
   width: 100%;
-  margin: 2px 0 0;
+  margin: 0;
   border-collapse: collapse;
   font-size: 12px;
   table-layout: fixed;
@@ -3852,13 +3897,14 @@ button.upgrade-remove-pill {
 .cargo-table th {
   position: relative;
   text-align: left;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   padding: 7px 8px;
   background: var(--ship-surface-soft);
+  border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
 }
 
