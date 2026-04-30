@@ -2324,11 +2324,16 @@
   padding-bottom: 0;
 }
 
-/* Adjacent info-rows keep the standard inter-section vertical padding
-   but drop the divider between them, so the KPI/Underlying row and
-   the Book/T&S row read as one logical block while still breathing. */
+/* Adjacent info-rows: drop the divider and halve the inter-section
+   padding so the KPI/Underlying row and the Book/T&S row read as one
+   logical block — breathing slightly but not as much as a full
+   section break. */
 .stocks-info-body > .stocks-info-row:has(+ .stocks-info-row) {
   border-bottom: 0;
+  padding-bottom: calc(var(--bridge-table-pad-x) / 2);
+}
+.stocks-info-body > .stocks-info-row + .stocks-info-row {
+  padding-top: calc(var(--bridge-table-pad-x) / 2);
 }
 
 .stocks-info-row {
