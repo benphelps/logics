@@ -2102,81 +2102,94 @@ function Sparkline({ equity, position }: { equity: Equity; position: StockPositi
   const history = equity.history ?? [];
   const trades = equity.recentTrades ?? [];
 
-  // Build the chart once. The chart instance survives across data updates;
-  // setData is called from a separate effect.
+  // Build the chart once the container has an actual measurable width.
+  // On first paint of the Exchange tab the info panel may still be in
+  // layout (clientWidth = 0); creating the chart at 0 px causes the
+  // initial setData to land on an unrenderable canvas, and even after
+  // resize the chart never recovers the data — only later update()
+  // calls take effect, so the user sees a 1- or 2-point line. Wait
+  // for a non-zero width via requestAnimationFrame poll, then create
+  // the chart and bump layoutGen so the data effect runs setData.
   useEffect(() => {
     const div = containerRef.current;
     if (!div) return;
-    const chart = createChart(div, {
-      width: div.clientWidth,
-      height: 170,
-      autoSize: false,
-      layout: {
-        background: { type: ColorType.Solid, color: "transparent" },
-        textColor: "rgba(220, 230, 240, 0.42)",
-        fontSize: 11,
-        attributionLogo: false,
-      },
-      grid: {
-        vertLines: { color: "rgba(255,255,255,0.04)" },
-        horzLines: { color: "rgba(255,255,255,0.04)" },
-      },
-      rightPriceScale: { borderColor: "rgba(255,255,255,0.08)" },
-      timeScale: {
-        borderColor: "rgba(255,255,255,0.08)",
-        tickMarkFormatter: (time: Time) => `T${time}`,
-      },
-      localization: {
-        timeFormatter: (time: Time) => `tick ${time}`,
-        priceFormatter: (p: number) => `Ç${p.toFixed(2)}`,
-      },
-      crosshair: { mode: 1 },
-    });
-    const price = chart.addSeries(AreaSeries, {
-      lineColor: "#6cd99a",
-      topColor: "rgba(108,217,154,0.30)",
-      bottomColor: "rgba(108,217,154,0.02)",
-      lineWidth: 2,
-      priceFormat: { type: "price", precision: 2, minMove: 0.01 },
-      priceLineVisible: false,
-      lastValueVisible: true,
-    });
-    const volume = chart.addSeries(HistogramSeries, {
-      priceFormat: { type: "volume" },
-      priceScaleId: "",
-      color: "rgba(108,217,154,0.55)",
-    });
-    volume.priceScale().applyOptions({ scaleMargins: { top: 0.78, bottom: 0 } });
 
-    chartRef.current = chart;
-    priceSeriesRef.current = price;
-    volumeSeriesRef.current = volume;
+    let cancelled = false;
+    let raf: number | null = null;
+    let ro: ResizeObserver | null = null;
 
-    let sawNonZero = div.clientWidth > 0;
-    const ro = new ResizeObserver(() => {
-      if (!chartRef.current) return;
+    const buildChart = () => {
+      if (cancelled) return;
       const w = div.clientWidth;
-      chartRef.current.applyOptions({ width: w });
-      // First time the panel's layout settles after mount, the chart was
-      // created at width=0, so its time-axis range was computed against
-      // empty space — points then render compressed to a single column
-      // until you hit some other refresh. Refit on every resize to keep
-      // the visible range in sync with the canvas.
-      chartRef.current.timeScale().fitContent();
-      // Width transitioned 0 → real: the initial setData ran against a
-      // zero-width canvas, so the chart effectively has no data. Force
-      // the data effect to re-fire with a fresh full setData by bumping
-      // layoutGen.
-      if (!sawNonZero && w > 0) {
-        sawNonZero = true;
-        setLayoutGen(g => g + 1);
+      if (w <= 0) {
+        raf = requestAnimationFrame(buildChart);
+        return;
       }
-    });
-    ro.observe(div);
+
+      const chart = createChart(div, {
+        width: w,
+        height: 170,
+        autoSize: false,
+        layout: {
+          background: { type: ColorType.Solid, color: "transparent" },
+          textColor: "rgba(220, 230, 240, 0.42)",
+          fontSize: 11,
+          attributionLogo: false,
+        },
+        grid: {
+          vertLines: { color: "rgba(255,255,255,0.04)" },
+          horzLines: { color: "rgba(255,255,255,0.04)" },
+        },
+        rightPriceScale: { borderColor: "rgba(255,255,255,0.08)" },
+        timeScale: {
+          borderColor: "rgba(255,255,255,0.08)",
+          tickMarkFormatter: (time: Time) => `T${time}`,
+        },
+        localization: {
+          timeFormatter: (time: Time) => `tick ${time}`,
+          priceFormatter: (p: number) => `Ç${p.toFixed(2)}`,
+        },
+        crosshair: { mode: 1 },
+      });
+      const price = chart.addSeries(AreaSeries, {
+        lineColor: "#6cd99a",
+        topColor: "rgba(108,217,154,0.30)",
+        bottomColor: "rgba(108,217,154,0.02)",
+        lineWidth: 2,
+        priceFormat: { type: "price", precision: 2, minMove: 0.01 },
+        priceLineVisible: false,
+        lastValueVisible: true,
+      });
+      const volume = chart.addSeries(HistogramSeries, {
+        priceFormat: { type: "volume" },
+        priceScaleId: "",
+        color: "rgba(108,217,154,0.55)",
+      });
+      volume.priceScale().applyOptions({ scaleMargins: { top: 0.78, bottom: 0 } });
+
+      chartRef.current = chart;
+      priceSeriesRef.current = price;
+      volumeSeriesRef.current = volume;
+
+      ro = new ResizeObserver(() => {
+        if (!chartRef.current) return;
+        chartRef.current.applyOptions({ width: div.clientWidth });
+        chartRef.current.timeScale().fitContent();
+      });
+      ro.observe(div);
+
+      // Ready — trigger the data effect to run setData against the now-
+      // real-width chart.
+      setLayoutGen(g => g + 1);
+    };
+
+    buildChart();
 
     return () => {
-      ro.disconnect();
-      chart.remove();
+      cancelled = true;
+      if (raf != null) cancelAnimationFrame(raf);
+      if (ro) ro.disconnect();
+      if (chartRef.current) chartRef.current.remove();
       chartRef.current = null;
       priceSeriesRef.current = null;
       volumeSeriesRef.current = null;
