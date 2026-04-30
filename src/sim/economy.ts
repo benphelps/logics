@@ -101,6 +101,11 @@ export function settleSale(market: MarketState, grossUnitPrice: number, qty: num
   const paid = withdrawFromTreasury(market, traderRevenueWanted);
   const realizedUnitPrice = qty > 0 ? paid / qty : 0;
   const taxKept = haircut > 0 ? (paid / Math.max(0.001, 1 - SALES_TAX_RATE)) * SALES_TAX_RATE : 0;
+  // C-5: cargo arriving for sale is an INFLOW (the station is importing
+  // goods) — debits net-trade flow because exports < imports lowers
+  // station productivity. The flow signal is sign-aware so net-exporter
+  // stations carry positive netTradeFlow.
+  market.netTradeFlow = (market.netTradeFlow ?? 0) - paid;
   return {
     effectiveUnitPrice: realizedUnitPrice,
     traderRevenue: paid,
@@ -120,8 +125,19 @@ export function settlePurchase(market: MarketState, grossUnitPrice: number, qty:
   if (qty <= 0 || grossUnitPrice <= 0) return { totalCost: 0 };
   const totalCost = grossUnitPrice * qty;
   depositToTreasury(market, totalCost);
+  // C-5: cargo leaving is an OUTFLOW (the station is exporting goods)
+  // — credits net-trade flow. Net-exporter stations earn positive
+  // netTradeFlow over time, which lifts their equity fundamental.
+  market.netTradeFlow = (market.netTradeFlow ?? 0) + totalCost;
   return { totalCost };
 }
+
+// C-5: decay rate for the per-station netTradeFlow signal. With 0.99
+// per tick, a one-time +1000 flow halves in ~70 ticks and decays to
+// near-zero in ~500 ticks. Slow enough that consistent producers
+// build a steady-state premium; fast enough that a one-shot surge
+// doesn't pin the station's equity for the rest of the game.
+export const NET_TRADE_DECAY = 0.99;
 
 export function tickTreasuries(world: World): void {
   for (const loc of Object.values(world.locations)) {
@@ -141,6 +157,9 @@ export function tickTreasuries(world: World): void {
     else if (ratio <= 1.0) multiplier = 1.5 - 0.5 * ratio; // at target = 1.0, below = 1.0-1.5
     else multiplier = Math.max(0.05, 1.0 / (1 + (ratio - 1.0) * 3));
     market.treasury += replenishMax * multiplier;
+    // C-5: decay net-trade flow each tick so the signal tracks
+    // recent activity rather than lifetime totals.
+    if (market.netTradeFlow) market.netTradeFlow *= NET_TRADE_DECAY;
   }
 }
 

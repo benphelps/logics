@@ -339,6 +339,24 @@ export function clampSharePrice(eq: Equity, price: number): number {
 // new instrument kinds (commodity, basis pair, futures, index) slot in
 // without growing one giant if/else.
 
+// C-5: net-trade modifier coefficient. Tuned so a station with a
+// steady netTradeFlow ≈ treasuryTarget over time gets ~+5% on its
+// equity fundamental. Bounded to ±15% so a wild trade burst can't
+// blow past the price clamp by itself.
+export const NET_TRADE_MULT_PER_TARGET = 0.05;
+export const NET_TRADE_MULT_CAP = 0.15;
+
+export function stationNetTradeMultiplier(world: World, eq: Equity): number {
+  if (eq.kind !== "station") return 1;
+  const market = world.markets[eq.underlyingId];
+  if (!market) return 1;
+  const flow = market.netTradeFlow ?? 0;
+  const target = Math.max(1, market.treasuryTarget);
+  const raw = (flow / target) * NET_TRADE_MULT_PER_TARGET;
+  const clamped = Math.max(-NET_TRADE_MULT_CAP, Math.min(NET_TRADE_MULT_CAP, raw));
+  return 1 + clamped;
+}
+
 function stationFundamental(world: World, eq: Equity): number {
   const market = world.markets[eq.underlyingId];
   if (!market) return eq.anchorPrice;
@@ -348,7 +366,9 @@ function stationFundamental(world: World, eq: Equity): number {
   let mult = 1.0;
   if (treasuryRatio >= 0) mult = 0.7 + 0.45 * Math.min(2, treasuryRatio);
   else mult = Math.max(0.3, 0.7 + treasuryRatio * 0.35);
-  return eq.anchorPrice * mult;
+  // C-5: net-trade modifier on top of treasury health. Productive
+  // stations (consistent net exporters) trade at a premium.
+  return eq.anchorPrice * mult * stationNetTradeMultiplier(world, eq);
 }
 
 function syndicateFundamental(world: World, eq: Equity): number {

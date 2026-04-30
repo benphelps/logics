@@ -60,6 +60,11 @@ export interface MarketState {
   // the city can't pay infinite revenue forever — closes the money loop.
   treasury: number;
   treasuryTarget: number;
+  // C-5 — smoothed net-trade flow. Decays each tick. Sales (cargo coming
+  // INTO the station) credit this, purchases (cargo leaving) debit. Used
+  // by stationFundamental as a modifier on share price so productive
+  // stations trade at a premium.
+  netTradeFlow?: number;
 }
 
 export type TraderState = "idle" | "transit";

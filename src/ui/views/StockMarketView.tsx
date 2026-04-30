@@ -29,6 +29,7 @@ import {
   maxShortableShares,
   parseBasisUnderlying,
   priceChangePct,
+  stationNetTradeMultiplier,
   totalUnrealizedPnl,
   unrealizedPnl,
   type PlayerLimitView,
@@ -1264,6 +1265,8 @@ function CompanyUnderlying({ eq, world }: { eq: Equity; world: World }) {
     const market = world.markets[eq.underlyingId];
     const loc = world.locations[eq.underlyingId];
     if (!market || !loc) return null;
+    const ntMult = stationNetTradeMultiplier(world, eq);
+    const ntPct = (ntMult - 1) * 100;
     return (
       <section className="trade-helper-section">
         <div className="exchange-section-title">Underlying</div>
@@ -1272,6 +1275,7 @@ function CompanyUnderlying({ eq, world }: { eq: Equity; world: World }) {
           <FleetStat label="target" value={`Ç${fmtBig(market.treasuryTarget)}`} />
           <FleetStat label="population" value={loc.population.toLocaleString()} />
           <FleetStat label="tech" value={`L${loc.traits.techLevel}`} />
+          <FleetStat label="net trade" value={`${ntPct >= 0 ? "+" : ""}${ntPct.toFixed(1)}%`} />
         </dl>
       </section>
     );
