@@ -1746,7 +1746,9 @@
 
 .stocks-shell {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* Match the atlas / fleet split — left listings + P&O panel takes the
+     dominant share, info column is the slimmer side. */
+  grid-template-columns: minmax(530px, 2.1fr) minmax(360px, 1.35fr);
   gap: 12px;
   flex: 1;
   min-height: 0;
