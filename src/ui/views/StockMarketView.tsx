@@ -35,7 +35,7 @@ import {
   unrealizedPnl,
   type PlayerLimitView,
 } from "../../sim/stock";
-import { headerArtUrl, shipArtUrl, stationArtUrl, stationKind, stationKindLabel, stationScale, stationScaleLabel, stationSubtype, stationSubtypeLabel } from "../art";
+import { goodArtUrl, headerArtUrl, shipArtUrl, stationArtUrl, stationKind, stationKindLabel, stationScale, stationScaleLabel, stationSubtype, stationSubtypeLabel } from "../art";
 import "./StockMarketView.css";
 
 interface EquityRow {
@@ -2673,7 +2673,25 @@ function equityArtUrl(world: World, eq: Equity): string | null {
     const leadShipId = syndicate?.memberShipIds.find(id => world.traders[id]);
     return leadShipId ? shipArtUrl(world.traders[leadShipId]) : null;
   }
-  // commodity — no per-listing art yet; falls back to the default card style.
+  if (eq.kind === "commodity") {
+    return goodArtUrl(world, eq.underlyingId);
+  }
+  if (eq.kind === "basis") {
+    // <locationId>::<goodId> — prefer the station's art (visually
+    // distinguishes basis pairs from the underlying spot commodity).
+    const sep = eq.underlyingId.indexOf("::");
+    if (sep > 0) {
+      const loc = world.locations[eq.underlyingId.slice(0, sep)];
+      if (loc) return stationArtUrl(loc);
+    }
+    return null;
+  }
+  if (eq.kind === "futures") {
+    // Use the underlying good's art so contracts on the same good
+    // share visual identity.
+    return goodArtUrl(world, eq.underlyingId);
+  }
+  // index — no per-listing art; default card style.
   return null;
 }
 
