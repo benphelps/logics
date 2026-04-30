@@ -1118,12 +1118,6 @@ function FuturesOrderForm({ equity, world, docked, access }: {
         <FleetStat label="expires in" value={`${ttx}t`} />
       </dl>
 
-      {existing && (
-        <div className="stocks-warning dim" style={{ marginTop: 8 }}>
-          You already hold {existing.contracts} {existing.side} {equity.ticker}. Adds in the same direction adjust your average; opposite-direction opens are blocked.
-        </div>
-      )}
-
       <div className="stocks-order-side" style={{ marginTop: 8, gridTemplateColumns: "1fr 1fr" }}>
         <button
           className="stocks-order-side-btn buy"
@@ -1143,6 +1137,11 @@ function FuturesOrderForm({ equity, world, docked, access }: {
         </button>
       </div>
 
+      {existing && (
+        <div className="stocks-warning dim" style={{ marginTop: 6 }}>
+          You already hold {existing.contracts} {existing.side} {equity.ticker}. Adds in the same direction adjust your average; opposite-direction opens are blocked.
+        </div>
+      )}
       {blockReason && <div className="stocks-warning dim" style={{ marginTop: 6 }}>{blockReason}</div>}
     </section>
   );
