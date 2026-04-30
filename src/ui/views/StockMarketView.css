@@ -2324,16 +2324,14 @@
   padding-bottom: 0;
 }
 
-/* Adjacent info-rows: drop the divider and halve the inter-section
-   padding so the KPI/Underlying row and the Book/T&S row read as one
-   logical block — breathing slightly but not as much as a full
-   section break. */
+/* Adjacent info-rows: drop the divider and zero one side so the
+   total gap = one var(--bridge-table-pad-x) (half of a normal
+   section break, since those sum bottom+top). */
 .stocks-info-body > .stocks-info-row:has(+ .stocks-info-row) {
   border-bottom: 0;
-  padding-bottom: calc(var(--bridge-table-pad-x) / 2);
 }
 .stocks-info-body > .stocks-info-row + .stocks-info-row {
-  padding-top: calc(var(--bridge-table-pad-x) / 2);
+  padding-top: 0;
 }
 
 .stocks-info-row {
