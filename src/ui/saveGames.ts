@@ -72,19 +72,19 @@ function cloneWorld(world: World): World {
 }
 
 // Compact a world before serializing to localStorage. With C-1..C-6 the
-// universe lists 80+ equities and each one keeps a recentTrades buffer
-// (cap 100), price history (cap 60), and an order book of agent quotes.
-// Across 5 save slots that easily blows past the ~5 MB localStorage
-// quota, at which point setItem throws and the save silently fails —
-// the registry on disk doesn't pick up the new slot, and on the next
-// read the user's just-created save (e.g. "Developer State") vanishes
+// universe lists 80+ equities and each one keeps a recentTrades buffer,
+// a price history capped at SHARE_PRICE_HISTORY_MAX, and an order book
+// of agent quotes. Across multiple save slots that can blow past the
+// ~5 MB localStorage origin quota, at which point setItem throws and
+// the save silently fails — the registry on disk doesn't pick up the
+// new slot, and on the next read the user's just-created save vanishes
 // from the list.
 //
 // Strip everything that's purely cosmetic or rebuilt within a few ticks
-// of running:
+// of running, but KEEP price history so the chart on the info pane is
+// continuous across reloads:
 //   - Equity.recentTrades — rebuilt on the very next agent fill.
-//   - Equity.history — keep just the latest point so the chart can
-//     resume from a known anchor.
+//   - Equity.history — kept (capped at SHARE_PRICE_HISTORY_MAX = 150).
 //   - Order book entries with a TTL — those are agent orders that
 //     re-post on a 4-tick cadence. Player orders (no TTL) survive.
 //   - Trader logs trimmed to the most recent entries.
@@ -92,7 +92,7 @@ function compactWorldForSave(world: World): World {
   const w = cloneWorld(world);
   for (const eq of Object.values(w.equities)) {
     eq.recentTrades = [];
-    if (eq.history && eq.history.length > 1) eq.history = eq.history.slice(-1);
+    // history is already capped in the sim; no further trimming.
   }
   if (w.orderBooks) {
     for (const book of Object.values(w.orderBooks)) {

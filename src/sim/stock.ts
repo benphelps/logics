@@ -76,7 +76,7 @@ export const DIVIDEND_PAYOUT_FRACTION = 0.05;  // 5% of treasury surplus → div
 export const SYNDICATE_REVENUE_DECAY = 0.95;   // per-tick decay on recent revenue
 export const SYNDICATE_PRICE_REVENUE_WEIGHT = 0.0001; // how much revenue tilts price
 
-export const SHARE_PRICE_HISTORY_MAX = 60;     // capped history per equity
+export const SHARE_PRICE_HISTORY_MAX = 150;    // capped history per equity (also the per-save retention)
 export const RECENT_TRADES_MAX = 100;          // capped tape per equity (T&S + volume window)
 
 // Per-tick borrow fee on a short position's notional value. A real cost
