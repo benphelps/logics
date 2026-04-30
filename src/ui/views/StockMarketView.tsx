@@ -890,7 +890,6 @@ function UnifiedOrderForm({ equity, world, docked, access }: {
   docked: boolean;
   access: { ok: boolean; reason: string };
 }) {
-  void world;
   const placeLimitBuy = useStore(s => s.placeLimitBuy);
   const placeLimitSell = useStore(s => s.placeLimitSell);
   const shortShares = useStore(s => s.shortShares);
@@ -908,6 +907,20 @@ function UnifiedOrderForm({ equity, world, docked, access }: {
     }
   }, [equity.id, equity.price]);
 
+  const playerShipId = world.player?.shipIds[0];
+  const ship = playerShipId ? world.traders[playerShipId] : null;
+  const position = world.player?.positions?.[equity.id];
+  const mark = equity.price;
+
+  // Per-side max qty for the % chips. For buy/short we estimate by funds /
+  // mark — the actual order is bounded by float and book depth at submit
+  // time, but this gives the player a useful "can I afford 25%/50%/100%
+  // of what I might buy here" feel.
+  const maxByFunds = ship && mark > 0 ? Math.floor(ship.funds / (mark * (1 + BROKER_FEE_RATE))) : 0;
+  const heldQty = position?.kind === "long" ? position.shares : 0;
+  const shortableQty = maxShortableShares(world, equity);
+  const sideMax = side === "buy" ? maxByFunds : side === "sell" ? heldQty : shortableQty;
+
   const total = qty * price;
   const fee = total * BROKER_FEE_RATE;
   const summary = side === "buy"
@@ -921,6 +934,12 @@ function UnifiedOrderForm({ equity, world, docked, access }: {
     else if (side === "sell") placeLimitSell(equity.id, qty, price);
     else shortShares(equity.id, qty);   // short uses market for now
   };
+
+  // For short: aggressive market order direction. The price chip's sign
+  // mirrors the position-close UI: long uses +Δ to push the take-profit
+  // up, short uses −Δ. For order entry, "+" means a higher limit price
+  // (more aggressive on a buy, less aggressive on a sell).
+  const priceSign = side === "sell" ? -1 : 1;
 
   return (
     <section className="trade-helper-section stocks-order-form">
@@ -945,6 +964,36 @@ function UnifiedOrderForm({ equity, world, docked, access }: {
         <button className="stocks-order-spot" onClick={() => setPrice(equity.price)} disabled={side === "short"}>
           Use spot
         </button>
+      </div>
+      <div className="stocks-position-quick-row">
+        <div className="stocks-position-quick-group">
+          {[25, 50, 100].map(pct => {
+            const target = Math.max(1, Math.round((sideMax || 0) * pct / 100));
+            return (
+              <QuickChip
+                key={pct}
+                label={`${pct}%`}
+                hoverLabel={sideMax > 0 ? `${target.toLocaleString()} sh` : "—"}
+                onClick={() => sideMax > 0 && setQty(target)}
+              />
+            );
+          })}
+        </div>
+        <div className="stocks-position-quick-group">
+          {[1, 2, 5].map(pct => {
+            const delta = mark * (pct / 100) * priceSign;
+            const target = Math.max(0.01, mark + delta);
+            return (
+              <QuickChip
+                key={pct}
+                label={`${priceSign > 0 ? "+" : "−"}${pct}%`}
+                hoverLabel={`Ç${fmtPrice(target)}`}
+                className={side === "sell" ? "sl" : "tp"}
+                onClick={() => side !== "short" && setPrice(target)}
+              />
+            );
+          })}
+        </div>
       </div>
       <div className="stocks-order-summary dim">{summary}</div>
       <button
@@ -985,6 +1034,12 @@ function FuturesOrderForm({ equity, world, docked, access }: {
   const total = margin + fee;
   const ttx = Math.max(0, c.expiryTick - world.tick);
   const cantAfford = ship != null && ship.funds < total;
+  // Max contracts the player can afford one shot.
+  const marginPerContract = c.marginFraction * c.contractSize * spot;
+  const feePerContract = c.contractSize * spot * BROKER_FEE_RATE;
+  const maxContracts = ship && marginPerContract + feePerContract > 0
+    ? Math.max(0, Math.floor(ship.funds / (marginPerContract + feePerContract)))
+    : 0;
   const blockReason: string | null = !docked
     ? "Trade only while docked."
     : !access.ok
@@ -1006,14 +1061,35 @@ function FuturesOrderForm({ equity, world, docked, access }: {
       <div className="exchange-section-title">Open futures position</div>
 
       <div className="stocks-order-fields">
-        <label>
+        <label style={{ gridColumn: "1 / span 3" }}>
           <span>Contracts</span>
           <input type="number" min={1} value={count}
             onChange={e => setCount(Math.max(1, Math.floor(Number(e.target.value) || 0)))} />
         </label>
-        <div className="stocks-position-quick-group" style={{ display: "flex", gap: 4 }}>
+      </div>
+
+      <div className="stocks-position-quick-row">
+        <div className="stocks-position-quick-group">
+          {[25, 50, 100].map(pct => {
+            const target = Math.max(1, Math.round(maxContracts * pct / 100));
+            return (
+              <QuickChip
+                key={pct}
+                label={`${pct}%`}
+                hoverLabel={maxContracts > 0 ? `${target} ct (Ç${Math.round((marginPerContract + feePerContract) * target).toLocaleString()})` : "—"}
+                onClick={() => maxContracts > 0 && setCount(target)}
+              />
+            );
+          })}
+        </div>
+        <div className="stocks-position-quick-group">
           {[1, 5, 10].map(n => (
-            <QuickChip key={n} label={`${n}`} hoverLabel={`${n} contracts`} onClick={() => setCount(n)} />
+            <QuickChip
+              key={n}
+              label={`${n}`}
+              hoverLabel={`${n} contracts (Ç${Math.round((marginPerContract + feePerContract) * n).toLocaleString()})`}
+              onClick={() => setCount(n)}
+            />
           ))}
         </div>
       </div>
@@ -1033,7 +1109,7 @@ function FuturesOrderForm({ equity, world, docked, access }: {
         </div>
       )}
 
-      <div className="stocks-order-side" style={{ marginTop: 8 }}>
+      <div className="stocks-order-side" style={{ marginTop: 8, gridTemplateColumns: "1fr 1fr" }}>
         <button
           className="stocks-order-side-btn buy"
           disabled={longBlock != null}
