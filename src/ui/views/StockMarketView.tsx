@@ -1918,7 +1918,7 @@ function Sparkline({ equity, position }: { equity: Equity; position: StockPositi
     if (!div) return;
     const chart = createChart(div, {
       width: div.clientWidth,
-      height: 220,
+      height: 170,
       autoSize: false,
       layout: {
         background: { type: ColorType.Solid, color: "transparent" },
@@ -2063,6 +2063,8 @@ function Sparkline({ equity, position }: { equity: Equity; position: StockPositi
         lineWidth: 1,
         lineStyle: LineStyle.Dashed,
         axisLabelVisible: true,
+        axisLabelColor: "rgba(220, 230, 240, 0.30)",
+        axisLabelTextColor: "rgba(15, 22, 30, 0.85)",
         title: "avg",
       })
     );
