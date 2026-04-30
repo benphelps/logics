@@ -201,34 +201,41 @@ export function clampSharePrice(eq: Equity, price: number): number {
   return Math.max(floor, Math.min(ceiling, price));
 }
 
-// Compute the "fundamental" price for an equity from underlying signals.
-// Every signal is converted to a multiplier on anchorPrice. The tick-by-tick
-// EMA blend toward this fundamental drives the visible price.
-export function computeFundamental(world: World, eq: Equity): number {
-  if (eq.kind === "station") {
-    const market = world.markets[eq.underlyingId];
-    if (!market) return eq.anchorPrice;
-    // Station signal: treasury health (rich = expensive shares) +
-    // demand-fulfillment (high stock vs target = healthy economy).
-    const target = Math.max(1, market.treasuryTarget);
-    const treasuryRatio = market.treasury / target;
-    // Map ratio to a multiplier: ratio=1 → 1.0, ratio=0 → 0.7, ratio=2 → 1.6
-    let mult = 1.0;
-    if (treasuryRatio >= 0) mult = 0.7 + 0.45 * Math.min(2, treasuryRatio);
-    else mult = Math.max(0.3, 0.7 + treasuryRatio * 0.35);    // negative ratio shrinks
-    return eq.anchorPrice * mult;
-  }
-  // Syndicate signal: total wealth (treasury + member ship funds) and recent
-  // revenue. Higher wealth/revenue → higher share price.
+// Per-kind fundamental computation. Each kind returns a price (not a
+// multiplier) anchored on eq.anchorPrice. Kept as separate functions so
+// new instrument kinds (commodity, basis pair, futures, index) slot in
+// without growing one giant if/else.
+
+function stationFundamental(world: World, eq: Equity): number {
+  const market = world.markets[eq.underlyingId];
+  if (!market) return eq.anchorPrice;
+  // Treasury health → multiplier on anchor.
+  const target = Math.max(1, market.treasuryTarget);
+  const treasuryRatio = market.treasury / target;
+  let mult = 1.0;
+  if (treasuryRatio >= 0) mult = 0.7 + 0.45 * Math.min(2, treasuryRatio);
+  else mult = Math.max(0.3, 0.7 + treasuryRatio * 0.35);
+  return eq.anchorPrice * mult;
+}
+
+function syndicateFundamental(world: World, eq: Equity): number {
   const synd = world.syndicates[eq.underlyingId];
   if (!synd) return eq.anchorPrice;
   const wealth = syndicateWealth(world, synd);
-  // Anchor: a well-capitalized syndicate of N ships should be at "fair value"
-  // around N × Ç20K wealth → mult = 1.0. Below that, lower; above, higher.
   const fairWealth = Math.max(1, synd.memberShipIds.length * 20_000);
   const wealthMult = 0.5 + 0.5 * (wealth / fairWealth);
   const revenueMult = 1 + synd.recentRevenue * SYNDICATE_PRICE_REVENUE_WEIGHT;
   return eq.anchorPrice * wealthMult * revenueMult;
+}
+
+// Compute the "fundamental" price for an equity from underlying signals.
+// Every signal is converted to a multiplier on anchorPrice. The tick-by-tick
+// EMA blend toward this fundamental drives the visible price.
+export function computeFundamental(world: World, eq: Equity): number {
+  switch (eq.kind) {
+    case "station":   return stationFundamental(world, eq);
+    case "syndicate": return syndicateFundamental(world, eq);
+  }
 }
 
 function deterministicNoise(eq: Equity, tick: number): number {
@@ -476,13 +483,33 @@ export function equityTradeHopDistance(world: World, eq: Equity, from: LocationI
   return null;
 }
 
+// Tradability dispatch — each instrument kind decides its own access
+// rule. `null` reason = ok to trade. Returning a string blocks the trade
+// with that reason.
+//
+// Stations: must be within EXCHANGE_TRADE_MAX_HOPS hops of the listed
+// station. Syndicates: tradable from anywhere (network access). Future
+// kinds (commodity, futures, index) will add their own clauses here.
+export function equityTradabilityReason(
+  world: World,
+  eq: Equity,
+  ship: NonNullable<TradeContext["ship"]>,
+): string | null {
+  switch (eq.kind) {
+    case "station": {
+      const hops = equityTradeHopDistance(world, eq, ship.location);
+      if (hops != null && hops <= EXCHANGE_TRADE_MAX_HOPS) return null;
+      const station = equityTradeStation(eq);
+      const stationName = (station ? world.locations[station]?.name : null) ?? station ?? eq.ticker;
+      return `Move within ${EXCHANGE_TRADE_MAX_HOPS} hops of ${stationName} to trade ${eq.ticker}.`;
+    }
+    case "syndicate":
+      return null;
+  }
+}
+
 function proximityBlockReason(world: World, eq: Equity, ship: NonNullable<TradeContext["ship"]>): string | null {
-  const station = equityTradeStation(eq);
-  if (!station) return null;
-  const hops = equityTradeHopDistance(world, eq, ship.location);
-  if (hops != null && hops <= EXCHANGE_TRADE_MAX_HOPS) return null;
-  const stationName = world.locations[station]?.name ?? station;
-  return `Move within ${EXCHANGE_TRADE_MAX_HOPS} hops of ${stationName} to trade ${eq.ticker}.`;
+  return equityTradabilityReason(world, eq, ship);
 }
 
 // --- order-book execution helpers ---------------------------------------
