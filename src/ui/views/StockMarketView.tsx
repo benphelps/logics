@@ -2062,9 +2062,7 @@ function Sparkline({ equity, position }: { equity: Equity; position: StockPositi
         color: "rgba(220, 230, 240, 0.30)",
         lineWidth: 1,
         lineStyle: LineStyle.Dashed,
-        axisLabelVisible: true,
-        axisLabelColor: "rgba(220, 230, 240, 0.30)",
-        axisLabelTextColor: "rgba(15, 22, 30, 0.85)",
+        axisLabelVisible: false,
         title: "avg",
       })
     );
