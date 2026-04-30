@@ -2059,7 +2059,7 @@ function Sparkline({ equity, position }: { equity: Equity; position: StockPositi
     priceLinesRef.current.push(
       price.createPriceLine({
         price: position.avgEntryPrice,
-        color: "rgba(220, 230, 240, 0.30)",
+        color: "rgba(220, 230, 240, 0.75)",
         lineWidth: 1,
         lineStyle: LineStyle.Dashed,
         axisLabelVisible: false,
