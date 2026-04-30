@@ -1,5 +1,6 @@
 import type { World } from "../sim/types";
 import { ensureStockMarket } from "../sim/stock";
+import { warmUpBook } from "../sim/stock/agents";
 
 const SAVE_REGISTRY_KEY = "logics.saveGames.v1";
 const SAVE_VERSION = 1;
@@ -70,6 +71,41 @@ function cloneWorld(world: World): World {
   return JSON.parse(JSON.stringify(world)) as World;
 }
 
+// Compact a world before serializing to localStorage. With C-1..C-6 the
+// universe lists 80+ equities and each one keeps a recentTrades buffer
+// (cap 100), price history (cap 60), and an order book of agent quotes.
+// Across 5 save slots that easily blows past the ~5 MB localStorage
+// quota, at which point setItem throws and the save silently fails —
+// the registry on disk doesn't pick up the new slot, and on the next
+// read the user's just-created save (e.g. "Developer State") vanishes
+// from the list.
+//
+// Strip everything that's purely cosmetic or rebuilt within a few ticks
+// of running:
+//   - Equity.recentTrades — rebuilt on the very next agent fill.
+//   - Equity.history — keep just the latest point so the chart can
+//     resume from a known anchor.
+//   - Order book entries with a TTL — those are agent orders that
+//     re-post on a 4-tick cadence. Player orders (no TTL) survive.
+//   - Trader logs trimmed to the most recent entries.
+function compactWorldForSave(world: World): World {
+  const w = cloneWorld(world);
+  for (const eq of Object.values(w.equities)) {
+    eq.recentTrades = [];
+    if (eq.history && eq.history.length > 1) eq.history = eq.history.slice(-1);
+  }
+  if (w.orderBooks) {
+    for (const book of Object.values(w.orderBooks)) {
+      book.bids = book.bids.filter(o => o.ttl == null);
+      book.asks = book.asks.filter(o => o.ttl == null);
+    }
+  }
+  for (const t of Object.values(w.traders)) {
+    if (t.log && t.log.length > 20) t.log = t.log.slice(-20);
+  }
+  return w;
+}
+
 // Saves predating later mechanics (treasuries, stock market, long/short
 // positions) won't have those fields. Backfill on load so the rest of the
 // sim doesn't blow up on `Object.keys(undefined)`. Treasuries get
@@ -79,6 +115,11 @@ function migrateLoadedWorld(world: World): World {
   if (!world.equities) world.equities = {};
   if (!world.syndicates) world.syndicates = {};
   ensureStockMarket(world);
+  // After loading a compacted save (orderBooks have player orders only),
+  // give every equity at least one round of agent quotes so the player
+  // can trade immediately. Idempotent — agents post at most one bid +
+  // one ask per equity. Player limit orders (no TTL) survive untouched.
+  warmUpBook(world);
   if (world.player) {
     if (!world.player.positions) world.player.positions = {};
     if (!world.player.trades) world.player.trades = [];
@@ -174,7 +215,7 @@ function makeSave(id: string, name: string, kind: SaveGameKind, world: World, cr
     tick: world.tick,
     createdAt,
     updatedAt: now,
-    world: cloneWorld(world),
+    world: compactWorldForSave(world),
   };
 }
 
