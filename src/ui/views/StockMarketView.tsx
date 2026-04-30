@@ -13,7 +13,7 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 import { useStore } from "../store";
-import type { BookTrade, Equity, EquityKind, FuturesPosition, Order, OrderBook, StockPosition, TradeRecord, World } from "../../sim/types";
+import type { BookTrade, Equity, EquityKind, FuturesContract, FuturesPosition, Order, OrderBook, StockPosition, TradeRecord, World } from "../../sim/types";
 import { canDeliverPhysical, listPlayerFutures, unrealizedFuturesPnl } from "../../sim/stock/futures";
 import {
   BROKER_FEE_RATE,
@@ -286,8 +286,11 @@ function PnoPanel(props: {
   onSetTakeProfit: (eqId: string, price: number | null) => void;
 }) {
   const [tab, setTab] = useState<PnoTab>("positions");
-  const limits = useMemo(() => listPlayerLimits(props.world, props.shipId), [props.world, props.shipId]);
-  const futures = useMemo(() => listPlayerFutures(props.world), [props.world]);
+  // Recompute every render — props.world is mutated in place, so a stable
+  // reference would let useMemo cache stale values across action ticks.
+  // Both lists are cheap (small array iteration).
+  const limits = listPlayerLimits(props.world, props.shipId);
+  const futures = listPlayerFutures(props.world);
 
   return (
     <section className="stocks-shell-panel stocks-pno">
@@ -971,41 +974,85 @@ function FuturesOrderForm({ equity, world, docked, access }: {
   const openShortFuture = useStore(s => s.openShortFuture);
   const [count, setCount] = useState<number>(1);
   const c = world.contracts?.[equity.id];
+  const playerShipId = world.player?.shipIds[0];
+  const ship = playerShipId ? world.traders[playerShipId] : null;
+  const existing = world.player?.futures?.[equity.id];
   if (!c) return null;
   const spot = world.equities[c.underlyingEquityId]?.price ?? equity.price;
   const notional = c.contractSize * spot * count;
   const margin = notional * c.marginFraction;
   const fee = notional * BROKER_FEE_RATE;
+  const total = margin + fee;
   const ttx = Math.max(0, c.expiryTick - world.tick);
+  const cantAfford = ship != null && ship.funds < total;
+  const blockReason: string | null = !docked
+    ? "Trade only while docked."
+    : !access.ok
+      ? access.reason
+      : count <= 0
+        ? "Choose at least 1 contract."
+        : cantAfford
+          ? `Need Ç${Math.round(total).toLocaleString()}, have Ç${Math.round(ship?.funds ?? 0).toLocaleString()}.`
+          : null;
+  const flipBlocked = (side: "long" | "short") =>
+    existing != null && existing.side !== side
+      ? `Currently ${existing.side} ${existing.contracts} ${equity.ticker}. Close before flipping.`
+      : null;
+  const longBlock = blockReason ?? flipBlocked("long");
+  const shortBlock = blockReason ?? flipBlocked("short");
+
   return (
     <section className="trade-helper-section stocks-order-form">
       <div className="exchange-section-title">Open futures position</div>
+
       <div className="stocks-order-fields">
         <label>
           <span>Contracts</span>
           <input type="number" min={1} value={count}
             onChange={e => setCount(Math.max(1, Math.floor(Number(e.target.value) || 0)))} />
         </label>
+        <div className="stocks-position-quick-group" style={{ display: "flex", gap: 4 }}>
+          {[1, 5, 10].map(n => (
+            <QuickChip key={n} label={`${n}`} hoverLabel={`${n} contracts`} onClick={() => setCount(n)} />
+          ))}
+        </div>
       </div>
-      <div className="stocks-order-summary dim">
-        <div>Notional: Ç{Math.round(notional).toLocaleString()}</div>
-        <div>Margin (+ fee): Ç{Math.round(margin + fee).toLocaleString()}</div>
-        <div>Expires in {ttx} ticks</div>
-      </div>
-      <div className="stocks-order-side">
-        <button className={`stocks-order-side-btn buy active`}
-          disabled={!docked || !access.ok || count <= 0}
-          onClick={() => openLongFuture(equity.id, count)}>
-          Open Long
+
+      <dl className="trade-helper-grid station-info-grid" style={{ marginTop: 6 }}>
+        <FleetStat label="spot" value={`Ç${fmtPrice(spot)}`} />
+        <FleetStat label="contract size" value={`${c.contractSize}`} />
+        <FleetStat label="notional" value={`Ç${Math.round(notional).toLocaleString()}`} />
+        <FleetStat label="margin" value={`Ç${Math.round(margin).toLocaleString()} (${(c.marginFraction * 100).toFixed(0)}%)`} />
+        <FleetStat label="fee" value={`Ç${Math.round(fee).toLocaleString()}`} />
+        <FleetStat label="expires in" value={`${ttx}t`} />
+      </dl>
+
+      {existing && (
+        <div className="stocks-warning dim" style={{ marginTop: 8 }}>
+          You already hold {existing.contracts} {existing.side} {equity.ticker}. Adds in the same direction adjust your average; opposite-direction opens are blocked.
+        </div>
+      )}
+
+      <div className="stocks-order-side" style={{ marginTop: 8 }}>
+        <button
+          className="stocks-order-side-btn buy"
+          disabled={longBlock != null}
+          title={longBlock ?? undefined}
+          onClick={() => openLongFuture(equity.id, count)}
+        >
+          Open Long · Ç{Math.round(total).toLocaleString()}
         </button>
-        <button className={`stocks-order-side-btn short active`}
-          disabled={!docked || !access.ok || count <= 0}
-          onClick={() => openShortFuture(equity.id, count)}>
-          Open Short
+        <button
+          className="stocks-order-side-btn short"
+          disabled={shortBlock != null}
+          title={shortBlock ?? undefined}
+          onClick={() => openShortFuture(equity.id, count)}
+        >
+          Open Short · Ç{Math.round(total).toLocaleString()}
         </button>
       </div>
-      {!docked && <div className="stocks-warning dim">Trade only while docked.</div>}
-      {!access.ok && <div className="stocks-warning dim">{access.reason}</div>}
+
+      {blockReason && <div className="stocks-warning dim" style={{ marginTop: 6 }}>{blockReason}</div>}
     </section>
   );
 }
@@ -1634,15 +1681,18 @@ function PositionRowFragment({ pos, eq, pnl, pnlClass, isFocused, cash, docked, 
   );
 }
 
-// C-3: open futures positions card. Shows the player's open contracts
-// with mark, MtM PnL, margin posted, and an inline Close button.
+// C-3 / C-4: open futures positions accordion. Mirrors PositionsAccordion's
+// look — same header grid (ticker, side pill, contracts, mark, P&L) and
+// expand-to-show-details body. Expanded body has margin posted, expiry
+// countdown, delivery station, physical-ready indicator, and a Close
+// button.
 function FuturesPositionsList({ world, futures, docked, onSelectEquity }: {
   world: World;
   futures: FuturesPosition[];
   docked: boolean;
   onSelectEquity: (eqId: string) => void;
 }) {
-  const closeFuture = useStore(s => s.closeFuture);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   if (futures.length === 0) {
     return <div className="stocks-pno-empty dim">No open futures.</div>;
   }
@@ -1651,48 +1701,106 @@ function FuturesPositionsList({ world, futures, docked, onSelectEquity }: {
       <div className="stocks-pno-header positions">
         <span>Ticker</span>
         <span>Side</span>
-        <span className="numeric">#</span>
+        <span className="numeric">Contracts</span>
         <span className="numeric">Mark</span>
-        <span className="numeric">MtM</span>
+        <span className="numeric">P&amp;L</span>
       </div>
       {futures.map(fp => {
         const c = world.contracts?.[fp.contractId];
         const eq = world.equities[fp.contractId];
         if (!c || !eq) return null;
-        const spot = world.equities[c.underlyingEquityId]?.price ?? eq.price;
-        const pnl = unrealizedFuturesPnl(world, fp);
-        const pnlClass = pnl > 0 ? "good" : pnl < 0 ? "bad" : "";
-        const ttx = Math.max(0, c.expiryTick - world.tick);
-        // C-4: physical-delivery readiness indicator. Eligible only for
-        // shorts when the player ship is at the delivery station with
-        // sufficient cargo.
-        const playerShipId = world.player?.shipIds[0];
-        const ship = playerShipId ? world.traders[playerShipId] : null;
-        const canDeliver = ship ? canDeliverPhysical(world, c, fp, ship) : false;
-        const deliveryName = world.locations[c.deliveryStation]?.name ?? c.deliveryStation;
+        const isOpen = expandedId === fp.contractId;
         return (
-          <div key={fp.contractId} className="stocks-pno-row positions">
-            <button className="stocks-pno-cell ticker mono" onClick={() => onSelectEquity(eq.id)}>{eq.ticker}</button>
-            <span className={`stocks-pno-cell side ${fp.side}`}>{fp.side}</span>
-            <span className="stocks-pno-cell numeric mono">{fp.contracts}</span>
-            <span className="stocks-pno-cell numeric mono">Ç{spot.toFixed(2)}</span>
-            <span className={`stocks-pno-cell numeric mono ${pnlClass}`}>{pnl >= 0 ? "+" : ""}Ç{Math.round(pnl).toLocaleString()}</span>
-            <span className="stocks-pno-cell dim small">
-              expires {ttx}t · margin Ç{Math.round(fp.marginPosted).toLocaleString()}
-              {fp.side === "short" && (canDeliver
-                ? <> · <span className="good">physical ready @ {deliveryName}</span></>
-                : <> · delivery: {deliveryName}</>)}
-            </span>
-            <button
-              className="btn-action small"
-              disabled={!docked}
-              onClick={() => closeFuture(fp.contractId)}
-            >
-              Close
-            </button>
-          </div>
+          <FuturesAccordionItem
+            key={fp.contractId}
+            world={world}
+            equity={eq}
+            contract={c}
+            position={fp}
+            docked={docked}
+            isOpen={isOpen}
+            onToggle={() => {
+              setExpandedId(isOpen ? null : fp.contractId);
+              onSelectEquity(fp.contractId);
+            }}
+          />
         );
       })}
+    </div>
+  );
+}
+
+function FuturesAccordionItem({ world, equity, contract, position, docked, isOpen, onToggle }: {
+  world: World;
+  equity: Equity;
+  contract: FuturesContract;
+  position: FuturesPosition;
+  docked: boolean;
+  isOpen: boolean;
+  onToggle: () => void;
+}) {
+  const closeFuture = useStore(s => s.closeFuture);
+  const spot = world.equities[contract.underlyingEquityId]?.price ?? equity.price;
+  const pnl = unrealizedFuturesPnl(world, position);
+  const pnlPct = position.avgEntryPrice > 0
+    ? (pnl / (position.avgEntryPrice * contract.contractSize * position.contracts)) * 100
+    : 0;
+  const tone = pnl > 0 ? "good" : pnl < 0 ? "bad" : "";
+  const ttx = Math.max(0, contract.expiryTick - world.tick);
+  const notional = contract.contractSize * spot * position.contracts;
+  const playerShipId = world.player?.shipIds[0];
+  const ship = playerShipId ? world.traders[playerShipId] : null;
+  const canDeliver = ship ? canDeliverPhysical(world, contract, position, ship) : false;
+  const deliveryName = world.locations[contract.deliveryStation]?.name ?? contract.deliveryStation;
+  const ageTicks = world.tick - position.openedAt;
+
+  return (
+    <div className={`stocks-accordion-item ${isOpen ? "open" : ""} ${position.side}`}>
+      <button type="button" className="stocks-accordion-summary" onClick={onToggle}>
+        <span className="ticker mono">{equity.ticker}</span>
+        <span className="kind-pill mono">{position.side === "long" ? "LONG" : "SHORT"}</span>
+        <span className="numeric mono">{position.contracts} ct</span>
+        <span className="numeric mono dim">Ç{fmtPrice(spot)}</span>
+        <span className={`numeric mono pnl ${tone}`}>
+          {pnl >= 0 ? "+" : ""}Ç{Math.round(pnl).toLocaleString()}
+          <span className="dim"> ({pnl >= 0 ? "+" : ""}{pnlPct.toFixed(1)}%)</span>
+        </span>
+      </button>
+      {isOpen && (
+        <div className="stocks-accordion-body">
+          <dl className="trade-helper-grid station-info-grid">
+            <FleetStat label="mark" value={`Ç${fmtPrice(spot)}`} />
+            <FleetStat label="entry" value={`Ç${fmtPrice(position.avgEntryPrice)}`} />
+            <FleetStat label="contract size" value={`${contract.contractSize}`} />
+            <FleetStat label="notional" value={`Ç${Math.round(notional).toLocaleString()}`} />
+            <FleetStat label="margin" value={`Ç${Math.round(position.marginPosted).toLocaleString()}`} />
+            <FleetStat label="P&L" value={`${pnl >= 0 ? "+" : ""}Ç${Math.round(pnl).toLocaleString()}`} />
+            <FleetStat label="expires in" value={`${ttx}t`} />
+            <FleetStat label="held for" value={`${ageTicks}t`} />
+            <FleetStat label="delivery" value={deliveryName} />
+          </dl>
+
+          {position.side === "short" && (
+            <div className={`stocks-warning ${canDeliver ? "good" : "dim"}`} style={{ marginTop: 8 }}>
+              {canDeliver
+                ? `Physical delivery ready — at ${deliveryName} with ${contract.contractSize * position.contracts} ${world.goods[contract.goodId]?.name ?? contract.goodId} on hand. Settles at strike on expiry.`
+                : `Physical delivery requires ${contract.contractSize * position.contracts} ${world.goods[contract.goodId]?.name ?? contract.goodId} cargo at ${deliveryName} when the contract expires.`}
+            </div>
+          )}
+
+          <section className="trade-helper-section">
+            <div className="stocks-position-row close">
+              <button
+                className="btn-action primary"
+                disabled={!docked || position.contracts <= 0}
+                onClick={() => closeFuture(position.contractId)}
+              >
+                Close all ({position.contracts})
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }
