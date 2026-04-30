@@ -28,11 +28,13 @@ import { MAINTENANCE_DEBT_TRAVEL_BLOCK } from "../../sim/crew";
 import { listHiresAt } from "../../sim/hires";
 import { selectRefuelType, UNLOAD_TICKS, unloadTicksRemainingFor } from "../../sim/traders";
 import { UPGRADE_SLOTS, installedUpgrade, isUpgradeGood, upgradeDef, upgradeEffectText } from "../../sim/upgrades";
-import type { CrewModifiers, CrewRole } from "../../sim/types";
+import type { CrewModifiers, CrewRole, Equity } from "../../sim/types";
 import type { CrewMember, GoodId, Job, JobId, LocationDef, LocationId, Trader, TraderId, UpgradeSlot, World } from "../../sim/types";
+import { parseBasisUnderlying, priceChangePct } from "../../sim/stock";
 import { useCrewHeadshot } from "../headshots";
 import { goodArtUrl, jobArtUrl, shipArtUrl, stationArtUrl, stationKind, stationKindLabel, stationScale, stationScaleLabel, stationSubtype, stationSubtypeLabel } from "../art";
 import { SortableRows, SortableTh } from "../components/SortableTable";
+import { MiniSparkline } from "../components/MiniSparkline";
 import "./PlayerView.css";
 
 const SHOW_DEV_SHIP_PLAN_PANEL = false;
@@ -547,72 +549,74 @@ function DockedView({ ship, world, loc, guidedPlan, hint, target, hintText, cueT
   return (
     <div className={`docked-view ${pulseClass}`}>
       <div className="bridge">
-        <ShipCard
-          ship={ship}
-          world={world}
-          loc={loc}
-          guidedPlan={guidedPlan}
-          target={target}
-          hintText={hintText}
-          cueText={cueText}
-          critical={critical}
-          inTransit={inTransit}
-          selectedGood={activeFocus?.kind === "good" && activeFocus.source === "cargo" ? activeFocus.good : null}
-          pinnedGoods={pinnedCargoGoods}
-          onSelectGood={(good) => togglePinnedFocus({ kind: "good", good, source: "cargo" })}
-          onHoverGood={(good) => {
-            if (good) setHoverFocus({ kind: "good", good, source: "cargo" });
-            else clearHoverFocus();
-          }}
-        />
-        <TravelOptions
-          ship={ship}
-          world={world}
-          loc={loc}
-          target={target}
-          hintText={hintText}
-          cueText={cueText}
-          selectedStation={activeFocus?.kind === "station" ? activeFocus.loc : null}
-          pinnedStations={pinnedStations}
-          inTransit={inTransit}
-          onSelectStation={(station) => togglePinnedFocus({ kind: "station", loc: station, source: "travel" })}
-          onHoverStation={(station) => {
-            if (station) setHoverFocus({ kind: "station", loc: station, source: "travel" });
-            else clearHoverFocus();
-          }}
-          onPulseSuggestions={pulseSuggestionActions}
-        />
-      </div>
-      <div className="bridge-split">
-        <StationExchangeCard
-          ship={ship}
-          world={world}
-          loc={loc}
-          target={target}
-          hintText={hintText}
-          cueText={cueText}
-          selectedGood={activeFocus?.kind === "good" && activeFocus.source === "market" ? activeFocus.good : null}
-          pinnedGoods={pinnedMarketGoods}
-          inTransit={inTransit}
-          onSelectGood={(good) => togglePinnedFocus({ kind: "good", good, source: "market" })}
-          onHoverGood={(good) => {
-            if (good) setHoverFocus({ kind: "good", good, source: "market" });
-            else clearHoverFocus();
-          }}
-        />
-        <InfoAreaCard
-          ship={ship}
-          world={world}
-          loc={loc}
-          focus={activeFocus}
-          pinnedFocuses={pinnedFocuses}
-          activePinnedKey={activePinnedKey}
-          onSelectPinned={setActivePinnedKey}
-          onClosePinned={closePinnedFocus}
-          onClearFocus={clearInfoFocus}
-          target={target}
-          hint={hint}
-        />
+        <div className="bridge-column bridge-left">
+          <ShipCard
+            ship={ship}
+            world={world}
+            loc={loc}
+            guidedPlan={guidedPlan}
+            target={target}
+            hintText={hintText}
+            cueText={cueText}
+            critical={critical}
+            inTransit={inTransit}
+            selectedGood={activeFocus?.kind === "good" && activeFocus.source === "cargo" ? activeFocus.good : null}
+            pinnedGoods={pinnedCargoGoods}
+            onSelectGood={(good) => togglePinnedFocus({ kind: "good", good, source: "cargo" })}
+            onHoverGood={(good) => {
+              if (good) setHoverFocus({ kind: "good", good, source: "cargo" });
+              else clearHoverFocus();
+            }}
+          />
+          <StationExchangeCard
+            ship={ship}
+            world={world}
+            loc={loc}
+            target={target}
+            hintText={hintText}
+            cueText={cueText}
+            selectedGood={activeFocus?.kind === "good" && activeFocus.source === "market" ? activeFocus.good : null}
+            pinnedGoods={pinnedMarketGoods}
+            inTransit={inTransit}
+            onSelectGood={(good) => togglePinnedFocus({ kind: "good", good, source: "market" })}
+            onHoverGood={(good) => {
+              if (good) setHoverFocus({ kind: "good", good, source: "market" });
+              else clearHoverFocus();
+            }}
+          />
+        </div>
+        <div className="bridge-column bridge-right">
+          <TravelOptions
+            ship={ship}
+            world={world}
+            loc={loc}
+            target={target}
+            hintText={hintText}
+            cueText={cueText}
+            selectedStation={activeFocus?.kind === "station" ? activeFocus.loc : null}
+            pinnedStations={pinnedStations}
+            inTransit={inTransit}
+            onSelectStation={(station) => togglePinnedFocus({ kind: "station", loc: station, source: "travel" })}
+            onHoverStation={(station) => {
+              if (station) setHoverFocus({ kind: "station", loc: station, source: "travel" });
+              else clearHoverFocus();
+            }}
+            onPulseSuggestions={pulseSuggestionActions}
+          />
+          <InfoAreaCard
+            ship={ship}
+            world={world}
+            loc={loc}
+            focus={activeFocus}
+            pinnedFocuses={pinnedFocuses}
+            activePinnedKey={activePinnedKey}
+            onSelectPinned={setActivePinnedKey}
+            onClosePinned={closePinnedFocus}
+            onClearFocus={clearInfoFocus}
+            target={target}
+            hint={hint}
+          />
+        </div>
       </div>
       {SHOW_DEV_SHIP_LOG_PANEL && <ShipLogCard ship={ship} />}
     </div>
@@ -973,6 +977,9 @@ function StationTradeHelperInfoContent({ loc, world }: { loc: LocationDef; world
         </div>
       </div>
 
+      <StationExchangeSection loc={loc} world={world} />
+
+
       <div className="trade-helper-section">
         <div className="exchange-section-title">Station flow</div>
         <div className="station-flow-pills">
@@ -1069,6 +1076,91 @@ function StationTradeHelperInfoContent({ loc, world }: { loc: LocationDef; world
         )}
       </div>
     </InfoPanelFrame>
+  );
+}
+
+function StationExchangeSection({ loc, world }: { loc: LocationDef; world: World }) {
+  // Pull exchange data tied to this station: its listed share, the basis
+  // equities for goods that move through it, and any futures contracts that
+  // designate this station as the physical-delivery point.
+  const stationEquity: Equity | null = Object.values(world.equities)
+    .find(e => e.kind === "station" && e.underlyingId === loc.id) ?? null;
+
+  const localBasis = Object.values(world.equities)
+    .filter(e => {
+      if (e.kind !== "basis") return false;
+      const parsed = parseBasisUnderlying(e.underlyingId);
+      return parsed?.locationId === loc.id;
+    })
+    .sort((a, b) => Math.abs(b.price - b.anchorPrice) - Math.abs(a.price - a.anchorPrice))
+    .slice(0, 3);
+
+  const localFutures = Object.values(world.contracts ?? {})
+    .filter(c => c.deliveryStation === loc.id)
+    .sort((a, b) => a.expiryTick - b.expiryTick);
+
+  if (!stationEquity && localBasis.length === 0 && localFutures.length === 0) return null;
+
+  const sparkPoints = (stationEquity?.history ?? []).map(h => h.price);
+  const changePct = stationEquity ? priceChangePct(stationEquity) : 0;
+  const changeTone = changePct > 0.0005 ? "good" : changePct < -0.0005 ? "bad" : "";
+  const lastDiv = stationEquity?.lastDividend;
+  const ticksSinceDiv = lastDiv ? Math.max(0, world.tick - lastDiv.tick) : null;
+
+  return (
+    <div className="trade-helper-section">
+      <div className="exchange-section-title">Exchange</div>
+      {stationEquity && (
+        <>
+          <div className="trade-helper-line station-exchange-quote">
+            <span className="station-exchange-quote-left">
+              <span className="station-exchange-ticker">{stationEquity.ticker}</span>
+              <span className="mono station-exchange-price">Ç{stationEquity.price.toFixed(2)}</span>
+            </span>
+            <span className={`station-exchange-delta mono ${changeTone}`}>
+              {changePct > 0 ? "+" : ""}{(changePct * 100).toFixed(2)}%
+            </span>
+          </div>
+          {sparkPoints.length > 1 && (
+            <MiniSparkline points={sparkPoints} className="station-exchange-spark" />
+          )}
+        </>
+      )}
+      {lastDiv && (
+        <div className="trade-helper-line">
+          <span>Last dividend</span>
+          <span className="mono">Ç{lastDiv.perShare.toFixed(2)} / share · {ticksSinceDiv}t ago</span>
+        </div>
+      )}
+      {localBasis.length > 0 && (
+        <div className="trade-helper-line">
+          <span>Basis spreads</span>
+          <span className="station-basis-list">
+            {localBasis.map(b => {
+              const spread = b.price - b.anchorPrice;
+              const tone = spread > 0.001 ? "good" : spread < -0.001 ? "bad" : "";
+              return (
+                <span key={b.id} className="station-basis-chip">
+                  <span className="mono">{b.ticker}</span>
+                  <span className={`mono ${tone}`}>{spread > 0 ? "+" : ""}Ç{spread.toFixed(2)}</span>
+                </span>
+              );
+            })}
+          </span>
+        </div>
+      )}
+      {localFutures.length > 0 && (
+        <div className="trade-helper-line">
+          <span>Futures delivery</span>
+          <span className="mono">
+            {localFutures.length} contract{localFutures.length === 1 ? "" : "s"}
+            {localFutures[0] && (
+              <> · next {Math.max(0, localFutures[0].expiryTick - world.tick)}t</>
+            )}
+          </span>
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -2,14 +2,14 @@
   --ship-surface: #15181d;
   --ship-surface-soft: #101317;
   --ship-surface-raised: #1b2026;
-  --ship-line: #2a3038;
+  --ship-line: #25282d;
   --ship-line-soft: rgba(255, 255, 255, 0.06);
   --ship-action-blue: #1f6fa8;
   --ship-action-blue-hover: #2a75ad;
   --ship-action-blue-line: #50aee8;
   --ship-action-blue-line-hover: #74c4f2;
-  --bridge-gap: 16px;
-  --bridge-columns: minmax(280px, 1.15fr) minmax(250px, 0.95fr) minmax(360px, 1.35fr);
+  --bridge-gap: 14px;
+  --bridge-columns: minmax(530px, 2.1fr) minmax(360px, 1.35fr);
   --bridge-top-title-height: 42px;
   display: flex;
   flex-direction: column;
@@ -86,11 +86,27 @@
 /* ---- bridge: primary operations layout ---- */
 
 .bridge {
+  flex: 1 1 auto;
   display: grid;
   grid-template-columns: var(--bridge-columns);
-  grid-template-rows: auto;
   gap: var(--bridge-gap);
   align-items: stretch;
+  min-height: 0;
+}
+
+.bridge-column {
+  display: grid;
+  gap: var(--bridge-gap);
+  min-width: 0;
+  min-height: 0;
+}
+
+.bridge-left {
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.bridge-right {
+  grid-template-rows: minmax(0, 1fr) minmax(0, 3fr);
 }
 
 .bridge-card {
@@ -120,7 +136,12 @@
   height: var(--card-art-height);
   background-image:
     linear-gradient(to bottom, rgba(21, 24, 29, 0.08), var(--ship-surface) 94%),
-    linear-gradient(90deg, rgba(21, 24, 29, 0.74), rgba(21, 24, 29, 0.26) 50%, rgba(21, 24, 29, 0.82)),
+    linear-gradient(
+      90deg,
+      rgba(21, 24, 29, 0.74),
+      rgba(21, 24, 29, 0.26) 50%,
+      rgba(21, 24, 29, 0.82)
+    ),
     var(--card-art);
   background-position: var(--card-art-position);
   background-size: cover;
@@ -135,9 +156,7 @@
   z-index: 1;
 }
 
-.bridge > .ship-card {
-  grid-column: 1 / span 2;
-  grid-row: 1;
+.bridge-left > .ship-card {
   /* Cargo tabs + active tab content fill all available card height;
      status tabs (fuel/maint) hug the bottom of the panel. */
   display: flex;
@@ -145,9 +164,7 @@
   overflow: hidden;
 }
 
-.bridge > .travel-card {
-  grid-column: 3;
-  grid-row: 1;
+.bridge-right > .travel-card {
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -349,10 +366,26 @@
   white-space: nowrap;
 }
 
-.station-kind-mining { border-color: rgba(151, 193, 151, 0.26); background: rgba(151, 193, 151, 0.06); color: #b6d6b6; }
-.station-kind-agri { border-color: rgba(200, 162, 58, 0.28); background: rgba(200, 162, 58, 0.07); color: #e6c270; }
-.station-kind-frontier { border-color: rgba(170, 140, 210, 0.26); background: rgba(170, 140, 210, 0.06); color: #cdb9ea; }
-.station-kind-research { border-color: rgba(95, 190, 210, 0.26); background: rgba(95, 190, 210, 0.06); color: #a9e2ed; }
+.station-kind-mining {
+  border-color: rgba(151, 193, 151, 0.26);
+  background: rgba(151, 193, 151, 0.06);
+  color: #b6d6b6;
+}
+.station-kind-agri {
+  border-color: rgba(200, 162, 58, 0.28);
+  background: rgba(200, 162, 58, 0.07);
+  color: #e6c270;
+}
+.station-kind-frontier {
+  border-color: rgba(170, 140, 210, 0.26);
+  background: rgba(170, 140, 210, 0.06);
+  color: #cdb9ea;
+}
+.station-kind-research {
+  border-color: rgba(95, 190, 210, 0.26);
+  background: rgba(95, 190, 210, 0.06);
+  color: #a9e2ed;
+}
 
 .flow-label {
   font-size: 10px;
@@ -374,9 +407,8 @@
    "tabs at top" pattern from .bridge-card-tabs (rounded top corners,
    no bottom border so they butt up against the tab content). Status
    tabs sit immediately below the active tab content (only as far
-   down as the table is tall — see .bridge > .ship-card grid rows
-   above) and get the inverse treatment: bottom-rounded, no top
-   border. */
+   down as the table is tall) and get the inverse treatment:
+   bottom-rounded, no top border. */
 .ship-cargo-section {
   display: flex;
   /* Eat all available card height so the active tab (or its empty
@@ -544,8 +576,8 @@
 }
 
 .ship-status-entry:hover:not(:disabled) .ship-meter-percent {
-  background: rgba(255, 255, 255, 0.10);
-  border-color: rgba(255, 255, 255, 0.30);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.3);
 }
 
 .ship-meter-badge {
@@ -600,8 +632,12 @@
   transition: width 0.2s ease;
 }
 
-.vital-bar-fill.bad  { background: var(--bad); }
-.vital-bar-fill.warn { background: var(--warn); }
+.vital-bar-fill.bad {
+  background: var(--bad);
+}
+.vital-bar-fill.warn {
+  background: var(--warn);
+}
 
 .ship-system-panel {
   position: relative;
@@ -621,7 +657,11 @@
 }
 
 .ship-cargo-panel {
-  background: linear-gradient(90deg, rgba(79, 182, 255, 0.085), rgba(255, 255, 255, 0.022));
+  background: linear-gradient(
+    90deg,
+    rgba(79, 182, 255, 0.085),
+    rgba(255, 255, 255, 0.022)
+  );
   border: 1px solid rgba(79, 182, 255, 0.18);
 }
 
@@ -631,26 +671,42 @@
 }
 
 .ship-fuel-panel {
-  background: linear-gradient(90deg, rgba(96, 106, 118, 0.075), rgba(255, 255, 255, 0.025));
+  background: linear-gradient(
+    90deg,
+    rgba(96, 106, 118, 0.075),
+    rgba(255, 255, 255, 0.025)
+  );
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .ship-maintenance-panel {
-  background: linear-gradient(90deg, rgba(96, 106, 118, 0.075), rgba(255, 255, 255, 0.025));
+  background: linear-gradient(
+    90deg,
+    rgba(96, 106, 118, 0.075),
+    rgba(255, 255, 255, 0.025)
+  );
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .ship-cargo-panel.warn,
 .ship-fuel-panel.warn,
 .ship-maintenance-panel.warn {
-  background: linear-gradient(90deg, rgba(251, 191, 36, 0.12), rgba(255, 255, 255, 0.025));
-  border-color: rgba(251, 191, 36, 0.30);
+  background: linear-gradient(
+    90deg,
+    rgba(251, 191, 36, 0.12),
+    rgba(255, 255, 255, 0.025)
+  );
+  border-color: rgba(251, 191, 36, 0.3);
 }
 
 .ship-cargo-panel.bad,
 .ship-fuel-panel.bad,
 .ship-maintenance-panel.bad {
-  background: linear-gradient(90deg, rgba(248, 113, 113, 0.13), rgba(255, 255, 255, 0.025));
+  background: linear-gradient(
+    90deg,
+    rgba(248, 113, 113, 0.13),
+    rgba(255, 255, 255, 0.025)
+  );
   border-color: rgba(248, 113, 113, 0.34);
 }
 
@@ -713,12 +769,22 @@
 }
 
 .ship-system-meter-fill.warn,
-.ship-fuel-meter-fill.warn { background: rgba(112, 124, 136, 0.28); }
+.ship-fuel-meter-fill.warn {
+  background: rgba(112, 124, 136, 0.28);
+}
 .ship-system-meter-fill.bad,
-.ship-fuel-meter-fill.bad  { background: rgba(112, 124, 136, 0.32); }
-.ship-maintenance-meter-fill { background: rgba(112, 124, 136, 0.24); }
-.ship-maintenance-meter-fill.warn { background: rgba(112, 124, 136, 0.28); }
-.ship-maintenance-meter-fill.bad  { background: rgba(112, 124, 136, 0.32); }
+.ship-fuel-meter-fill.bad {
+  background: rgba(112, 124, 136, 0.32);
+}
+.ship-maintenance-meter-fill {
+  background: rgba(112, 124, 136, 0.24);
+}
+.ship-maintenance-meter-fill.warn {
+  background: rgba(112, 124, 136, 0.28);
+}
+.ship-maintenance-meter-fill.bad {
+  background: rgba(112, 124, 136, 0.32);
+}
 
 .ship-system-meter-value {
   position: absolute;
@@ -1036,7 +1102,12 @@
   height: auto;
   background-image:
     linear-gradient(to bottom, rgba(21, 24, 29, 0.38), rgba(21, 24, 29, 0.58)),
-    linear-gradient(90deg, rgba(21, 24, 29, 0.62), rgba(21, 24, 29, 0.28) 50%, rgba(21, 24, 29, 0.66)),
+    linear-gradient(
+      90deg,
+      rgba(21, 24, 29, 0.62),
+      rgba(21, 24, 29, 0.28) 50%,
+      rgba(21, 24, 29, 0.66)
+    ),
     var(--card-art);
   filter: saturate(0.82) contrast(0.94);
 }
@@ -1046,17 +1117,23 @@
   backdrop-filter: blur(1px);
 }
 
-:is(.exchange-card, .travel-card) :is(.market-table, .travel-table, .jobs-table) th {
+:is(.exchange-card, .travel-card)
+  :is(.market-table, .travel-table, .jobs-table)
+  th {
+  --sticky-table-header-line: rgba(232, 242, 252, 0.13);
   border-top-color: rgba(232, 242, 252, 0.13);
   border-bottom-color: rgba(232, 242, 252, 0.13);
 }
 
-:is(.exchange-card, .travel-card) :is(.market-table, .travel-table, .jobs-table) td {
+:is(.exchange-card, .travel-card)
+  :is(.market-table, .travel-table, .jobs-table)
+  td {
   border-top-color: rgba(232, 242, 252, 0.09);
   border-bottom-color: rgba(232, 242, 252, 0.09);
 }
 
 .ship-card :is(.cargo-table, .upgrade-table, .crew-table, .jobs-table) th {
+  --sticky-table-header-line: rgba(232, 242, 252, 0.13);
   border-top-color: rgba(232, 242, 252, 0.13);
   border-bottom-color: rgba(232, 242, 252, 0.13);
 }
@@ -1127,8 +1204,13 @@
 }
 
 @keyframes tab-suggestion-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(79, 182, 255, 0.6); }
-  50%      { box-shadow: 0 0 0 6px rgba(79, 182, 255, 0); }
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(79, 182, 255, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(79, 182, 255, 0);
+  }
 }
 
 .bridge-tab-count {
@@ -1189,10 +1271,18 @@
   table-layout: fixed;
 }
 
-.upgrade-table .col-source { width: 72px; }
-.upgrade-table .col-tier { width: 56px; }
-.upgrade-table .col-role { width: 112px; }
-.upgrade-table .col-action { width: 132px; }
+.upgrade-table .col-source {
+  width: 72px;
+}
+.upgrade-table .col-tier {
+  width: 56px;
+}
+.upgrade-table .col-role {
+  width: 112px;
+}
+.upgrade-table .col-action {
+  width: 132px;
+}
 
 .upgrade-table th {
   position: relative;
@@ -1337,13 +1427,16 @@
   display: grid;
   min-width: 0;
   overflow: hidden;
-  border: 1px solid rgba(154, 182, 202, 0.10);
+  border: 1px solid rgba(154, 182, 202, 0.1);
   border-radius: 5px;
   background:
-    linear-gradient(135deg, rgba(121, 157, 184, 0.055), rgba(121, 157, 184, 0.018)),
+    linear-gradient(
+      135deg,
+      rgba(121, 157, 184, 0.055),
+      rgba(121, 157, 184, 0.018)
+    ),
     rgb(20 25 30 / 82%);
-  box-shadow:
-    inset 0 1px rgba(255, 255, 255, 0.025);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.025);
 }
 
 .upgrade-card {
@@ -1364,15 +1457,18 @@
 
 .upgrade-card.suggested {
   border-color: rgba(118, 157, 184, 0.24);
-  box-shadow:
-    inset 0 1px rgba(255, 255, 255, 0.03);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.03);
 }
 
 .upgrade-card.empty {
   border-style: dashed;
   border-color: rgba(142, 170, 190, 0.14);
   background:
-    linear-gradient(135deg, rgba(121, 157, 184, 0.035), rgba(121, 157, 184, 0.01)),
+    linear-gradient(
+      135deg,
+      rgba(121, 157, 184, 0.035),
+      rgba(121, 157, 184, 0.01)
+    ),
     rgba(18, 25, 32, 0.62);
 }
 
@@ -1584,14 +1680,20 @@
 .tier-badge.rarity-legendary {
   background: rgba(244, 182, 67, 0.18);
   color: #f4b643;
-  border-color: rgba(244, 182, 67, 0.50);
+  border-color: rgba(244, 182, 67, 0.5);
 }
 
 /* Subtle border accent on the card itself for rarer items. The common
    tier stays neutral so it doesn't shout for attention. */
-.upgrade-card.rarity-uncommon { border-color: rgba(111, 182, 255, 0.28); }
-.upgrade-card.rarity-rare { border-color: rgba(199, 155, 255, 0.30); }
-.upgrade-card.rarity-legendary { border-color: rgba(244, 182, 67, 0.34); }
+.upgrade-card.rarity-uncommon {
+  border-color: rgba(111, 182, 255, 0.28);
+}
+.upgrade-card.rarity-rare {
+  border-color: rgba(199, 155, 255, 0.3);
+}
+.upgrade-card.rarity-legendary {
+  border-color: rgba(244, 182, 67, 0.34);
+}
 
 /* --- slot pill colors --------------------------------------------------
    Treat .upgrade-slot-copy as a small caps pill — reusing the slot-X
@@ -1802,14 +1904,18 @@
   z-index: 0;
   pointer-events: none;
   background:
-    linear-gradient(90deg,
+    linear-gradient(
+      90deg,
       rgba(14, 18, 23, 0.95) 0%,
       rgba(14, 18, 23, 0.78) 38%,
       rgba(14, 18, 23, 0.48) 62%,
-      rgba(14, 18, 23, 0.30) 100%),
-    linear-gradient(180deg,
-      rgba(14, 18, 23, 0.10) 0%,
-      rgba(14, 18, 23, 0.45) 100%);
+      rgba(14, 18, 23, 0.3) 100%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(14, 18, 23, 0.1) 0%,
+      rgba(14, 18, 23, 0.45) 100%
+    );
 }
 
 /* While the request is in flight, keep the static gradient — no harsh
@@ -1859,10 +1965,18 @@
   table-layout: fixed;
 }
 
-.crew-table .col-action { width: 80px; }
-.crew-table .col-tier { width: 56px; }
-.crew-table .col-role { width: 76px; }
-.jobs-table .col-role { width: 76px; }
+.crew-table .col-action {
+  width: 80px;
+}
+.crew-table .col-tier {
+  width: 56px;
+}
+.crew-table .col-role {
+  width: 76px;
+}
+.jobs-table .col-role {
+  width: 76px;
+}
 
 .crew-table th {
   position: relative;
@@ -1951,10 +2065,18 @@
 /* ---- jobs / contracts table styling (used by LocalJobsCallout +
    ActiveContractsTab + HireOffersTab) ---- */
 
-.jobs-table .col-tier { width: 56px; }
-.jobs-table .col-kind { width: 88px; }
-.jobs-table .col-dest { width: auto; }
-.jobs-table .col-progress { width: 56px; }
+.jobs-table .col-tier {
+  width: 56px;
+}
+.jobs-table .col-kind {
+  width: 88px;
+}
+.jobs-table .col-dest {
+  width: auto;
+}
+.jobs-table .col-progress {
+  width: 56px;
+}
 
 .job-row.job-row-active {
   background: rgba(80, 160, 220, 0.04);
@@ -1970,9 +2092,18 @@
   text-transform: uppercase;
 }
 
-.tier-badge.tier-high   { background: rgba(208, 72, 72, 0.18); color: #f08080; }
-.tier-badge.tier-medium { background: rgba(200, 162, 58, 0.18); color: #e6c270; }
-.tier-badge.tier-low    { background: rgba(120, 140, 160, 0.18); color: #98a8b8; }
+.tier-badge.tier-high {
+  background: rgba(208, 72, 72, 0.18);
+  color: #f08080;
+}
+.tier-badge.tier-medium {
+  background: rgba(200, 162, 58, 0.18);
+  color: #e6c270;
+}
+.tier-badge.tier-low {
+  background: rgba(120, 140, 160, 0.18);
+  color: #98a8b8;
+}
 
 button.upgrade-remove-pill {
   border: 0;
@@ -2004,21 +2135,31 @@ button.upgrade-remove-pill {
   outline: none;
 }
 
-.upgrade-slot-card.installed:hover .upgrade-remove-pill:not(:disabled) .upgrade-remove-tier,
-.upgrade-slot-card.installed:focus-within .upgrade-remove-pill:not(:disabled) .upgrade-remove-tier,
+.upgrade-slot-card.installed:hover
+  .upgrade-remove-pill:not(:disabled)
+  .upgrade-remove-tier,
+.upgrade-slot-card.installed:focus-within
+  .upgrade-remove-pill:not(:disabled)
+  .upgrade-remove-tier,
 .upgrade-remove-pill:hover:not(:disabled) .upgrade-remove-tier,
 .upgrade-remove-pill:focus-visible:not(:disabled) .upgrade-remove-tier {
   display: none;
 }
 
-.upgrade-slot-card.installed:hover .upgrade-remove-pill:not(:disabled) .upgrade-remove-copy,
-.upgrade-slot-card.installed:focus-within .upgrade-remove-pill:not(:disabled) .upgrade-remove-copy,
+.upgrade-slot-card.installed:hover
+  .upgrade-remove-pill:not(:disabled)
+  .upgrade-remove-copy,
+.upgrade-slot-card.installed:focus-within
+  .upgrade-remove-pill:not(:disabled)
+  .upgrade-remove-copy,
 .upgrade-remove-pill:hover:not(:disabled) .upgrade-remove-copy,
 .upgrade-remove-pill:focus-visible:not(:disabled) .upgrade-remove-copy {
   display: inline;
 }
 
-.job-kind { font-weight: 500; }
+.job-kind {
+  font-weight: 500;
+}
 
 .row-art-thumb {
   flex: 0 0 auto;
@@ -2049,9 +2190,13 @@ button.upgrade-remove-pill {
   color: #c5a8e0;
 }
 
-.job-sub  { font-size: 10px; margin-top: 2px; }
-.job-dest { font-weight: 500; }
-
+.job-sub {
+  font-size: 10px;
+  margin-top: 2px;
+}
+.job-dest {
+  font-weight: 500;
+}
 
 .crew-table td:last-child {
   text-align: right;
@@ -2059,12 +2204,24 @@ button.upgrade-remove-pill {
 
 /* ---- contract tables ---- */
 
-.jobs-table.contract-table .col-tier { width: 60px; }
-.jobs-table.contract-table .col-held { width: 64px; }
-.jobs-table.contract-table .col-money { width: 86px; }
-.jobs-table.contract-table .col-expires { width: 70px; }
-.jobs-table.contract-table .col-action { width: 96px; }
-.jobs-table.contract-table .col-progress { width: 118px; }
+.jobs-table.contract-table .col-tier {
+  width: 60px;
+}
+.jobs-table.contract-table .col-held {
+  width: 64px;
+}
+.jobs-table.contract-table .col-money {
+  width: 86px;
+}
+.jobs-table.contract-table .col-expires {
+  width: 70px;
+}
+.jobs-table.contract-table .col-action {
+  width: 96px;
+}
+.jobs-table.contract-table .col-progress {
+  width: 118px;
+}
 
 .jobs-table.contract-table {
   margin-top: 0;
@@ -2155,7 +2312,7 @@ button.upgrade-remove-pill {
 }
 
 .transit-progress-bar {
-  height: 6px;             /* slightly taller than vital-bars (3px) since it's the focal element */
+  height: 6px; /* slightly taller than vital-bars (3px) since it's the focal element */
 }
 
 .transit-preview-content {
@@ -2205,8 +2362,14 @@ button.upgrade-remove-pill {
   font-variant-numeric: tabular-nums;
 }
 
-.cargo-card-pnl .good { color: var(--good); font-weight: 600; }
-.cargo-card-pnl .bad  { color: var(--bad);  font-weight: 600; }
+.cargo-card-pnl .good {
+  color: var(--good);
+  font-weight: 600;
+}
+.cargo-card-pnl .bad {
+  color: var(--bad);
+  font-weight: 600;
+}
 
 .cargo-here-hint {
   font-size: 9px;
@@ -2277,26 +2440,15 @@ button.upgrade-remove-pill {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  gap: var(--bridge-gap);
   min-height: 0;
 }
 
-.bridge-split {
-  flex: 1 1 auto;
-  display: grid;
-  grid-template-columns: var(--bridge-columns);
-  gap: var(--bridge-gap);
-  align-items: stretch;
-  min-height: 0;
-}
-
-.bridge-split > .bridge-card {
+.bridge-column > .bridge-card {
   margin-top: 0;
   height: 100%;
 }
 
-.bridge-split > .exchange-card {
-  grid-column: 1 / span 2;
+.bridge-left > .exchange-card {
   overflow: hidden;
   /* Flex column so the tab body below can claim leftover height and own its
      own scroll, instead of overflowing the card silently. */
@@ -2348,15 +2500,18 @@ button.upgrade-remove-pill {
 .travel-table thead th,
 .market-table thead th,
 .upgrade-table thead th,
+.crew-table thead th,
 .jobs-table thead th {
   position: sticky;
   top: 0;
-  z-index: 2;
+  z-index: 3;
   background: var(--ship-surface-soft);
+  box-shadow:
+    inset 0 1px 0 var(--sticky-table-header-line, var(--border)),
+    inset 0 -1px 0 var(--sticky-table-header-line, var(--border));
 }
 
-.bridge-split > .trade-helper-card {
-  grid-column: 3;
+.bridge-right > .trade-helper-card {
   display: flex;
   flex-direction: column;
   height: auto;
@@ -2408,10 +2563,22 @@ button.upgrade-remove-pill {
 
 .info-area-card.art-card::before {
   background-image:
-    linear-gradient(to bottom, rgba(12, 15, 20, 0.14), rgba(12, 15, 20, 0.34) 56%, rgba(21, 24, 29, 0.88) 100%),
-    linear-gradient(90deg, rgba(12, 15, 20, 0.70), rgba(12, 15, 20, 0.24) 52%, rgba(12, 15, 20, 0.76)),
+    linear-gradient(
+      to bottom,
+      rgba(12, 15, 20, 0.14),
+      rgba(12, 15, 20, 0.34) 56%,
+      rgba(21, 24, 29, 0.88) 100%
+    ),
+    linear-gradient(
+      90deg,
+      rgba(12, 15, 20, 0.7),
+      rgba(12, 15, 20, 0.24) 52%,
+      rgba(12, 15, 20, 0.76)
+    ),
     var(--card-art);
-  box-shadow: inset 0 -1px rgba(138, 158, 178, 0.22), 0 1px 0 rgba(0, 0, 0, 0.28);
+  box-shadow:
+    inset 0 -1px rgba(138, 158, 178, 0.22),
+    0 1px 0 rgba(0, 0, 0, 0.28);
   filter: saturate(1.12) contrast(1.04);
 }
 
@@ -2433,7 +2600,9 @@ button.upgrade-remove-pill {
 .info-area-card.art-card .trade-helper-meta span,
 .info-area-card.art-card .station-kind-pill,
 .info-area-card.art-card .trade-helper-suggested {
-  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.82), 0 0 1px rgba(0, 0, 0, 0.9);
+  text-shadow:
+    0 1px 10px rgba(0, 0, 0, 0.82),
+    0 0 1px rgba(0, 0, 0, 0.9);
 }
 
 .info-area-card.art-card .trade-helper-good {
@@ -2607,54 +2776,59 @@ button.upgrade-remove-pill {
   scrollbar-gutter: stable;
 }
 
-.info-area-values :is(
-  .trade-helper-good,
-  .trade-helper-suggested,
-  .trade-helper-meta span,
-  .cargo-stat dd,
-  .trade-helper-stock-head span:last-child,
-  .trade-helper-line > span:last-child,
-  .trade-helper-flow span,
-  .station-flow-pills span,
-  .trade-helper-contract,
-  .trade-helper-note,
-  .trade-helper-market-table tbody,
-  .transit-progress-meta span:not(.dim):not(.transit-progress-spacer)
-) {
+.info-area-values
+  :is(
+    .trade-helper-good,
+    .trade-helper-suggested,
+    .trade-helper-meta span,
+    .cargo-stat dd,
+    .trade-helper-stock-head span:last-child,
+    .trade-helper-line > span:last-child,
+    .trade-helper-flow span,
+    .station-flow-pills span,
+    .trade-helper-contract,
+    .trade-helper-note,
+    .trade-helper-market-table tbody,
+    .transit-progress-meta span:not(.dim):not(.transit-progress-spacer)
+  ) {
   animation: info-area-value-refresh 95ms ease-out both;
 }
 
-.info-area-content.is-entering .info-area-values :is(
-  .trade-helper-good,
-  .trade-helper-suggested,
-  .trade-helper-meta span,
-  .cargo-stat dd,
-  .trade-helper-stock-head span:last-child,
-  .trade-helper-line > span:last-child,
-  .trade-helper-flow span,
-  .station-flow-pills span,
-  .trade-helper-contract,
-  .trade-helper-note,
-  .trade-helper-market-table tbody,
-  .transit-progress-meta span:not(.dim):not(.transit-progress-spacer)
-) {
+.info-area-content.is-entering
+  .info-area-values
+  :is(
+    .trade-helper-good,
+    .trade-helper-suggested,
+    .trade-helper-meta span,
+    .cargo-stat dd,
+    .trade-helper-stock-head span:last-child,
+    .trade-helper-line > span:last-child,
+    .trade-helper-flow span,
+    .station-flow-pills span,
+    .trade-helper-contract,
+    .trade-helper-note,
+    .trade-helper-market-table tbody,
+    .transit-progress-meta span:not(.dim):not(.transit-progress-spacer)
+  ) {
   animation: info-area-value-enter 130ms 65ms ease-out both;
 }
 
-.info-area-content.is-exiting .info-area-values :is(
-  .trade-helper-good,
-  .trade-helper-suggested,
-  .trade-helper-meta span,
-  .cargo-stat dd,
-  .trade-helper-stock-head span:last-child,
-  .trade-helper-line > span:last-child,
-  .trade-helper-flow span,
-  .station-flow-pills span,
-  .trade-helper-contract,
-  .trade-helper-note,
-  .trade-helper-market-table tbody,
-  .transit-progress-meta span:not(.dim):not(.transit-progress-spacer)
-) {
+.info-area-content.is-exiting
+  .info-area-values
+  :is(
+    .trade-helper-good,
+    .trade-helper-suggested,
+    .trade-helper-meta span,
+    .cargo-stat dd,
+    .trade-helper-stock-head span:last-child,
+    .trade-helper-line > span:last-child,
+    .trade-helper-flow span,
+    .station-flow-pills span,
+    .trade-helper-contract,
+    .trade-helper-note,
+    .trade-helper-market-table tbody,
+    .transit-progress-meta span:not(.dim):not(.transit-progress-spacer)
+  ) {
   animation: none;
 }
 
@@ -2671,33 +2845,57 @@ button.upgrade-remove-pill {
 }
 
 @keyframes info-area-art-enter {
-  from { opacity: 0.48; }
-  to { opacity: var(--card-art-opacity); }
+  from {
+    opacity: 0.48;
+  }
+  to {
+    opacity: var(--card-art-opacity);
+  }
 }
 
 @keyframes info-area-art-exit {
-  from { opacity: var(--card-art-opacity); }
-  to { opacity: 0.24; }
+  from {
+    opacity: var(--card-art-opacity);
+  }
+  to {
+    opacity: 0.24;
+  }
 }
 
 @keyframes info-area-panel-enter {
-  from { opacity: 0.78; }
-  to { opacity: 1; }
+  from {
+    opacity: 0.78;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes info-area-panel-exit {
-  from { opacity: 1; }
-  to { opacity: 0.32; }
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.32;
+  }
 }
 
 @keyframes info-area-value-enter {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes info-area-value-refresh {
-  from { opacity: 0.52; }
-  to { opacity: 1; }
+  from {
+    opacity: 0.52;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes info-area-bar-enter {
@@ -2725,20 +2923,21 @@ button.upgrade-remove-pill {
 @media (prefers-reduced-motion: reduce) {
   .info-area-content.is-entering,
   .info-area-content.is-exiting,
-  .info-area-values :is(
-    .trade-helper-good,
-    .trade-helper-suggested,
-    .trade-helper-meta span,
-    .cargo-stat dd,
-    .trade-helper-stock-head span:last-child,
-    .trade-helper-line > span:last-child,
-    .trade-helper-flow span,
-    .station-flow-pills span,
-    .trade-helper-contract,
-    .trade-helper-note,
-    .trade-helper-market-table tbody,
-    .transit-progress-meta span:not(.dim):not(.transit-progress-spacer)
-  ),
+  .info-area-values
+    :is(
+      .trade-helper-good,
+      .trade-helper-suggested,
+      .trade-helper-meta span,
+      .cargo-stat dd,
+      .trade-helper-stock-head span:last-child,
+      .trade-helper-line > span:last-child,
+      .trade-helper-flow span,
+      .station-flow-pills span,
+      .trade-helper-contract,
+      .trade-helper-note,
+      .trade-helper-market-table tbody,
+      .transit-progress-meta span:not(.dim):not(.transit-progress-spacer)
+    ),
   .info-area-values .trade-helper-bar-fill,
   .info-area-values .vital-bar-fill {
     animation-delay: 0ms;
@@ -2838,9 +3037,15 @@ button.upgrade-remove-pill {
   background: rgba(79, 182, 255, 0.36);
 }
 
-.trade-helper-bar-fill.good { background: rgba(151, 193, 151, 0.48); }
-.trade-helper-bar-fill.warn { background: rgba(251, 191, 36, 0.48); }
-.trade-helper-bar-fill.bad { background: rgba(248, 113, 113, 0.48); }
+.trade-helper-bar-fill.good {
+  background: rgba(151, 193, 151, 0.48);
+}
+.trade-helper-bar-fill.warn {
+  background: rgba(251, 191, 36, 0.48);
+}
+.trade-helper-bar-fill.bad {
+  background: rgba(248, 113, 113, 0.48);
+}
 
 .ship-info-meter {
   margin-top: 8px;
@@ -2888,9 +3093,15 @@ button.upgrade-remove-pill {
   color: var(--text-dim);
 }
 
-.trade-helper-line span.good { color: var(--good); }
-.trade-helper-line span.bad { color: var(--bad); }
-.trade-helper-line span.warn { color: var(--warn); }
+.trade-helper-line span.good {
+  color: var(--good);
+}
+.trade-helper-line span.bad {
+  color: var(--bad);
+}
+.trade-helper-line span.warn {
+  color: var(--warn);
+}
 
 .trade-helper-note {
   margin-top: -2px;
@@ -2958,10 +3169,18 @@ button.upgrade-remove-pill {
   padding-right: 0;
 }
 
-.trade-helper-market-table td.good { color: var(--good); }
-.trade-helper-market-table td.bad { color: var(--bad); }
-.trade-helper-market-table td.short { color: var(--warn); }
-.trade-helper-market-table td.surplus { color: var(--good); }
+.trade-helper-market-table td.good {
+  color: var(--good);
+}
+.trade-helper-market-table td.bad {
+  color: var(--bad);
+}
+.trade-helper-market-table td.short {
+  color: var(--warn);
+}
+.trade-helper-market-table td.surplus {
+  color: var(--good);
+}
 
 .station-flow-pills {
   display: flex;
@@ -2993,30 +3212,33 @@ button.upgrade-remove-pill {
   font-size: 10px;
 }
 
-.trade-helper-contract.tier-high { border-color: rgba(208, 72, 72, 0.32); color: #f08080; }
-.trade-helper-contract.tier-medium { border-color: rgba(200, 162, 58, 0.32); color: #e6c270; }
-.trade-helper-contract.tier-low { border-color: rgba(120, 140, 160, 0.28); color: #98a8b8; }
+.trade-helper-contract.tier-high {
+  border-color: rgba(208, 72, 72, 0.32);
+  color: #f08080;
+}
+.trade-helper-contract.tier-medium {
+  border-color: rgba(200, 162, 58, 0.32);
+  color: #e6c270;
+}
+.trade-helper-contract.tier-low {
+  border-color: rgba(120, 140, 160, 0.28);
+  color: #98a8b8;
+}
 
 @media (max-width: 980px) {
   .bridge {
     grid-template-columns: 1fr;
+  }
+
+  .bridge-column {
     grid-template-rows: none;
   }
 
-  .bridge > .ship-card,
-  .bridge > .travel-card {
-    grid-column: 1;
-    grid-row: auto;
+  .bridge-column > .bridge-card {
+    height: auto;
   }
 
-  .bridge-split { grid-template-columns: 1fr; }
-
-  .bridge-split > .exchange-card,
-  .bridge-split > .trade-helper-card {
-    grid-column: 1;
-  }
-
-  .bridge-split > .trade-helper-card {
+  .bridge-right > .trade-helper-card {
     display: block;
     height: auto;
     overflow: visible;
@@ -3111,16 +3333,36 @@ button.upgrade-remove-pill {
    outer padding). Per-cell padding on first/last cells (var(--bridge-table-pad-x))
    provides the visual content indent. */
 
-.col-good     { width: auto; }
-.col-dest     { width: auto; }
-.col-num      { width: 64px; }
-.col-held     { width: 58px; }
-.col-net-sell { width: 84px; }
-.col-action   { width: 296px; }
-.market-table .col-action { width: 176px; }
-.travel-table .col-action { width: 132px; }
-.jobs-table   .col-action { width: 100px; }
-.jobs-table   .col-num    { width: 54px; }
+.col-good {
+  width: auto;
+}
+.col-dest {
+  width: auto;
+}
+.col-num {
+  width: 64px;
+}
+.col-held {
+  width: 58px;
+}
+.col-net-sell {
+  width: 84px;
+}
+.col-action {
+  width: 296px;
+}
+.market-table .col-action {
+  width: 176px;
+}
+.travel-table .col-action {
+  width: 132px;
+}
+.jobs-table .col-action {
+  width: 100px;
+}
+.jobs-table .col-num {
+  width: 54px;
+}
 
 .market-table th,
 .travel-table th,
@@ -3185,11 +3427,31 @@ button.upgrade-remove-pill {
   height: 34px;
 }
 
-.bridge-card :is(.market-table, .travel-table, .suggestions-table, .jobs-table, .upgrade-table, .crew-table, .cargo-table) :is(th, td):first-child {
+.bridge-card
+  :is(
+    .market-table,
+    .travel-table,
+    .suggestions-table,
+    .jobs-table,
+    .upgrade-table,
+    .crew-table,
+    .cargo-table
+  )
+  :is(th, td):first-child {
   padding-left: var(--bridge-table-pad-x);
 }
 
-.bridge-card :is(.market-table, .travel-table, .suggestions-table, .jobs-table, .upgrade-table, .crew-table, .cargo-table) :is(th, td):last-child {
+.bridge-card
+  :is(
+    .market-table,
+    .travel-table,
+    .suggestions-table,
+    .jobs-table,
+    .upgrade-table,
+    .crew-table,
+    .cargo-table
+  )
+  :is(th, td):last-child {
   padding-right: var(--bridge-table-pad-x);
 }
 
@@ -3241,12 +3503,28 @@ button.upgrade-remove-pill {
 .travel-panel-head.art-panel-head {
   min-height: 62px;
   background-image:
-    linear-gradient(to bottom, rgba(13, 17, 22, 0.14) 0%, rgba(13, 17, 22, 0.78) 88%, rgba(13, 17, 22, 1) 100%),
-    linear-gradient(90deg, rgba(13, 17, 22, 0.86), rgba(13, 17, 22, 0.38) 58%, rgba(13, 17, 22, 0.84)),
+    linear-gradient(
+      to bottom,
+      rgba(13, 17, 22, 0.14) 0%,
+      rgba(13, 17, 22, 0.78) 88%,
+      rgba(13, 17, 22, 1) 100%
+    ),
+    linear-gradient(
+      90deg,
+      rgba(13, 17, 22, 0.86),
+      rgba(13, 17, 22, 0.38) 58%,
+      rgba(13, 17, 22, 0.84)
+    ),
     var(--card-art);
-  background-position: center center, center center, var(--header-art-pan-x, 50%) var(--header-art-pan-y, 50%);
+  background-position:
+    center center,
+    center center,
+    var(--header-art-pan-x, 50%) var(--header-art-pan-y, 50%);
   background-repeat: no-repeat;
-  background-size: 100% 100%, 100% 100%, 104% auto;
+  background-size:
+    100% 100%,
+    100% 100%,
+    104% auto;
   background-clip: padding-box;
   box-shadow: none;
 }
@@ -3254,7 +3532,9 @@ button.upgrade-remove-pill {
 .travel-panel-head.art-panel-head,
 .travel-panel-head.art-panel-head .dim,
 .travel-panel-head.art-panel-head .travel-current-meta {
-  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.88), 0 0 1px rgba(0, 0, 0, 0.95);
+  text-shadow:
+    0 1px 10px rgba(0, 0, 0, 0.88),
+    0 0 1px rgba(0, 0, 0, 0.95);
 }
 
 .travel-panel-main {
@@ -3308,7 +3588,9 @@ button.upgrade-remove-pill {
   color: #eef6ff;
   font-size: 16px;
   font-weight: 650;
-  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.82), 0 0 1px rgba(0, 0, 0, 0.9);
+  text-shadow:
+    0 1px 10px rgba(0, 0, 0, 0.82),
+    0 0 1px rgba(0, 0, 0, 0.9);
 }
 
 .travel-current-station.info-focus-trigger {
@@ -3524,7 +3806,7 @@ button.upgrade-remove-pill {
 
 .btn-suggested-critical .ship-meter-percent {
   background: rgba(20, 10, 12, 0.38);
-  border-color: rgba(255, 245, 245, 0.30);
+  border-color: rgba(255, 245, 245, 0.3);
   color: #fff7f7;
   text-shadow: none;
 }
@@ -3554,8 +3836,11 @@ button.upgrade-remove-pill {
   0% {
     box-shadow: 0 0 0 0 rgba(79, 182, 255, 0);
   }
-  5%, 82% {
-    box-shadow: 0 0 0 4px rgba(117, 207, 255, 0.7), 0 0 18px rgba(79, 182, 255, 0.55);
+  5%,
+  82% {
+    box-shadow:
+      0 0 0 4px rgba(117, 207, 255, 0.7),
+      0 0 18px rgba(79, 182, 255, 0.55);
   }
   100% {
     box-shadow: 0 0 0 0 rgba(79, 182, 255, 0);
@@ -3615,7 +3900,7 @@ button.upgrade-remove-pill {
   width: 108px;
   display: inline-flex;
   align-items: center;
-  justify-content: space-between;       /* label left, count right */
+  justify-content: space-between; /* label left, count right */
   gap: 6px;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -3634,9 +3919,9 @@ button.upgrade-remove-pill {
    color so the unloading button cycles between exactly two states: active blue
    (drained) and this disabled dark (remaining). */
 :root {
-  --btn-disabled-bg: #0e151d;          /* very dark, slight blue cast — true disabled */
-  --btn-unloading-base: #1c4160;       /* half-bright blue: midway between active accent-dim and disabled */
-  --btn-unloading-bg: #1a2738;         /* sliding dark band overlay during unload */
+  --btn-disabled-bg: #0e151d; /* very dark, slight blue cast — true disabled */
+  --btn-unloading-base: #1c4160; /* half-bright blue: midway between active accent-dim and disabled */
+  --btn-unloading-bg: #1a2738; /* sliding dark band overlay during unload */
   --btn-disabled-border: rgba(79, 182, 255, 0.12);
 }
 
@@ -3724,8 +4009,12 @@ button.upgrade-remove-pill {
   color: rgba(255, 255, 255, 0.7);
 }
 
-.btn-action.primary .btn-count { color: rgba(255, 255, 255, 0.85); }
-.btn-action.btn-suggested .btn-count { color: rgba(255, 255, 255, 0.9); }
+.btn-action.primary .btn-count {
+  color: rgba(255, 255, 255, 0.85);
+}
+.btn-action.btn-suggested .btn-count {
+  color: rgba(255, 255, 255, 0.9);
+}
 
 /* ghost state — disabled buttons stay visible, dimmed, same dimensions */
 .btn-action:disabled {
@@ -3737,53 +4026,73 @@ button.upgrade-remove-pill {
   color: var(--text-faint);
 }
 
-.player-view .upgrade-card-actions .btn-action:not(.primary):not(.btn-suggested) {
+.player-view
+  .upgrade-card-actions
+  .btn-action:not(.primary):not(.btn-suggested) {
   background: rgba(31, 43, 53, 0.78);
   border-color: rgba(122, 151, 172, 0.32);
   color: rgba(224, 232, 237, 0.88);
   box-shadow: none;
 }
 
-.player-view .upgrade-card-actions .btn-action:not(.primary):not(.btn-suggested):hover:not(:disabled) {
+.player-view
+  .upgrade-card-actions
+  .btn-action:not(.primary):not(.btn-suggested):hover:not(:disabled) {
   background: rgba(41, 57, 69, 0.88);
   border-color: rgba(142, 172, 194, 0.42);
   color: rgba(240, 246, 249, 0.94);
   box-shadow: none;
 }
 
-.player-view .upgrade-card-actions .btn-action.upgrade-sell-action:not(.primary):not(.btn-suggested) {
+.player-view
+  .upgrade-card-actions
+  .btn-action.upgrade-sell-action:not(.primary):not(.btn-suggested) {
   background: rgba(64, 56, 46, 0.78);
   border-color: rgba(166, 137, 96, 0.34);
   color: rgba(230, 219, 205, 0.88);
 }
 
-.player-view .upgrade-card-actions .btn-action.upgrade-sell-action:not(.primary):not(.btn-suggested):hover:not(:disabled) {
+.player-view
+  .upgrade-card-actions
+  .btn-action.upgrade-sell-action:not(.primary):not(.btn-suggested):hover:not(
+    :disabled
+  ) {
   background: rgba(78, 67, 54, 0.86);
   border-color: rgba(186, 152, 104, 0.44);
   color: rgba(244, 235, 222, 0.94);
 }
 
-.player-view .upgrade-card-actions .btn-action.primary:not(.cargo-sell-progress),
+.player-view
+  .upgrade-card-actions
+  .btn-action.primary:not(.cargo-sell-progress),
 .player-view .upgrade-card-actions .btn-action.btn-suggested {
   background: var(--ship-action-blue) !important;
   border-color: var(--ship-action-blue-line) !important;
   color: white !important;
 }
 
-.player-view .upgrade-card-actions .btn-action.primary:not(.cargo-sell-progress):hover:not(:disabled),
-.player-view .upgrade-card-actions .btn-action.btn-suggested:hover:not(:disabled) {
+.player-view
+  .upgrade-card-actions
+  .btn-action.primary:not(.cargo-sell-progress):hover:not(:disabled),
+.player-view
+  .upgrade-card-actions
+  .btn-action.btn-suggested:hover:not(:disabled) {
   background: var(--ship-action-blue-hover) !important;
   border-color: var(--ship-action-blue-line-hover) !important;
 }
 
-.player-view .upgrade-card-actions .btn-action.upgrade-sell-action.cargo-sell-progress {
+.player-view
+  .upgrade-card-actions
+  .btn-action.upgrade-sell-action.cargo-sell-progress {
   --btn-unloading-base: #4b4236;
   --btn-unloading-bg: #211f1d;
   border-color: rgba(176, 144, 100, 0.48);
   color: rgba(246, 238, 228, 0.94);
 }
 
-.player-view .upgrade-card-actions .btn-action:disabled:not(.cargo-sell-progress) {
+.player-view
+  .upgrade-card-actions
+  .btn-action:disabled:not(.cargo-sell-progress) {
   opacity: 1;
   background: rgba(24, 32, 40, 0.66) !important;
   border-color: rgba(122, 151, 172, 0.18) !important;
@@ -3791,7 +4100,10 @@ button.upgrade-remove-pill {
   box-shadow: none !important;
 }
 
-.player-view .upgrade-card-actions .btn-action:disabled:not(.cargo-sell-progress) .btn-count {
+.player-view
+  .upgrade-card-actions
+  .btn-action:disabled:not(.cargo-sell-progress)
+  .btn-count {
   color: rgba(170, 184, 194, 0.58);
 }
 
@@ -3827,13 +4139,31 @@ button.upgrade-remove-pill {
 }
 
 @keyframes marker-pulse {
-  0%, 100% { box-shadow: 0 0 0 2px var(--bg-2), 0 0 0 0 rgba(79, 182, 255, 0.6); }
-  50%      { box-shadow: 0 0 0 2px var(--bg-2), 0 0 0 8px rgba(79, 182, 255, 0); }
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 2px var(--bg-2),
+      0 0 0 0 rgba(79, 182, 255, 0.6);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px var(--bg-2),
+      0 0 0 8px rgba(79, 182, 255, 0);
+  }
 }
 
 @keyframes marker-pulse-critical {
-  0%, 100% { box-shadow: 0 0 0 2px var(--bg-2), 0 0 0 0 rgba(248, 113, 113, 0.7); }
-  50%      { box-shadow: 0 0 0 2px var(--bg-2), 0 0 0 9px rgba(248, 113, 113, 0); }
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 2px var(--bg-2),
+      0 0 0 0 rgba(248, 113, 113, 0.7);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px var(--bg-2),
+      0 0 0 9px rgba(248, 113, 113, 0);
+  }
 }
 
 .suggested-tooltip {
@@ -3855,8 +4185,14 @@ button.upgrade-remove-pill {
 }
 
 @keyframes tooltip-fade {
-  from { opacity: 0; transform: translateY(calc(-100% + 4px)); }
-  to   { opacity: 1; transform: translateY(-100%); }
+  from {
+    opacity: 0;
+    transform: translateY(calc(-100% + 4px));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-100%);
+  }
 }
 
 .suggested-tooltip.critical {
@@ -3887,8 +4223,12 @@ button.upgrade-remove-pill {
   table-layout: fixed;
 }
 
-.cargo-col-pnl { width: 150px; }
-.cargo-col-action { width: 148px; }
+.cargo-col-pnl {
+  width: 150px;
+}
+.cargo-col-action {
+  width: 148px;
+}
 
 .cargo-table th {
   position: relative;
@@ -3929,8 +4269,14 @@ button.upgrade-remove-pill {
   font-size: 10px;
 }
 
-.cargo-row-pnl.good { color: var(--good); font-weight: 600; }
-.cargo-row-pnl.bad  { color: var(--bad);  font-weight: 600; }
+.cargo-row-pnl.good {
+  color: var(--good);
+  font-weight: 600;
+}
+.cargo-row-pnl.bad {
+  color: var(--bad);
+  font-weight: 600;
+}
 
 .cargo-sell-action {
   width: 108px;
@@ -4022,7 +4368,105 @@ button.upgrade-remove-pill {
   min-width: 0;
 }
 
-.ship-log-entry.tone-good .ship-log-msg { color: var(--good); }
-.ship-log-entry.tone-bad  .ship-log-msg { color: var(--bad); }
-.ship-log-entry.tone-warn .ship-log-msg { color: var(--warn); }
-.ship-log-entry.tone-info .ship-log-msg { color: var(--accent); }
+.ship-log-entry.tone-good .ship-log-msg {
+  color: var(--good);
+}
+.ship-log-entry.tone-bad .ship-log-msg {
+  color: var(--bad);
+}
+.ship-log-entry.tone-warn .ship-log-msg {
+  color: var(--warn);
+}
+.ship-log-entry.tone-info .ship-log-msg {
+  color: var(--accent);
+}
+
+/* --- Station info card · Exchange section -------------------------- */
+.station-exchange-quote {
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+}
+
+.station-exchange-quote-left {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+
+.station-exchange-ticker {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--ship-line, var(--border));
+  padding: 2px 7px;
+  border-radius: 3px;
+}
+
+.station-exchange-price {
+  font-size: 14px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.station-exchange-delta {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.station-exchange-spark.mini-sparkline {
+  display: block;
+  width: 100%;
+  height: 36px;
+  margin-top: 2px;
+}
+
+.station-basis-list {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.station-basis-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--ship-line, var(--border));
+  border-radius: 3px;
+  font-size: 10.5px;
+}
+
+/* --- Mini sparkline ------------------------------------------------ */
+.mini-sparkline {
+  display: inline-block;
+  vertical-align: middle;
+  overflow: visible;
+}
+
+.mini-sparkline-line {
+  stroke: var(--text-dim);
+  stroke-width: 1.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+
+.mini-sparkline-area {
+  fill: rgba(255, 255, 255, 0.04);
+  stroke: none;
+}
+
+.mini-sparkline.tone-up .mini-sparkline-line { stroke: var(--good); }
+.mini-sparkline.tone-up .mini-sparkline-area { fill: var(--good-bg); }
+.mini-sparkline.tone-down .mini-sparkline-line { stroke: var(--bad); }
+.mini-sparkline.tone-down .mini-sparkline-area { fill: var(--bad-bg); }
