@@ -855,7 +855,8 @@ function KpiPanel({ row, world }: { row: EquityRow; world: World }) {
         <FleetStat label="spread" value={spreadPct != null ? `${spreadPct.toFixed(2)}%` : "—"} />
         <FleetStat label="vs IPO" value={`${row.ratioToAnchor.toFixed(2)}x`} />
         <FleetStat label="vol" value={Math.round(windowQty).toLocaleString()} />
-        <FleetStat label="hi/low" value={trades.length > 0 ? `${fmtPrice(windowHigh)} / ${fmtPrice(windowLow)}` : "—"} />
+        <FleetStat label="high" value={trades.length > 0 ? `Ç${fmtPrice(windowHigh)}` : "—"} />
+        <FleetStat label="low" value={trades.length > 0 ? `Ç${fmtPrice(windowLow)}` : "—"} />
         <FleetStat label="shares" value={eq.sharesOutstanding.toLocaleString()} />
         <FleetStat label="dividend" value={dividend > 0 ? `Ç${dividend.toFixed(2)}/sh` : "none"} />
         <FleetStat label="next div" value={`${row.ticksUntilDividend}t`} />
