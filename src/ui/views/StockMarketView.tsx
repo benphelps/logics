@@ -830,7 +830,9 @@ function InfoColumn({ row, world, shipId, docked }: {
           <TimeAndSalesPanel equity={eq} />
         </div>
 
-        <UnifiedOrderForm equity={eq} world={world} docked={docked} access={access} />
+        {eq.kind === "futures"
+          ? <FuturesOrderForm equity={eq} world={world} docked={docked} access={access} />
+          : <UnifiedOrderForm equity={eq} world={world} docked={docked} access={access} />}
       </div>
     </section>
   );
@@ -891,16 +893,10 @@ function UnifiedOrderForm({ equity, world, docked, access }: {
   docked: boolean;
   access: { ok: boolean; reason: string };
 }) {
+  void world;
   const placeLimitBuy = useStore(s => s.placeLimitBuy);
   const placeLimitSell = useStore(s => s.placeLimitSell);
   const shortShares = useStore(s => s.shortShares);
-  const openLongFuture = useStore(s => s.openLongFuture);
-  const openShortFuture = useStore(s => s.openShortFuture);
-
-  if (equity.kind === "futures") {
-    return <FuturesOrderForm equity={equity} world={world} docked={docked} access={access}
-      openLongFuture={openLongFuture} openShortFuture={openShortFuture} />;
-  }
 
   type Side = "buy" | "sell" | "short";
   const [side, setSide] = useState<Side>("buy");
@@ -971,16 +967,16 @@ function UnifiedOrderForm({ equity, world, docked, access }: {
 // futures API; margin reservation + fee shown up front. Limit orders for
 // futures aren't surfaced yet — uses a market open against the existing
 // agent quotes.
-function FuturesOrderForm({ equity, world, docked, access, openLongFuture, openShortFuture }: {
+function FuturesOrderForm({ equity, world, docked, access }: {
   equity: Equity;
   world: World;
   docked: boolean;
   access: { ok: boolean; reason: string };
-  openLongFuture: (contractId: string, count: number) => void;
-  openShortFuture: (contractId: string, count: number) => void;
 }) {
-  const c = world.contracts?.[equity.id];
+  const openLongFuture = useStore(s => s.openLongFuture);
+  const openShortFuture = useStore(s => s.openShortFuture);
   const [count, setCount] = useState<number>(1);
+  const c = world.contracts?.[equity.id];
   if (!c) return null;
   const spot = world.equities[c.underlyingEquityId]?.price ?? equity.price;
   const notional = c.contractSize * spot * count;
