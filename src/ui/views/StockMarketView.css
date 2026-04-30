@@ -1801,6 +1801,54 @@
   min-height: 0;
 }
 
+/* C-3: kind filter tab bar above the listings header. Reuses the
+   existing bridge-card-tabs visual feel — small clickable chips with
+   a count badge each. */
+.stocks-kind-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 8px;
+  background: var(--stock-surface-soft);
+  border-bottom: 1px solid var(--stock-line);
+}
+
+.stocks-kind-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: transparent;
+  border: 1px solid var(--stock-line);
+  border-radius: 999px;
+  color: var(--text-mid);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background-color 100ms, border-color 100ms, color 100ms;
+}
+
+.stocks-kind-tab:hover {
+  background: var(--stock-surface);
+  color: var(--text);
+}
+
+.stocks-kind-tab.active {
+  background: var(--stock-accent-soft, rgba(120, 200, 255, 0.18));
+  border-color: var(--stock-accent, #78c8ff);
+  color: var(--text);
+}
+
+.stocks-kind-tab-count {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
 /* Column header matches the row grid below — same template-columns so
    labels line up over the data they describe. */
 .stocks-selector-header {

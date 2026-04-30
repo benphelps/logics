@@ -46,12 +46,18 @@ function totalSystemCash(world: World): number {
   let total = 0;
   for (const t of Object.values(world.traders)) {
     total += t.funds;
-    if (t.stockState) total += t.stockState.stockWallet;
+    if (t.stockState) {
+      total += t.stockState.stockWallet;
+      total += t.stockState.futuresMarginLocked ?? 0;
+    }
   }
-  total += world.player ? (world.player.shipIds[0] ? world.traders[world.player.shipIds[0]]?.funds ?? 0 : 0) - 0 : 0;
-  // Note: world.player.shipIds[0] is in world.traders so already counted; don't double.
   for (const m of Object.values(world.markets)) total += m.treasury;
   for (const s of Object.values(world.syndicates)) total += s.treasury;
+  // C-3: futures clearing pool + reserved margin counts toward total
+  // system cash (margin is locked, not destroyed; clearing is the
+  // contract's own escrow that absorbs imbalances).
+  for (const c of Object.values(world.contracts ?? {})) total += c.clearing;
+  for (const r of Object.values(world.player?.reservedFutures ?? {})) total += r;
   return total;
 }
 
@@ -191,14 +197,15 @@ for (let i = 1; i <= TICKS; i++) {
   tickWorld(w);
 
   // Tally trades per tick by reading the recentTrades window for any new
-  // entries. The window updates ASAP and caps at 100, so as long as no
-  // single equity prints >100 trades in one tick (in practice ≤ a handful),
-  // we never miss any.
-  for (const eq of eqs) {
+  // entries. Re-iterate live equities each tick so contracts that roll
+  // (futures expiry) are picked up; lazily seed tracking maps for new ids.
+  const liveEqs = listEquities(w);
+  for (const eq of liveEqs) {
+    if (!cumTrades[eq.id]) cumTrades[eq.id] = { count: 0, qty: 0, notional: 0, agentVsAgent: 0, playerInvolved: 0, selfMatched: 0, uniqueAgents: new Set() };
+    if (lastObservedTickPerEq[eq.id] == null) lastObservedTickPerEq[eq.id] = -1;
     const trades = eq.recentTrades ?? [];
     for (const t of trades) {
       if (t.tick <= lastObservedTickPerEq[eq.id]) continue;
-      // New trade.
       const c = cumTrades[eq.id];
       c.count++;
       c.qty += t.qty;
@@ -215,8 +222,9 @@ for (let i = 1; i <= TICKS; i++) {
     }
   }
 
-  // Per-tick pin tally.
-  for (const eq of eqs) {
+  // Per-tick pin tally — same lazy seed.
+  for (const eq of liveEqs) {
+    if (!pinnedTickTally[eq.id]) pinnedTickTally[eq.id] = { floor: 0, ceiling: 0, min: eq.price, max: eq.price };
     const t = pinnedTickTally[eq.id];
     if (eq.price < t.min) t.min = eq.price;
     if (eq.price > t.max) t.max = eq.price;
@@ -280,6 +288,7 @@ for (const eq of sortedEqs) {
   const asks = book?.asks.length ?? 0;
   const tally = pinnedTickTally[eq.id];
   const cum = cumTrades[eq.id];
+  if (!cum || !tally) continue; // equity created mid-run (futures roll)
   const aaPct = cum.count === 0 ? 0 : (cum.agentVsAgent / cum.count) * 100;
   const pPct = cum.count === 0 ? 0 : (cum.playerInvolved / cum.count) * 100;
   console.log(

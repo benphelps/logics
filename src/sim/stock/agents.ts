@@ -52,6 +52,29 @@ function sizedQty(free: number, price: number): number {
   return Math.min(TARGET_SHARES_PER_ORDER, fundsCap);
 }
 
+// C-3: futures orders commit margin (~10% of notional), not full notional,
+// so a naive sizedQty(free, price) hugely overcommits the wallet across N
+// fills. Scale the "effective price" up by `1 / marginFraction × contractSize`
+// so the funds cap reflects the real margin impact per contract.
+function sizedQtyForFutures(free: number, markPrice: number, contractSize: number, marginFraction: number): number {
+  if (markPrice <= 0 || contractSize <= 0 || marginFraction <= 0) return 0;
+  const marginPerContract = markPrice * contractSize * marginFraction;
+  const fundsCap = Math.floor((free * MAX_FUNDS_PER_ORDER) / Math.max(0.01, marginPerContract));
+  // Tighter per-order cap for futures so a single fill doesn't dump 50
+  // contracts of margin commitment in one shot.
+  return Math.min(10, fundsCap);
+}
+
+// Pick the right sizing function based on the equity kind. For futures
+// we look up the contract metadata (contractSize, marginFraction). For
+// every other kind we delegate to the share-style sizedQty.
+function qtyForEquity(world: World, eq: Equity, free: number, price: number): number {
+  if (eq.kind !== "futures") return sizedQty(free, price);
+  const c = world.contracts?.[eq.id];
+  if (!c) return 0;
+  return sizedQtyForFutures(free, price, c.contractSize, c.marginFraction);
+}
+
 // Value style: triggers on |price − fair| > 3%. Posts passive limit at a
 // fixed offset INSIDE the mid so it sits in the book waiting to be hit.
 export const VALUE_PASSIVE_OFFSET = 0.005;  // 0.5% inside mid (bid below, ask above)
@@ -182,7 +205,13 @@ interface PlanOrderArgs {
 // offset). Combined with deterministic per-agent rng noise, this produces
 // multiple price levels on each side.
 
-function heldShares(trader: Trader, eqId: string): number {
+function heldShares(trader: Trader, eqId: string, eq?: Equity): number {
+  // Futures contracts have no float — shorts are symmetric to longs and
+  // open interest is bounded by the agent's stockWallet (margin), not
+  // by inventory. Return a generous "ample" so the held>0 ask gate
+  // doesn't stop futures-side asks. The actual order size is capped by
+  // sizedQty(free, ...) in the caller.
+  if (eq?.kind === "futures") return Number.POSITIVE_INFINITY;
   return trader.stockState?.positions[eqId]?.shares ?? 0;
 }
 
@@ -231,14 +260,14 @@ function decideValue(world: World, trader: Trader, eq: Equity, free: number, rng
   const out: PlanOrderArgs[] = [];
   if (mid < fair * bidTrigger) {
     const bidPrice = mid * (1 - VALUE_PASSIVE_OFFSET) * jitter;
-    const qty = Math.floor(sizedQty(free, bidPrice) * qtyBoost);
+    const qty = Math.floor(qtyForEquity(world, eq, free, bidPrice) * qtyBoost);
     if (qty > 0) out.push({ side: "bid", limitPrice: bidPrice, qty });
   }
   if (mid > fair * askTrigger) {
     const askPrice = mid * (1 + VALUE_PASSIVE_OFFSET) * jitter;
-    const held = heldShares(trader, eq.id);
+    const held = heldShares(trader, eq.id, eq);
     if (held > 0) {
-      const qty = Math.min(held, Math.floor(sizedQty(free, askPrice) * qtyBoost));
+      const qty = Math.min(held, Math.floor(qtyForEquity(world, eq, free, askPrice) * qtyBoost));
       if (qty > 0) out.push({ side: "ask", limitPrice: askPrice, qty });
     }
   }
@@ -257,13 +286,13 @@ function decideMomentum(world: World, trader: Trader, eq: Equity, free: number, 
   const aggression = MOMENTUM_OFFSET * (1 + Math.abs(bias));
   if (direction > 0) {
     const bidPrice = mid * (1 + aggression) * jitter;
-    const qty = Math.floor(sizedQty(free, bidPrice) * qtyBoost);
+    const qty = Math.floor(qtyForEquity(world, eq, free, bidPrice) * qtyBoost);
     return qty > 0 ? [{ side: "bid", limitPrice: bidPrice, qty }] : [];
   }
   const askPrice = mid * (1 - aggression) * jitter;
-  const held = heldShares(trader, eq.id);
+  const held = heldShares(trader, eq.id, eq);
   if (held <= 0) return [];
-  const qty = Math.min(held, Math.floor(sizedQty(free, askPrice) * qtyBoost));
+  const qty = Math.min(held, Math.floor(qtyForEquity(world, eq, free, askPrice) * qtyBoost));
   return qty > 0 ? [{ side: "ask", limitPrice: askPrice, qty }] : [];
 }
 
@@ -276,14 +305,14 @@ function decideContrarian(world: World, trader: Trader, eq: Equity, free: number
   if (bias > 0) {
     // Up trend → fade with an ask further out (waiting for the trend to push to them).
     const askPrice = mid * (1 + CONTRARIAN_OFFSET) * jitter;
-    const held = heldShares(trader, eq.id);
+    const held = heldShares(trader, eq.id, eq);
     if (held <= 0) return [];
-    const qty = Math.min(held, Math.floor(sizedQty(free, askPrice) * Math.abs(bias) * qtyBoost));
+    const qty = Math.min(held, Math.floor(qtyForEquity(world, eq, free, askPrice) * Math.abs(bias) * qtyBoost));
     return qty > 0 ? [{ side: "ask", limitPrice: askPrice, qty }] : [];
   }
   // Down trend → fade with a bid further out (catch the falling knife).
   const bidPrice = mid * (1 - CONTRARIAN_OFFSET) * jitter;
-  const qty = Math.floor(sizedQty(free, bidPrice) * Math.abs(bias) * qtyBoost);
+  const qty = Math.floor(qtyForEquity(world, eq, free, bidPrice) * Math.abs(bias) * qtyBoost);
   return qty > 0 ? [{ side: "bid", limitPrice: bidPrice, qty }] : [];
 }
 
@@ -291,7 +320,9 @@ function decideContrarian(world: World, trader: Trader, eq: Equity, free: number
 // each equity. Crosses the bid side so it actually fills — the agent needs
 // cash now, not patience.
 function decideLiquidate(trader: Trader, eq: Equity): PlanOrderArgs[] {
-  const held = heldShares(trader, eq.id);
+  // Skip futures during liquidation — those are MtM-marked, not inventory.
+  if (eq.kind === "futures") return [];
+  const held = heldShares(trader, eq.id, eq);
   if (held <= 0) return [];
   const askPrice = eq.price * (1 - LIQUIDATION_AGGRESSION);
   const qty = Math.max(1, Math.floor(held * LIQUIDATION_FRACTION));
@@ -311,9 +342,9 @@ function decideNoise(world: World, trader: Trader, eq: Equity, free: number, rng
     : (aggressive ? -1 : +1);
   const limitPrice = eq.price * (1 + sign * offset);
   const qtyBoost = isDockedAt(trader, eq) ? DOCKING_QTY_BOOST : 1;
-  let qty = Math.floor(sizedQty(free, limitPrice) * qtyBoost);
+  let qty = Math.floor(qtyForEquity(world, eq, free, limitPrice) * qtyBoost);
   if (side === "ask") {
-    const held = heldShares(trader, eq.id);
+    const held = heldShares(trader, eq.id, eq);
     if (held <= 0) return [];
     qty = Math.min(qty, held);
   }
@@ -406,7 +437,7 @@ export function warmUpBook(world: World): void {
       // Bid offset: random 0.5%-2% below mid.
       const bidOffset = NOISE_BAND_MIN + rng() * (NOISE_BAND_MAX - NOISE_BAND_MIN);
       const bidPrice = eq.price * (1 - bidOffset);
-      const bidQty = sizedQty(free, bidPrice);
+      const bidQty = qtyForEquity(world, eq, free, bidPrice);
       if (bidQty > 0) {
         placeLimitOrder(world, {
           equityId: eq.id, side: "bid", qty: bidQty, limitPrice: bidPrice,
@@ -414,12 +445,18 @@ export function warmUpBook(world: World): void {
         });
       }
 
-      // Ask offset: random 0.5%-2% above mid. Capped by held shares.
-      const heldQty = state.positions[eq.id]?.shares ?? 0;
-      if (heldQty <= 0) continue;
+      // Ask offset: random 0.5%-2% above mid. Futures have no inventory
+      // gate (margin-funded shorts); for shares this is capped by held.
       const askOffset = NOISE_BAND_MIN + rng() * (NOISE_BAND_MAX - NOISE_BAND_MIN);
       const askPrice = eq.price * (1 + askOffset);
-      const askQty = Math.min(heldQty, sizedQty(free, askPrice));
+      let askQty: number;
+      if (eq.kind === "futures") {
+        askQty = qtyForEquity(world, eq, free, askPrice);
+      } else {
+        const heldQty = state.positions[eq.id]?.shares ?? 0;
+        if (heldQty <= 0) continue;
+        askQty = Math.min(heldQty, sizedQty(free, askPrice));
+      }
       if (askQty > 0) {
         placeLimitOrder(world, {
           equityId: eq.id, side: "ask", qty: askQty, limitPrice: askPrice,
@@ -445,6 +482,9 @@ export function seedAgentPositions(world: World): void {
   if (npcs.length === 0) return;
 
   for (const eq of Object.values(world.equities)) {
+    // Futures contracts have no inventory float — open interest is zero
+    // at listing and grows as agents/players open positions. Skip seeding.
+    if (eq.kind === "futures") continue;
     const base = Math.floor(eq.sharesOutstanding / npcs.length);
     const remainder = eq.sharesOutstanding - base * npcs.length;
     for (let i = 0; i < npcs.length; i++) {

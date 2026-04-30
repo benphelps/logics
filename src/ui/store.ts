@@ -17,6 +17,7 @@ import {
 import { abandonJob, acceptJob, collectTradeJob } from "../sim/jobs";
 import { fireCrew, hireCrew, recomputeShipStats } from "../sim/crew";
 import { abandonPosition, adjustPlayerLimit, buyShares, cancelPlayerLimit, coverShares, placeLimitBuy, placeLimitSell, sellShares, setStopLoss, setTakeProfit, shortShares } from "../sim/stock";
+import { openLongFuture as simOpenLongFuture, openShortFuture as simOpenShortFuture, closeFuture as simCloseFuture } from "../sim/stock/futures";
 import {
   createGameSlot,
   deleteGameSlot,
@@ -160,6 +161,12 @@ interface UiState {
   placeLimitSell: (equityId: EquityId, qty: number, limitPrice: number) => void;
   cancelLimit: (equityId: EquityId, orderId: string) => void;
   adjustLimit: (equityId: EquityId, orderId: string, qty: number, price: number) => void;
+  // C-3 — futures actions. count = number of contracts. closeFuture
+  // accepts an optional partial-close count; omitted = close the whole
+  // position.
+  openLongFuture: (contractId: EquityId, count: number) => void;
+  openShortFuture: (contractId: EquityId, count: number) => void;
+  closeFuture: (contractId: EquityId, count?: number) => void;
 }
 
 export const useStore = create<UiState>((set, get) => {
@@ -442,5 +449,30 @@ export const useStore = create<UiState>((set, get) => {
       const r = adjustPlayerLimit(w, equityId, orderId, qty, price, selectedPlayerShipId(w, get().selectedTrader));
       persistCurrentGame({ lastError: r.ok ? null : r.reason });
     },
+    openLongFuture: (contractId, count) => {
+      const w = get().world;
+      const r = simOpenLongFuture(w, contractId, count, selectedPlayerShipId(w, get().selectedTrader));
+      persistCurrentGame({ lastError: r.ok ? null : r.reason });
+    },
+    openShortFuture: (contractId, count) => {
+      const w = get().world;
+      const r = simOpenShortFuture(w, contractId, count, selectedPlayerShipId(w, get().selectedTrader));
+      persistCurrentGame({ lastError: r.ok ? null : r.reason });
+    },
+    closeFuture: (contractId, count) => {
+      const w = get().world;
+      const r = simCloseFuture(w, contractId, count, selectedPlayerShipId(w, get().selectedTrader));
+      persistCurrentGame({ lastError: r.ok ? null : r.reason });
+    },
   };
 });
+
+declare global {
+  interface Window {
+    __LOGICS_CAPTURE_STORE__?: typeof useStore;
+  }
+}
+
+if (typeof window !== "undefined" && import.meta.env.DEV) {
+  window.__LOGICS_CAPTURE_STORE__ = useStore;
+}

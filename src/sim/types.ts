@@ -207,6 +207,11 @@ export interface ShipTraderState {
   // (or the player ship.funds when player is the counterparty).
   stockWallet: number;
   positions: Record<EquityId, AgentPosition>;
+  // C-3 — open futures positions per contract id. Margin is locked in
+  // futuresMarginLocked (drawn from stockWallet on open, returned on
+  // close/expiry).
+  futuresPositions?: Record<EquityId, AgentFuturesPosition>;
+  futuresMarginLocked?: number;
   lastDecisionAt?: number;    // last world-tick on which this agent ran a decision
 }
 
@@ -249,6 +254,12 @@ export interface Player {
   // sellableShares = position.shares − reservedShares[eqId]. Decrements on
   // sell-limit fill or cancel.
   reservedShares?: Record<EquityId, number>;
+  // C-3 — futures position margin posted, per contract. Mirrors
+  // reservedShares but tracks cash locked as initial margin while a
+  // contract is open. Released on close/expiry.
+  reservedFutures?: Record<EquityId, number>;
+  // C-3 — open futures positions, keyed by contract id.
+  futures?: Record<EquityId, FuturesPosition>;
 }
 
 export type PositionKind = "long" | "short";
@@ -298,10 +309,43 @@ export interface TradeRecord {
   trigger?: TriggerKind;   // present when an auto-close fired the trade
 }
 
+// --- C-3 futures contract types ------------------------------------------
+
+export interface FuturesContract {
+  id: EquityId;                 // shares the equity row's id
+  goodId: GoodId;
+  underlyingEquityId: EquityId; // points at the spot commodity equity
+  contractSize: number;         // good units per contract
+  expiryTick: number;
+  listedAtTick: number;
+  marginFraction: number;       // initial margin as fraction of notional
+  openInterest: number;         // sum of |player + agent net long contracts|
+  clearing: number;             // small reconciliation float (≤ ε)
+  settled?: { spotAtExpiry: number; tick: number };
+}
+
+export interface FuturesPosition {
+  contractId: EquityId;
+  side: "long" | "short";
+  contracts: number;            // count, always positive
+  avgEntryPrice: number;        // per-good-unit
+  marginPosted: number;         // cash locked, refunded on close
+  openedAt: number;
+  lastMarkPrice: number;        // for incremental MtM cash transfers
+}
+
+export interface AgentFuturesPosition {
+  contracts: number;            // signed: +long, -short
+  avgEntryPrice: number;
+  marginPosted: number;
+  openedAt: number;
+  lastMarkPrice: number;
+}
+
 // --- stock market types ----------------------------------------------------
 
 export type EquityId = string;
-export type EquityKind = "station" | "syndicate" | "commodity" | "basis";
+export type EquityKind = "station" | "syndicate" | "commodity" | "basis" | "futures";
 
 export interface Equity {
   id: EquityId;
@@ -400,6 +444,9 @@ export interface World {
   // ordering / determinism.
   orderBooks?: Record<EquityId, OrderBook>;
   nextOrderId?: number;
+  // C-3 — futures contract metadata, keyed by the contract's equity id.
+  // Each entry corresponds 1:1 with an Equity row of kind="futures".
+  contracts?: Record<EquityId, FuturesContract>;
 }
 
 // --- order book ----------------------------------------------------------

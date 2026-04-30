@@ -49,6 +49,14 @@ import { pushNote } from "./log";
 import { cancelOrder as cancelBookOrder, ensureOrderBook, executeMarketOrder, placeLimitOrder as placeBookLimit, simulateMarketOrder, matchBook } from "./stock/orderbook";
 import { SYNTHETIC_MM_AGENT_ID } from "./stock/market-maker";
 import { applyAgentFill, seedAgentPositions, stepStockAgents, warmUpBook } from "./stock/agents";
+import {
+  applyAgentFuturesFill,
+  ensureFuturesListings,
+  FUTURES_AGENT_CARRY_BPS,
+  isFuturesEquity,
+  markPriceFor,
+  tickFutures,
+} from "./stock/futures";
 
 // --- tunables --------------------------------------------------------------
 
@@ -298,6 +306,8 @@ export function ensureStockMarket(world: World, opts: { syndicateCount?: number;
   // cap. This keeps the listing count bounded on big worlds while
   // surfacing the most-tradable basis spreads.
   seedBasisPairs(world);
+  // C-3: futures listings — near + far per traded good.
+  ensureFuturesListings(world);
   // Phase 2 (MM-less): distribute the float across NPC agents and warm up
   // the book — each agent posts both a bid and an ask on every equity using
   // noise-style passive offsets — so depth exists on both sides from frame
@@ -384,6 +394,18 @@ function basisFundamental(world: World, eq: Equity): number {
   return local;
 }
 
+// Futures fundamental — spot × tiny per-tick carry. The futures equity's
+// price gravitates toward the spot adjusted by time-to-expiry. As expiry
+// nears, fair → spot.
+function futuresFundamental(world: World, eq: Equity): number {
+  const c = world.contracts?.[eq.id];
+  if (!c) return eq.anchorPrice;
+  const spot = markPriceFor(world, c);
+  if (!Number.isFinite(spot) || spot <= 0) return eq.anchorPrice;
+  const tte = Math.max(0, c.expiryTick - world.tick);
+  return spot * (1 + FUTURES_AGENT_CARRY_BPS * tte);
+}
+
 // Compute the "fundamental" price for an equity from underlying signals.
 // Every signal is converted to a multiplier on anchorPrice. The tick-by-tick
 // EMA blend toward this fundamental drives the visible price.
@@ -393,6 +415,7 @@ export function computeFundamental(world: World, eq: Equity): number {
     case "syndicate": return syndicateFundamental(world, eq);
     case "commodity": return commodityFundamental(world, eq);
     case "basis":     return basisFundamental(world, eq);
+    case "futures":   return futuresFundamental(world, eq);
   }
 }
 
@@ -691,6 +714,7 @@ export function equityTradabilityReason(
     case "syndicate":
     case "commodity":
     case "basis":
+    case "futures":
       return null;
   }
 }
@@ -744,6 +768,7 @@ function settleNonPlayerTradeSides(
   playerShipId?: string,
 ): void {
   const cash = trade.qty * trade.price;
+  const isFutures = eq.kind === "futures";
 
   // Buyer pays cash. NPC agents pay from their dedicated stockWallet (kept
   // separate from cargo trader.funds). Player side is skipped here — the
@@ -753,8 +778,18 @@ function settleNonPlayerTradeSides(
   } else if (trade.buyer !== playerShipId) {
     const t = world.traders[trade.buyer];
     if (t?.stockState) {
-      t.stockState.stockWallet = Math.max(0, t.stockState.stockWallet - cash);
-      applyAgentFill(t, eq.id, +trade.qty, trade.price, world.tick);
+      if (isFutures) {
+        // Futures: bookkeeping happens in applyAgentFuturesFill —
+        // margin debit + AgentFuturesPosition, not full cash + share
+        // position.
+        applyAgentFuturesFill(world, t, eq.id, +trade.qty, trade.price);
+      } else {
+        // Share trade: strict P2P. Wallets can go negative — clipping
+        // them at zero would credit the seller the full cash while the
+        // buyer pays only what they had, creating money.
+        t.stockState.stockWallet -= cash;
+        applyAgentFill(t, eq.id, +trade.qty, trade.price, world.tick);
+      }
     }
   }
 
@@ -764,8 +799,12 @@ function settleNonPlayerTradeSides(
   } else if (trade.seller !== playerShipId) {
     const t = world.traders[trade.seller];
     if (t?.stockState) {
-      t.stockState.stockWallet += cash;
-      applyAgentFill(t, eq.id, -trade.qty, trade.price, world.tick);
+      if (isFutures) {
+        applyAgentFuturesFill(world, t, eq.id, -trade.qty, trade.price);
+      } else {
+        t.stockState.stockWallet += cash;
+        applyAgentFill(t, eq.id, -trade.qty, trade.price, world.tick);
+      }
     }
   }
 }
@@ -887,6 +926,9 @@ function preflight(world: World, equityId: EquityId, shares: number, shipId?: Tr
   if (shares <= 0 || !Number.isFinite(shares)) return { ok: false, reason: "Quantity must be positive." };
   const eq = world.equities[equityId];
   if (!eq) return { ok: false, reason: "Equity not listed." };
+  if (eq.kind === "futures") {
+    return { ok: false, reason: "Futures contracts use openLongFuture / openShortFuture / closeFuture." };
+  }
   const ship = getPlayerShip(world, shipId);
   if (!ship) return { ok: false, reason: "No anchor ship." };
   if (ship.state !== "idle") return { ok: false, reason: "Trade only while docked." };
@@ -1609,6 +1651,8 @@ export function tickStockMarket(world: World): void {
   decaySyndicateRevenue(world);
   tickShortBorrowFees(world);
   payoutDividends(world);
+  // C-3: futures mark-to-market + expiry settlement.
+  tickFutures(world);
 }
 
 // --- queries --------------------------------------------------------------

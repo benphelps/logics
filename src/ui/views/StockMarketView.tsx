@@ -13,7 +13,8 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 import { useStore } from "../store";
-import type { BookTrade, Equity, EquityKind, Order, OrderBook, StockPosition, TradeRecord, World } from "../../sim/types";
+import type { BookTrade, Equity, EquityKind, FuturesPosition, Order, OrderBook, StockPosition, TradeRecord, World } from "../../sim/types";
+import { listPlayerFutures, unrealizedFuturesPnl } from "../../sim/stock/futures";
 import {
   BROKER_FEE_RATE,
   DIVIDEND_INTERVAL,
@@ -53,6 +54,7 @@ const KIND_LABEL: Record<EquityKind, string> = {
   syndicate: "Syndicate",
   commodity: "Commodity",
   basis: "Basis",
+  futures: "Futures",
 };
 
 export function StockMarketView() {
@@ -170,6 +172,17 @@ export function StockMarketView() {
 
 // --- new shell components ----------------------------------------------
 
+type KindFilter = "all" | EquityKind;
+const KIND_FILTERS: KindFilter[] = ["all", "station", "syndicate", "commodity", "basis", "futures"];
+const KIND_FILTER_LABEL: Record<KindFilter, string> = {
+  all: "All",
+  station: "Stations",
+  syndicate: "Syndicates",
+  commodity: "Commodities",
+  basis: "Basis",
+  futures: "Futures",
+};
+
 function EquitySelector({ rows, tapeRows, selectedId, onSelect }: {
   rows: EquityRow[];
   tapeRows: { reachable: EquityRow[]; far: EquityRow[] };
@@ -177,13 +190,36 @@ function EquitySelector({ rows, tapeRows, selectedId, onSelect }: {
   onSelect: (eqId: string) => void;
 }) {
   void rows;
+  const [kindFilter, setKindFilter] = useState<KindFilter>("all");
+  const filterRow = (r: EquityRow) => kindFilter === "all" || r.equity.kind === kindFilter;
+  const reachable = tapeRows.reachable.filter(filterRow);
+  const far = tapeRows.far.filter(filterRow);
+  // Counts for the tab bar — same kindFilter applied to the unfiltered total.
+  const counts: Record<KindFilter, number> = { all: 0, station: 0, syndicate: 0, commodity: 0, basis: 0, futures: 0 };
+  for (const r of [...tapeRows.reachable, ...tapeRows.far]) {
+    counts.all++;
+    counts[r.equity.kind]++;
+  }
   return (
     <section className="stocks-shell-panel stocks-selector">
       <div className="stocks-panel-head art-panel-head" style={artCardStyle(headerArtUrl("stockTape"))}>
         <div>
           <span className="stocks-panel-label">Listings</span>
-          <span className="dim">{tapeRows.reachable.length} reachable · {tapeRows.far.length} far</span>
+          <span className="dim">{reachable.length} reachable · {far.length} far</span>
         </div>
+      </div>
+      <div className="stocks-kind-tabs">
+        {KIND_FILTERS.map(kf => counts[kf] > 0 && (
+          <button
+            key={kf}
+            type="button"
+            className={`stocks-kind-tab ${kindFilter === kf ? "active" : ""}`}
+            onClick={() => setKindFilter(kf)}
+          >
+            <span>{KIND_FILTER_LABEL[kf]}</span>
+            <span className="stocks-kind-tab-count dim">{counts[kf]}</span>
+          </button>
+        ))}
       </div>
       <div className="stocks-selector-header">
         <span>Ticker</span>
@@ -192,13 +228,13 @@ function EquitySelector({ rows, tapeRows, selectedId, onSelect }: {
         <span className="numeric">Δ</span>
       </div>
       <div className="stocks-selector-list">
-        {tapeRows.reachable.map(r => (
+        {reachable.map(r => (
           <SelectorRow key={r.equity.id} row={r} selected={r.equity.id === selectedId} onSelect={onSelect} />
         ))}
-        {tapeRows.far.length > 0 && (
+        {far.length > 0 && (
           <>
             <div className="stocks-selector-divider">Out of range</div>
-            {tapeRows.far.map(r => (
+            {far.map(r => (
               <SelectorRow key={r.equity.id} row={r} selected={r.equity.id === selectedId} onSelect={onSelect} farRow />
             ))}
           </>
@@ -226,7 +262,7 @@ function SelectorRow({ row, selected, onSelect, farRow = false }: {
       <span className="ticker mono">{eq.ticker}</span>
       <span className="stocks-selector-name">
         <span className="name">{eq.name}</span>
-        <span className="kind dim">{eq.kind === "station" ? "station" : "syndicate"}</span>
+        <span className="kind dim">{KIND_LABEL[eq.kind].toLowerCase()}</span>
       </span>
       <span className="stocks-selector-price mono">Ç{fmtPrice(eq.price)}</span>
       <span className={`stocks-selector-delta mono ${tone}`}>{fmtPct(row.changePct)}</span>
@@ -236,7 +272,7 @@ function SelectorRow({ row, selected, onSelect, farRow = false }: {
 
 // --- positions, orders, history (P&O) panel ----------------------------
 
-type PnoTab = "positions" | "orders" | "history";
+type PnoTab = "positions" | "orders" | "futures" | "history";
 
 function PnoPanel(props: {
   world: World;
@@ -254,6 +290,7 @@ function PnoPanel(props: {
 }) {
   const [tab, setTab] = useState<PnoTab>("positions");
   const limits = useMemo(() => listPlayerLimits(props.world, props.shipId), [props.world, props.shipId]);
+  const futures = useMemo(() => listPlayerFutures(props.world), [props.world]);
 
   return (
     <section className="stocks-shell-panel stocks-pno">
@@ -269,6 +306,12 @@ function PnoPanel(props: {
           onClick={() => setTab("orders")}
         >
           Orders <span className="bridge-tab-count">{limits.length}</span>
+        </button>
+        <button
+          className={`bridge-tab ${tab === "futures" ? "active" : ""} ${futures.length > 0 ? "has-suggestion" : ""}`}
+          onClick={() => setTab("futures")}
+        >
+          Futures <span className="bridge-tab-count">{futures.length}</span>
         </button>
         <button
           className={`bridge-tab ${tab === "history" ? "active" : ""}`}
@@ -295,6 +338,9 @@ function PnoPanel(props: {
         )}
         {tab === "orders" && (
           <OrdersAccordion world={props.world} limits={limits} onSelectEquity={props.onSelectEquity} />
+        )}
+        {tab === "futures" && (
+          <FuturesPositionsList world={props.world} futures={futures} docked={props.docked} onSelectEquity={props.onSelectEquity} />
         )}
         {tab === "history" && (
           <TradesList trades={props.trades} onSelect={props.onSelectEquity} />
@@ -758,7 +804,7 @@ function InfoColumn({ row, world, shipId, docked }: {
         style={artUrl ? artCardStyle(artUrl) : undefined}
       >
         <div className="stocks-info-title">
-          <span className="stocks-info-eyebrow">{eq.kind === "station" ? "Listed station" : "Listed company"}</span>
+          <span className="stocks-info-eyebrow">{`Listed ${KIND_LABEL[eq.kind].toLowerCase()}`}</span>
           <span className="stocks-info-name">{eq.name}</span>
         </div>
         <div className="stocks-info-quote">
@@ -841,10 +887,16 @@ function UnifiedOrderForm({ equity, world, docked, access }: {
   docked: boolean;
   access: { ok: boolean; reason: string };
 }) {
-  void world;
   const placeLimitBuy = useStore(s => s.placeLimitBuy);
   const placeLimitSell = useStore(s => s.placeLimitSell);
   const shortShares = useStore(s => s.shortShares);
+  const openLongFuture = useStore(s => s.openLongFuture);
+  const openShortFuture = useStore(s => s.openShortFuture);
+
+  if (equity.kind === "futures") {
+    return <FuturesOrderForm equity={equity} world={world} docked={docked} access={access}
+      openLongFuture={openLongFuture} openShortFuture={openShortFuture} />;
+  }
 
   type Side = "buy" | "sell" | "short";
   const [side, setSide] = useState<Side>("buy");
@@ -906,6 +958,59 @@ function UnifiedOrderForm({ equity, world, docked, access }: {
         Place {side === "buy" ? "Buy" : side === "sell" ? "Sell" : "Short"} Order
       </button>
       {!docked && <div className="stocks-warning dim">Equity trades only execute while docked.</div>}
+      {!access.ok && <div className="stocks-warning dim">{access.reason}</div>}
+    </section>
+  );
+}
+
+// C-3: futures-specific order form. Long/Short market opens through the
+// futures API; margin reservation + fee shown up front. Limit orders for
+// futures aren't surfaced yet — uses a market open against the existing
+// agent quotes.
+function FuturesOrderForm({ equity, world, docked, access, openLongFuture, openShortFuture }: {
+  equity: Equity;
+  world: World;
+  docked: boolean;
+  access: { ok: boolean; reason: string };
+  openLongFuture: (contractId: string, count: number) => void;
+  openShortFuture: (contractId: string, count: number) => void;
+}) {
+  const c = world.contracts?.[equity.id];
+  const [count, setCount] = useState<number>(1);
+  if (!c) return null;
+  const spot = world.equities[c.underlyingEquityId]?.price ?? equity.price;
+  const notional = c.contractSize * spot * count;
+  const margin = notional * c.marginFraction;
+  const fee = notional * BROKER_FEE_RATE;
+  const ttx = Math.max(0, c.expiryTick - world.tick);
+  return (
+    <section className="trade-helper-section stocks-order-form">
+      <div className="exchange-section-title">Open futures position</div>
+      <div className="stocks-order-fields">
+        <label>
+          <span>Contracts</span>
+          <input type="number" min={1} value={count}
+            onChange={e => setCount(Math.max(1, Math.floor(Number(e.target.value) || 0)))} />
+        </label>
+      </div>
+      <div className="stocks-order-summary dim">
+        <div>Notional: Ç{Math.round(notional).toLocaleString()}</div>
+        <div>Margin (+ fee): Ç{Math.round(margin + fee).toLocaleString()}</div>
+        <div>Expires in {ttx} ticks</div>
+      </div>
+      <div className="stocks-order-side">
+        <button className={`stocks-order-side-btn buy active`}
+          disabled={!docked || !access.ok || count <= 0}
+          onClick={() => openLongFuture(equity.id, count)}>
+          Open Long
+        </button>
+        <button className={`stocks-order-side-btn short active`}
+          disabled={!docked || !access.ok || count <= 0}
+          onClick={() => openShortFuture(equity.id, count)}>
+          Open Short
+        </button>
+      </div>
+      {!docked && <div className="stocks-warning dim">Trade only while docked.</div>}
       {!access.ok && <div className="stocks-warning dim">{access.reason}</div>}
     </section>
   );
@@ -1111,6 +1216,7 @@ function EquityInfoHeader({ row, world, access }: { row: EquityRow; world: World
   if (eq.kind === "station") eyebrow = "Listed station";
   else if (eq.kind === "commodity") eyebrow = "Listed commodity";
   else if (eq.kind === "basis") eyebrow = "Listed basis pair";
+  else if (eq.kind === "futures") eyebrow = "Listed futures contract";
 
   let pillLabel = "Syndicate";
   let pillClass = "stocks-kind-syndicate";
@@ -1123,6 +1229,9 @@ function EquityInfoHeader({ row, world, access }: { row: EquityRow; world: World
   } else if (eq.kind === "basis") {
     pillLabel = "Basis";
     pillClass = "stocks-kind-basis";
+  } else if (eq.kind === "futures") {
+    pillLabel = "Futures";
+    pillClass = "stocks-kind-futures";
   }
 
   return (
@@ -1188,6 +1297,29 @@ function CompanyUnderlying({ eq, world }: { eq: Equity; world: World }) {
           <FleetStat label="base price" value={`Ç${good.basePrice.toFixed(2)}`} />
           <FleetStat label="spot index" value={`Ç${spot.toFixed(2)}`} />
           <FleetStat label="universe stock" value={fmtBig(totalStock)} />
+        </dl>
+      </section>
+    );
+  }
+  if (eq.kind === "futures") {
+    const c = world.contracts?.[eq.id];
+    const good = c ? world.goods[c.goodId] : null;
+    if (!c || !good) return null;
+    const ttx = Math.max(0, c.expiryTick - world.tick);
+    const spot = world.equities[c.underlyingEquityId]?.price ?? eq.price;
+    const notional = c.contractSize * spot;
+    const margin = notional * c.marginFraction;
+    return (
+      <section className="trade-helper-section">
+        <div className="exchange-section-title">Underlying</div>
+        <dl className="trade-helper-grid station-info-grid">
+          <FleetStat label="good" value={good.name} />
+          <FleetStat label="contract size" value={`${c.contractSize}`} />
+          <FleetStat label="expires in" value={`${ttx} ticks`} />
+          <FleetStat label="spot" value={`Ç${spot.toFixed(2)}`} />
+          <FleetStat label="notional" value={`Ç${fmtBig(notional)}`} />
+          <FleetStat label="margin (10%)" value={`Ç${fmtBig(margin)}`} />
+          <FleetStat label="open interest" value={fmtBig(c.openInterest)} />
         </dl>
       </section>
     );
@@ -1451,6 +1583,57 @@ function PositionRowFragment({ pos, eq, pnl, pnlClass, isFocused, cash, docked, 
         </tr>
       )}
     </>
+  );
+}
+
+// C-3: open futures positions card. Shows the player's open contracts
+// with mark, MtM PnL, margin posted, and an inline Close button.
+function FuturesPositionsList({ world, futures, docked, onSelectEquity }: {
+  world: World;
+  futures: FuturesPosition[];
+  docked: boolean;
+  onSelectEquity: (eqId: string) => void;
+}) {
+  const closeFuture = useStore(s => s.closeFuture);
+  if (futures.length === 0) {
+    return <div className="stocks-pno-empty dim">No open futures.</div>;
+  }
+  return (
+    <div className="stocks-pno-list">
+      <div className="stocks-pno-header positions">
+        <span>Ticker</span>
+        <span>Side</span>
+        <span className="numeric">#</span>
+        <span className="numeric">Mark</span>
+        <span className="numeric">MtM</span>
+      </div>
+      {futures.map(fp => {
+        const c = world.contracts?.[fp.contractId];
+        const eq = world.equities[fp.contractId];
+        if (!c || !eq) return null;
+        const spot = world.equities[c.underlyingEquityId]?.price ?? eq.price;
+        const pnl = unrealizedFuturesPnl(world, fp);
+        const pnlClass = pnl > 0 ? "good" : pnl < 0 ? "bad" : "";
+        const ttx = Math.max(0, c.expiryTick - world.tick);
+        return (
+          <div key={fp.contractId} className="stocks-pno-row positions">
+            <button className="stocks-pno-cell ticker mono" onClick={() => onSelectEquity(eq.id)}>{eq.ticker}</button>
+            <span className={`stocks-pno-cell side ${fp.side}`}>{fp.side}</span>
+            <span className="stocks-pno-cell numeric mono">{fp.contracts}</span>
+            <span className="stocks-pno-cell numeric mono">Ç{spot.toFixed(2)}</span>
+            <span className={`stocks-pno-cell numeric mono ${pnlClass}`}>{pnl >= 0 ? "+" : ""}Ç{Math.round(pnl).toLocaleString()}</span>
+            <span className="stocks-pno-cell dim small">expires {ttx}t · margin Ç{Math.round(fp.marginPosted).toLocaleString()}</span>
+            <button
+              className="btn-action small"
+              disabled={!docked}
+              onClick={() => closeFuture(fp.contractId)}
+            >
+              Close
+            </button>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
