@@ -1,0 +1,428 @@
+{
+  "events": [
+    {
+      "id": "polar-front-storm-001",
+      "category": "weather",
+      "headline": "Polar front storm batters {station} supply lines",
+      "body": "A fast-moving polar front has slammed into shipping lanes serving {station}, ripping moorings and washing out transit routes. Traders report delayed freighters and spoiled perishables; mechanics are stretched thin repairing hull and dock damage. Expect higher local prices for staples and fuel while repair crews are in high demand.",
+      "durationBand": "long",
+      "magnitudeBand": "high",
+      "followthroughOf": null,
+      "placeholderRequirements": {
+        "station": true,
+        "good": false,
+        "syndicate": false,
+        "person": false
+      },
+      "effects": [
+        {
+          "scope": "commodity_price",
+          "direction": 1,
+          "magnitude": 0,
+          "target": {
+            "kind": "good",
+            "category": "food"
+          }
+        },
+        {
+          "scope": "commodity_price",
+          "direction": 1,
+          "magnitude": 0,
+          "target": {
+            "kind": "good",
+            "category": "fuel"
+          }
+        },
+        {
+          "scope": "maintenance",
+          "direction": 1,
+          "magnitude": 0,
+          "target": {
+            "kind": "location",
+            "category": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "salt-mist-harvest-002",
+      "category": "weather",
+      "headline": "Unseasonal salt mist ruins terraces around {station}",
+      "body": "A persistent coastal salt mist has drifted further inland, corroding solar arrays and scouring tender crops grown near {station}. Local producers report harvest losses and accelerated equipment wear. The immediate effect is a tighter food supply and more frequent maintenance calls for exposed infrastructure.",
+      "durationBand": "medium",
+      "magnitudeBand": "medium",
+      "followthroughOf": null,
+      "placeholderRequirements": {
+        "station": true,
+        "good": false,
+        "syndicate": false,
+        "person": false
+      },
+      "effects": [
+        {
+          "scope": "commodity_price",
+          "direction": 1,
+          "magnitude": 0,
+          "target": {
+            "kind": "good",
+            "category": "food"
+          }
+        },
+        {
+          "scope": "maintenance",
+          "direction": 1,
+          "magnitude": 0,
+          "target": {
+            "kind": "location",
+            "category": null
+          }
+        },
+        {
+          "scope": "basis_price",
+          "direction": 1,
+          "magnitude": 0,
+          "target": {
+            "kind": "index",
+            "category": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "solar-flare-electronics-003",
+      "category": "weather",
+      "headline": "Solar flare disrupts manufacturing yards supplying {syndicate}",
+      "body": "A sudden solar flare damaged unshielded fabrication lines linked to {syndicate}'s suppliers, frying sensitive controllers and interrupting precision assembly. Workshops face parts shortages and unsafe shifts; upgrade projects are delayed as specialized components become scarce.",
+      "durationBand": "short",
+      "magnitudeBand": "medium",
+      "followthroughOf": null,
+      "placeholderRequirements": {
+        "station": false,
+        "good": false,
+        "syndicate": true,
+        "person": false
+      },
+      "effects": [
+        {
+          "scope": "upgrade_cost",
+          "direction": 1,
+          "magnitude": 0,
+          "target": {
+            "kind": "good",
+            "category": "upgrade"
+          }
+        },
+        {
+          "scope": "commodity_price",
+          "direction": 1,
+          "magnitude": 0,
+          "target": {
+            "kind": "good",
+            "category": "advanced"
+          }
+        },
+        {
+          "scope": "crew_wage",
+          "direction": 1,
+          "magnitude": 0,
+          "target": {
+            "kind": "syndicate",
+            "category": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "harbor-joy-festival-004",
+      "category": "festival",
+      "headline": "Harbor Joy festival draws crowds to {station}",
+      "body": "Annual Harbor Joy celebrations are in full swing at {station}. Merchants report booming demand for trinkets and luxuries while docking and hospitality services are booked solid. Short-term commerce spikes provide good margins for traders bringing popular wares, but congestion inflates access costs.",
+      "durationBand": "medium",
+      "magnitudeBand": "low",
+      "followthroughOf": null,
+      "placeholderRequirements": {
+        "station": true,
+        "good": false,
+        "syndicate": false,
+        "person": false
+      },
+      "effects": [
+        {
+          "scope": "commodity_price",
+          "direction": 1,
+          "magnitude": 0,
+          "target": {
+            "kind": "good",
+            "category": "luxury"
+          }
+        },
+        {
+          "scope": "docking_fee",
+          "direction": 1,
+          "magnitude": 0,
+          "target": {
+            "kind": "location",
+            "category": null
+          }
+        },
+        {
+          "scope": "contract_reward",
+          "direction": 1,
+          "magnitude": 0,
+          "target": {
+            "kind": "location",
+            "category": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "storm-relief-convoy-005",
+      "category": "diplomacy",
+      "headline": "Relief convoy diverts to {station} after polar front storm",
+      "body": "Humanitarian convoys rerouted to {station} in response to the polar front damage are delivering food and spare parts. While relief is easing shortages, the influx of ships is creating short-term port congestion and labor demand as aid operations offload and coordinate repairs.",
+      "durationBand": "medium",
+      "magnitudeBand": "medium",
+      "followthroughOf": "polar-front-storm-001",
+      "placeholderRequirements": {
+        "station": true,
+        "good": false,
+        "syndicate": false,
+        "person": false
+      },
+      "effects": [
+        {
+          "scope": "commodity_price",
+          "direction": -1,
+          "magnitude": 0,
+          "target": {
+            "kind": "good",
+            "category": "food"
+          }
+        },
+        {
+          "scope": "docking_fee",
+          "direction": 1,
+          "magnitude": 0,
+          "target": {
+            "kind": "location",
+            "category": null
+          }
+        },
+        {
+          "scope": "crew_wage",
+          "direction": 1,
+          "magnitude": 0,
+          "target": {
+            "kind": "location",
+            "category": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "inquiry-relief-funds-006",
+      "category": "politics",
+      "headline": "Congressional inquiry launched into relief funds routed through {station}",
+      "body": "After the recent diversion of a relief convoy, lawmakers have opened an inquiry into how funds and contracts were routed through {station}. Audits and hearings are expected to slow processing and add compliance overhead for port operators and contractors.",
+      "durationBand": "medium",
+      "magnitudeBand": "medium",
+      "followthroughOf": "storm-relief-convoy-005",
+      "placeholderRequirements": {
+        "station": true,
+        "good": false,
+        "syndicate": false,
+        "person": false
+      },
+      "effects": [
+        {
+          "scope": "maintenance",
+          "direction": 1,
+          "magnitude": 0,
+          "target": {
+            "kind": "location",
+            "category": null
+          }
+        },
+        {
+          "scope": "docking_fee",
+          "direction": 1,
+          "magnitude": 0,
+          "target": {
+            "kind": "location",
+            "category": null
+          }
+        },
+        {
+          "scope": "contract_reward",
+          "direction": -1,
+          "magnitude": 0,
+          "target": {
+            "kind": "location",
+            "category": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dock-inspection-bribery-007",
+      "category": "politics",
+      "headline": "Regulatory sweep at {station} exposes bribery tied to {syndicate}",
+      "body": "Port authorities and anti-corruption units executed a coordinated sweep at {station}, uncovering alleged bribery networks channeling shipments for {syndicate}. The inspections are expected to slow cargo throughput and shake investor confidence in implicated firms.",
+      "durationBand": "medium",
+      "magnitudeBand": "medium",
+      "followthroughOf": null,
+      "placeholderRequirements": {
+        "station": true,
+        "good": false,
+        "syndicate": true,
+        "person": false
+      },
+      "effects": [
+        {
+          "scope": "docking_fee",
+          "direction": 1,
+          "magnitude": 0,
+          "target": {
+            "kind": "location",
+            "category": null
+          }
+        },
+        {
+          "scope": "share_price_syndicate",
+          "direction": -1,
+          "magnitude": 0,
+          "target": {
+            "kind": "syndicate",
+            "category": null
+          }
+        },
+        {
+          "scope": "maintenance",
+          "direction": 1,
+          "magnitude": 0,
+          "target": {
+            "kind": "location",
+            "category": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "offshore-leak-008",
+      "category": "scandal",
+      "headline": "Opposition leak alleges {person} channels funds through {syndicate}",
+      "body": "A trove of financial documents released by opposition groups claims that {person} used shell companies linked to {syndicate} to move campaign and procurement funds offshore. Political fallout is swift and investors are reassessing exposure to the named syndicate.",
+      "durationBand": "short",
+      "magnitudeBand": "medium",
+      "followthroughOf": null,
+      "placeholderRequirements": {
+        "station": false,
+        "good": false,
+        "syndicate": true,
+        "person": true
+      },
+      "effects": [
+        {
+          "scope": "share_price_syndicate",
+          "direction": -1,
+          "magnitude": 0,
+          "target": {
+            "kind": "syndicate",
+            "category": null
+          }
+        },
+        {
+          "scope": "dividend",
+          "direction": -1,
+          "magnitude": 0,
+          "target": {
+            "kind": "syndicate",
+            "category": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "militia-exactions-fuel-009",
+      "category": "pirate raid",
+      "headline": "Border militia checkpoints levy tolls on fuel convoys near {station}",
+      "body": "Militia units manning makeshift checkpoints have begun charging tolls on convoys carrying fuel to and from {station}, forcing longer detours and spot payments. Shippers are adding surcharges and crews are demanding hazard pay.",
+      "durationBand": "medium",
+      "magnitudeBand": "medium",
+      "followthroughOf": null,
+      "placeholderRequirements": {
+        "station": true,
+        "good": true,
+        "syndicate": false,
+        "person": false
+      },
+      "effects": [
+        {
+          "scope": "commodity_price",
+          "direction": 1,
+          "magnitude": 0,
+          "target": {
+            "kind": "good",
+            "category": "fuel"
+          }
+        },
+        {
+          "scope": "crew_wage",
+          "direction": 1,
+          "magnitude": 0,
+          "target": {
+            "kind": "location",
+            "category": null
+          }
+        },
+        {
+          "scope": "maintenance",
+          "direction": 1,
+          "magnitude": 0,
+          "target": {
+            "kind": "location",
+            "category": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "tariff-accord-syndicate-010",
+      "category": "diplomacy",
+      "headline": "Council signs tariff accord with {syndicate}, slashing duties on {good}",
+      "body": "A new tariff accord between the colonial council and {syndicate} reduces import duties on selected goods, aimed at boosting throughput and stabilizing prices after recent supply shocks. Shippers tied to the syndicate will see lower terminal charges for covered commodities.",
+      "durationBand": "long",
+      "magnitudeBand": "low",
+      "followthroughOf": null,
+      "placeholderRequirements": {
+        "station": false,
+        "good": true,
+        "syndicate": true,
+        "person": false
+      },
+      "effects": [
+        {
+          "scope": "commodity_price",
+          "direction": -1,
+          "magnitude": 0,
+          "target": {
+            "kind": "good",
+            "category": "intermediate"
+          }
+        },
+        {
+          "scope": "docking_fee",
+          "direction": -1,
+          "magnitude": 0,
+          "target": {
+            "kind": "syndicate",
+            "category": null
+          }
+        }
+      ]
+    }
+  ],
+  "generatedAt": "2026-04-30T11:05:36.438Z",
+  "count": 10
+}

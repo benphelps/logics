@@ -5,6 +5,8 @@ import { applyIdlePerks, chargeMaintenance, chargeNpcWealthCarry, consumptionDem
 import { expireJobs, generateJobs, type JobExpiryEvent } from "./jobs";
 import { expireHires, generateHires } from "./hires";
 import { tickStockMarket } from "./stock";
+import { getNewsPool, tickNewsEvents } from "./news";
+import type { ActiveNewsEvent } from "./news/types";
 
 export interface TickReport {
   tick: number;
@@ -14,6 +16,8 @@ export interface TickReport {
   jobsExpired: JobExpiryEvent[];
   hiresPosted: Hire[];
   hiresExpired: HireId[];
+  newsSpawned: ActiveNewsEvent[];
+  newsExpired: ActiveNewsEvent[];
 }
 
 function produce(loc: LocationDef, market: MarketState): void {
@@ -59,6 +63,10 @@ function consume(
 export function tickWorld(world: World): TickReport {
   const shortages: TickReport["shortages"] = [];
 
+  // Resolve news events first so the freshly-spawned/expired set is visible
+  // to price/treasury/stock evaluations later in this same tick.
+  const newsReport = tickNewsEvents(world, getNewsPool());
+
   const traderEvents = stepTraders(world);
 
   for (const loc of Object.values(world.locations)) {
@@ -98,7 +106,17 @@ export function tickWorld(world: World): TickReport {
   const hiresPosted = generateHires(world);
 
   world.tick += 1;
-  return { tick: world.tick, shortages, traderEvents, jobsPosted, jobsExpired, hiresPosted, hiresExpired };
+  return {
+    tick: world.tick,
+    shortages,
+    traderEvents,
+    jobsPosted,
+    jobsExpired,
+    hiresPosted,
+    hiresExpired,
+    newsSpawned: newsReport.spawned,
+    newsExpired: newsReport.expired,
+  };
 }
 
 export function tickN(world: World, n: number): TickReport[] {

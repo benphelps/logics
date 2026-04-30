@@ -2,6 +2,8 @@ import type { CrewMember, Hire, World } from "../sim/types";
 import { ensureStockMarket } from "../sim/stock";
 import { warmUpBook } from "../sim/stock/agents";
 import { deriveCrewIdentity } from "../sim/crewIdentity";
+import { createNewsEventsState } from "../sim/news/tick";
+import type { ActiveNewsEvent, NewsTarget, RecentNewsEvent } from "../sim/news/types";
 import { normalizeViewTabs, type ViewTabs } from "./viewTabs";
 
 const SAVE_REGISTRY_KEY = "logics.saveGames.v1";
@@ -117,6 +119,7 @@ function migrateLoadedWorld(world: World): World {
   if (!world.syndicates) world.syndicates = {};
   ensureStockMarket(world);
   backfillCrewIdentity(world);
+  backfillNewsEvents(world);
   // After loading a compacted save (orderBooks have player orders only),
   // give every equity at least one round of agent quotes so the player
   // can trade immediately. Idempotent — agents post at most one bid +
@@ -147,6 +150,42 @@ function migrateLoadedWorld(world: World): World {
     }
   }
   return world;
+}
+
+// Pre-news saves won't have a newsEvents field. Backfill a fresh state so
+// the sim never crashes on Object.keys(undefined). Also prune any active or
+// recent events whose targets no longer exist (covers dev scenarios where
+// stations or syndicates were edited between save and load).
+function backfillNewsEvents(world: World): void {
+  if (!world.newsEvents) {
+    world.newsEvents = createNewsEventsState();
+    return;
+  }
+  const state = world.newsEvents;
+  state.enabled = state.enabled ?? true;
+  state.active = Array.isArray(state.active) ? state.active.filter(ev => allTargetsValid(world, ev)) : [];
+  state.recent = Array.isArray(state.recent) ? state.recent.filter(ev => allTargetsValid(world, ev)) : [];
+  state.bias = state.bias && typeof state.bias === "object" ? state.bias : {};
+  state.nextEventId = typeof state.nextEventId === "number" && state.nextEventId > 0 ? state.nextEventId : 1;
+}
+
+function allTargetsValid(world: World, ev: ActiveNewsEvent | RecentNewsEvent): boolean {
+  for (const eff of ev.effects) {
+    if (!targetIsValid(world, eff.target)) return false;
+  }
+  return true;
+}
+
+function targetIsValid(world: World, target: NewsTarget): boolean {
+  if (target.kind === "global") return true;
+  if (!target.id) return true; // category-only targets don't depend on a specific id
+  switch (target.kind) {
+    case "good":      return world.goods[target.id] != null;
+    case "location":  return world.locations[target.id] != null;
+    case "syndicate": return world.syndicates[target.id] != null;
+    case "index":     return world.equities[target.id] != null;
+    default:          return false;
+  }
 }
 
 // Pre-identity saves don't have sex/age/race on crew or hires. Derive the

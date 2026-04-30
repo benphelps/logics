@@ -1,13 +1,19 @@
 import type { EquityId, GoodId, Job, JobId, JobTier, LocationId, TradeAction, Trader, TraderId, World } from "./types";
 import { pushJobAbandoned, pushJobAccepted, pushJobCompleted, pushJobExpired } from "./log";
 import { contractRewardFraction } from "./crew";
+import { eventMultiplier } from "./news/modifier";
 
-// Fold the trader's contractRewardBonus modifier into the base reward.
+// Fold the trader's contractRewardBonus modifier into the base reward, then
+// apply any active news-event multiplier on contract rewards (per-destination).
 // Floors at 0 so a malformed modifier can't pay the player to leave.
-function rewardWithBonus(ship: Trader, baseReward: number): number {
-  if (baseReward <= 0) return 0;
+function rewardWithBonus(world: World, ship: Trader, job: Job): number {
+  if (job.reward <= 0) return 0;
   const bonus = contractRewardFraction(ship);
-  return Math.max(0, baseReward * (1 + bonus));
+  const mult = eventMultiplier(world, "contract_reward", {
+    locationId: job.destination,
+    goodId: job.good,
+  });
+  return Math.max(0, job.reward * (1 + bonus) * mult);
 }
 
 // --- tunables --------------------------------------------------------------
@@ -407,7 +413,7 @@ export function collectTradeJob(world: World, jobId: JobId, traderId: TraderId):
     const dst = world.locations[job.destination]?.name ?? job.destination;
     return { ok: false, reason: `Collect this settlement at ${dst}.` };
   }
-  const reward = rewardWithBonus(ship, job.reward);
+  const reward = rewardWithBonus(world, ship, job);
   ship.funds += reward;
   pushJobCompleted(world, ship, { reward, partial: false }, job);
   delete world.jobs[job.id];
@@ -469,7 +475,7 @@ export function creditJobOnDelivery(
     job.delivered += credit;
     remaining -= credit;
     if (job.delivered >= job.qty) {
-      const reward = ship ? rewardWithBonus(ship, job.reward) : job.reward;
+      const reward = ship ? rewardWithBonus(world, ship, job) : job.reward;
       if (ship) ship.funds += reward;
       const ev = { jobId: job.id, tier: job.tier, reward, partial: false, delivered: job.delivered };
       if (ship) pushJobCompleted(world, ship, ev, job);

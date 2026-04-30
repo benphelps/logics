@@ -476,6 +476,11 @@ export interface World {
   // C-3 — futures contract metadata, keyed by the contract's equity id.
   // Each entry corresponds 1:1 with an Equity row of kind="futures".
   contracts?: Record<EquityId, FuturesContract>;
+  // News events — random world events that nudge math fields up or down for a
+  // bounded duration. See src/sim/news. Optional so older saves and minimal
+  // test worlds round-trip without explicit setup; eventMultiplier short-
+  // circuits to 1 when undefined.
+  newsEvents?: import("./news/types").NewsEventsState;
 }
 
 // --- order book ----------------------------------------------------------

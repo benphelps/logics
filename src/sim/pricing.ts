@@ -1,4 +1,5 @@
 import type { GoodId, LocationDef, LocationId, MarketState, World } from "./types";
+import { eventMultiplier } from "./news/modifier";
 
 export const PRICE_ELASTICITY = 0.6;
 export const PRICE_FLOOR_MULT = 0.25;
@@ -34,13 +35,18 @@ export function marketQuote(world: World, locationId: LocationId, goodId: GoodId
 
 export function recomputePrices(world: World, loc: LocationDef, market: MarketState): void {
   for (const goodId of Object.keys(world.goods) as GoodId[]) {
-    const base = world.goods[goodId].basePrice;
-    if (world.goods[goodId].category === "upgrade") {
-      market.prices[goodId] = base;
+    const good = world.goods[goodId];
+    const base = good.basePrice;
+    if (good.category === "upgrade") {
+      // Upgrades bypass scarcity EMA; news events apply directly to base.
+      const upgradeMult = eventMultiplier(world, "upgrade_cost", { goodId, locationId: loc.id, category: good.category });
+      market.prices[goodId] = base * upgradeMult;
       continue;
     }
     const target = loc.targetStock[goodId] ?? 0;
-    const resolved = target <= 0 ? base : priceFor(base, market.stock[goodId] ?? 0, target);
+    const baseResolved = target <= 0 ? base : priceFor(base, market.stock[goodId] ?? 0, target);
+    const eventMult = eventMultiplier(world, "commodity_price", { goodId, locationId: loc.id, category: good.category });
+    const resolved = baseResolved * eventMult;
     const prev = market.prices[goodId] ?? resolved;
     market.prices[goodId] = prev + GOODS_PRICE_SMOOTHING * (resolved - prev);
   }

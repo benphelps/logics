@@ -6,6 +6,7 @@ import { netProductionRate } from "../../sim/locations";
 import type { LocationDef, LocationId, Trader, TraderId, World } from "../../sim/types";
 import { headerArtUrl, stationArtUrl } from "../art";
 import { SortableRows, SortableTh } from "../components/SortableTable";
+import { AtlasNewsPanel } from "./AtlasNewsPanel";
 import "./LocationsView.css";
 
 const MAP_W = 1000;
@@ -84,7 +85,8 @@ export function LocationsView() {
   const selectTrader = useStore((s) => s.selectTrader);
   useStore((s) => s.tickEpoch);
 
-  const [sheetTab, setSheetTab] = useState<"systems" | "ships">("systems");
+  const [sheetTab, setSheetTab] = useState<"systems" | "ships" | "news">("systems");
+  const newsCount = world.newsEvents?.active.length ?? 0;
 
   const locations = Object.values(world.locations);
   const playerShipIds = world.player?.shipIds ?? [];
@@ -147,16 +149,24 @@ export function LocationsView() {
               >
                 Ships <span className="atlas-tab-count">{Object.values(world.traders).length}</span>
               </button>
+              <button
+                type="button"
+                className={`bridge-tab ${sheetTab === "news" ? "active" : ""}`}
+                onClick={() => setSheetTab("news")}
+              >
+                Events <span className="atlas-tab-count">{newsCount}</span>
+              </button>
             </div>
 
             <div className="atlas-table-scroll">
-              {sheetTab === "systems" ? (
+              {sheetTab === "systems" && (
                 <SystemsTable
                   rows={sheetRows}
                   selectedId={selected?.id ?? null}
                   onSelect={selectLocation}
                 />
-              ) : (
+              )}
+              {sheetTab === "ships" && (
                 <ShipsTable
                   world={world}
                   selectedTraderId={selectedTrader}
@@ -164,6 +174,7 @@ export function LocationsView() {
                   onSelectLocation={selectLocation}
                 />
               )}
+              {sheetTab === "news" && <AtlasNewsPanel world={world} />}
             </div>
           </section>
         </aside>

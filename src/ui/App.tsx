@@ -6,11 +6,14 @@ import { MarketsView } from "./views/MarketsView";
 import { LocationsView } from "./views/LocationsView";
 import { PlayerView } from "./views/PlayerView";
 import { StockMarketView } from "./views/StockMarketView";
+import { NewsToast } from "./views/NewsToast";
+import { loadNewsPool } from "../sim/news/pool";
 import "./App.css";
 
 export function App() {
   useTickDriver();
   useHeaderArtCursorPan();
+  useEffect(() => { void loadNewsPool(); }, []);
   const tab = useStore((s) => s.selectedTab);
   const saveCurrentGame = useStore((s) => s.saveCurrentGame);
 
@@ -40,6 +43,7 @@ export function App() {
           </div>
         </main>
       </div>
+      <NewsToast />
     </div>
   );
 }

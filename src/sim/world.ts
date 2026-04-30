@@ -5,6 +5,7 @@ import { STARTER_TRADERS } from "./data/traders";
 import { DEFAULT_PLAYER_SEED, makePlayer, type PlayerSeedConfig } from "./data/player";
 import { defaultTreasuryTarget } from "./economy";
 import { ensureStockMarket } from "./stock";
+import { createNewsEventsState } from "./news/tick";
 
 export function createWorld(opts?: {
   goods?: Record<GoodId, Good>;
@@ -58,6 +59,7 @@ export function createWorld(opts?: {
     tick: 0, goods, locations, markets, lanes, traders, player,
     jobs: {}, nextJobId: 1, hires: {}, nextHireId: 1,
     equities: {}, syndicates: {},
+    newsEvents: createNewsEventsState(),
   };
   ensureStockMarket(world);
   return world;

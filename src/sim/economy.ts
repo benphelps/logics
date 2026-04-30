@@ -7,6 +7,7 @@ import {
   totalCrewWage,
   treasuryYieldRate,
 } from "./crew";
+import { eventMultiplier } from "./news/modifier";
 
 export const MAINTENANCE_PER_CAPACITY = 0.5;
 export const MAINTENANCE_IDLE_FACTOR = 0;
@@ -150,7 +151,9 @@ export function tickTreasuries(world: World): void {
     // base. This keeps total system money bounded — once treasuries are well
     // above target, replenish drops below maintenance drain and the system
     // self-balances.
-    const replenishMax = loc.population * TREASURY_REPLENISH_PER_POP_PER_TICK;
+    const replenishBase = loc.population * TREASURY_REPLENISH_PER_POP_PER_TICK;
+    const replenishMult = eventMultiplier(world, "treasury_replenish", { locationId: loc.id });
+    const replenishMax = replenishBase * replenishMult;
     const ratio = market.treasury / Math.max(1, market.treasuryTarget);
     let multiplier: number;
     if (ratio <= 0) multiplier = 1.5;                      // deficit cities replenish faster
@@ -231,13 +234,16 @@ export function chargeOperationalCosts(world: World): void {
     const cost = maintenanceCost(trader);
     if (cost <= 0) continue;
 
+    const maintMult = eventMultiplier(world, "maintenance", { locationId: trader.location });
+    const wageMult = eventMultiplier(world, "crew_wage", { locationId: trader.location });
+
     if (isPlayerShip(world, trader)) {
       // Player ships: route maintenance through the mechanic gating, charge
       // crew wages on top — all from the ship's own wallet.
-      const wages = totalCrewWage(trader);
+      const wages = totalCrewWage(trader) * wageMult;
       const mods = combinedShipModifiers(trader);
       const discount = mods.maintenanceDiscount ?? 0;
-      const effectiveMaint = cost * (1 - discount);
+      const effectiveMaint = cost * (1 - discount) * maintMult;
       if (hasCrew(trader, "mechanic")) {
         // Mechanic auto-pays maintenance (alongside wages).
         const total = effectiveMaint + wages;
@@ -252,14 +258,15 @@ export function chargeOperationalCosts(world: World): void {
 
     // NPC ships: legacy behavior — pay from their own funds, no debt path.
     if (trader.funds <= 0) continue;
-    trader.funds = Math.max(0, trader.funds - cost);
+    trader.funds = Math.max(0, trader.funds - cost * maintMult);
   }
 }
 
 export function chargeDockingFee(world: World, trader: Trader): number {
   if (trader.funds <= 0) return 0;
   const baseFee = trader.capacity * DOCKING_FEE_PER_CAPACITY;
-  const fee = baseFee * (1 - dockingDiscountFraction(trader));
+  const dockMult = eventMultiplier(world, "docking_fee", { locationId: trader.location });
+  const fee = baseFee * (1 - dockingDiscountFraction(trader)) * dockMult;
   const paid = Math.min(fee, trader.funds);
   trader.funds = Math.max(0, trader.funds - fee);
   // Docking fee transfers to local treasury — the city earns from each
@@ -289,7 +296,8 @@ export function applyIdlePerks(world: World): void {
       // sweep" feel) so the float stays conserved.
       const market = world.markets[trader.location];
       if (market) {
-        const want = trader.funds * yieldRate;
+        const yieldMult = eventMultiplier(world, "treasury_yield", { locationId: trader.location });
+        const want = trader.funds * yieldRate * yieldMult;
         const paid = withdrawFromTreasury(market, want);
         if (paid > 0) trader.funds += paid;
       }

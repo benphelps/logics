@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { CrewMember, CrewRole, EquityId, World, LocationId, GoodId, JobId, TraderId, UpgradeSlot } from "../sim/types";
+import type { ActiveNewsEvent } from "../sim/news/types";
 import { createStartingWorld } from "../sim/start";
 import { tickWorld } from "../sim/tick";
 import {
@@ -132,6 +133,9 @@ interface UiState {
   commodityTab: CommodityTab;
   pnoTab: PnoTab;
   lastError: string | null;
+  // Toast queue — populated when tickWorld() returns spawned news events.
+  // The toast component drains entries via dismissNewsToast as they auto-fade.
+  newsToasts: ActiveNewsEvent[];
 
   setSpeed: (s: Speed) => void;
   togglePause: () => void;
@@ -184,6 +188,7 @@ interface UiState {
   openLongFuture: (contractId: EquityId, count: number) => void;
   openShortFuture: (contractId: EquityId, count: number) => void;
   closeFuture: (contractId: EquityId, count?: number) => void;
+  dismissNewsToast: (uid: string) => void;
 }
 
 export const useStore = create<UiState>((set, get) => {
@@ -268,6 +273,7 @@ export const useStore = create<UiState>((set, get) => {
     commodityTab: initialGame.viewTabs?.commodityTab ?? DEFAULT_VIEW_TABS.commodityTab,
     pnoTab: initialGame.viewTabs?.pnoTab ?? DEFAULT_VIEW_TABS.pnoTab,
     lastError: null,
+    newsToasts: [],
 
     setSpeed: (s) => set({ speed: s }),
     togglePause: () => set({ speed: get().speed === 0 ? 1 : 0 }),
@@ -277,17 +283,28 @@ export const useStore = create<UiState>((set, get) => {
       if (report.hiresExpired.length > 0) {
         releaseCrewHeadshots(get().activeSaveId, report.hiresExpired);
       }
+      if (report.newsSpawned.length > 0) {
+        set({ newsToasts: [...get().newsToasts, ...report.newsSpawned].slice(-6) });
+      }
       persistCurrentGame();
     },
     stepN: (n) => {
       const w = get().world;
       const expired: string[] = [];
+      const newsSpawned: ActiveNewsEvent[] = [];
       for (let i = 0; i < n; i++) {
         const report = tickWorld(w);
         if (report.hiresExpired.length > 0) expired.push(...report.hiresExpired);
+        if (report.newsSpawned.length > 0) newsSpawned.push(...report.newsSpawned);
       }
       if (expired.length > 0) releaseCrewHeadshots(get().activeSaveId, expired);
+      if (newsSpawned.length > 0) {
+        set({ newsToasts: [...get().newsToasts, ...newsSpawned].slice(-6) });
+      }
       persistCurrentGame();
+    },
+    dismissNewsToast: (uid) => {
+      set({ newsToasts: get().newsToasts.filter(t => t.uid !== uid) });
     },
     reset: () => {
       clearPendingAutosave();

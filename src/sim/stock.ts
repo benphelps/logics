@@ -44,6 +44,8 @@ import type {
 import { mulberry32 } from "./gen/rng";
 import { combinedShipModifiers, dividendBonusFraction } from "./crew";
 import { depositToTreasury } from "./economy";
+import { eventMultiplier } from "./news/modifier";
+import type { NewsScope } from "./news/types";
 import { createTradeJob, exchangeLossForgiveness } from "./jobs";
 import { pushNote } from "./log";
 import { cancelOrder as cancelBookOrder, ensureOrderBook, executeMarketOrder, placeLimitOrder as placeBookLimit, simulateMarketOrder, matchBook } from "./stock/orderbook";
@@ -641,8 +643,38 @@ function hashStr(s: string): number {
   return h;
 }
 
+// Map an equity's kind to the news scope that targets it, plus the ctx the
+// event matcher needs to bind. Returns 1 (no-op) for kinds not covered.
+function equityEventMultiplier(world: World, eq: Equity): number {
+  let scope: NewsScope | null = null;
+  switch (eq.kind) {
+    case "station":   scope = "share_price_station"; break;
+    case "syndicate": scope = "share_price_syndicate"; break;
+    case "commodity": scope = "commodity_index_price"; break;
+    case "basis":     scope = "basis_price"; break;
+    case "futures":   scope = "futures_price"; break;
+    case "index":     scope = "commodity_index_price"; break;
+  }
+  if (!scope) return 1;
+  // Bind by underlying so a "station X" event hits only that station's equity.
+  if (eq.kind === "station") {
+    return eventMultiplier(world, scope, { locationId: eq.underlyingId });
+  }
+  if (eq.kind === "syndicate") {
+    return eventMultiplier(world, scope, { syndicateId: eq.underlyingId });
+  }
+  // For commodity/basis/futures/index equities the underlying is a good or
+  // contract id — pass through as indexId so matchers can target by id.
+  return eventMultiplier(world, scope, { indexId: eq.id });
+}
+
 export function recomputeEquityPrice(world: World, eq: Equity): void {
-  const fundamental = computeFundamental(world, eq);
+  const rawFundamental = computeFundamental(world, eq);
+  // News events apply as a final scalar on the per-tick fundamental — placed
+  // here (after computeFundamental) rather than inside each *Fundamental
+  // helper so the kick is felt fully and consistently across kinds, instead
+  // of being cushioned by per-kind smoothing internals.
+  const fundamental = rawFundamental * equityEventMultiplier(world, eq);
   // EMA blend — small smoothing so prices don't whip every tick
   const blended = eq.price + SHARE_PRICE_SMOOTHING * (fundamental - eq.price);
   // Add small per-tick noise scaled by current price so it's proportional
@@ -695,12 +727,14 @@ export function payoutDividends(world: World): void {
       // Pay only from surplus above target — depleted treasuries pay nothing.
       const surplus = market.treasury - market.treasuryTarget;
       if (surplus <= 0) continue;
-      sourceFunds = surplus * DIVIDEND_PAYOUT_FRACTION;
+      const divMult = eventMultiplier(world, "dividend", { locationId: eq.underlyingId });
+      sourceFunds = surplus * DIVIDEND_PAYOUT_FRACTION * divMult;
       sinkFn = (amount) => { market.treasury -= amount; };
     } else if (eq.kind === "syndicate") {
       const synd = world.syndicates[eq.underlyingId];
       if (!synd || synd.treasury <= 0) continue;
-      sourceFunds = synd.treasury * DIVIDEND_PAYOUT_FRACTION;
+      const divMult = eventMultiplier(world, "dividend", { syndicateId: eq.underlyingId });
+      sourceFunds = synd.treasury * DIVIDEND_PAYOUT_FRACTION * divMult;
       sinkFn = (amount) => { synd.treasury -= amount; };
     } else {
       // C-1/C-2: commodity + basis equities pay no dividends. They have no
