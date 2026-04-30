@@ -1086,9 +1086,9 @@ function FuturesOrderForm({ equity, world, docked, access }: {
           {[1, 5, 10].map(n => (
             <QuickChip
               key={n}
-              label={`${n}`}
-              hoverLabel={`${n} contracts (Ç${Math.round((marginPerContract + feePerContract) * n).toLocaleString()})`}
-              onClick={() => setCount(n)}
+              label={`+${n}`}
+              hoverLabel={`+${n} contracts`}
+              onClick={() => setCount(c => c + n)}
             />
           ))}
         </div>
