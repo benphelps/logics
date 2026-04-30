@@ -2113,8 +2113,8 @@ function Sparkline({ equity, position }: { equity: Equity; position: StockPositi
 
 // --- T&S / order book / volume panels -----------------------------------
 
-const ORDER_BOOK_LEVELS = 9;
-const TS_TAPE_ROWS = 19;
+const ORDER_BOOK_LEVELS = 6;   // 6 asks + spread row + 6 bids = 13 rows
+const TS_TAPE_ROWS = 13;
 const VOLUME_HISTOGRAM_TICKS = 18;
 
 // Order book — DOM-style vertical layout: asks at top descending (worst on
