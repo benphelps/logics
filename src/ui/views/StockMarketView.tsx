@@ -49,6 +49,7 @@ interface EquityRow {
 const KIND_LABEL: Record<EquityKind, string> = {
   station: "Station",
   syndicate: "Syndicate",
+  commodity: "Commodity",
 };
 
 export function StockMarketView() {
@@ -1098,19 +1099,34 @@ function EquityInfoHeader({ row, world, access }: { row: EquityRow; world: World
   const eq = row.equity;
   const loc = eq.kind === "station" ? world.locations[eq.underlyingId] : null;
   const synd = eq.kind === "syndicate" ? world.syndicates[eq.underlyingId] : null;
+  const good = eq.kind === "commodity" ? world.goods[eq.underlyingId] : null;
   const kind = loc ? stationKind(loc) : null;
   const subtype = loc && kind ? stationSubtype(loc, kind) : null;
   const scale = loc && kind ? stationScale(loc, kind) : null;
+
+  let eyebrow = "Listed company";
+  if (eq.kind === "station") eyebrow = "Listed station";
+  else if (eq.kind === "commodity") eyebrow = "Listed commodity";
+
+  let pillLabel = "Syndicate";
+  let pillClass = "stocks-kind-syndicate";
+  if (loc && kind) {
+    pillLabel = stationKindLabel(kind);
+    pillClass = `station-kind-${kind}`;
+  } else if (eq.kind === "commodity") {
+    pillLabel = "Commodity";
+    pillClass = "stocks-kind-commodity";
+  }
 
   return (
     <>
       <header className="stocks-info-head">
         <div className="stocks-info-title">
-          <span className="stocks-info-eyebrow">{eq.kind === "station" ? "Listed station" : "Listed company"}</span>
+          <span className="stocks-info-eyebrow">{eyebrow}</span>
           <span className="stocks-info-name">{eq.name}</span>
         </div>
-        <span className={`station-kind-pill ${kind ? `station-kind-${kind}` : "stocks-kind-syndicate"}`}>
-          {loc && kind ? stationKindLabel(kind) : "Syndicate"}
+        <span className={`station-kind-pill ${pillClass}`}>
+          {pillLabel}
         </span>
       </header>
 
@@ -1121,6 +1137,7 @@ function EquityInfoHeader({ row, world, access }: { row: EquityRow; world: World
         {subtype && <span>{stationSubtypeLabel(subtype)}</span>}
         {scale && <span>{stationScaleLabel(scale)}</span>}
         {synd && <span>{synd.memberShipIds.length} ships</span>}
+        {good && <span>{good.category}</span>}
       </div>
     </>
   );
@@ -1139,6 +1156,31 @@ function CompanyUnderlying({ eq, world }: { eq: Equity; world: World }) {
           <FleetStat label="target" value={`Ç${fmtBig(market.treasuryTarget)}`} />
           <FleetStat label="population" value={loc.population.toLocaleString()} />
           <FleetStat label="tech" value={`L${loc.traits.techLevel}`} />
+        </dl>
+      </section>
+    );
+  }
+  if (eq.kind === "commodity") {
+    const good = world.goods[eq.underlyingId];
+    if (!good) return null;
+    let totalStock = 0;
+    let weightedSpot = 0;
+    for (const m of Object.values(world.markets)) {
+      const stock = m.stock[good.id] ?? 0;
+      const price = m.prices[good.id];
+      if (price == null || stock <= 0) continue;
+      totalStock += stock;
+      weightedSpot += stock * price;
+    }
+    const spot = totalStock > 0 ? weightedSpot / totalStock : good.basePrice;
+    return (
+      <section className="trade-helper-section">
+        <div className="exchange-section-title">Underlying</div>
+        <dl className="trade-helper-grid station-info-grid">
+          <FleetStat label="category" value={good.category} />
+          <FleetStat label="base price" value={`Ç${good.basePrice.toFixed(2)}`} />
+          <FleetStat label="spot index" value={`Ç${spot.toFixed(2)}`} />
+          <FleetStat label="universe stock" value={fmtBig(totalStock)} />
         </dl>
       </section>
     );
@@ -2113,9 +2155,13 @@ function equityArtUrl(world: World, eq: Equity): string | null {
     const loc = world.locations[eq.underlyingId];
     return loc ? stationArtUrl(loc) : null;
   }
-  const syndicate = world.syndicates[eq.underlyingId];
-  const leadShipId = syndicate?.memberShipIds.find(id => world.traders[id]);
-  return leadShipId ? shipArtUrl(world.traders[leadShipId]) : null;
+  if (eq.kind === "syndicate") {
+    const syndicate = world.syndicates[eq.underlyingId];
+    const leadShipId = syndicate?.memberShipIds.find(id => world.traders[id]);
+    return leadShipId ? shipArtUrl(world.traders[leadShipId]) : null;
+  }
+  // commodity — no per-listing art yet; falls back to the default card style.
+  return null;
 }
 
 function buildRows(world: World): EquityRow[] {
@@ -2134,7 +2180,7 @@ function buildRows(world: World): EquityRow[] {
         underlyingHealth = m.treasury / m.treasuryTarget;
         underlyingHealthLabel = `${(underlyingHealth * 100).toFixed(0)}%`;
       }
-    } else {
+    } else if (eq.kind === "syndicate") {
       const s = world.syndicates[eq.underlyingId];
       if (s) {
         const wealth = s.treasury + s.memberShipIds.reduce((sum, id) => sum + (world.traders[id]?.funds ?? 0), 0);
@@ -2142,6 +2188,10 @@ function buildRows(world: World): EquityRow[] {
         underlyingHealth = wealth / fair;
         underlyingHealthLabel = `${(underlyingHealth * 100).toFixed(0)}%`;
       }
+    } else {
+      // commodity — health = current spot vs anchor.
+      underlyingHealth = eq.anchorPrice > 0 ? eq.price / eq.anchorPrice : 1;
+      underlyingHealthLabel = `${(underlyingHealth * 100).toFixed(0)}%`;
     }
     return {
       equity: eq,
@@ -2175,7 +2225,10 @@ function splitRowsByAccess(world: World, rows: EquityRow[], shipId?: string): { 
 
 function exchangeAccess(world: World, eq: Equity, shipId?: string): { ok: boolean; label: string; reason: string } {
   const station = equityTradeStation(eq);
-  if (!station) return { ok: true, label: "Syndicate book: network access", reason: "" };
+  if (!station) {
+    const label = eq.kind === "commodity" ? "Commodity book: network access" : "Syndicate book: network access";
+    return { ok: true, label, reason: "" };
+  }
   const fallbackShipId = world.player?.shipIds[0];
   const activeShipId = shipId && world.player?.shipIds.includes(shipId) ? shipId : fallbackShipId;
   const ship = activeShipId ? world.traders[activeShipId] : null;

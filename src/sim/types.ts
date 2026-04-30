@@ -301,7 +301,7 @@ export interface TradeRecord {
 // --- stock market types ----------------------------------------------------
 
 export type EquityId = string;
-export type EquityKind = "station" | "syndicate";
+export type EquityKind = "station" | "syndicate" | "commodity";
 
 export interface Equity {
   id: EquityId;

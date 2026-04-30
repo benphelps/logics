@@ -115,6 +115,24 @@ export function createSyndicateEquity(synd: Syndicate): Equity {
   };
 }
 
+// Commodity equity — one per traded good. Backed by a volume-weighted
+// spot index across all stations. Anchor = good.basePrice (the canonical
+// price of the good across the universe). Tradable from anywhere.
+export function createCommodityEquity(good: { id: string; name: string; basePrice: number }): Equity {
+  const anchor = Math.max(1, good.basePrice);
+  return {
+    id: `eq_com_${good.id}`,
+    kind: "commodity",
+    name: good.name,
+    ticker: tickerFromName(good.name),
+    sharesOutstanding: SHARES_OUTSTANDING_DEFAULT,
+    price: anchor,
+    anchorPrice: anchor,
+    underlyingId: good.id,
+    history: [{ tick: 0, price: anchor }],
+  };
+}
+
 // --- syndicate construction & assignment ----------------------------------
 
 const SYNDICATE_NAMES = [
@@ -175,6 +193,14 @@ export function ensureStockMarket(world: World, opts: { syndicateCount?: number;
     const eq = createSyndicateEquity(synd);
     world.equities[eq.id] = eq;
   }
+  // C-1: spot-index commodity per traded good (everything except the
+  // upgrade catalogue). Anchor = good.basePrice, fundamental tracked by
+  // commodityFundamental (volume-weighted spot across stations).
+  for (const good of Object.values(world.goods)) {
+    if (good.category === "upgrade") continue;
+    const eq = createCommodityEquity(good);
+    world.equities[eq.id] = eq;
+  }
   // Phase 2 (MM-less): distribute the float across NPC agents and warm up
   // the book — each agent posts both a bid and an ask on every equity using
   // noise-style passive offsets — so depth exists on both sides from frame
@@ -228,6 +254,26 @@ function syndicateFundamental(world: World, eq: Equity): number {
   return eq.anchorPrice * wealthMult * revenueMult;
 }
 
+// Commodity fundamental — volume-weighted spot index across all stations
+// for the underlying good. Glutted producers pull the spot down; shortage
+// sites pull it up. The +1 floor in the denominator prevents zero-stock
+// divides on a good no one stocks. If every market is empty, falls back
+// to the anchor.
+function commodityFundamental(world: World, eq: Equity): number {
+  const goodId = eq.underlyingId;
+  let numerator = 0;
+  let denom = 0;
+  for (const market of Object.values(world.markets)) {
+    const stock = market.stock[goodId] ?? 0;
+    const price = market.prices[goodId];
+    if (price == null || stock <= 0) continue;
+    numerator += price * stock;
+    denom += stock;
+  }
+  if (denom <= 0) return eq.anchorPrice;
+  return numerator / denom;
+}
+
 // Compute the "fundamental" price for an equity from underlying signals.
 // Every signal is converted to a multiplier on anchorPrice. The tick-by-tick
 // EMA blend toward this fundamental drives the visible price.
@@ -235,6 +281,7 @@ export function computeFundamental(world: World, eq: Equity): number {
   switch (eq.kind) {
     case "station":   return stationFundamental(world, eq);
     case "syndicate": return syndicateFundamental(world, eq);
+    case "commodity": return commodityFundamental(world, eq);
   }
 }
 
@@ -308,11 +355,15 @@ export function payoutDividends(world: World): void {
       if (surplus <= 0) continue;
       sourceFunds = surplus * DIVIDEND_PAYOUT_FRACTION;
       sinkFn = (amount) => { market.treasury -= amount; };
-    } else {
+    } else if (eq.kind === "syndicate") {
       const synd = world.syndicates[eq.underlyingId];
       if (!synd || synd.treasury <= 0) continue;
       sourceFunds = synd.treasury * DIVIDEND_PAYOUT_FRACTION;
       sinkFn = (amount) => { synd.treasury -= amount; };
+    } else {
+      // C-1: commodity equities pay no dividends. They have no underlying
+      // treasury — value comes from price moves and short borrow fees.
+      continue;
     }
 
     if (sourceFunds <= 0) continue;
@@ -504,6 +555,7 @@ export function equityTradabilityReason(
       return `Move within ${EXCHANGE_TRADE_MAX_HOPS} hops of ${stationName} to trade ${eq.ticker}.`;
     }
     case "syndicate":
+    case "commodity":
       return null;
   }
 }
@@ -828,10 +880,18 @@ export function maxShortableShares(world: World, eq: Equity): number {
     const target = market.treasuryTarget || 1;
     const floor = -2 * target;
     availableCash = Math.max(0, market.treasury - floor);
-  } else {
+  } else if (eq.kind === "syndicate") {
     const synd = world.syndicates[eq.underlyingId];
     if (!synd) return 0;
     availableCash = Math.max(0, synd.treasury);
+  } else {
+    // C-1: commodity. No underlying treasury — shorts are capped only by
+    // float and live ask depth (which the caller checks via
+    // previewBookCost). Aggregate agent stockWallet cash gives a
+    // conservative upper bound for the funding cap.
+    for (const t of Object.values(world.traders)) {
+      availableCash += t.stockState?.stockWallet ?? 0;
+    }
   }
   return Math.floor(availableCash / eq.price);
 }
@@ -1336,8 +1396,14 @@ function routeShareCashFlow(world: World, eq: Equity, amount: number): void {
     if (market) depositToTreasury(market, amount);
     return;
   }
-  const synd = world.syndicates[eq.underlyingId];
-  if (synd) synd.treasury += amount;
+  if (eq.kind === "syndicate") {
+    const synd = world.syndicates[eq.underlyingId];
+    if (synd) synd.treasury += amount;
+    return;
+  }
+  // C-1: commodity has no underlying treasury — this path is only reached
+  // when the dormant MM is a counterparty, which doesn't happen in
+  // practice. No-op.
 }
 
 function drawShareCashFlow(world: World, eq: Equity, amount: number): number {
@@ -1353,11 +1419,16 @@ function drawShareCashFlow(world: World, eq: Equity, amount: number): number {
     market.treasury -= paid;
     return paid;
   }
-  const synd = world.syndicates[eq.underlyingId];
-  if (!synd) return 0;
-  const paid = Math.max(0, Math.min(amount, synd.treasury));
-  synd.treasury -= paid;
-  return paid;
+  if (eq.kind === "syndicate") {
+    const synd = world.syndicates[eq.underlyingId];
+    if (!synd) return 0;
+    const paid = Math.max(0, Math.min(amount, synd.treasury));
+    synd.treasury -= paid;
+    return paid;
+  }
+  // C-1: commodity has no treasury. Same as routeShareCashFlow above —
+  // dormant MM-counterparty path; no-op.
+  return 0;
 }
 
 // --- per-tick stock-market step --------------------------------------------
