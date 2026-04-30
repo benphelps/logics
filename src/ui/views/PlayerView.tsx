@@ -16,7 +16,7 @@ import {
   GiCrossedSwords,
   GiTrade,
 } from "react-icons/gi";
-import { useStore } from "../store";
+import { useStore, type FleetTab } from "../store";
 import { distance, reachableNeighbors } from "../../sim/geometry";
 import { describeHint, getGuidedPlan, hintTarget, type GuidedHint, type GuidedPlan, type HintTarget } from "../../sim/suggestions";
 import { DOCKING_FEE_PER_CAPACITY, MAINTENANCE_PER_CAPACITY, SALES_TAX_RATE } from "../../sim/economy";
@@ -40,7 +40,23 @@ const SHOW_DEV_SHIP_LOG_PANEL = false;
 const GUIDANCE_LOCKED_TEXT = "Hire a navigator for guided suggestions.";
 const DEPART_SUGGESTION_GUARD_MS = 1800;
 const SUGGESTION_PULSE_MS = 3700;
-type ShipCargoTab = "cargo" | "upgrades" | "crew" | "contracts";
+// Ship card and exchange card share the canonical FleetTab in the
+// store, so opening one side syncs the other (cargo↔market,
+// upgrades↔upgrades, crew↔offers, contracts↔contracts).
+type ShipCargoTab = FleetTab;
+type ExchangeTab = "markets" | "upgrades" | "offers" | "contracts";
+
+function fleetTabToExchangeTab(tab: FleetTab): ExchangeTab {
+  if (tab === "cargo") return "markets";
+  if (tab === "crew") return "offers";
+  return tab;
+}
+
+function exchangeTabToFleetTab(tab: ExchangeTab): FleetTab {
+  if (tab === "markets") return "cargo";
+  if (tab === "offers") return "crew";
+  return tab;
+}
 const INFO_HOVER_CLEAR_DELAY_MS = 90;
 
 export function PlayerView() {
@@ -1075,28 +1091,14 @@ function ShipCard({ ship, world, loc, guidedPlan, target, hintText, cueText, cri
   const mass = cargoMassFn(ship, world);
   const cargoPct = (mass / ship.capacity) * 100;
   const groups = groupCargoByGood(ship);
-  const [shipTab, setShipTab] = useState<ShipCargoTab>("cargo");
+  const shipTab = useStore((s) => s.fleetTab);
+  const setShipTab = useStore((s) => s.setFleetTab);
 
   const debt = ship.maintenanceDebt ?? 0;
   const canRepair = debt > 0 && ship.state === "idle";
 
   return (
     <section className="bridge-card ship-card">
-      <div className="ship-status-tabs bridge-card-tabs">
-        <ShipFuelStatusEntry
-          ship={ship}
-          world={world}
-          target={target}
-          hintText={cueText.refuel ?? hintText}
-          critical={critical}
-          inTransit={inTransit}
-        />
-        <ShipMaintenanceStatusEntry
-          debt={debt}
-          canRepair={canRepair}
-          onRepair={() => repairShip(ship.id)}
-        />
-      </div>
       <ShipCargoTabs
         ship={ship}
         world={world}
@@ -1115,6 +1117,21 @@ function ShipCard({ ship, world, loc, guidedPlan, target, hintText, cueText, cri
         tab={shipTab}
         onTabChange={setShipTab}
       />
+      <div className="ship-status-tabs bridge-card-tabs">
+        <ShipFuelStatusEntry
+          ship={ship}
+          world={world}
+          target={target}
+          hintText={cueText.refuel ?? hintText}
+          critical={critical}
+          inTransit={inTransit}
+        />
+        <ShipMaintenanceStatusEntry
+          debt={debt}
+          canRepair={canRepair}
+          onRepair={() => repairShip(ship.id)}
+        />
+      </div>
       {SHOW_DEV_SHIP_PLAN_PANEL && <ShipPlanPanel ship={ship} world={world} guidedPlan={guidedPlan} hintText={hintText} />}
     </section>
   );
@@ -1466,7 +1483,13 @@ function StationExchangeCard({ ship, world, loc, target, hintText, cueText, sele
   onSelectGood: (good: GoodId) => void;
   onHoverGood: (good: GoodId | null) => void;
 }) {
-  const [tab, setTab] = useState<"markets" | "upgrades" | "offers" | "contracts">("markets");
+  // Both fleet-view cards bind to the shared FleetTab in the store —
+  // selecting Markets/Offers/etc. on this side flips the ship card to
+  // the matching tab on the other.
+  const fleetTab = useStore((s) => s.fleetTab);
+  const setFleetTab = useStore((s) => s.setFleetTab);
+  const tab = fleetTabToExchangeTab(fleetTab);
+  const setTab = (next: ExchangeTab) => setFleetTab(exchangeTabToFleetTab(next));
   const manualActions = ship.pilot !== "auto";
   const market = world.markets[loc.id];
   const offers = listHiresAt(world, loc.id);

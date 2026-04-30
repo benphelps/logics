@@ -36,6 +36,9 @@ import {
 export type Tab = "player" | "markets" | "locations" | "stocks";
 export type Speed = 0 | 1 | 4 | 16;
 
+import { DEFAULT_VIEW_TABS, type CommodityTab, type FleetTab, type PnoTab, type ViewTabs } from "./viewTabs";
+export type { FleetTab, CommodityTab, PnoTab, ViewTabs };
+
 const initialGame = loadInitialGame(() => createStartingWorld());
 const AUTOSAVE_THROTTLE_MS = 2_000;
 let pendingAutosave: ReturnType<typeof setTimeout> | null = null;
@@ -124,6 +127,10 @@ interface UiState {
   selectedGood: GoodId | null;
   selectedTrader: TraderId | null;
   selectedEquity: EquityId | null;
+  // Inner-tab state (synced + persisted with the save).
+  fleetTab: FleetTab;
+  commodityTab: CommodityTab;
+  pnoTab: PnoTab;
   lastError: string | null;
 
   setSpeed: (s: Speed) => void;
@@ -137,6 +144,9 @@ interface UiState {
   deleteGame: (id: string) => void;
   loadDeveloperState: () => void;
   selectTab: (t: Tab) => void;
+  setFleetTab: (t: FleetTab) => void;
+  setCommodityTab: (t: CommodityTab) => void;
+  setPnoTab: (t: PnoTab) => void;
   selectLocation: (id: LocationId | null) => void;
   selectGood: (id: GoodId | null) => void;
   selectTrader: (id: TraderId | null) => void;
@@ -179,6 +189,7 @@ interface UiState {
 export const useStore = create<UiState>((set, get) => {
   const applyLoadedGame = (session: LoadedGameSession) => {
     clearPendingAutosave();
+    const tabs = session.viewTabs ?? DEFAULT_VIEW_TABS;
     set({
       world: session.world,
       activeSaveId: session.activeSaveId,
@@ -191,13 +202,16 @@ export const useStore = create<UiState>((set, get) => {
       selectedLocation: null,
       selectedGood: null,
       selectedTrader: null,
+      fleetTab: tabs.fleetTab,
+      commodityTab: tabs.commodityTab,
+      pnoTab: tabs.pnoTab,
       lastError: null,
     });
   };
 
   const writeCurrentSave = () => {
     const current = get();
-    const saved = saveGameSlot(current.activeSaveId, current.gameName, current.gameKind, current.world);
+    const saved = saveGameSlot(current.activeSaveId, current.gameName, current.gameKind, current.world, currentViewTabs(current));
     lastAutosaveAt = Date.now();
     set({
       activeSaveId: saved.activeSaveId,
@@ -207,6 +221,12 @@ export const useStore = create<UiState>((set, get) => {
       saveStatus: saved.saveStatus,
     });
   };
+
+  const currentViewTabs = (state: UiState): ViewTabs => ({
+    fleetTab: state.fleetTab,
+    commodityTab: state.commodityTab,
+    pnoTab: state.pnoTab,
+  });
 
   const persistCurrentGame = (updates: Partial<Pick<UiState, "lastError" | "speed">> = {}, bumpEpoch = true, immediate = false) => {
     const current = get();
@@ -244,6 +264,9 @@ export const useStore = create<UiState>((set, get) => {
     selectedGood: null,
     selectedTrader: null,
     selectedEquity: null,
+    fleetTab: initialGame.viewTabs?.fleetTab ?? DEFAULT_VIEW_TABS.fleetTab,
+    commodityTab: initialGame.viewTabs?.commodityTab ?? DEFAULT_VIEW_TABS.commodityTab,
+    pnoTab: initialGame.viewTabs?.pnoTab ?? DEFAULT_VIEW_TABS.pnoTab,
     lastError: null,
 
     setSpeed: (s) => set({ speed: s }),
@@ -310,6 +333,9 @@ export const useStore = create<UiState>((set, get) => {
       applyLoadedGame(createGameSlot(name, "developer", createDeveloperWorld()));
     },
     selectTab: (t) => set({ selectedTab: t }),
+    setFleetTab: (t) => { set({ fleetTab: t }); persistCurrentGame({}, false); },
+    setCommodityTab: (t) => { set({ commodityTab: t }); persistCurrentGame({}, false); },
+    setPnoTab: (t) => { set({ pnoTab: t }); persistCurrentGame({}, false); },
     selectLocation: (id) => set({ selectedLocation: id }),
     selectGood: (id) => set({ selectedGood: id }),
     selectTrader: (id) => set({ selectedTrader: id }),

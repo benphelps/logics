@@ -138,6 +138,8 @@
 .bridge > .ship-card {
   grid-column: 1 / span 2;
   grid-row: 1;
+  /* Cargo tabs + active tab content fill all available card height;
+     status tabs (fuel/maint) hug the bottom of the panel. */
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -368,28 +370,22 @@
 
 /* ship card */
 
-.ship-status-tabs {
-  flex: 0 0 auto;
-  width: auto;
-  border-color: rgba(255, 255, 255, 0.08);
-  border-width: 0 0 1px;
-  border-radius: 6px 6px 0 0;
-}
-
+/* Cargo tabs sit at the top of the ship card and use the standard
+   "tabs at top" pattern from .bridge-card-tabs (rounded top corners,
+   no bottom border so they butt up against the tab content). Status
+   tabs sit immediately below the active tab content (only as far
+   down as the table is tall — see .bridge > .ship-card grid rows
+   above) and get the inverse treatment: bottom-rounded, no top
+   border. */
 .ship-cargo-section {
   display: flex;
-  flex: 0 0 auto;
+  /* Eat all available card height so the active tab (or its empty
+     state) fills the panel and the status tabs below sit flush with
+     the panel bottom. */
+  flex: 1 1 auto;
   flex-direction: column;
-  min-height: auto;
+  min-height: 0;
   margin-top: 0;
-}
-
-.ship-cargo-tabs {
-  flex: 0 0 auto;
-  width: auto;
-  border-color: rgba(255, 255, 255, 0.08);
-  border-width: 0 0 1px;
-  border-radius: 0 0 6px 6px;
 }
 
 .ship-status-tabs .ship-meter-tab {
@@ -409,7 +405,7 @@
 }
 
 .ship-status-tabs .bridge-tab {
-  border-radius: 4px 4px 0 0;
+  border-radius: 0 0 4px 4px;
 }
 
 .ship-cargo-tabs .bridge-tab {
@@ -418,7 +414,7 @@
   min-width: 0;
   min-height: 0;
   padding: 7px 10px;
-  border-radius: 0 0 4px 4px;
+  border-radius: 4px 4px 0 0;
 }
 
 .ship-meter-tab {
@@ -996,17 +992,17 @@
   background: var(--ship-surface-soft);
 }
 
-.ship-card > .ship-status-tabs.bridge-card-tabs {
-  border-color: rgba(255, 255, 255, 0.08);
-  border-width: 0;
-  border-top-width: 1px;
-  border-radius: 6px 6px 0 0;
-}
-
+/* Cargo tabs at the top: keep the .bridge-card-tabs base (top-rounded,
+   no bottom border so they butt up against tab content). Status tabs
+   at the bottom invert that — bottom-rounded, no top border. */
 .ship-card .ship-cargo-tabs.bridge-card-tabs {
   border-color: rgba(255, 255, 255, 0.08);
-  border-width: 0;
-  border-top-width: 1px;
+}
+
+.ship-card > .ship-status-tabs.bridge-card-tabs {
+  border-color: rgba(255, 255, 255, 0.08);
+  border-top-width: 0;
+  border-bottom-width: 1px;
   border-radius: 0 0 6px 6px;
 }
 

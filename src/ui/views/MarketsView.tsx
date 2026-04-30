@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useMemo, type CSSProperties, type ReactNode } from "react";
 import type { IconType } from "react-icons";
 import { GiCargoCrate, GiFactory, GiTrade, GiUpgrade, GiWallet } from "react-icons/gi";
 import { useStore } from "../store";
@@ -68,7 +68,8 @@ export function MarketsView() {
   const selectedGood = useStore((s) => s.selectedGood);
   const selectGood = useStore((s) => s.selectGood);
   const tickEpoch = useStore((s) => s.tickEpoch);
-  const [activeCategory, setActiveCategory] = useState<CommodityTab>("all");
+  const activeCategory = useStore((s) => s.commodityTab);
+  const setActiveCategory = useStore((s) => s.setCommodityTab);
 
   const allRows = useMemo(() => commodityRows(world), [world, tickEpoch]);
   const rows = useMemo(

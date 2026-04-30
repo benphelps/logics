@@ -2,6 +2,7 @@ import type { CrewMember, Hire, World } from "../sim/types";
 import { ensureStockMarket } from "../sim/stock";
 import { warmUpBook } from "../sim/stock/agents";
 import { deriveCrewIdentity } from "../sim/crewIdentity";
+import { normalizeViewTabs, type ViewTabs } from "./viewTabs";
 
 const SAVE_REGISTRY_KEY = "logics.saveGames.v1";
 const SAVE_VERSION = 1;
@@ -21,6 +22,9 @@ export interface SaveSlotSummary {
 interface PersistedSaveGame extends SaveSlotSummary {
   version: typeof SAVE_VERSION;
   world: World;
+  // Optional so older saves load cleanly — the store falls back to
+  // defaults when missing.
+  viewTabs?: ViewTabs;
 }
 
 interface SaveRegistry {
@@ -36,6 +40,7 @@ export interface LoadedGameSession {
   gameKind: SaveGameKind;
   saveSlots: SaveSlotSummary[];
   saveStatus: SaveStatus;
+  viewTabs?: ViewTabs;
 }
 
 function browserStorage(): Storage | null {
@@ -232,7 +237,7 @@ export function nextSaveName(slots: SaveSlotSummary[], base: string): string {
   return `${base} ${Date.now().toString(36)}`;
 }
 
-function makeSave(id: string, name: string, kind: SaveGameKind, world: World, createdAt = Date.now()): PersistedSaveGame {
+function makeSave(id: string, name: string, kind: SaveGameKind, world: World, createdAt = Date.now(), viewTabs?: ViewTabs): PersistedSaveGame {
   const now = Date.now();
   return {
     version: SAVE_VERSION,
@@ -243,6 +248,7 @@ function makeSave(id: string, name: string, kind: SaveGameKind, world: World, cr
     createdAt,
     updatedAt: now,
     world: compactWorldForSave(world),
+    viewTabs,
   };
 }
 
@@ -254,6 +260,7 @@ function loadedFromSave(save: PersistedSaveGame, registry: SaveRegistry, status:
     gameKind: save.kind,
     saveSlots: summaries(registry),
     saveStatus: status,
+    viewTabs: save.viewTabs ? normalizeViewTabs(save.viewTabs) : undefined,
   };
 }
 
@@ -281,7 +288,7 @@ export function loadInitialGame(createFallbackWorld: () => World): LoadedGameSes
   return loadedFromSave(save, next, status);
 }
 
-export function saveGameSlot(id: string | null, name: string, kind: SaveGameKind, world: World): LoadedGameSession {
+export function saveGameSlot(id: string | null, name: string, kind: SaveGameKind, world: World, viewTabs?: ViewTabs): LoadedGameSession {
   const registry = readRegistry();
   if (!registry) {
     return {
@@ -291,12 +298,13 @@ export function saveGameSlot(id: string | null, name: string, kind: SaveGameKind
       gameKind: kind,
       saveSlots: [],
       saveStatus: browserStorage() ? "error" : "unavailable",
+      viewTabs,
     };
   }
 
   const saveId = id ?? createSaveId(kind === "developer" ? "dev" : "game");
   const existing = registry.saves.find(save => save.id === saveId);
-  const save = makeSave(saveId, name, kind, world, existing?.createdAt);
+  const save = makeSave(saveId, name, kind, world, existing?.createdAt, viewTabs);
   const saves = existing
     ? registry.saves.map(item => item.id === saveId ? save : item)
     : [...registry.saves, save];

@@ -288,8 +288,6 @@ function SelectorRow({ row, selected, onSelect, farRow = false }: {
 
 // --- positions, orders, history (P&O) panel ----------------------------
 
-type PnoTab = "positions" | "orders" | "futures" | "history";
-
 function PnoPanel(props: {
   world: World;
   positions: StockPosition[];
@@ -304,7 +302,8 @@ function PnoPanel(props: {
   onSetStopLoss: (eqId: string, price: number | null) => void;
   onSetTakeProfit: (eqId: string, price: number | null) => void;
 }) {
-  const [tab, setTab] = useState<PnoTab>("positions");
+  const tab = useStore((s) => s.pnoTab);
+  const setTab = useStore((s) => s.setPnoTab);
   // Recompute every render — props.world is mutated in place, so a stable
   // reference would let useMemo cache stale values across action ticks.
   // Both lists are cheap (small array iteration).
