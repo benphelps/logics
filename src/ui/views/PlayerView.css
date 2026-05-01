@@ -1043,7 +1043,7 @@
   flex-wrap: nowrap;
   align-items: stretch;
   gap: 2px;
-  padding: 3px;
+  padding: 3px 2px;
   background: var(--ship-surface-soft);
   border: 1px solid var(--ship-line);
   border-left: 0;
@@ -1261,11 +1261,8 @@
    .bridge-tab.active .bridge-tab-count rule would otherwise re-dim it). */
 .bridge-tab.has-suggestion .bridge-tab-count,
 .bridge-tab.has-suggestion.active .bridge-tab-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   min-width: 18px;
-  padding: 1px 6px;
+  padding: 0 6px;
   /* Slightly translucent blue so the pill reads as "called out" without
      glowing fluorescent against dark surfaces. */
   background: rgba(63, 161, 230, 0.9);
@@ -1288,7 +1285,13 @@
 
 .bridge-tab-count {
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 13px;
   font-size: 10px;
+  line-height: 13px;
   color: var(--text-faint);
   font-weight: 500;
   letter-spacing: 0;
