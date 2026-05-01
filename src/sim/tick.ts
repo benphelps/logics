@@ -4,6 +4,7 @@ import { stepTraders, type TraderEvent } from "./traders";
 import { applyIdlePerks, chargeMaintenance, chargeNpcWealthCarry, consumptionDemand, productionScale, tickTreasuries } from "./economy";
 import { expireJobs, generateJobs, type JobExpiryEvent } from "./jobs";
 import { expireHires, generateHires } from "./hires";
+import { refreshShipyardOffers } from "./shipyards";
 import { replenishUnlockedUpgrades } from "./milestones";
 import { tickStockMarket } from "./stock";
 import { runPlayerStockAutopilot } from "./stock/playerAutopilot";
@@ -107,6 +108,7 @@ export function tickWorld(world: World): TickReport {
   // Crew hire offers — same expire-then-post pattern.
   const hiresExpired = expireHires(world);
   const hiresPosted = generateHires(world);
+  refreshShipyardOffers(world);
 
   // Milestone-gated upgrade stocking. Idempotent — only seeds tier stock
   // once per (station, upgrade), so post-purchase stays at 0 forever.

@@ -232,13 +232,15 @@ export function generateHires(world: World): Hire[] {
   for (const h of Object.values(world.hires)) perLoc[h.location] = (perLoc[h.location] ?? 0) + 1;
 
   for (const loc of Object.values(world.locations)) {
-    if ((perLoc[loc.id] ?? 0) >= HIRE_MAX_PER_STATION) continue;
+    const cap = loc.traits.tags.includes("shipyard") ? HIRE_MAX_PER_STATION + 4 : HIRE_MAX_PER_STATION;
+    if ((perLoc[loc.id] ?? 0) >= cap) continue;
     // Deterministic per-(loc, tick) seed so re-running a tick from the same
     // state produces the same outcome.
     const rng = mulberry32(hashStr(loc.id) ^ world.tick);
     const popFactor = Math.min(2, Math.max(0.4, loc.population / 1000));
     const techFactor = Math.max(0.5, loc.traits.techLevel / 5);
-    const chance = HIRE_BASE_POST_CHANCE * popFactor * techFactor;
+    const yardMult = loc.traits.tags.includes("shipyard") ? 1.8 : 1;
+    const chance = HIRE_BASE_POST_CHANCE * popFactor * techFactor * yardMult;
     if (rng() > chance) continue;
     const h = generateHire(rng, loc, world, allowedRoles);
     world.hires[h.id] = h;

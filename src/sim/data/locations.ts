@@ -8,7 +8,7 @@ export const LOCATIONS: Record<string, LocationDef> = {
     population: 1200,
     traits: {
       techLevel: 6,
-      tags: ["trade-hub", "core", "civilian"],
+      tags: ["trade-hub", "core", "civilian", "shipyard"],
       faction: "League",
     },
     primaryExports: ["protein", "fiber", "medkits", "plasma"],
@@ -48,7 +48,7 @@ export const LOCATIONS: Record<string, LocationDef> = {
     population: 800,
     traits: {
       techLevel: 8,
-      tags: ["industrial", "core", "mining"],
+      tags: ["industrial", "core", "mining", "shipyard"],
       faction: "League",
     },
     primaryExports: ["ore", "parts", "plasma", "antimatter", "electronics", "weapons"],

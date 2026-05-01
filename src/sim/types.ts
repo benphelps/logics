@@ -297,6 +297,26 @@ export interface Player {
   manualActionCount?: number;
 }
 
+export type ShipClass = "courier" | "freighter" | "gunship" | "explorer";
+
+export interface ShipOffer {
+  id: string;
+  location: LocationId;
+  name: string;
+  shipClass: ShipClass;
+  price: number;
+  traits: string[];
+  // Seed upgrades installed on purchase.
+  upgrades: GoodId[];
+  // Base hull stats before crew/upgrades.
+  baseCapacity: number;
+  baseSpeed: number;
+  baseFuelCapacity: number;
+  baseHull: number;
+  baseWeaponPower: number;
+  crewless?: boolean;
+}
+
 export type PositionKind = "long" | "short";
 
 // A stock position. Named StockPosition (not just Position) because the
@@ -478,6 +498,8 @@ export interface World {
   nextJobId: number;
   hires: Record<HireId, Hire>;
   nextHireId: number;
+  shipOffers?: Record<string, ShipOffer>;
+  nextShipOfferId?: number;
   // Stock market: the listed equities (stations + syndicates) and the
   // syndicate definitions themselves. Initialized in createWorld.
   equities: Record<EquityId, Equity>;

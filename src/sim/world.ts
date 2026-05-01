@@ -63,6 +63,7 @@ export function createWorld(opts?: {
   const world: World = {
     tick: 0, goods, locations, markets, lanes, traders, player,
     jobs: {}, nextJobId: 1, hires: {}, nextHireId: 1,
+    shipOffers: {}, nextShipOfferId: 1,
     equities: {}, syndicates: {},
     newsEvents: createNewsEventsState(),
   };

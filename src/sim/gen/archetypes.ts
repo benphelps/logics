@@ -28,7 +28,7 @@ const tradeHub: Builder = ({ rng, id, name, position }) => {
     population: rangeInt(rng, 800, 1500),
     traits: {
       techLevel,
-      tags: ["trade-hub", "core", "civilian"],
+      tags: ["trade-hub", "core", "civilian", ...(rng() < 0.5 ? ["shipyard"] : [])],
       faction: "League",
     },
     primaryExports: ["protein", "fiber", "medkits", "plasma"],
@@ -84,7 +84,7 @@ const miningBelt: Builder = ({ rng, id, name, position }) => {
     population: rangeInt(rng, 500, 1000),
     traits: {
       techLevel,
-      tags: ["industrial", "core", "mining"],
+      tags: ["industrial", "core", "mining", ...(rng() < 0.45 ? ["shipyard"] : [])],
       faction: "League",
     },
     primaryExports: exports,
