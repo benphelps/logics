@@ -1084,12 +1084,30 @@
   vector-effect: non-scaling-stroke;
 }
 
-.atlas-player-route line {
+.atlas-player-route-leg {
   stroke: var(--accent);
-  stroke-dasharray: 8 8;
   stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.atlas-player-route-leg.current {
+  stroke-dasharray: 8 8;
   stroke-width: 2.5;
-  opacity: 0.72;
+  opacity: 0.78;
+}
+
+.atlas-player-route-leg.upcoming {
+  stroke-dasharray: 4 6;
+  stroke-width: 1.6;
+  opacity: 0.45;
+}
+
+.atlas-player-route-dest {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.4;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.7;
 }
 
 .atlas-player-marker {

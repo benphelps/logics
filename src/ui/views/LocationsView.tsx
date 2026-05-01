@@ -144,6 +144,7 @@ export function LocationsView() {
               selectedId={selected?.id ?? null}
               playerLocation={playerShip?.location ?? null}
               playerDestination={playerShip?.state === "transit" ? playerShip.destination : null}
+              playerActiveRoute={buildActiveRoute(playerShip)}
               selectedTraderId={selectedTrader}
               previewedRoute={previewedRoute}
               onSelect={selectLocation}
@@ -219,6 +220,17 @@ export function LocationsView() {
   );
 }
 
+// Full sequence of LocationIds the active player ship is travelling
+// across — the current leg's destination first, then any waypoints
+// queued on the trader's routePlan. Returned as null when the ship
+// is idle so the map only highlights actively-pursued routes.
+function buildActiveRoute(ship: Trader | null): LocationId[] | null {
+  if (!ship || ship.state !== "transit" || !ship.destination) return null;
+  const out: LocationId[] = [ship.destination];
+  for (const id of ship.routePlan ?? []) out.push(id);
+  return out;
+}
+
 function artCardStyle(url: string): CSSProperties {
   return { "--card-art": `url("${url}")` } as CSSProperties;
 }
@@ -244,6 +256,7 @@ function SectorMap({
   selectedId,
   playerLocation,
   playerDestination,
+  playerActiveRoute,
   selectedTraderId,
   previewedRoute,
   onSelect,
@@ -258,6 +271,11 @@ function SectorMap({
   selectedId: LocationId | null;
   playerLocation: LocationId | null;
   playerDestination: LocationId | null;
+  // The list of LocationIds the player ship is currently travelling
+  // through (next-hop first, final dst last). Null when the ship is
+  // idle. The map renders the current leg and any queued waypoints
+  // so multi-hop trips stay visible the whole way.
+  playerActiveRoute: LocationId[] | null;
   selectedTraderId: TraderId | null;
   previewedRoute: LocationId[] | null;
   onSelect: (id: LocationId) => void;
@@ -336,7 +354,7 @@ function SectorMap({
   const hideTip = () => { setHover(null); setHoveredLane(null); };
 
   const playerOrigin = playerLocation ? projectedById.get(playerLocation) ?? null : null;
-  const playerDest = playerDestination ? projectedById.get(playerDestination) ?? null : null;
+  void playerDestination;
 
   return (
     <div ref={wrapRef} className="atlas-map-wrap">
@@ -472,11 +490,45 @@ function SectorMap({
             );
           })}
         </g>
-        {playerOrigin && playerDest && (
-          <g className="atlas-player-route">
-            <line x1={playerOrigin.x} y1={playerOrigin.y} x2={playerDest.x} y2={playerDest.y} />
-          </g>
-        )}
+        {playerOrigin && playerActiveRoute && playerActiveRoute.length > 0 && (() => {
+          // Active travel path: ship → next-hop → ...waypoints → final
+          // dst. Current leg keeps the prominent dashed accent so the
+          // player sees what they're doing right now; queued waypoints
+          // render with the lighter "upcoming" treatment so the rest
+          // of the trip is visible without competing with the current
+          // leg. Final destination gets a halo ring.
+          const segments: { from: ProjectedLocation; to: ProjectedLocation; upcoming: boolean }[] = [];
+          let prev = playerOrigin;
+          for (let i = 0; i < playerActiveRoute.length; i++) {
+            const next = projectedById.get(playerActiveRoute[i]);
+            if (!next) continue;
+            segments.push({ from: prev, to: next, upcoming: i > 0 });
+            prev = next;
+          }
+          const finalDest = projectedById.get(playerActiveRoute[playerActiveRoute.length - 1]);
+          return (
+            <g className="atlas-player-route">
+              {segments.map((seg, i) => (
+                <line
+                  key={`leg-${i}`}
+                  className={seg.upcoming ? "atlas-player-route-leg upcoming" : "atlas-player-route-leg current"}
+                  x1={seg.from.x}
+                  y1={seg.from.y}
+                  x2={seg.to.x}
+                  y2={seg.to.y}
+                />
+              ))}
+              {finalDest && (
+                <circle
+                  className="atlas-player-route-dest"
+                  cx={finalDest.x}
+                  cy={finalDest.y}
+                  r={finalDest.r + 6}
+                />
+              )}
+            </g>
+          );
+        })()}
         <g className="atlas-nodes">
           {projected.map(p => {
             const factionKey = factionClassKey(p.loc.traits.faction);
