@@ -993,6 +993,50 @@
   pointer-events: none;
 }
 
+/* Route preview — drawn over the regular lanes when the user hovers
+   the Travel-here CTA. Highlights the segments of the plotted path
+   plus a halo on the origin / waypoints / destination so multi-hop
+   routes read at a glance. */
+.atlas-preview-route {
+  pointer-events: none;
+}
+
+.atlas-preview-link {
+  stroke: rgba(118, 199, 255, 0.95);
+  stroke-width: 2.4;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 4px rgba(118, 199, 255, 0.55));
+  animation: atlas-preview-dash 1.4s linear infinite;
+  stroke-dasharray: 6 6;
+}
+
+@keyframes atlas-preview-dash {
+  to { stroke-dashoffset: -12; }
+}
+
+.atlas-preview-node {
+  fill: none;
+  stroke: rgba(118, 199, 255, 0.85);
+  stroke-width: 1.6;
+  vector-effect: non-scaling-stroke;
+}
+
+.atlas-preview-node.origin {
+  stroke: rgba(108, 217, 154, 0.95);
+}
+
+.atlas-preview-node.dest {
+  stroke: white;
+  stroke-width: 2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .atlas-preview-link {
+    animation: none;
+    stroke-dasharray: none;
+  }
+}
+
 .atlas-lane-distance {
   fill: rgba(218, 230, 250, 0.85);
   font-size: 9px;

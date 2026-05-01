@@ -1,5 +1,5 @@
 import type { CargoLot, FuelType, GoodId, JobId, LocationId, ShipUpgradeSlots, Trader, TraderEvent, UpgradeSlot, World } from "./types";
-import { reachableNeighbors, routeDistance } from "./geometry";
+import { distance as legDistance, findRoutePath, pathDistance, reachableNeighbors, routeDistance } from "./geometry";
 import { marketQuote, priceFor } from "./pricing";
 import {
   chargeDockingFee,
@@ -711,6 +711,20 @@ function listRepositionOptions(world: World, trader: Trader, allowUnsafeHop = fa
   );
 }
 
+// Inner helper for multi-hop arrival. Returns true if the next leg
+// dispatched cleanly so arriveTrader can skip its idle/dock logic.
+function continueRoutePlan(world: World, trader: Trader, nextHop: LocationId, events: TraderEvent[]): boolean {
+  if (!world.locations[nextHop]) return false;
+  const fuelFree = ignoresFuel(trader);
+  const ft = activeFuelType(trader) ?? trader.fuelTypes[0] ?? null;
+  if (!fuelFree && !ft) return false;
+  const dist = legDistance(world, trader.location, nextHop);
+  const fuelNeeded = dist * fuelPerDistanceFor(trader, ft);
+  if (!fuelFree && (trader.currentFuel?.qty ?? 0) < fuelNeeded - 0.001) return false;
+  departForReposition(world, trader, nextHop, fuelNeeded, travelTicksFor(trader, dist), events);
+  return true;
+}
+
 function arriveTrader(world: World, trader: Trader, dst: LocationId, events: TraderEvent[]): void {
   trader.location = dst;
   trader.destination = null;
@@ -718,6 +732,24 @@ function arriveTrader(world: World, trader: Trader, dst: LocationId, events: Tra
   trader.ticksRemaining = 0;
   trader.noOpportunityTicks = 0;
   events.push({ trader: trader.id, kind: "arrive", to: dst });
+
+  // Multi-hop pass-through: if a route plan is queued, dispatch the
+  // next leg right away and skip the docking-fee / cargo-autopilot
+  // dance for this intermediate stop. The fuel for each leg was
+  // already validated up-front by travelTo, but we still re-check at
+  // the leg level — if something went sideways (e.g. a tick changed
+  // fuel mid-route), we drop the plan and let the idle business
+  // logic handle the strand.
+  if (trader.routePlan && trader.routePlan.length > 0) {
+    const next = trader.routePlan[0];
+    if (continueRoutePlan(world, trader, next, events)) {
+      trader.routePlan = trader.routePlan.slice(1);
+      if (trader.routePlan.length === 0) delete trader.routePlan;
+      return;
+    }
+    delete trader.routePlan;
+  }
+
   chargeDockingFee(world, trader);
 
   // Manual player ships keep cargo loaded until the player chooses Sell.
@@ -1483,15 +1515,36 @@ export function travelTo(world: World, trader: Trader, dst: LocationId): Execute
   const fuel = trader.currentFuel;
   if ((!ft || !fuel) && !fuelFree) return { ok: false, reason: "No compatible fuel in tank." };
 
-  const dist = routeDistance(world, trader.location, dst);
-  if (dist == null) return { ok: false, reason: "No plotted route to destination." };
-  const fuelNeeded = dist * fuelPerDistanceFor(trader, ft);
-  if (!fuelFree && fuel!.qty < fuelNeeded - 0.001) {
-    return { ok: false, reason: `Need ${fuelNeeded.toFixed(1)} fuel, have ${fuel!.qty.toFixed(1)}.` };
+  // Plot the shortest path through the lane network. Adjacent
+  // destinations resolve to a 2-node path (origin → dst); remote
+  // destinations get a multi-hop path that we queue on
+  // trader.routePlan and auto-dispatch on each arrival.
+  const path = findRoutePath(world, trader.location, dst);
+  if (!path || path.length < 2) {
+    return { ok: false, reason: "No plotted route to destination." };
+  }
+  const totalDist = pathDistance(world, path);
+  const totalFuel = totalDist * fuelPerDistanceFor(trader, ft);
+  if (!fuelFree && fuel!.qty < totalFuel - 0.001) {
+    return { ok: false, reason: `Need ${totalFuel.toFixed(1)} fuel for the full route, have ${fuel!.qty.toFixed(1)}.` };
+  }
+
+  // First-leg figures used by departForReposition. Fuel for the leg
+  // is debited up-front; the remaining hops run their own
+  // departForReposition cycles when the trader arrives at each stop.
+  const nextHop = path[1];
+  const firstDist = legDistance(world, trader.location, nextHop);
+  const firstFuel = firstDist * fuelPerDistanceFor(trader, ft);
+  const firstTicks = travelTicksFor(trader, firstDist);
+
+  if (path.length > 2) {
+    trader.routePlan = path.slice(2);
+  } else if (trader.routePlan) {
+    delete trader.routePlan;
   }
 
   const events: TraderEvent[] = [];
-  departForReposition(world, trader, dst, fuelNeeded, travelTicksFor(trader, dist), events);
+  departForReposition(world, trader, nextHop, firstFuel, firstTicks, events);
   for (const ev of events) pushTraderEvent(world, trader, ev);
   if (isPlayerShip(world, trader)) incrementManualActions(world);
   return { ok: true, events };

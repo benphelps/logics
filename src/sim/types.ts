@@ -253,6 +253,13 @@ export interface Trader {
   // perks. Optional for back-compat with the starting ship and NPCs.
   shipClass?: ShipClass;
   traits?: ShipTrait[];
+  // Multi-hop travel queue. When the player picks a non-adjacent
+  // destination, travelTo plots a shortest path through the lane
+  // network and stores the remaining hops here (next-hop first, final
+  // destination last). On arrival at each intermediate, the trader
+  // auto-departs for the next hop until the queue is empty. Cleared
+  // mid-route when the player picks a different destination.
+  routePlan?: LocationId[];
   // Player-only stock-trading state. Per-ship so different ships can hold
   // different positions in the same equity, and so cash flows always go
   // through the trading ship's wallet. NPCs don't read these fields —

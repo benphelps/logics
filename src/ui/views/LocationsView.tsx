@@ -2,7 +2,7 @@ import { useMemo, useRef, useState, type CSSProperties, type ReactNode } from "r
 import type { IconType } from "react-icons";
 import { GiAnvil, GiAtom, GiCampfire, GiMining, GiSpaceship, GiTrade, GiWheat } from "react-icons/gi";
 import { useStore } from "../store";
-import { reachableNeighbors, routeDistance, routeSegments } from "../../sim/geometry";
+import { findRoutePath, pathDistance, reachableNeighbors, routeDistance, routeSegments } from "../../sim/geometry";
 import type { Equity, LocationDef, LocationId, Trader, TraderId, World } from "../../sim/types";
 import { listHiresAt } from "../../sim/hires";
 import { listShipyardInventory } from "../../sim/shipyards";
@@ -102,6 +102,11 @@ export function LocationsView() {
   const selectTrader = useStore((s) => s.selectTrader);
   useStore((s) => s.tickEpoch);
 
+  // Sequence of LocationIds the SectorMap highlights when the user
+  // hovers the Travel-here CTA on the detail panel. Set by the
+  // detail panel, consumed by the map. Null when nothing is hovered.
+  const [previewedRoute, setPreviewedRoute] = useState<LocationId[] | null>(null);
+
   const sheetTab = useStore((s) => s.atlasSheetTab);
   const setSheetTab = useStore((s) => s.setAtlasSheetTab);
   const newsCount = world.newsEvents?.active.length ?? 0;
@@ -140,6 +145,7 @@ export function LocationsView() {
               playerLocation={playerShip?.location ?? null}
               playerDestination={playerShip?.state === "transit" ? playerShip.destination : null}
               selectedTraderId={selectedTrader}
+              previewedRoute={previewedRoute}
               onSelect={selectLocation}
               onSelectTrader={selectTrader}
             />
@@ -202,6 +208,7 @@ export function LocationsView() {
               ships={ships}
               selectedTraderId={selectedTrader}
               onSelectTrader={selectTrader}
+              onPreviewRoute={setPreviewedRoute}
             />
           ) : (
             <div className="atlas-detail-empty dim">Select a station from the map or list.</div>
@@ -238,6 +245,7 @@ function SectorMap({
   playerLocation,
   playerDestination,
   selectedTraderId,
+  previewedRoute,
   onSelect,
   onSelectTrader,
 }: {
@@ -251,6 +259,7 @@ function SectorMap({
   playerLocation: LocationId | null;
   playerDestination: LocationId | null;
   selectedTraderId: TraderId | null;
+  previewedRoute: LocationId[] | null;
   onSelect: (id: LocationId) => void;
   onSelectTrader: (id: TraderId | null) => void;
 }) {
@@ -393,6 +402,39 @@ function SectorMap({
             );
           })}
         </g>
+        {previewedRoute && previewedRoute.length >= 2 && (
+          <g className="atlas-preview-route">
+            {previewedRoute.slice(0, -1).map((from, i) => {
+              const to = previewedRoute[i + 1];
+              const a = projectedById.get(from);
+              const b = projectedById.get(to);
+              if (!a || !b) return null;
+              return (
+                <line
+                  key={`preview-${from}-${to}`}
+                  className="atlas-preview-link"
+                  x1={a.x}
+                  y1={a.y}
+                  x2={b.x}
+                  y2={b.y}
+                />
+              );
+            })}
+            {previewedRoute.map((id, i) => {
+              const p = projectedById.get(id);
+              if (!p) return null;
+              return (
+                <circle
+                  key={`preview-node-${id}-${i}`}
+                  className={`atlas-preview-node ${i === 0 ? "origin" : i === previewedRoute.length - 1 ? "dest" : "waypoint"}`}
+                  cx={p.x}
+                  cy={p.y}
+                  r={i === 0 || i === previewedRoute.length - 1 ? p.r + 6 : p.r + 3}
+                />
+              );
+            })}
+          </g>
+        )}
         {hoveredLane && (() => {
           // Inline distance label for the lane the cursor is over —
           // only shown on hover so the map doesn't fight the eye.
@@ -1058,8 +1100,9 @@ function DetailPanel(props: {
   ships: ShipMarker[];
   selectedTraderId: TraderId | null;
   onSelectTrader: (id: TraderId | null) => void;
+  onPreviewRoute: (path: LocationId[] | null) => void;
 }) {
-  const { world, loc, counts, marketRowsTop, stationKind: kind, ships, selectedTraderId, onSelectTrader } = props;
+  const { world, loc, counts, marketRowsTop, stationKind: kind, ships, selectedTraderId, onSelectTrader, onPreviewRoute } = props;
   const artUrl = stationArtUrl(loc);
 
   // Ships parked at OR inbound to this station — used to populate the
@@ -1126,7 +1169,7 @@ function DetailPanel(props: {
           <DetailStat label="net trade" value={fmtSignedFlow(exchange.netTradeFlow)} />
         </dl>
 
-        <StationTravelAction world={world} loc={loc} />
+        <StationTravelAction world={world} loc={loc} onPreviewRoute={onPreviewRoute} />
 
         {exchange.equity && (
           <section className="trade-helper-section">
@@ -1504,13 +1547,19 @@ function DetailStat({ label, value }: { label: string; value: string }) {
   );
 }
 
-// "Travel here" CTA on the atlas station detail panel. Resolves the
-// active player ship from the topbar picker (falls back to the first
-// player ship), then mirrors travelTo()'s gating logic so the button
-// disables itself with a clear reason for in-transit ships, missing
-// routes, fuel shortfalls, or already-at-this-station. Clicking
-// dispatches the same store travel action the fleet view uses.
-function StationTravelAction({ world, loc }: { world: World; loc: LocationDef }) {
+// "Travel here" CTA on the atlas station detail panel. Plots a
+// shortest-path route through the lane network (multi-hop is fine —
+// the trader auto-departs at each waypoint until it reaches the
+// final destination), then mirrors travelTo()'s gating logic so the
+// button disables itself with a clear reason for in-transit ships,
+// missing routes, fuel shortfalls, or already-at-this-station.
+// Hovering the button fires `onPreviewRoute(path)` so the SectorMap
+// highlights the planned segments while the user decides.
+function StationTravelAction({ world, loc, onPreviewRoute }: {
+  world: World;
+  loc: LocationDef;
+  onPreviewRoute: (path: LocationId[] | null) => void;
+}) {
   const travel = useStore(s => s.travel);
   const selectedTrader = useStore(s => s.selectedTrader);
   const player = world.player;
@@ -1526,21 +1575,23 @@ function StationTravelAction({ world, loc }: { world: World; loc: LocationDef })
   // Ship in transit but bound for this station — render the transit
   // status instead of a Depart button so the player can see the ETA.
   const inboundHere = inTransit && ship.destination === loc.id;
-  const dist = atDest ? 0 : routeDistance(world, ship.location, loc.id);
+  const path = atDest ? null : findRoutePath(world, ship.location, loc.id);
+  const totalDist = path && path.length >= 2 ? pathDistance(world, path) : null;
   const fuelFree = ignoresFuel(ship);
   const ft = activeFuelType(ship) ?? ship.fuelTypes[0] ?? null;
   const perDistance = ft ? effectivePerDistance(ship, ft.perDistance) : 0;
-  const fuelNeeded = !fuelFree && dist != null ? dist * perDistance : 0;
+  const fuelNeeded = !fuelFree && totalDist != null ? totalDist * perDistance : 0;
   const fuelOnHand = ship.currentFuel?.qty ?? 0;
-  const eta = dist != null ? travelTicksFor(ship, dist) : 0;
+  const eta = totalDist != null ? travelTicksFor(ship, totalDist) : 0;
+  const hopCount = path ? path.length - 1 : 0;
 
   let blockReason: string | null = null;
   if (atDest) blockReason = `${ship.name} is already at ${loc.name}.`;
   else if (inboundHere) blockReason = `${ship.name} is already inbound — ETA ${ship.ticksRemaining}t.`;
   else if (inTransit) blockReason = `${ship.name} is in transit, can't redirect.`;
-  else if (dist == null) blockReason = "No plotted route to this station.";
+  else if (!path || totalDist == null) blockReason = "No plotted route to this station.";
   else if (!fuelFree && fuelOnHand < fuelNeeded - 0.001) {
-    blockReason = `Need ${fuelNeeded.toFixed(1)} fuel, ${ship.name} has ${fuelOnHand.toFixed(1)}.`;
+    blockReason = `Need ${fuelNeeded.toFixed(1)} fuel for the full route, ${ship.name} has ${fuelOnHand.toFixed(1)}.`;
   }
   const disabled = blockReason != null;
 
@@ -1548,9 +1599,14 @@ function StationTravelAction({ world, loc }: { world: World; loc: LocationDef })
     ? "you are here"
     : inboundHere
       ? `inbound · ${ship.ticksRemaining}t`
-      : dist == null
+      : totalDist == null
         ? "no route"
-        : `${dist.toFixed(1)}u · ${eta}t · ${fuelFree ? "no fuel" : `${fuelNeeded.toFixed(1)} ${ft?.good ?? "fuel"}`}`;
+        : `${hopCount === 1 ? "1 hop" : `${hopCount} hops`} · ${totalDist.toFixed(1)}u · ${eta}t · ${fuelFree ? "no fuel" : `${fuelNeeded.toFixed(1)} ${ft?.good ?? "fuel"}`}`;
+
+  // Only the route is allowed to "preview" on the map — failing
+  // states (no route / not enough fuel / etc.) still surface the
+  // path so the player can see why the trip is too long.
+  const previewablePath = path && path.length >= 2 ? path : null;
 
   return (
     <div className="atlas-travel-action">
@@ -1559,7 +1615,15 @@ function StationTravelAction({ world, loc }: { world: World; loc: LocationDef })
         className={`atlas-travel-btn ${disabled ? "disabled" : "primary"}`}
         disabled={disabled}
         title={blockReason ?? `Travel ${ship.name} to ${loc.name}`}
-        onClick={() => { if (!disabled) travel(ship.id, loc.id); }}
+        onMouseEnter={() => onPreviewRoute(previewablePath)}
+        onMouseLeave={() => onPreviewRoute(null)}
+        onFocus={() => onPreviewRoute(previewablePath)}
+        onBlur={() => onPreviewRoute(null)}
+        onClick={() => {
+          if (disabled) return;
+          travel(ship.id, loc.id);
+          onPreviewRoute(null);
+        }}
       >
         <span className="atlas-travel-label">
           {atDest ? "Docked here" : inboundHere ? "Inbound" : `Travel ${ship.name}`}

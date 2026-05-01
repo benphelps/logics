@@ -32,6 +32,66 @@ export function routeDistance(world: World, a: LocationId, b: LocationId): numbe
   return routeExists(world, a, b) ? distance(world, a, b) : null;
 }
 
+// Shortest path through the lane network from `from` to `to`,
+// inclusive of both endpoints. Returns null when the two stations
+// aren't connected in the same component. Worlds with no lane network
+// at all treat every station as one hop apart (matches routeExists).
+export function findRoutePath(world: World, from: LocationId, to: LocationId): LocationId[] | null {
+  if (from === to) return [from];
+  if (!world.locations[from] || !world.locations[to]) return null;
+  if (!hasRouteNetwork(world)) return [from, to];
+
+  // Dijkstra over the lane graph. The graph is small (sub-100
+  // stations), so a min-heap is overkill — a linear scan of the open
+  // set is plenty fast.
+  const dists: Record<LocationId, number> = { [from]: 0 };
+  const prev: Record<LocationId, LocationId | null> = { [from]: null };
+  const open = new Set<LocationId>([from]);
+  const closed = new Set<LocationId>();
+
+  while (open.size > 0) {
+    let best: LocationId | null = null;
+    let bestDist = Infinity;
+    for (const id of open) {
+      const d = dists[id];
+      if (d != null && d < bestDist) { bestDist = d; best = id; }
+    }
+    if (best == null) break;
+    open.delete(best);
+    closed.add(best);
+    if (best === to) break;
+
+    const edges = (world.lanes[best] ?? {}) as Record<LocationId, number>;
+    for (const next of Object.keys(edges) as LocationId[]) {
+      if (closed.has(next) || !world.locations[next]) continue;
+      const stepDist = distance(world, best, next);
+      const candidate = bestDist + stepDist;
+      if (dists[next] == null || candidate < dists[next]) {
+        dists[next] = candidate;
+        prev[next] = best;
+        open.add(next);
+      }
+    }
+  }
+
+  if (!closed.has(to)) return null;
+  const path: LocationId[] = [];
+  let node: LocationId | null = to;
+  while (node != null) {
+    path.unshift(node);
+    node = prev[node] ?? null;
+  }
+  return path;
+}
+
+export function pathDistance(world: World, path: readonly LocationId[]): number {
+  let total = 0;
+  for (let i = 0; i < path.length - 1; i++) {
+    total += distance(world, path[i], path[i + 1]);
+  }
+  return total;
+}
+
 export function reachableNeighbors(world: World, from: LocationId): { to: LocationId; dist: number }[] {
   const result: { to: LocationId; dist: number }[] = [];
   if (!hasRouteNetwork(world)) {
