@@ -2044,13 +2044,24 @@ function InfoAreaCard({ ship, world, loc, focus, pinnedFocuses, activePinnedKey,
     ? findBlueprintEverywhere(world, renderedFocus.blueprintId)
     : null;
   const dynamicBlueprintArt = useBlueprintArtImageUrl(renderedBlueprint);
+  const dynamicArtUrl = renderedFocus == null
+    ? dynamicShipArt.imageUrl
+    : renderedFocus.kind === "ship-blueprint"
+      ? dynamicBlueprintArt.imageUrl
+      : null;
   const infoArtUrl = renderedFocus == null
-    ? dynamicShipArt.imageUrl ?? shipArtUrl(ship)
+    ? dynamicArtUrl ?? shipArtUrl(ship)
     : renderedFocus.kind === "station"
       ? stationArtUrl(stationLoc)
       : renderedFocus.kind === "ship-blueprint"
-        ? dynamicBlueprintArt.imageUrl ?? blueprintArtUrl(world, renderedFocus.blueprintId, ship)
+        ? dynamicArtUrl ?? blueprintArtUrl(world, renderedFocus.blueprintId, ship)
         : goodArtUrl(world, renderedFocus.good);
+  // The static art assets compose the ship in the upper third, but
+  // the API-generated images center the subject. Override the
+  // `--card-art-position` to `center center` when the painted url
+  // came from the ship-art API so the ship is actually visible
+  // inside the card's painter slot.
+  const usingDynamicArt = dynamicArtUrl != null && infoArtUrl === dynamicArtUrl;
   const phaseClass = transition.phase === "idle" ? "" : `is-${transition.phase}`;
   const handleInfoAnimationEnd = (event: AnimationEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget) return;
@@ -2076,7 +2087,12 @@ function InfoAreaCard({ ship, world, loc, focus, pinnedFocuses, activePinnedKey,
   return (
     <section
       className={`bridge-card trade-helper-card info-area-card ${infoArtUrl ? "art-card" : ""} ${phaseClass} ${renderedFocus == null || renderedFocus.kind === "station" ? "station-info-helper" : ""}`}
-      style={infoArtUrl ? artCardStyle(infoArtUrl) : undefined}
+      style={infoArtUrl
+        ? {
+            ...artCardStyle(infoArtUrl),
+            ...(usingDynamicArt ? { "--card-art-position": "center center" } as CSSProperties : {}),
+          }
+        : undefined}
     >
       <div
         className={`bridge-card-tabs info-area-tabs ${pinnedFocuses.length === 0 ? "empty" : ""}`}
