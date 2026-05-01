@@ -2695,9 +2695,18 @@
   text-align: left;
 }
 
+.stocks-hint-chin.right-detail {
+  grid-template-columns: auto minmax(0, 1fr) fit-content(46%);
+}
+
 .stocks-hint-chin:hover {
   background: rgba(255, 255, 255, 0.04);
   color: var(--text);
+}
+
+.stocks-hint-chin.right-detail:hover {
+  background: var(--stock-surface-soft);
+  color: var(--text-dim);
 }
 
 .stocks-hint-chin.enabled {
@@ -2753,6 +2762,54 @@
   grid-column: 1 / -1;
   min-width: 0;
   font-size: 11px;
+}
+
+.stocks-overflow-marquee {
+  --stocks-marquee-distance: 0px;
+  --stocks-marquee-duration: 8s;
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: clip;
+}
+
+.stocks-overflow-marquee.overflowing {
+  text-align: left;
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 12px, #000 calc(100% - 12px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 12px, #000 calc(100% - 12px), transparent);
+}
+
+.stocks-overflow-marquee-track {
+  display: inline-block;
+  max-width: none;
+  white-space: nowrap;
+  will-change: transform;
+}
+
+.stocks-overflow-marquee.overflowing .stocks-overflow-marquee-track {
+  animation: stocks-overflow-marquee-pan var(--stocks-marquee-duration) ease-in-out infinite;
+}
+
+@keyframes stocks-overflow-marquee-pan {
+  0%,
+  18% {
+    transform: translateX(0);
+  }
+
+  48%,
+  66% {
+    transform: translateX(calc(-1 * var(--stocks-marquee-distance)));
+  }
+
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stocks-overflow-marquee.overflowing .stocks-overflow-marquee-track {
+    animation: none;
+  }
 }
 
 .stocks-hint-chin.blocked .stocks-hint-chin-action {

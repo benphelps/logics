@@ -188,7 +188,6 @@ export function StockMarketView() {
               selectedHint={selectedHint}
               activeHint={activeTradeHint}
               guideEnabled={guidedTradeEnabled}
-              onGuideToggle={() => setStockGuideEnabled(!guidedTradeEnabled)}
             />
           ) : (
             <div className="stocks-detail-empty dim">No listed equities.</div>
@@ -395,6 +394,7 @@ function EquitySelector({ rows, tapeRows, selectedId, activeHint, bestHint, guid
               hint={bestHint}
               guided={activeHint != null && bestHint != null && activeHint.equityId === bestHint.equityId && activeHint.action === bestHint.action}
               guideEnabled={guideEnabled}
+              marqueeOverflow
               onGuideToggle={onGuideToggle}
               emptyText="No actionable exchange trade right now."
             />
@@ -1033,7 +1033,7 @@ function OrderAccordionItem({ world, order, isOpen, onToggle, onCancel, onAdjust
 
 // --- info column (right) -----------------------------------------------
 
-function InfoColumn({ row, world, shipId, docked, hint, selectedHint, activeHint, guideEnabled, onGuideToggle }: {
+function InfoColumn({ row, world, shipId, docked, hint, selectedHint, activeHint, guideEnabled }: {
   row: EquityRow;
   world: World;
   shipId?: string;
@@ -1042,11 +1042,22 @@ function InfoColumn({ row, world, shipId, docked, hint, selectedHint, activeHint
   selectedHint: StockExchangeHint | null;
   activeHint: StockExchangeHint | null;
   guideEnabled: boolean;
-  onGuideToggle: () => void;
 }) {
   const eq = row.equity;
   const access = exchangeAccess(world, eq, shipId);
   const artUrl = equityArtUrl(world, eq);
+  const [manualHint, setManualHint] = useState<StockExchangeHint | null>(null);
+  const [hintApplyKey, setHintApplyKey] = useState(0);
+  useEffect(() => {
+    setManualHint(null);
+    setHintApplyKey(0);
+  }, [eq.id]);
+  const formHint = manualHint && manualHint.equityId === eq.id ? manualHint : hint;
+  const applySelectedHint = (nextHint: StockExchangeHint) => {
+    if (nextHint.equityId !== eq.id) return;
+    setManualHint(nextHint);
+    setHintApplyKey(k => k + 1);
+  };
 
   return (
     <section className="stocks-shell-panel stocks-info-col">
@@ -1078,31 +1089,41 @@ function InfoColumn({ row, world, shipId, docked, hint, selectedHint, activeHint
         </div>
 
         {eq.kind === "futures"
-          ? <FuturesOrderForm equity={eq} world={world} docked={docked} access={access} hint={hint} />
-          : <UnifiedOrderForm equity={eq} world={world} docked={docked} access={access} hint={hint} />}
+          ? <FuturesOrderForm equity={eq} world={world} docked={docked} access={access} hint={formHint} hintApplyKey={hintApplyKey} />
+          : <UnifiedOrderForm equity={eq} world={world} docked={docked} access={access} hint={formHint} hintApplyKey={hintApplyKey} />}
       </div>
       <StockHintChin
         hint={selectedHint}
         guided={activeHint != null && selectedHint != null && activeHint.equityId === selectedHint.equityId && activeHint.action === selectedHint.action}
         guideEnabled={guideEnabled}
-        onGuideToggle={onGuideToggle}
+        clickMode="applyHint"
+        labelMode="action"
+        rightDetailLayout
+        marqueeOverflow
+        onApplyHint={applySelectedHint}
         showEnabledState={false}
-        emptyText="No exchange hint for this listing."
+        emptyText="No listing insights"
       />
     </section>
   );
 }
 
-function StockHintChin({ hint, guided, guideEnabled, onGuideToggle, emptyText, showEnabledState = true }: {
+function StockHintChin({ hint, guided, guideEnabled, onGuideToggle, onApplyHint, emptyText, showEnabledState = true, clickMode = "toggleGuide", labelMode = "actionTicker", rightDetailLayout = false, marqueeOverflow = false }: {
   hint: StockExchangeHint | null;
   guided: boolean;
   guideEnabled: boolean;
-  onGuideToggle: () => void;
+  onGuideToggle?: () => void;
+  onApplyHint?: (hint: StockExchangeHint) => void;
   emptyText: string;
   showEnabledState?: boolean;
+  clickMode?: "toggleGuide" | "applyHint";
+  labelMode?: "actionTicker" | "action";
+  rightDetailLayout?: boolean;
+  marqueeOverflow?: boolean;
 }) {
   const meta = hint
     ? [
+      hintQuantityMeta(hint),
       `edge ${fmtPct(hint.edgePct)}`,
       hint.suggestedLimitPrice != null ? `limit Ç${fmtPrice(hint.suggestedLimitPrice)}` : null,
       hint.workingOrderUnits != null
@@ -1113,42 +1134,107 @@ function StockHintChin({ hint, guided, guideEnabled, onGuideToggle, emptyText, s
   const title = hint?.executable === false
     ? hint.blockReason ?? hint.reason
     : hint?.reason ?? emptyText;
+  const handleClick = () => {
+    if (clickMode === "toggleGuide") {
+      onGuideToggle?.();
+      return;
+    }
+    if (hint) onApplyHint?.(hint);
+  };
+  const renderText = (className: string, text: string) => marqueeOverflow
+    ? <OverflowMarquee className={className} title={text}>{text}</OverflowMarquee>
+    : <span className={className}>{text}</span>;
 
   return (
     <button
       type="button"
-      className={`stocks-hint-chin ${hint ? hint.action : "empty"} ${guided ? "guided" : ""} ${showEnabledState && guideEnabled ? "enabled" : ""} ${hint?.executable === false ? "blocked" : ""}`}
-      aria-pressed={guideEnabled}
-      onClick={onGuideToggle}
+      className={`stocks-hint-chin ${rightDetailLayout ? "right-detail" : ""} ${hint ? hint.action : "empty"} ${guided ? "guided" : ""} ${showEnabledState && guideEnabled ? "enabled" : ""} ${hint?.executable === false ? "blocked" : ""}`}
+      aria-pressed={clickMode === "toggleGuide" ? guideEnabled : undefined}
+      onClick={handleClick}
       title={title}
     >
       {hint ? (
         <>
-          <span className={`stocks-hint-chin-action ${hint.action}`}>{compactHintActionLabel(hint)}</span>
-          <span className="stocks-hint-chin-reason">{hint.reason}</span>
-          <span className="stocks-hint-chin-meta">{meta}</span>
+          <span className={`stocks-hint-chin-action ${hint.action}`}>{compactHintActionLabel(hint, labelMode)}</span>
+          {renderText("stocks-hint-chin-reason", hint.reason)}
+          <span className="stocks-hint-chin-meta" title={meta}>{meta}</span>
         </>
       ) : (
-        <span className="stocks-hint-chin-empty dim">{emptyText}</span>
+        renderText("stocks-hint-chin-empty dim", emptyText)
       )}
     </button>
   );
 }
 
-function compactHintActionLabel(hint: StockExchangeHint): string {
-  const units = hint.suggestedUnits != null
+function OverflowMarquee({ className, children, title }: {
+  className: string;
+  children: ReactNode;
+  title?: string;
+}) {
+  const shellRef = useRef<HTMLSpanElement>(null);
+  const trackRef = useRef<HTMLSpanElement>(null);
+  const [distance, setDistance] = useState(0);
+
+  useEffect(() => {
+    const shell = shellRef.current;
+    const track = trackRef.current;
+    if (!shell || !track) return;
+
+    const measure = () => {
+      setDistance(Math.max(0, Math.ceil(track.scrollWidth - shell.clientWidth)));
+    };
+
+    measure();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", measure);
+      return () => window.removeEventListener("resize", measure);
+    }
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(shell);
+    observer.observe(track);
+    return () => observer.disconnect();
+  }, [children]);
+
+  const overflowing = distance > 1;
+  const duration = Math.min(14, Math.max(7, distance / 18 + 6));
+
+  return (
+    <span
+      className={`${className} stocks-overflow-marquee ${overflowing ? "overflowing" : ""}`}
+      ref={shellRef}
+      style={{
+        "--stocks-marquee-distance": `${distance}px`,
+        "--stocks-marquee-duration": `${duration}s`,
+      } as CSSProperties}
+      title={title}
+    >
+      <span className="stocks-overflow-marquee-track" ref={trackRef}>{children}</span>
+    </span>
+  );
+}
+
+function compactHintActionLabel(hint: StockExchangeHint, mode: "actionTicker" | "action" | "full" = "full"): string {
+  const units = mode === "full" && hint.suggestedUnits != null
     ? ` ${Math.max(1, Math.floor(hint.suggestedUnits)).toLocaleString()}`
     : "";
+  const ticker = mode === "action" ? "" : ` ${hint.ticker}`;
   switch (hint.action) {
-    case "buy": return `BUY${units} ${hint.ticker}`;
-    case "sell": return `SELL${units} ${hint.ticker}`;
-    case "short": return `SHORT${units} ${hint.ticker}`;
-    case "cover": return `COVER${units} ${hint.ticker}`;
-    case "open_long_future": return `LONG${units} ${hint.ticker}`;
-    case "open_short_future": return `SHORT${units} ${hint.ticker}`;
-    case "close_future": return `CLOSE${units} ${hint.ticker}`;
-    case "watch": return `WATCH ${hint.ticker}`;
+    case "buy": return `BUY${units}${ticker}`;
+    case "sell": return `SELL${units}${ticker}`;
+    case "short": return `SHORT${units}${ticker}`;
+    case "cover": return `COVER${units}${ticker}`;
+    case "open_long_future": return `LONG${units}${ticker}`;
+    case "open_short_future": return `SHORT${units}${ticker}`;
+    case "close_future": return `CLOSE${units}${ticker}`;
+    case "watch": return `WATCH${ticker}`;
   }
+}
+
+function hintQuantityMeta(hint: StockExchangeHint): string | null {
+  if (hint.suggestedUnits == null) return null;
+  const units = Math.max(1, Math.floor(hint.suggestedUnits)).toLocaleString();
+  return `qty • ${units}${hint.unitLabel ? ` ${hint.unitLabel}` : ""}`;
 }
 
 function KpiPanel({ row, world }: { row: EquityRow; world: World }) {
@@ -1201,12 +1287,13 @@ function FleetStat({ label, value }: { label: string; value: string }) {
 // Spot = limit at the current eq.price (still goes into the book; the
 // matching engine fills it immediately if there's a crossing counterparty,
 // or rests it otherwise).
-function UnifiedOrderForm({ equity, world, docked, access, hint }: {
+function UnifiedOrderForm({ equity, world, docked, access, hint, hintApplyKey = 0 }: {
   equity: Equity;
   world: World;
   docked: boolean;
   access: { ok: boolean; reason: string };
   hint: StockExchangeHint | null;
+  hintApplyKey?: number;
 }) {
   const placeLimitBuy = useStore(s => s.placeLimitBuy);
   const placeLimitSell = useStore(s => s.placeLimitSell);
@@ -1229,7 +1316,7 @@ function UnifiedOrderForm({ equity, world, docked, access, hint }: {
 
   useEffect(() => {
     if (!hint || hint.equityId !== equity.id) return;
-    const key = `${hint.equityId}:${hint.action}:${hint.suggestedUnits ?? ""}:${hint.suggestedLimitPrice ?? ""}`;
+    const key = `${hint.equityId}:${hint.action}:${hint.suggestedUnits ?? ""}:${hint.suggestedLimitPrice ?? ""}:${hintApplyKey}`;
     if (lastAppliedHintRef.current === key) return;
     if (hint.action === "buy") setSide("buy");
     else if (hint.action === "sell") setSide("sell");
@@ -1238,7 +1325,7 @@ function UnifiedOrderForm({ equity, world, docked, access, hint }: {
     if (hint.suggestedUnits != null) setQty(Math.max(1, Math.floor(hint.suggestedUnits)));
     setPrice(hint.suggestedLimitPrice ?? equity.price);
     lastAppliedHintRef.current = key;
-  }, [equity.id, equity.price, hint]);
+  }, [equity.id, equity.price, hint, hintApplyKey]);
 
   const playerShipId = world.player?.shipIds[0];
   const ship = playerShipId ? world.traders[playerShipId] : null;
@@ -1393,12 +1480,13 @@ function UnifiedOrderForm({ equity, world, docked, access, hint }: {
 // futures API; margin reservation + fee shown up front. Limit orders for
 // futures aren't surfaced yet — uses a market open against the existing
 // agent quotes.
-function FuturesOrderForm({ equity, world, docked, access, hint }: {
+function FuturesOrderForm({ equity, world, docked, access, hint, hintApplyKey = 0 }: {
   equity: Equity;
   world: World;
   docked: boolean;
   access: { ok: boolean; reason: string };
   hint: StockExchangeHint | null;
+  hintApplyKey?: number;
 }) {
   const openLongFuture = useStore(s => s.openLongFuture);
   const openShortFuture = useStore(s => s.openShortFuture);
@@ -1416,7 +1504,7 @@ function FuturesOrderForm({ equity, world, docked, access, hint }: {
   const existing = world.player?.futures?.[equity.id];
   const hintKey = hint && hint.equityId === equity.id
     && (hint.action === "open_long_future" || hint.action === "open_short_future")
-    ? `${hint.equityId}:${hint.action}:${hint.suggestedUnits ?? ""}`
+    ? `${hint.equityId}:${hint.action}:${hint.suggestedUnits ?? ""}:${hintApplyKey}`
     : "";
   useEffect(() => {
     if (!hintKey || !hint || lastAppliedHintRef.current === hintKey) return;
