@@ -82,12 +82,29 @@ interface OpenAIImageResponse {
   data?: Array<{ b64_json?: string; url?: string }>;
 }
 
-interface GeminiImageResponse {
-  // Imagen "predict" shape: { predictions: [{ bytesBase64Encoded, mimeType }] }
+interface GeminiImagenResponse {
+  // Imagen ":predict" shape — paid plan only.
   predictions?: Array<{
     bytesBase64Encoded?: string;
     mimeType?: string;
   }>;
+}
+
+interface GeminiContentResponse {
+  // gemini-2.5-flash-image ":generateContent" shape — multimodal,
+  // image bytes ride along inside a part's inlineData (or inline_data
+  // depending on response casing). Free-tier eligible.
+  candidates?: Array<{
+    content?: {
+      parts?: Array<{
+        inlineData?: { mimeType?: string; data?: string };
+        inline_data?: { mime_type?: string; data?: string };
+        text?: string;
+      }>;
+    };
+    finishReason?: string;
+  }>;
+  promptFeedback?: { blockReason?: string };
 }
 
 const CACHE_VERSION = 1;
@@ -95,11 +112,24 @@ const CACHE_ROOT = resolve(process.cwd(), process.env.SHIP_ART_CACHE_DIR ?? ".lo
 const CACHE_INDEX_PATH = join(CACHE_ROOT, "index.json");
 const IMAGE_DIR = join(CACHE_ROOT, "images");
 const DEFAULT_OPENAI_MODEL = process.env.SHIP_ART_OPENAI_MODEL ?? process.env.SHIP_ART_IMAGE_MODEL ?? "gpt-image-1.5";
-const DEFAULT_GEMINI_MODEL = process.env.SHIP_ART_GEMINI_MODEL ?? "imagen-4.0-generate-001";
+// Default to Gemini's free-tier multimodal image model. Imagen is
+// gated behind a paid plan and returns 400 ("Imagen is only available
+// on paid plans") on free-tier keys; gemini-2.5-flash-image works
+// everywhere via the generateContent endpoint. Override with
+// SHIP_ART_GEMINI_MODEL=imagen-4.0-generate-001 once a paid key is
+// available — the request dispatcher detects the imagen prefix and
+// switches to the :predict shape automatically.
+const DEFAULT_GEMINI_MODEL = process.env.SHIP_ART_GEMINI_MODEL ?? "gemini-2.5-flash-image";
 const DEFAULT_OUTPUT_FORMAT = process.env.SHIP_ART_IMAGE_FORMAT ?? "webp";
 const DEFAULT_QUALITY: Quality = "low";
 const DEFAULT_SIZE: ImageSize = "1536x1024";
-const DEFAULT_PROVIDER: ImageProvider = (process.env.SHIP_ART_PROVIDER === "gemini" ? "gemini" : "openai");
+// Default provider for in-game ship-art generation. Gemini's
+// gemini-2.5-flash-image is roughly 2x faster than gpt-image-1.5 at
+// comparable fidelity (clean ship silhouette, no fake-UI text leakage)
+// and meaningfully cheaper, so the game uses it by default. Override
+// with SHIP_ART_PROVIDER=openai (or via per-request `provider`) for
+// the OpenAI path.
+const DEFAULT_PROVIDER: ImageProvider = (process.env.SHIP_ART_PROVIDER === "openai" ? "openai" : "gemini");
 const PROMPT_VERSION = 1;
 
 const QUALITIES: Quality[] = ["low", "medium", "high"];
@@ -423,36 +453,40 @@ async function generateImageGemini(
   prompt: string,
   input: Pick<NormalizedShipArtInput, "size">,
 ): Promise<{ bytes: Buffer; mimeType: string }> {
-  // Imagen "predict" endpoint. Imagen doesn't take arbitrary pixel
-  // dimensions — pick the closest aspectRatio preset for our three
-  // OpenAI sizes so the rest of the pipeline (cache key, layout) keeps
-  // working unchanged. Passes the API key via the x-goog-api-key
-  // header rather than ?key= so secrets don't end up in any request
-  // logs vite happens to keep.
+  // Two distinct Google image APIs share this provider slot. Imagen
+  // models (image generation as a paid product) speak the predict
+  // payload shape; the gemini-*-image multimodal models speak the
+  // generateContent payload shape. Detect by model name so users can
+  // upgrade to Imagen by setting SHIP_ART_GEMINI_MODEL without any
+  // other config.
+  if (DEFAULT_GEMINI_MODEL.startsWith("imagen")) {
+    return generateImageGeminiImagen(apiKey, prompt, input);
+  }
+  return generateImageGeminiContent(apiKey, prompt, input);
+}
+
+async function generateImageGeminiImagen(
+  apiKey: string,
+  prompt: string,
+  input: Pick<NormalizedShipArtInput, "size">,
+): Promise<{ bytes: Buffer; mimeType: string }> {
   const aspectRatio = GEMINI_ASPECT_BY_SIZE[input.size] ?? "1:1";
-  const requestedMime = imagenMime(DEFAULT_OUTPUT_FORMAT);
+  const requestedMime = imageMimeForGoogle(DEFAULT_OUTPUT_FORMAT);
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(DEFAULT_GEMINI_MODEL)}:predict`;
   const payload = {
     instances: [{ prompt }],
-    parameters: {
-      sampleCount: 1,
-      aspectRatio,
-      outputMimeType: requestedMime,
-    },
+    parameters: { sampleCount: 1, aspectRatio, outputMimeType: requestedMime },
   };
   const response = await fetch(url, {
     method: "POST",
-    headers: {
-      "x-goog-api-key": apiKey,
-      "Content-Type": "application/json",
-    },
+    headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
   if (!response.ok) {
     const detail = await response.text();
     throw new Error(`Gemini Imagen generation failed (${response.status}): ${detail.slice(0, 600)}`);
   }
-  const json = await response.json() as GeminiImageResponse;
+  const json = await response.json() as GeminiImagenResponse;
   const prediction = json.predictions?.[0];
   if (!prediction?.bytesBase64Encoded) {
     throw new Error("Gemini Imagen response did not include image data.");
@@ -463,11 +497,60 @@ async function generateImageGemini(
   };
 }
 
-// Imagen accepts only image/png and image/jpeg as outputMimeType.
-// Map our "webp" default to png so we still get a usable image; the
-// cache writer reads the response's actual mimeType when stamping
-// the file extension, so the file stays correct on disk.
-function imagenMime(format: string): string {
+async function generateImageGeminiContent(
+  apiKey: string,
+  prompt: string,
+  _input: Pick<NormalizedShipArtInput, "size">,
+): Promise<{ bytes: Buffer; mimeType: string }> {
+  // gemini-2.5-flash-image takes a free-form generateContent call and
+  // returns the image as inline base64 inside a candidate part. The
+  // model picks its own dimensions (currently ~1024-wide); aspect
+  // hints have to ride in the prompt itself, which we already supply
+  // via the framing line.
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(DEFAULT_GEMINI_MODEL)}:generateContent`;
+  const payload = {
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
+  };
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`Gemini image generation failed (${response.status}): ${detail.slice(0, 600)}`);
+  }
+  const json = await response.json() as GeminiContentResponse;
+  if (json.promptFeedback?.blockReason) {
+    throw new Error(`Gemini blocked the prompt: ${json.promptFeedback.blockReason}`);
+  }
+  for (const candidate of json.candidates ?? []) {
+    for (const part of candidate.content?.parts ?? []) {
+      // Both casings appear in Gemini responses depending on the
+      // SDK / version — read the camelCase one first, then the
+      // snake_case shape.
+      const inline = part.inlineData
+        ? { mimeType: part.inlineData.mimeType, data: part.inlineData.data }
+        : part.inline_data
+          ? { mimeType: part.inline_data.mime_type, data: part.inline_data.data }
+          : null;
+      if (inline?.data) {
+        return {
+          bytes: Buffer.from(inline.data, "base64"),
+          mimeType: inline.mimeType ?? "image/png",
+        };
+      }
+    }
+  }
+  throw new Error("Gemini response did not include image data.");
+}
+
+// Imagen / Gemini multimodal accept only image/png and image/jpeg.
+// Map our webp default to png so requests still succeed; the cache
+// writer reads the response's actual mimeType when stamping the
+// extension on disk.
+function imageMimeForGoogle(format: string): string {
   if (format === "jpg" || format === "jpeg") return "image/jpeg";
   if (format === "png") return "image/png";
   return "image/png";
