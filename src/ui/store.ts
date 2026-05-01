@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type { CrewMember, CrewRole, Equity, EquityId, Job, World, LocationId, GoodId, JobId, Trader, TraderId, UpgradeSlot } from "../sim/types";
 import type { ActiveNewsEvent } from "../sim/news/types";
 import { createStartingWorld } from "../sim/start";
+import { makeStartingShip } from "../sim/data/player";
 import { tickWorld } from "../sim/tick";
 import {
   buyAtLocation,
@@ -107,6 +108,69 @@ function devContractDestination(world: World, origin: LocationId): LocationId {
   return Object.keys(world.locations).find(id => id !== origin) ?? origin;
 }
 
+// Two extra ships in the dev fleet so the multi-ship features
+// (per-ship wallets, picker, per-ship stock positions, shipyard
+// purchase flow) all have something to test against from a fresh dev
+// state. Each ship has its own wallet, crew, and a distinct loadout
+// so they're easy to tell apart at a glance.
+function spawnDeveloperFleet(world: World, location: LocationId): void {
+  if (!world.player) return;
+  const haulerId = makePlayerShipId(world, "Dev Hauler");
+  const hauler = makeStartingShip("Dev Hauler", location, 180_000);
+  hauler.id = haulerId;
+  hauler.pilot = "manual";
+  hauler.shipClass = "hauler";
+  hauler.baseCapacity = 160;
+  hauler.baseSpeed = 0.95;
+  hauler.baseFuelCapacity = 90;
+  hauler.baseHull = 6;
+  hauler.capacity = hauler.baseCapacity;
+  hauler.speed = hauler.baseSpeed;
+  hauler.fuelCapacity = hauler.baseFuelCapacity;
+  hauler.hull = hauler.baseHull;
+  hauler.currentFuel = { good: hauler.fuelTypes[0].good, qty: hauler.fuelCapacity };
+  hauler.upgrades = { cargo: "upg_cargo_2", hull: "upg_hull_1" };
+  hauler.crew = {
+    captain: devCrew("captain", "Dev Hauler Pilot", 1, { speedBonus: 0.2 }),
+    mechanic: devCrew("mechanic", "Dev Hauler Mechanic", 1, { maintenanceDiscount: 0.25 }),
+  };
+  recomputeShipStats(hauler);
+  world.traders[hauler.id] = hauler;
+  world.player.shipIds.push(hauler.id);
+
+  const courierId = makePlayerShipId(world, "Dev Courier");
+  const courier = makeStartingShip("Dev Courier", location, 95_000);
+  courier.id = courierId;
+  courier.pilot = "manual";
+  courier.shipClass = "courier";
+  courier.baseCapacity = 38;
+  courier.baseSpeed = 1.9;
+  courier.baseFuelCapacity = 35;
+  courier.baseHull = 3;
+  courier.capacity = courier.baseCapacity;
+  courier.speed = courier.baseSpeed;
+  courier.fuelCapacity = courier.baseFuelCapacity;
+  courier.hull = courier.baseHull;
+  courier.currentFuel = { good: courier.fuelTypes[0].good, qty: courier.fuelCapacity };
+  courier.upgrades = { engine: "upg_engine_1", systems: "upg_systems_nav_1" };
+  courier.traits = ["fuel-efficient"];
+  courier.crew = {
+    captain: devCrew("captain", "Dev Courier Pilot", 1, { speedBonus: 0.4 }),
+    navigator: devCrew("navigator", "Dev Courier Nav", 1, { rangeEfficiency: 0.12 }),
+  };
+  recomputeShipStats(courier);
+  world.traders[courier.id] = courier;
+  world.player.shipIds.push(courier.id);
+}
+
+function makePlayerShipId(world: World, name: string): TraderId {
+  const base = `p_${name.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`;
+  if (!world.traders[base]) return base;
+  let i = 2;
+  while (world.traders[`${base}_${i}`]) i += 1;
+  return `${base}_${i}`;
+}
+
 function seedDeveloperCargo(world: World, ship: Trader): void {
   ship.cargo = [
     { good: "parts", qty: 8, source: ship.location, unitPrice: world.goods.parts?.basePrice ?? 35, purchasedAt: world.tick },
@@ -209,6 +273,7 @@ function createDeveloperWorld(): World {
     mechanic: devCrew("mechanic", "Dev Mechanic", 1, { maintenanceDiscount: 0.45 }),
     captain: devCrew("captain", "Dev Pilot", 2, { speedBonus: 0.5 }),
   };
+  spawnDeveloperFleet(world, ship.location);
   // Spread the dev loadout across all four rarity tiers so the colored
   // catalog (white → blue → purple → gold) is visible at a glance:
   //   T1 (common)    weapon  — Pulse Cannon Turret
