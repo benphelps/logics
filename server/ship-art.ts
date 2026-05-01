@@ -296,8 +296,90 @@ export async function handleShipArtRequest(req: IncomingMessage, res: ServerResp
     return true;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/ship-art/for-ship") {
+    const result = await getOrCreateShipArt(parseShipArtInput(await readJsonBody<ShipArtRequest>(req)));
+    sendJson(res, 200, result);
+    return true;
+  }
+
   sendError(res, 404, "Unknown ship-art API route.");
   return true;
+}
+
+// Lookup-or-pending flow used by the in-game ship info panels. Unlike
+// /api/ship-art/generate, this returns immediately with an entry
+// pointer the client can poll: a cache hit is "cache + ready", a brand
+// new request is "pending" and gets generated in the background. Lets
+// the panel render a static fallback while the OpenAI/Gemini call is
+// in flight, then swap to the generated image once it lands.
+async function getOrCreateShipArt(input: NormalizedShipArtInput) {
+  const key = poolKey(input);
+  const existing = await mutateCache((cache) => cache.entries.find((e) => e.poolKey === key && e.status !== "failed") ?? null);
+  if (existing) {
+    return {
+      source: existing.status === "ready" ? "cache" as const : "pending" as const,
+      entry: toClientEntry(existing),
+    };
+  }
+  // Mint a new pending entry under the cache lock so a duplicate
+  // request from another panel landing in the same tick reuses it
+  // instead of double-generating.
+  const id = randomUUID();
+  const prompt = buildShipArtPrompt(input);
+  const model = modelFor(input.provider);
+  const now = new Date().toISOString();
+  const pending: ShipArtCacheEntry = {
+    id,
+    poolKey: key,
+    class: input.class,
+    family: input.family,
+    traits: input.traits,
+    createdAt: now,
+    updatedAt: now,
+    model,
+    provider: input.provider,
+    size: input.size,
+    quality: input.quality,
+    promptVersion: PROMPT_VERSION,
+    prompt,
+    status: "pending",
+  };
+  await mutateCache((cache) => { cache.entries.push(pending); });
+  // Fire-and-forget the upstream call. Errors update the entry to
+  // status="failed" so the polling client sees the failure.
+  void generatePendingEntry(id, input).catch(() => undefined);
+  return {
+    source: "pending" as const,
+    entry: toClientEntry(pending),
+  };
+}
+
+async function generatePendingEntry(id: string, input: NormalizedShipArtInput): Promise<void> {
+  const prompt = buildShipArtPrompt(input);
+  try {
+    const image = await generateImage(prompt, input);
+    const ext = extensionFor(image.mimeType);
+    const fileName = `${id}${ext}`;
+    await ensureCacheDirs();
+    await writeFile(join(IMAGE_DIR, fileName), image.bytes);
+    await mutateCache((cache) => {
+      const found = cache.entries.find((e) => e.id === id);
+      if (!found) return;
+      found.fileName = fileName;
+      found.mimeType = image.mimeType;
+      found.status = "ready";
+      found.updatedAt = new Date().toISOString();
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Ship-art generation failed.";
+    await mutateCache((cache) => {
+      const found = cache.entries.find((e) => e.id === id);
+      if (!found) return;
+      found.status = "failed";
+      found.error = message;
+      found.updatedAt = new Date().toISOString();
+    });
+  }
 }
 
 async function generateShipArt(input: NormalizedShipArtInput) {

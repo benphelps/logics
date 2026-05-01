@@ -34,6 +34,7 @@ import type { CrewMember, GoodId, Job, JobId, LocationDef, LocationId, ShipBluep
 import { parseBasisUnderlying, priceChangePct } from "../../sim/stock";
 import { useCrewHeadshot } from "../headshots";
 import { goodArtUrl, jobArtUrl, shipArtUrl, stationArtUrl, stationKind, stationKindLabel, stationScale, stationScaleLabel, stationSubtype, stationSubtypeLabel } from "../art";
+import { useShipArtImageUrl } from "../shipArtApi";
 import { SortableRows, SortableTh } from "../components/SortableTable";
 import { MiniSparkline } from "../components/MiniSparkline";
 import "./PlayerView.css";
@@ -2031,8 +2032,13 @@ function InfoAreaCard({ ship, world, loc, focus, pinnedFocuses, activePinnedKey,
 
   const renderedFocus = transition.renderedFocus;
   const stationLoc = renderedFocus?.kind === "station" ? world.locations[renderedFocus.loc] ?? loc : loc;
+  // When the ship view is the active focus (no focus pinned), let the
+  // ship-art API drop in a dynamic class-aware splash. Falls back to
+  // the static shipArtUrl until the API call lands so the panel
+  // never goes blank.
+  const dynamicShipArt = useShipArtImageUrl(renderedFocus == null ? ship : null);
   const infoArtUrl = renderedFocus == null
-    ? shipArtUrl(ship)
+    ? dynamicShipArt.imageUrl ?? shipArtUrl(ship)
     : renderedFocus.kind === "station"
       ? stationArtUrl(stationLoc)
       : renderedFocus.kind === "ship-blueprint"
