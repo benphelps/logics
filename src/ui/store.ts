@@ -266,7 +266,7 @@ function createDeveloperWorld(): World {
   const ship = playerShip(world);
   if (!ship) return world;
 
-  ship.funds = 250_000;
+  ship.funds = 100_000_000;
   ship.pilot = "manual";
   ship.crew = {
     navigator: devCrew("navigator", "Dev Navigator", 1, { rangeEfficiency: 0.08 }),
@@ -274,21 +274,16 @@ function createDeveloperWorld(): World {
     captain: devCrew("captain", "Dev Pilot", 2, { speedBonus: 0.5 }),
   };
   spawnDeveloperFleet(world, ship.location);
-  // Spread the dev loadout across all four rarity tiers so the colored
-  // catalog (white → blue → purple → gold) is visible at a glance:
-  //   T1 (common)    weapon  — Pulse Cannon Turret
-  //   T2 (uncommon)  fuel    — Hyperion Bloom Reclaimer (regen variant)
-  //                  hull    — Composite Battle Plating
-  //   T3 (rare)      cargo   — Megahauler Conversion
-  //                  systems — Pressure Atlas Console
-  //   T4 (legendary) engine  — FTL Fold Drive
+  // Top-tier loadout — every slot gets the highest-tier (T4 legendary)
+  // variant available, so the dev state shows what a fully kitted ship
+  // does to stats, capacity, and the rarity-colored catalog.
   ship.upgrades = {
-    weapon: "upg_weapon_1",
-    fuel: "upg_fuel_regen_2",
-    hull: "upg_hull_2",
-    cargo: "upg_cargo_3",
-    systems: "upg_systems_pressure_3",
+    cargo: "upg_cargo_atlas_3",
     engine: "upg_engine_3",
+    fuel: "upg_fuel_3",
+    hull: "upg_hull_nano_3",
+    weapon: "upg_weapon_3",
+    systems: "upg_systems_oracle_3",
   };
   recomputeShipStats(ship);
   ship.currentFuel = { good: "plasma", qty: ship.fuelCapacity };
