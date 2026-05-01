@@ -1,11 +1,12 @@
 import { useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { IconType } from "react-icons";
-import { GiAtom, GiCampfire, GiMining, GiSpaceship, GiTrade, GiWheat } from "react-icons/gi";
+import { GiAnvil, GiAtom, GiCampfire, GiMining, GiSpaceship, GiTrade, GiWheat } from "react-icons/gi";
 import { useStore } from "../store";
 import { reachableNeighbors, routeDistance, routeSegments } from "../../sim/geometry";
 import type { Equity, LocationDef, LocationId, Trader, TraderId, World } from "../../sim/types";
 import { listHiresAt } from "../../sim/hires";
-import { isUpgradeGood } from "../../sim/upgrades";
+import { listShipyardInventory } from "../../sim/shipyards";
+import { isUpgradeGood, upgradeDef } from "../../sim/upgrades";
 import { parseBasisUnderlying, priceChangePct } from "../../sim/stock";
 import { stationArtUrl } from "../art";
 import { MiniSparkline } from "../components/MiniSparkline";
@@ -17,7 +18,7 @@ const MAP_W = 1000;
 const MAP_H = 620;
 const MAP_PAD = 48;
 
-type StationKind = "hub" | "mining" | "agri" | "frontier" | "research" | "station";
+type StationKind = "hub" | "mining" | "agri" | "frontier" | "research" | "shipyard" | "station";
 type PressureTone = "short" | "surplus" | "";
 
 interface ProjectedLocation {
@@ -667,6 +668,7 @@ function kindIcon(kind: StationKind): IconType {
     case "agri":     return GiWheat;
     case "frontier": return GiCampfire;
     case "research": return GiAtom;
+    case "shipyard": return GiAnvil;
     default:         return GiSpaceship;
   }
 }
@@ -1188,6 +1190,10 @@ function DetailPanel(props: {
           </section>
         )}
 
+        {kind === "shipyard" && (
+          <ShipyardMarketSection world={world} loc={loc} />
+        )}
+
         <section className="trade-helper-section">
           <div className="exchange-section-title">Crew offers</div>
           {hires.length === 0 ? (
@@ -1331,6 +1337,158 @@ function newsForLocation(world: World, locId: LocationId) {
 function fmtSignedFlow(flow: number): string {
   if (Math.abs(flow) < 0.05) return "0";
   return `${flow > 0 ? "+" : ""}${flow.toFixed(1)}`;
+}
+
+function fmtCredits(amount: number): string {
+  if (amount >= 1_000_000) return `Ç${(amount / 1_000_000).toFixed(2)}M`;
+  if (amount >= 1_000) return `Ç${(amount / 1_000).toFixed(0)}k`;
+  return `Ç${amount.toLocaleString()}`;
+}
+
+// Shipyard marketplace section: lists ship blueprints for sale at the
+// focused shipyard, lets the player click into one to see full stats /
+// pre-installed upgrades / traits, and exposes the Buy action that
+// debits the docked player ship's wallet.
+function ShipyardMarketSection({ world, loc }: { world: World; loc: LocationDef }) {
+  const blueprints = listShipyardInventory(world, loc.id);
+  const purchaseShip = useStore(s => s.purchaseShip);
+  const selectedTraderId = useStore(s => s.selectedTrader);
+  const [openId, setOpenId] = useState<string | null>(null);
+
+  const playerShipIds = world.player?.shipIds ?? [];
+  // The "buying ship" is the picker selection if it's a player ship
+  // docked here, otherwise the first player ship docked here. If no
+  // player ship is at the shipyard, the Buy button is disabled.
+  const dockedHere = playerShipIds
+    .map(id => world.traders[id])
+    .filter((t): t is Trader => Boolean(t) && t.state === "idle" && t.location === loc.id);
+  const preferred = selectedTraderId && dockedHere.find(t => t.id === selectedTraderId);
+  const buyer = preferred ?? dockedHere[0] ?? null;
+
+  return (
+    <section className="trade-helper-section atlas-shipyard-section">
+      <div className="exchange-section-title">Shipyard inventory</div>
+      {blueprints.length === 0 ? (
+        <div className="trade-helper-line muted"><span>Inventory</span><span className="dim">no blueprints right now</span></div>
+      ) : (
+        <>
+          <div className="trade-helper-line">
+            <span>Buyer</span>
+            <span className="mono">
+              {buyer
+                ? <>{buyer.name} · Ç{Math.floor(buyer.funds).toLocaleString()}</>
+                : <span className="dim">dock a ship here to buy</span>}
+            </span>
+          </div>
+          <div className="atlas-shipyard-list">
+            {blueprints.map(bp => {
+              const isOpen = openId === bp.id;
+              const canAfford = buyer ? buyer.funds >= bp.price : false;
+              const blockedReason = !buyer
+                ? "Dock one of your ships at this shipyard to buy."
+                : !canAfford
+                  ? `${buyer.name} needs Ç${bp.price.toLocaleString()}, has Ç${Math.floor(buyer.funds).toLocaleString()}.`
+                  : "";
+              return (
+                <div key={bp.id} className={`atlas-shipyard-item ${isOpen ? "open" : ""}`}>
+                  <button
+                    type="button"
+                    className="atlas-shipyard-summary"
+                    onClick={() => setOpenId(isOpen ? null : bp.id)}
+                  >
+                    <span className={`atlas-shipyard-class atlas-shipyard-class-${bp.class}`}>{bp.classLabel}</span>
+                    <span className="atlas-shipyard-name">{bp.name}</span>
+                    <span className="atlas-shipyard-price mono">{fmtCredits(bp.price)}</span>
+                  </button>
+                  {isOpen && (
+                    <div className="atlas-shipyard-body">
+                      <div className="atlas-shipyard-flavor dim">{bp.flavor}</div>
+                      <dl className="trade-helper-grid atlas-shipyard-stats">
+                        <DetailStat label="cargo" value={`${bp.baseCapacity}`} />
+                        <DetailStat label="speed" value={`${bp.baseSpeed.toFixed(2)}`} />
+                        <DetailStat label="fuel" value={`${bp.baseFuelCapacity}`} />
+                        <DetailStat label="hull" value={`${bp.baseHull}`} />
+                        <DetailStat label="weapons" value={`${bp.baseWeaponPower}`} />
+                        <DetailStat label="fuel type" value={world.goods[bp.fuelType]?.name ?? bp.fuelType} />
+                      </dl>
+                      {Object.keys(bp.preInstalled).length > 0 && (
+                        <div className="trade-helper-line">
+                          <span>Pre-installed</span>
+                          <span className="atlas-shipyard-upgrade-list">
+                            {Object.values(bp.preInstalled).map(good => {
+                              if (!good) return null;
+                              const def = upgradeDef(good);
+                              return (
+                                <span key={good} className="atlas-shipyard-upgrade-chip" title={def?.description ?? def?.name ?? good}>
+                                  {def?.name ?? good}
+                                </span>
+                              );
+                            })}
+                          </span>
+                        </div>
+                      )}
+                      {bp.traits.length > 0 && (
+                        <div className="trade-helper-line">
+                          <span>Traits</span>
+                          <span className="atlas-shipyard-trait-list">
+                            {bp.traits.map(trait => (
+                              <span key={trait} className="atlas-shipyard-trait-chip" title={traitDescription(trait)}>
+                                {traitLabel(trait)}
+                              </span>
+                            ))}
+                          </span>
+                        </div>
+                      )}
+                      <div className="atlas-shipyard-buy-row">
+                        <button
+                          type="button"
+                          className="atlas-shipyard-buy primary"
+                          disabled={!buyer || !canAfford}
+                          title={blockedReason}
+                          onClick={() => {
+                            if (!buyer || !canAfford) return;
+                            if (!confirm(`Buy ${bp.name} (${bp.classLabel}) for Ç${bp.price.toLocaleString()}?\nFunds will be debited from ${buyer.name}.`)) return;
+                            purchaseShip(bp.id);
+                          }}
+                        >
+                          Buy for Ç{bp.price.toLocaleString()}
+                        </button>
+                        {!canAfford && buyer && (
+                          <span className="atlas-shipyard-blocked dim">need Ç{(bp.price - buyer.funds).toLocaleString()} more</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function traitLabel(trait: string): string {
+  switch (trait) {
+    case "self-piloted": return "Self-piloted";
+    case "ai-navigator": return "AI navigator";
+    case "extra-slot":   return "+1 upgrade slot";
+    case "fuel-efficient": return "Fuel-efficient";
+    case "rapid-unload":   return "Rapid unload";
+    default: return trait;
+  }
+}
+
+function traitDescription(trait: string): string {
+  switch (trait) {
+    case "self-piloted": return "Built-in pilot — runs without filling the captain crew slot.";
+    case "ai-navigator": return "Built-in navigator — autopilot/guidance unlocks without a navigator crew member.";
+    case "extra-slot":   return "Carries one bonus upgrade slot.";
+    case "fuel-efficient": return "Burns less fuel per distance unit.";
+    case "rapid-unload":   return "Unloads cargo faster at every dock.";
+    default: return "";
+  }
 }
 
 function DetailStat({ label, value }: { label: string; value: string }) {
@@ -1513,6 +1671,9 @@ function buildAtlasLinks(world: World, locations: LocationDef[]): AtlasLink[] {
 
 function stationKind(loc: LocationDef): StationKind {
   const tags = loc.traits.tags;
+  // Match the canonical art helper: shipyard wins over the industrial/
+  // research overlap so the marketplace UI keys off the same kind value.
+  if (tags.includes("shipyard")) return "shipyard";
   if (tags.includes("trade-hub")) return "hub";
   if (tags.includes("mining") || tags.includes("industrial")) return "mining";
   if (tags.includes("agricultural")) return "agri";
@@ -1528,12 +1689,13 @@ function kindLabel(kind: StationKind): string {
     case "agri": return "Agri";
     case "frontier": return "Frontier";
     case "research": return "Research";
+    case "shipyard": return "Shipyard";
     default: return "Station";
   }
 }
 
 function stationSort(a: LocationDef, b: LocationDef): number {
-  const rank: Record<StationKind, number> = { hub: 0, research: 1, mining: 2, agri: 3, frontier: 4, station: 5 };
+  const rank: Record<StationKind, number> = { hub: 0, research: 1, shipyard: 2, mining: 3, agri: 4, frontier: 5, station: 6 };
   return rank[stationKind(a)] - rank[stationKind(b)]
     || b.traits.techLevel - a.traits.techLevel
     || b.population - a.population

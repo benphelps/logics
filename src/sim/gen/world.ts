@@ -16,11 +16,12 @@ export interface GenerateWorldOptions {
 }
 
 const ARCHETYPE_MIX: { archetype: ArchetypeName; weight: number }[] = [
-  { archetype: "trade-hub",         weight: 0.15 },
-  { archetype: "mining-belt",       weight: 0.25 },
-  { archetype: "agricultural-ring", weight: 0.25 },
-  { archetype: "frontier-outpost",  weight: 0.25 },
+  { archetype: "trade-hub",         weight: 0.13 },
+  { archetype: "mining-belt",       weight: 0.23 },
+  { archetype: "agricultural-ring", weight: 0.23 },
+  { archetype: "frontier-outpost",  weight: 0.24 },
   { archetype: "research-station",  weight: 0.10 },
+  { archetype: "shipyard",          weight: 0.07 },
 ];
 
 const RADIAL_BIAS: Record<ArchetypeName, [number, number]> = {
@@ -29,18 +30,43 @@ const RADIAL_BIAS: Record<ArchetypeName, [number, number]> = {
   "agricultural-ring": [0.2, 0.7],
   "frontier-outpost":  [0.6, 1.0],
   "research-station":  [0.0, 1.0],
+  // Shipyards sit well outside the rim — dedicated yards on the edge of
+  // settled space so they don't crowd the lane network and the trip
+  // to one feels intentional.
+  "shipyard":          [0.95, 1.15],
 };
+
+// Minimum distance any shipyard must keep from every other station, in
+// the same map-radius units the position generator uses. Roughly twice
+// the typical inter-station spacing in a 50-station world; we re-roll
+// (or push outward) until the constraint is satisfied.
+const SHIPYARD_MIN_SEPARATION = 4.5;
+
+// At least one shipyard per world (so the player always has somewhere to
+// buy a ship), then ~1 per 18 stations beyond. Capped so big worlds don't
+// get spammed.
+function shipyardQuotaFor(count: number): number {
+  if (count <= 0) return 0;
+  return Math.max(1, Math.min(4, Math.round(count / 18)));
+}
 
 function pickArchetypeMix(rng: Rng, count: number): ArchetypeName[] {
   const result: ArchetypeName[] = [];
   if (count >= 1) result.push("trade-hub");
   if (count >= 2) result.push("mining-belt");
   if (count >= 3) result.push("agricultural-ring");
+  // Reserve fixed slots for shipyards so a low-count world still has at
+  // least one. Subtracted from the weighted draw below.
+  const shipyardQuota = Math.min(shipyardQuotaFor(count), Math.max(0, count - result.length));
+  for (let i = 0; i < shipyardQuota; i++) result.push("shipyard");
   for (let i = result.length; i < count; i++) {
     const r = rng();
     let acc = 0;
     let chosen: ArchetypeName = "frontier-outpost";
     for (const entry of ARCHETYPE_MIX) {
+      // Shipyard slots are already reserved; skip the weighted slot to
+      // avoid double-allocating.
+      if (entry.archetype === "shipyard") continue;
       acc += entry.weight;
       if (r < acc) { chosen = entry.archetype; break; }
     }
@@ -58,6 +84,36 @@ function randomPosition(rng: Rng, archetype: ArchetypeName, mapRadius: number): 
   const r = rangeFloat(rng, minR, maxR) * mapRadius;
   const theta = rangeFloat(rng, 0, Math.PI * 2);
   return { x: Math.cos(theta) * r, y: Math.sin(theta) * r };
+}
+
+// Pick a position for `archetype`, enforcing the shipyard isolation
+// constraint when it applies. For non-shipyards, behaves like
+// randomPosition. For shipyards, retries until the candidate is at
+// least SHIPYARD_MIN_SEPARATION away from every existing station; if
+// retries are exhausted, falls back to the furthest candidate seen.
+function placeArchetype(
+  rng: Rng,
+  archetype: ArchetypeName,
+  mapRadius: number,
+  existing: Record<LocationId, LocationDef>,
+): Position {
+  if (archetype !== "shipyard") return randomPosition(rng, archetype, mapRadius);
+  const placed = Object.values(existing).map(l => l.position);
+  if (placed.length === 0) return randomPosition(rng, archetype, mapRadius);
+  let best: { pos: Position; minDist: number } | null = null;
+  for (let attempt = 0; attempt < 24; attempt++) {
+    const candidate = randomPosition(rng, archetype, mapRadius);
+    let minDist = Infinity;
+    for (const p of placed) {
+      const d = Math.hypot(candidate.x - p.x, candidate.y - p.y);
+      if (d < minDist) minDist = d;
+    }
+    if (minDist >= SHIPYARD_MIN_SEPARATION) return candidate;
+    if (!best || minDist > best.minDist) best = { pos: candidate, minDist };
+  }
+  // Couldn't satisfy the strict constraint — return the most isolated
+  // candidate we saw rather than failing world generation.
+  return best!.pos;
 }
 
 function routeModifier(a: LocationDef, b: LocationDef): number {
@@ -157,7 +213,9 @@ export function generateWorld(opts: GenerateWorldOptions): World {
 
   for (let i = 0; i < locationCount; i++) {
     const archetype = archetypes[i];
-    const position = i === 0 ? { x: 0, y: 0 } : randomPosition(rng, archetype, mapRadius);
+    const position = i === 0
+      ? { x: 0, y: 0 }
+      : placeArchetype(rng, archetype, mapRadius, locations);
     const { name, id } = generateName(rng, archetype, usedIds);
     locations[id] = ARCHETYPE_BUILDERS[archetype]({ rng, id, name, position });
   }

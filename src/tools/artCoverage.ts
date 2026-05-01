@@ -33,6 +33,7 @@ const STATION_ARCHETYPES: Array<{ archetype: ArchetypeName; kind: StationKind; t
   { archetype: "agricultural-ring", kind: "agri", tags: ["agricultural", "ring-habitat", "core"] },
   { archetype: "frontier-outpost", kind: "frontier", tags: ["frontier", "rim", "luxury"] },
   { archetype: "research-station", kind: "research", tags: ["research", "high-tech"] },
+  { archetype: "shipyard", kind: "shipyard", tags: ["shipyard", "industrial", "high-tech"] },
 ];
 
 const SCALE_FIXTURES: Record<StationKind, Record<StationScale, { population: number; techLevel: number }>> = {
@@ -60,6 +61,11 @@ const SCALE_FIXTURES: Record<StationKind, Record<StationScale, { population: num
     compact: { population: 250, techLevel: 7 },
     standard: { population: 400, techLevel: 8 },
     large: { population: 450, techLevel: 9 },
+  },
+  shipyard: {
+    compact: { population: 280, techLevel: 6 },
+    standard: { population: 400, techLevel: 7 },
+    large: { population: 550, techLevel: 8 },
   },
   station: {
     compact: { population: 400, techLevel: 5 },

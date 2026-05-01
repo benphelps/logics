@@ -238,7 +238,11 @@ export function generateHires(world: World): Hire[] {
     const rng = mulberry32(hashStr(loc.id) ^ world.tick);
     const popFactor = Math.min(2, Math.max(0.4, loc.population / 1000));
     const techFactor = Math.max(0.5, loc.traits.techLevel / 5);
-    const chance = HIRE_BASE_POST_CHANCE * popFactor * techFactor;
+    // Shipyards run small populations but they're outfitting hubs —
+    // crew offers post much more often here so a docked player has a
+    // real selection alongside the ship blueprints.
+    const shipyardFactor = loc.traits.tags.includes("shipyard") ? 4 : 1;
+    const chance = HIRE_BASE_POST_CHANCE * popFactor * techFactor * shipyardFactor;
     if (rng() > chance) continue;
     const h = generateHire(rng, loc, world, allowedRoles);
     world.hires[h.id] = h;

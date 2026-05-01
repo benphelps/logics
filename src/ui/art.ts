@@ -1,7 +1,7 @@
 import { upgradeDef } from "../sim/upgrades";
 import type { GoodId, Job, LocationDef, Trader, UpgradeSlot, World } from "../sim/types";
 
-export type StationKind = "hub" | "mining" | "agri" | "frontier" | "research" | "station";
+export type StationKind = "hub" | "mining" | "agri" | "frontier" | "research" | "shipyard" | "station";
 export type StationScale = "compact" | "standard" | "large";
 export type StationSubtype =
   | "gateway"
@@ -71,6 +71,13 @@ export const STATION_ART: Record<string, string> = {
   "research:lab": "/art/stations/research-lab.webp",
   "research:compact": "/art/stations/research-lab.webp",
   "research:large": "/art/stations/research-spire.webp",
+  // Shipyard art doesn't have its own splash yet; reuse the foundry plate
+  // (large industrial silhouette) so the panel art reads "heavy industry"
+  // until a dedicated asset lands.
+  shipyard: "/art/stations/mining-foundry.webp",
+  "shipyard:foundry": "/art/stations/mining-foundry.webp",
+  "shipyard:compact": "/art/stations/mining-belt-small.webp",
+  "shipyard:large": "/art/stations/mining-foundry.webp",
   "station:compact": "/art/stations/frontier-rim.webp",
   "station:large": "/art/stations/trade-hub.webp",
   station: "/art/stations/trade-hub.webp",
@@ -96,6 +103,9 @@ export const STATION_SUBTYPE_TERMS: Record<StationKind, Array<{ subtype: Station
   research: [
     { subtype: "spire", terms: ["gnosis", "lyceum", "atheneum", "codex", "archive", "spire", "array"] },
     { subtype: "lab", terms: ["praxis", "crucible", "sigma", "theta", "omicron", "lab", "institute", "compound"] },
+  ],
+  shipyard: [
+    { subtype: "foundry", terms: ["forge", "drydock", "shipyard", "yards"] },
   ],
   station: [],
 };
@@ -192,6 +202,10 @@ export function stationArtCandidates(loc: LocationDef): string[] {
 
 export function stationKind(loc: LocationDef): StationKind {
   const tags = loc.traits.tags;
+  // Check shipyard first — its industrial tag overlaps with mining belts
+  // and would otherwise be classified as Industrial. The shipyard tag
+  // wins so the marketplace UI can key off the kind.
+  if (tags.includes("shipyard")) return "shipyard";
   if (tags.includes("trade-hub")) return "hub";
   if (tags.includes("mining") || tags.includes("industrial")) return "mining";
   if (tags.includes("agricultural")) return "agri";
@@ -207,6 +221,7 @@ export function stationKindLabel(kind: StationKind): string {
     case "agri": return "Agri";
     case "frontier": return "Frontier";
     case "research": return "Research";
+    case "shipyard": return "Shipyard";
     default: return "Station";
   }
 }

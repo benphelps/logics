@@ -37,6 +37,7 @@ import type {
   SyndicateId,
   TradeAction,
   TradeRecord,
+  Trader,
   TraderId,
   TriggerKind,
   World,
@@ -919,17 +920,71 @@ function getPlayerShip(world: World, preferredShipId?: TraderId) {
   const id = preferredShipId && world.player.shipIds.includes(preferredShipId)
     ? preferredShipId
     : world.player.shipIds[0];
-  return id ? world.traders[id] ?? null : null;
+  const ship = id ? world.traders[id] ?? null : null;
+  if (ship && (!preferredShipId || id === world.player.shipIds[0])) {
+    syncPlayerStockBook(world.player, ship);
+  }
+  return ship;
 }
 
-function ensurePositions(player: Player): Record<EquityId, StockPosition> {
-  if (!player.positions) player.positions = {};
-  return player.positions;
+type StockBookOwner = Player | Trader;
+
+function isPlayerStockBookOwner(owner: StockBookOwner): owner is Player {
+  return "shipIds" in owner;
 }
 
-function ensureTrades(player: Player): TradeRecord[] {
-  if (!player.trades) player.trades = [];
-  return player.trades;
+function syncPlayerStockBook(player: Player, ship: Trader): void {
+  // Back-compat alias: the legacy `player.*` fields share the same object
+  // reference as the first ship's per-ship state. Old readers keep working
+  // (UI views, tests) while new writes go through `ship.*` and are visible
+  // through both. New ships beyond the first hold their own state — only
+  // the first ship is mirrored onto the player record.
+  const positions = player.positions ?? ship.stockPositions ?? {};
+  player.positions = positions;
+  ship.stockPositions = positions;
+
+  const trades = player.trades ?? ship.stockTrades ?? [];
+  player.trades = trades;
+  ship.stockTrades = trades;
+
+  const reservedShares = player.reservedShares ?? ship.reservedShares ?? {};
+  player.reservedShares = reservedShares;
+  ship.reservedShares = reservedShares;
+
+  const futures = player.futures ?? ship.futures ?? {};
+  player.futures = futures;
+  ship.futures = futures;
+
+  const reservedFutures = player.reservedFutures ?? ship.reservedFutures ?? {};
+  player.reservedFutures = reservedFutures;
+  ship.reservedFutures = reservedFutures;
+}
+
+function ensurePositions(owner: StockBookOwner): Record<EquityId, StockPosition> {
+  if (isPlayerStockBookOwner(owner)) {
+    if (!owner.positions) owner.positions = {};
+    return owner.positions;
+  }
+  if (!owner.stockPositions) owner.stockPositions = {};
+  return owner.stockPositions;
+}
+
+function ensureTrades(owner: StockBookOwner): TradeRecord[] {
+  if (isPlayerStockBookOwner(owner)) {
+    if (!owner.trades) owner.trades = [];
+    return owner.trades;
+  }
+  if (!owner.stockTrades) owner.stockTrades = [];
+  return owner.stockTrades;
+}
+
+function ensureReservedShares(owner: StockBookOwner): Record<EquityId, number> {
+  if (isPlayerStockBookOwner(owner)) {
+    if (!owner.reservedShares) owner.reservedShares = {};
+    return owner.reservedShares;
+  }
+  if (!owner.reservedShares) owner.reservedShares = {};
+  return owner.reservedShares;
 }
 
 let nextTradeIdCounter = 1;
@@ -939,7 +994,7 @@ function makeTradeId(world: World): string {
 
 function recordTrade(
   world: World,
-  player: Player,
+  trader: StockBookOwner,
   eq: Equity,
   action: TradeAction,
   shares: number,
@@ -949,7 +1004,7 @@ function recordTrade(
   realizedPnl?: number,
   trigger?: TriggerKind,
 ): TradeRecord {
-  const trades = ensureTrades(player);
+  const trades = ensureTrades(trader);
   const entry: TradeRecord = {
     id: makeTradeId(world),
     tick: world.tick,
@@ -1168,15 +1223,16 @@ function settlePlayerLimitFills(world: World, eq: Equity, trades: BookTrade[]): 
   const player = world.player;
   if (!player) return;
   const playerShipIds = new Set(player.shipIds);
-  const positions = ensurePositions(player);
 
   for (const trade of trades) {
     if (playerShipIds.has(trade.buyer)) {
       // Player limit BUY filled. Funds were already debited (gross + fee).
-      // Update the position with weighted-average entry price, refund any
-      // price improvement versus the reserved limit, and record the actual
-      // fill economics in the trade ledger.
+      // Update the buying ship's position with weighted-average entry price,
+      // refund any price improvement versus the reserved limit, and record
+      // the actual fill economics in that ship's trade ledger.
       const ship = world.traders[trade.buyer];
+      if (!ship) continue;
+      const positions = ensurePositions(ship);
       const cur = positions[eq.id];
       const action: TradeAction = cur?.kind === "long" ? "add_long" : "open_long";
       if (cur?.kind === "long") {
@@ -1188,25 +1244,24 @@ function settlePlayerLimitFills(world: World, eq: Equity, trades: BookTrade[]): 
           equityId: eq.id, kind: "long", shares: trade.qty, avgEntryPrice: trade.price, openedAt: world.tick,
         };
       }
-      if (ship) {
-        const reservedPrice = trade.buyerLimitPrice ?? trade.price;
-        const reservedTotal = trade.qty * reservedPrice * (1 + BROKER_FEE_RATE);
-        const actualTotal = trade.qty * trade.price * (1 + BROKER_FEE_RATE);
-        ship.funds += Math.max(0, reservedTotal - actualTotal);
-      }
+      const reservedPrice = trade.buyerLimitPrice ?? trade.price;
+      const reservedTotal = trade.qty * reservedPrice * (1 + BROKER_FEE_RATE);
+      const actualTotal = trade.qty * trade.price * (1 + BROKER_FEE_RATE);
+      ship.funds += Math.max(0, reservedTotal - actualTotal);
       const actualGross = trade.qty * trade.price;
       const fee = actualGross * BROKER_FEE_RATE;
-      recordTrade(world, player, eq, action, trade.qty, trade.price, fee, -(actualGross + fee));
+      recordTrade(world, ship, eq, action, trade.qty, trade.price, fee, -(actualGross + fee));
     } else if (playerShipIds.has(trade.seller)) {
-      // Player limit SELL filled. Credit ship.funds (gross − fee), shrink
-      // position, decrement reservedShares.
+      // Player limit SELL filled. Credit selling ship's funds (gross − fee),
+      // shrink that ship's position, decrement its reservedShares.
       const ship = world.traders[trade.seller];
+      if (!ship) continue;
+      const positions = ensurePositions(ship);
+      const reservedShares = ensureReservedShares(ship);
       const gross = trade.qty * trade.price;
       const fee = gross * BROKER_FEE_RATE;
       const net = gross - fee;
-      if (ship) {
-        ship.funds += net;
-      }
+      ship.funds += net;
       const cur = positions[eq.id];
       let realizedPnl: number | undefined;
       if (cur?.kind === "long") {
@@ -1215,11 +1270,8 @@ function settlePlayerLimitFills(world: World, eq: Equity, trades: BookTrade[]): 
         cur.shares -= trade.qty;
         if (cur.shares <= 0.0001) delete positions[eq.id];
       }
-      const reserved = player.reservedShares?.[eq.id] ?? 0;
-      if (player.reservedShares) {
-        player.reservedShares[eq.id] = Math.max(0, reserved - trade.qty);
-      }
-      recordTrade(world, player, eq, "close_long", trade.qty, trade.price, fee, net, realizedPnl);
+      reservedShares[eq.id] = Math.max(0, (reservedShares[eq.id] ?? 0) - trade.qty);
+      recordTrade(world, ship, eq, "close_long", trade.qty, trade.price, fee, net, realizedPnl);
     }
   }
 }
@@ -1293,8 +1345,8 @@ function preflight(world: World, equityId: EquityId, shares: number, shipId?: Tr
 export function buyShares(world: World, equityId: EquityId, shares: number, shipId?: TraderId): StockTradeResult {
   const ctx = preflight(world, equityId, shares, shipId);
   if ("ok" in ctx) return ctx;
-  const { player, eq, ship } = ctx;
-  const positions = ensurePositions(player);
+  const { eq, ship } = ctx;
+  const positions = ensurePositions(ship!);
   const current = positions[equityId];
   if (current?.kind === "short") {
     return { ok: false, reason: `Currently short ${current.shares} ${eq.ticker}. Cover the short before going long.` };
@@ -1335,13 +1387,13 @@ export function buyShares(world: World, equityId: EquityId, shares: number, ship
       avgEntryPrice: exec.weightedAvgPrice,
       openedAt: world.tick,
     };
-    recordTrade(world, player, eq, "open_long", exec.filled, exec.weightedAvgPrice, fee, -total);
+    recordTrade(world, ship!, eq, "open_long", exec.filled, exec.weightedAvgPrice, fee, -total);
   } else {
     // Weighted-average entry price across the combined position
     const totalShares = current.shares + exec.filled;
     current.avgEntryPrice = (current.avgEntryPrice * current.shares + exec.weightedAvgPrice * exec.filled) / totalShares;
     current.shares = totalShares;
-    recordTrade(world, player, eq, "add_long", exec.filled, exec.weightedAvgPrice, fee, -total);
+    recordTrade(world, ship!, eq, "add_long", exec.filled, exec.weightedAvgPrice, fee, -total);
   }
   incrementManualActions(world);
   return { ok: true, shares: exec.filled, cashFlow: -total, fee };
@@ -1359,8 +1411,8 @@ export function sellShares(
 ): StockTradeResult {
   const ctx = preflight(world, equityId, shares, shipId);
   if ("ok" in ctx) return ctx;
-  const { player, eq, ship } = ctx;
-  const positions = ensurePositions(player);
+  const { eq, ship } = ctx;
+  const positions = ensurePositions(ship!);
   const current = positions[equityId];
   if (!current || current.kind !== "long") {
     return { ok: false, reason: `No long position in ${eq.ticker}.` };
@@ -1394,7 +1446,7 @@ export function sellShares(
 
   current.shares -= exec.filled;
   if (current.shares <= 0.0001) delete positions[equityId];
-  recordTrade(world, player, eq, "close_long", exec.filled, exec.weightedAvgPrice, fee, immediateCashFlow, realizedPnl, trigger);
+  recordTrade(world, ship!, eq, "close_long", exec.filled, exec.weightedAvgPrice, fee, immediateCashFlow, realizedPnl, trigger);
   // Auto-fired stop-loss / take-profit don't count as manual play.
   if (!trigger) incrementManualActions(world);
   return { ok: true, shares: exec.filled, cashFlow: immediateCashFlow, fee, realizedPnl, settlementJobId };
@@ -1405,10 +1457,13 @@ export function sellShares(
 // from whichever bid the player sells into; treasury only matters if a legacy
 // synthetic market-maker quote is still present, and those are removed before
 // player shorts execute.
-function maxBorrowableShortShares(world: World, eq: Equity): number {
+function maxBorrowableShortShares(world: World, eq: Equity, shipId?: TraderId): number {
   if (eq.price <= 0 || eq.kind === "futures") return 0;
-  const currentShort = world.player?.positions?.[eq.id]?.kind === "short"
-    ? world.player.positions[eq.id].shares
+  // Cap by the borrowing ship's existing short — opening another short on
+  // the same equity from the same ship counts toward the same short pool.
+  const ship = getPlayerShip(world, shipId);
+  const currentShort = ship?.stockPositions?.[eq.id]?.kind === "short"
+    ? ship.stockPositions[eq.id].shares
     : 0;
   const floatCap = Math.floor(eq.sharesOutstanding * SHORT_BORROWABLE_FLOAT_FRACTION);
   let lendable = 0;
@@ -1437,7 +1492,7 @@ function bidDepthForShort(world: World, eq: Equity, excludedAgentId?: TraderId):
 // Immediate short capacity: borrowable shares that can also be sold into the
 // live bid book right now. Used by UI quantity chips and suggestions.
 export function maxShortableShares(world: World, eq: Equity, shipId?: TraderId): number {
-  return Math.min(maxBorrowableShortShares(world, eq), bidDepthForShort(world, eq, shipId));
+  return Math.min(maxBorrowableShortShares(world, eq, shipId), bidDepthForShort(world, eq, shipId));
 }
 
 // Open or add to a short position. Borrows shares and immediately sells them
@@ -1446,8 +1501,8 @@ export function maxShortableShares(world: World, eq: Equity, shipId?: TraderId):
 export function shortShares(world: World, equityId: EquityId, shares: number, shipId?: TraderId): StockTradeResult {
   const ctx = preflight(world, equityId, shares, shipId);
   if ("ok" in ctx) return ctx;
-  const { player, eq, ship } = ctx;
-  const positions = ensurePositions(player);
+  const { eq, ship } = ctx;
+  const positions = ensurePositions(ship!);
   const current = positions[equityId];
   if (current?.kind === "long") {
     return { ok: false, reason: `Currently long ${current.shares} ${eq.ticker}. Sell the long before shorting.` };
@@ -1456,7 +1511,7 @@ export function shortShares(world: World, equityId: EquityId, shares: number, sh
   // on agent bids only, so strip stale MM bids before checking liquidity.
   cancelAgentOrders(world, equityId, SYNTHETIC_MM_AGENT_ID);
 
-  const borrowable = maxBorrowableShortShares(world, eq);
+  const borrowable = maxBorrowableShortShares(world, eq, ship!.id);
   if (borrowable <= 0) {
     return { ok: false, reason: `${eq.ticker}'s lendable share pool is fully used right now.` };
   }
@@ -1490,12 +1545,12 @@ export function shortShares(world: World, equityId: EquityId, shares: number, sh
       avgEntryPrice: exec.weightedAvgPrice,
       openedAt: world.tick,
     };
-    recordTrade(world, player, eq, "open_short", exec.filled, exec.weightedAvgPrice, fee, net);
+    recordTrade(world, ship!, eq, "open_short", exec.filled, exec.weightedAvgPrice, fee, net);
   } else {
     const totalShares = current.shares + exec.filled;
     current.avgEntryPrice = (current.avgEntryPrice * current.shares + exec.weightedAvgPrice * exec.filled) / totalShares;
     current.shares = totalShares;
-    recordTrade(world, player, eq, "add_short", exec.filled, exec.weightedAvgPrice, fee, net);
+    recordTrade(world, ship!, eq, "add_short", exec.filled, exec.weightedAvgPrice, fee, net);
   }
   incrementManualActions(world);
   return { ok: true, shares: exec.filled, cashFlow: net, fee };
@@ -1512,8 +1567,8 @@ export function coverShares(
 ): StockTradeResult {
   const ctx = preflight(world, equityId, shares, shipId);
   if ("ok" in ctx) return ctx;
-  const { player, eq, ship } = ctx;
-  const positions = ensurePositions(player);
+  const { eq, ship } = ctx;
+  const positions = ensurePositions(ship!);
   const current = positions[equityId];
   if (!current || current.kind !== "short") {
     return { ok: false, reason: `No short position in ${eq.ticker}.` };
@@ -1557,7 +1612,7 @@ export function coverShares(
   }
   current.shares -= exec.filled;
   if (current.shares <= 0.0001) delete positions[equityId];
-  recordTrade(world, player, eq, "cover_short", exec.filled, exec.weightedAvgPrice, fee, immediateCashFlow, realizedPnl, trigger);
+  recordTrade(world, ship!, eq, "cover_short", exec.filled, exec.weightedAvgPrice, fee, immediateCashFlow, realizedPnl, trigger);
   // Auto-fired stop-loss / take-profit don't count as manual play.
   if (!trigger) incrementManualActions(world);
   return { ok: true, shares: exec.filled, cashFlow: immediateCashFlow, fee, realizedPnl, settlementJobId };
@@ -1604,13 +1659,13 @@ export function placeLimitBuy(
   const proximityReason = proximityBlockReason(world, eq, ship);
   if (proximityReason) return { ok: false, reason: proximityReason };
 
-  const positions = ensurePositions(world.player);
+  const positions = ensurePositions(ship);
   const current = positions[equityId];
   if (current?.kind === "short") {
     return { ok: false, reason: `Currently short ${current.shares} ${eq.ticker}. Cover the short before going long.` };
   }
-  // Float cap (long-side): outstanding minus what player already holds
-  // long minus shares already reserved by other open buy limits.
+  // Float cap (long-side): outstanding minus what this ship already holds
+  // long minus shares already reserved by its other open buy limits.
   const owned = current?.shares ?? 0;
   const openBuyShares = openLimitShares(world, eq.id, ship.id, "bid");
   const maxBuyable = Math.max(0, eq.sharesOutstanding - owned - openBuyShares);
@@ -1646,20 +1701,20 @@ export function placeLimitSell(
   const proximityReason = proximityBlockReason(world, eq, ship);
   if (proximityReason) return { ok: false, reason: proximityReason };
 
-  const positions = ensurePositions(world.player);
+  const positions = ensurePositions(ship);
   const current = positions[equityId];
   if (!current || current.kind !== "long") {
     return { ok: false, reason: `No long position in ${eq.ticker} to sell.` };
   }
   // Available shares = held − already reserved by other open sell limits.
-  const reserved = world.player.reservedShares?.[equityId] ?? 0;
+  const reservedShares = ensureReservedShares(ship);
+  const reserved = reservedShares[equityId] ?? 0;
   const available = current.shares - reserved;
   if (shares > available) {
     return { ok: false, reason: `Only ${available} unreserved share${available === 1 ? "" : "s"} of ${eq.ticker}.` };
   }
 
-  if (!world.player.reservedShares) world.player.reservedShares = {};
-  world.player.reservedShares[equityId] = reserved + shares;
+  reservedShares[equityId] = reserved + shares;
 
   const order = placeBookLimit(world, {
     equityId: eq.id, side: "ask", qty: shares, limitPrice, agentId: ship.id,
@@ -1722,11 +1777,8 @@ export function cancelPlayerLimit(world: World, equityId: EquityId, orderId: str
     ship.funds += refunded;
   } else {
     refunded = order.qty;
-    if (world.player) {
-      const cur = world.player.reservedShares?.[equityId] ?? 0;
-      world.player.reservedShares = world.player.reservedShares ?? {};
-      world.player.reservedShares[equityId] = Math.max(0, cur - order.qty);
-    }
+    const reservedShares = ensureReservedShares(ship);
+    reservedShares[equityId] = Math.max(0, (reservedShares[equityId] ?? 0) - order.qty);
   }
   cancelBookOrder(world, equityId, orderId);
   return { ok: true, refunded };
@@ -1786,7 +1838,7 @@ export function abandonPosition(world: World, equityId: EquityId, trigger?: Trig
   if (!eq) return { ok: false, reason: "Equity not listed." };
   const ship = getPlayerShip(world, shipId);
   if (!ship) return { ok: false, reason: "No anchor ship." };
-  const positions = ensurePositions(world.player);
+  const positions = ensurePositions(ship);
   const pos = positions[equityId];
   if (!pos) return { ok: false, reason: "No position to abandon." };
 
@@ -1811,7 +1863,7 @@ export function abandonPosition(world: World, equityId: EquityId, trigger?: Trig
   delete positions[equityId];
   recordTrade(
     world,
-    world.player,
+    ship,
     eq,
     pos.kind === "long" ? "close_long" : "cover_short",
     pos.shares,
@@ -1829,9 +1881,10 @@ export function abandonPosition(world: World, equityId: EquityId, trigger?: Trig
 // Set or clear the stop-loss price for a position. Pass `null` to clear.
 // The threshold's direction is implicit in the position's kind (see the
 // StockPosition docstring for the stop/take semantics).
-export function setStopLoss(world: World, equityId: EquityId, price: number | null): { ok: true } | { ok: false; reason: string } {
+export function setStopLoss(world: World, equityId: EquityId, price: number | null, shipId?: TraderId): { ok: true } | { ok: false; reason: string } {
   if (!world.player) return { ok: false, reason: "No player." };
-  const pos = world.player.positions?.[equityId];
+  const ship = getPlayerShip(world, shipId);
+  const pos = ship?.stockPositions?.[equityId];
   if (!pos) return { ok: false, reason: "No position to attach a stop to." };
   if (price == null) { delete pos.stopLoss; return { ok: true }; }
   if (!Number.isFinite(price) || price <= 0) return { ok: false, reason: "Stop price must be positive." };
@@ -1842,9 +1895,10 @@ export function setStopLoss(world: World, equityId: EquityId, price: number | nu
   return { ok: true };
 }
 
-export function setTakeProfit(world: World, equityId: EquityId, price: number | null): { ok: true } | { ok: false; reason: string } {
+export function setTakeProfit(world: World, equityId: EquityId, price: number | null, shipId?: TraderId): { ok: true } | { ok: false; reason: string } {
   if (!world.player) return { ok: false, reason: "No player." };
-  const pos = world.player.positions?.[equityId];
+  const ship = getPlayerShip(world, shipId);
+  const pos = ship?.stockPositions?.[equityId];
   if (!pos) return { ok: false, reason: "No position to attach a target to." };
   if (price == null) { delete pos.takeProfit; return { ok: true }; }
   if (!Number.isFinite(price) || price <= 0) return { ok: false, reason: "Target price must be positive." };
@@ -1858,24 +1912,29 @@ export function setTakeProfit(world: World, equityId: EquityId, price: number | 
 // short on cash for a short cover), fall back to abandonPosition so the
 // player isn't left with a position they wanted out of.
 export function checkPositionTriggers(world: World): void {
-  if (!world.player?.positions) return;
-  // Snapshot so we can mutate the positions map during iteration.
-  for (const eqId of Object.keys(world.player.positions)) {
-    const pos = world.player.positions[eqId];
-    if (!pos) continue;
-    const eq = world.equities[eqId];
-    if (!eq) continue;
-    const trigger = triggerHit(pos, eq.price);
-    if (!trigger) continue;
-    // Long → sell; short → cover. Fall back to abandon if the close path
-    // can't execute (e.g. treasury broke, player broke).
-    let result: StockTradeResult;
-    if (pos.kind === "long") {
-      result = sellShares(world, eqId, pos.shares, trigger);
-      if (!result.ok && shouldAbandonAfterTriggerMiss(result.reason)) result = abandonPosition(world, eqId, trigger);
-    } else {
-      result = coverShares(world, eqId, pos.shares, trigger);
-      if (!result.ok && shouldAbandonAfterTriggerMiss(result.reason)) result = abandonPosition(world, eqId, trigger);
+  if (!world.player) return;
+  // Snapshot so we can mutate each ship's positions map during iteration.
+  for (const shipId of world.player.shipIds) {
+    const ship = world.traders[shipId];
+    if (!ship?.stockPositions) continue;
+    for (const eqId of Object.keys(ship.stockPositions)) {
+      const pos = ship.stockPositions[eqId];
+      if (!pos) continue;
+      const eq = world.equities[eqId];
+      if (!eq) continue;
+      const trigger = triggerHit(pos, eq.price);
+      if (!trigger) continue;
+      // Long → sell; short → cover. Fall back to abandon if the close path
+      // can't execute (e.g. treasury broke, player broke).
+      let result: StockTradeResult;
+      if (pos.kind === "long") {
+        result = sellShares(world, eqId, pos.shares, trigger, shipId);
+        if (!result.ok && shouldAbandonAfterTriggerMiss(result.reason)) result = abandonPosition(world, eqId, trigger, shipId);
+      } else {
+        result = coverShares(world, eqId, pos.shares, trigger, shipId);
+        if (!result.ok && shouldAbandonAfterTriggerMiss(result.reason)) result = abandonPosition(world, eqId, trigger, shipId);
+      }
+      void result;
     }
   }
 }
@@ -1902,21 +1961,22 @@ function triggerHit(pos: StockPosition, price: number): TriggerKind | null {
 // risk/reward symmetry between long and short.
 export function tickShortBorrowFees(world: World): void {
   if (!world.player) return;
-  const positions = world.player.positions;
-  if (!positions) return;
-  const ship = getPlayerShip(world);
-  if (!ship) return;
-  let totalFee = 0;
-  for (const pos of Object.values(positions)) {
-    if (pos.kind !== "short") continue;
-    const eq = world.equities[pos.equityId];
-    if (!eq) continue;
-    const notional = pos.shares * eq.price;
-    const fee = notional * SHORT_BORROW_RATE_PER_TICK;
-    totalFee += fee;
+  // Each ship pays its own borrow fees from its own wallet — fees are
+  // assessed per ship per open short.
+  for (const shipId of world.player.shipIds) {
+    const ship = world.traders[shipId];
+    if (!ship?.stockPositions) continue;
+    let totalFee = 0;
+    for (const pos of Object.values(ship.stockPositions)) {
+      if (pos.kind !== "short") continue;
+      const eq = world.equities[pos.equityId];
+      if (!eq) continue;
+      const notional = pos.shares * eq.price;
+      totalFee += notional * SHORT_BORROW_RATE_PER_TICK;
+    }
+    if (totalFee <= 0) continue;
+    ship.funds = Math.max(0, ship.funds - totalFee);
   }
-  if (totalFee <= 0) return;
-  ship.funds = Math.max(0, ship.funds - totalFee);
 }
 
 // Helpers exposed to the UI ----------------------------------------------
@@ -1930,13 +1990,33 @@ export function unrealizedPnl(world: World, position: StockPosition): number {
   return (position.avgEntryPrice - eq.price) * position.shares;
 }
 
-export function listPositions(world: World): StockPosition[] {
-  return Object.values(world.player?.positions ?? {});
+// Aggregate across all player ships, or scope to a single ship via shipId.
+// "Only achievements are shared" — positions, trades, and futures all live
+// on each ship, so callers that want a fleet-wide view (TopBar totals, the
+// Exchange tape) walk every ship; per-ship views pass the selected id.
+export function listPositions(world: World, shipId?: TraderId): StockPosition[] {
+  if (!world.player) return [];
+  const ids = shipId ? [shipId] : world.player.shipIds;
+  const out: StockPosition[] = [];
+  for (const id of ids) {
+    const ship = world.traders[id];
+    if (!ship?.stockPositions) continue;
+    out.push(...Object.values(ship.stockPositions));
+  }
+  return out;
 }
 
-export function listTradeRecords(world: World, limit = TRADE_LEDGER_MAX): TradeRecord[] {
-  const trades = world.player?.trades ?? [];
-  return trades.slice(-limit).reverse();
+export function listTradeRecords(world: World, limit = TRADE_LEDGER_MAX, shipId?: TraderId): TradeRecord[] {
+  if (!world.player) return [];
+  const ids = shipId ? [shipId] : world.player.shipIds;
+  const out: TradeRecord[] = [];
+  for (const id of ids) {
+    const ship = world.traders[id];
+    if (!ship?.stockTrades) continue;
+    out.push(...ship.stockTrades);
+  }
+  out.sort((a, b) => a.tick - b.tick);
+  return out.slice(-limit).reverse();
 }
 
 // --- internal cash routing ------------------------------------------------
@@ -2037,15 +2117,12 @@ export function listEquities(world: World): Equity[] {
   return Object.values(world.equities).sort((a, b) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name));
 }
 
-export function portfolioValue(world: World): number {
-  // Long-position market value plus short-position notional (treated as a
-  // collateral position — for display purposes its mark-to-market value
-  // moves opposite to price changes). Returns the long-side market value
-  // only — the more honest "equity value" view shows long market value
-  // and tracks short P&L separately.
-  if (!world.player?.positions) return 0;
+export function portfolioValue(world: World, shipId?: TraderId): number {
+  // Long-position market value across player ships. Returns the long-side
+  // market value only — the more honest "equity value" view shows long
+  // market value and tracks short P&L separately.
   let v = 0;
-  for (const pos of Object.values(world.player.positions)) {
+  for (const pos of listPositions(world, shipId)) {
     const eq = world.equities[pos.equityId];
     if (!eq) continue;
     if (pos.kind === "long") v += eq.price * pos.shares;
@@ -2053,11 +2130,10 @@ export function portfolioValue(world: World): number {
   return v;
 }
 
-// Total unrealized P&L across all open positions.
-export function totalUnrealizedPnl(world: World): number {
-  if (!world.player?.positions) return 0;
+// Total unrealized P&L across all open positions, fleet-wide by default.
+export function totalUnrealizedPnl(world: World, shipId?: TraderId): number {
   let pnl = 0;
-  for (const pos of Object.values(world.player.positions)) pnl += unrealizedPnl(world, pos);
+  for (const pos of listPositions(world, shipId)) pnl += unrealizedPnl(world, pos);
   return pnl;
 }
 

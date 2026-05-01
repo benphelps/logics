@@ -210,14 +210,15 @@ function tickContractMtM(world: World, c: FuturesContract): void {
   // system cash stays conserved — even when the player opens against a
   // notional counterparty (clearing absorbs).
 
-  // Player position (single-position-per-contract).
+  // Player positions are per ship. Walk every ship and MtM whichever
+  // ones hold a position in this contract.
   const player = world.player;
-  if (player?.futures?.[c.id]) {
-    const fp = player.futures[c.id];
-    const sign = fp.side === "long" ? 1 : -1;
-    const playerShipId = player.shipIds[0];
-    const ship = playerShipId ? world.traders[playerShipId] : null;
-    if (ship) {
+  if (player) {
+    for (const shipId of player.shipIds) {
+      const ship = world.traders[shipId];
+      const fp = ship?.futures?.[c.id];
+      if (!ship || !fp) continue;
+      const sign = fp.side === "long" ? 1 : -1;
       applyMtmToPosition(
         c,
         { contracts: fp.contracts * sign, lastMarkPrice: fp.lastMarkPrice },
@@ -255,17 +256,18 @@ function settleContract(world: World, c: FuturesContract): void {
   const spotEq = world.equities[c.underlyingEquityId];
   const spotAtExpiry = spotEq?.price ?? c.clearing;
 
-  // Final MtM at the spot price.
+  // Final MtM at the spot price — for every player ship holding a
+  // position in this contract.
   const player = world.player;
-  if (player?.futures?.[c.id]) {
-    const fp = player.futures[c.id];
-    const sign = fp.side === "long" ? 1 : -1;
-    const shipId = player.shipIds[0];
-    const ship = shipId ? world.traders[shipId] : null;
-    if (ship) {
-      // C-4: physical-delivery path. Player short holding cargo at the
+  if (player) {
+    for (const shipId of player.shipIds) {
+      const ship = world.traders[shipId];
+      const fp = ship?.futures?.[c.id];
+      if (!ship || !fp) continue;
+      const sign = fp.side === "long" ? 1 : -1;
+      // C-4: physical-delivery path. A short holding cargo at the
       // delivery station gets to settle at the strike (avgEntryPrice)
-      // by handing over the cargo. Cargo is removed; player receives
+      // by handing over the cargo. Cargo is removed; ship receives
       // strike × contractSize × contracts cash; MtM is skipped (the
       // strike payment serves in lieu of cash MtM). Margin still
       // refunded.
@@ -281,9 +283,9 @@ function settleContract(world: World, c: FuturesContract): void {
         c.clearing -= pnl;
         ship.funds += fp.marginPosted;
       }
+      if (ship.reservedFutures) delete ship.reservedFutures[c.id];
+      delete ship.futures![c.id];
     }
-    if (player.reservedFutures) delete player.reservedFutures[c.id];
-    delete player.futures[c.id];
   }
 
   for (const t of Object.values(world.traders)) {
@@ -391,20 +393,35 @@ export type FuturesTradeResult = FuturesTradeOk | FuturesTradeFail;
 
 function getPlayerShip(world: World, shipId?: TraderId): Trader | null {
   if (!world.player) return null;
-  const id = shipId && world.player.shipIds.includes(shipId) ? shipId : world.player.shipIds[0];
-  return id ? world.traders[id] ?? null : null;
+  const ids = world.player.shipIds;
+  const id = shipId && ids.includes(shipId) ? shipId : ids[0];
+  const ship = id ? world.traders[id] ?? null : null;
+  if (ship && (!shipId || id === ids[0])) {
+    // Mirror the first ship's futures state onto the legacy player.*
+    // fields so older readers (UI views, tests) keep working without
+    // chasing the per-ship store.
+    aliasPlayerFutures(world.player, ship);
+  }
+  return ship;
 }
 
-function ensureReservedFutures(world: World): Record<EquityId, number> {
-  if (!world.player) return {};
-  if (!world.player.reservedFutures) world.player.reservedFutures = {};
-  return world.player.reservedFutures;
+function aliasPlayerFutures(player: { futures?: Record<EquityId, FuturesPosition>; reservedFutures?: Record<EquityId, number> }, ship: Trader): void {
+  const futures = player.futures ?? ship.futures ?? {};
+  player.futures = futures;
+  ship.futures = futures;
+  const reserved = player.reservedFutures ?? ship.reservedFutures ?? {};
+  player.reservedFutures = reserved;
+  ship.reservedFutures = reserved;
 }
 
-function ensurePlayerFutures(world: World): Record<EquityId, FuturesPosition> {
-  if (!world.player) return {};
-  if (!world.player.futures) world.player.futures = {};
-  return world.player.futures;
+function ensureReservedFutures(ship: Trader): Record<EquityId, number> {
+  if (!ship.reservedFutures) ship.reservedFutures = {};
+  return ship.reservedFutures;
+}
+
+function ensureShipFutures(ship: Trader): Record<EquityId, FuturesPosition> {
+  if (!ship.futures) ship.futures = {};
+  return ship.futures;
 }
 
 function openFutureCommon(
@@ -426,9 +443,9 @@ function openFutureCommon(
   if (!ship) return { ok: false, reason: "No anchor ship." };
   if (ship.state !== "idle") return { ok: false, reason: "Trade only while docked." };
 
-  // One position per contract — flips not allowed in v1. Reduce/close
-  // explicitly through closeFuture.
-  const existing = world.player.futures?.[contractId];
+  // One position per contract per ship — flips not allowed in v1.
+  // Reduce/close explicitly through closeFuture.
+  const existing = ship.futures?.[contractId];
   if (existing && existing.side !== side) {
     return { ok: false, reason: `Currently ${existing.side} on ${eq.ticker}. Close before flipping.` };
   }
@@ -440,10 +457,10 @@ function openFutureCommon(
     return { ok: false, reason: `Need Ç${Math.round(total).toLocaleString()} (margin + fee), have Ç${Math.round(ship.funds).toLocaleString()}.` };
   }
   ship.funds -= total;
-  const reserved = ensureReservedFutures(world);
+  const reserved = ensureReservedFutures(ship);
   reserved[contractId] = (reserved[contractId] ?? 0) + margin;
 
-  const positions = ensurePlayerFutures(world);
+  const positions = ensureShipFutures(ship);
   const mark = markPriceFor(world, c);
   const cur = positions[contractId];
   if (cur) {
@@ -495,7 +512,7 @@ export function closeFuture(world: World, contractId: EquityId, count?: number, 
   const ship = getPlayerShip(world, shipId);
   if (!ship) return { ok: false, reason: "No anchor ship." };
   if (ship.state !== "idle") return { ok: false, reason: "Trade only while docked." };
-  const fp = world.player.futures?.[contractId];
+  const fp = ship.futures?.[contractId];
   if (!fp) return { ok: false, reason: "No open position." };
   const closing = count == null ? fp.contracts : Math.min(fp.contracts, Math.max(0, count));
   if (closing <= 0) return { ok: false, reason: "Nothing to close." };
@@ -516,10 +533,10 @@ export function closeFuture(world: World, contractId: EquityId, count?: number, 
   fp.contracts -= closing;
   fp.marginPosted -= marginRefund;
   c.openInterest = Math.max(0, c.openInterest - closing);
-  const reserved = ensureReservedFutures(world);
+  const reserved = ensureReservedFutures(ship);
   reserved[contractId] = Math.max(0, (reserved[contractId] ?? 0) - marginRefund);
   if (fp.contracts <= 0.0001) {
-    delete world.player.futures![contractId];
+    delete ship.futures![contractId];
     delete reserved[contractId];
   }
   return { ok: true, contracts: closing, cashFlow: marginRefund + realizedPnl - fee, fee, realizedPnl };
@@ -532,8 +549,16 @@ export function listOpenContracts(world: World, goodId?: GoodId): FuturesContrac
   return goodId ? all.filter(c => c.goodId === goodId) : all;
 }
 
-export function listPlayerFutures(world: World): FuturesPosition[] {
-  return Object.values(world.player?.futures ?? {});
+export function listPlayerFutures(world: World, shipId?: TraderId): FuturesPosition[] {
+  if (!world.player) return [];
+  const ids = shipId ? [shipId] : world.player.shipIds;
+  const out: FuturesPosition[] = [];
+  for (const id of ids) {
+    const ship = world.traders[id];
+    if (!ship?.futures) continue;
+    out.push(...Object.values(ship.futures));
+  }
+  return out;
 }
 
 export function unrealizedFuturesPnl(world: World, fp: FuturesPosition): number {

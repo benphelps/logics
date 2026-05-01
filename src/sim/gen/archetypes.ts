@@ -10,6 +10,7 @@ export const ARCHETYPE_NAMES: ArchetypeName[] = [
   "agricultural-ring",
   "frontier-outpost",
   "research-station",
+  "shipyard",
 ];
 
 interface ArchetypeBuildContext {
@@ -52,7 +53,9 @@ const tradeHub: Builder = ({ rng, id, name, position }) => {
     targetStock: {
       protein: 100, grain: 80, polymer: 40, fiber: 40, parts: 20, plasma: 120,
       medkits: 40, electronics: 20, weapons: 15, luxury_goods: 20,
-      upg_cargo_1: 1, upg_fuel_1: 1, upg_hull_1: 1, upg_systems_nav_1: 1,
+      // Hubs carry a token upgrade so docked ships can do quick fixes —
+      // shipyards are the real outfitters now, so keep this minimal.
+      upg_cargo_1: 1, upg_systems_nav_1: 1,
     },
   };
 };
@@ -100,8 +103,9 @@ const miningBelt: Builder = ({ rng, id, name, position }) => {
     targetStock: {
       ore: 120, parts: 30, grain: 60, protein: 20, polymer: 30, plasma: 180, antimatter: 60,
       weapons: 30, medkits: 10,
-      upg_engine_1: 1, upg_fuel_1: 1, upg_hull_1: 1, upg_weapon_1: 1,
-      ...(techLevel >= 8 ? { upg_engine_2: 1, upg_hull_2: 1, upg_weapon_2: 1, upg_cargo_loader_2: 1, upg_systems_exchange_2: 1 } : {}),
+      // Industrial belts only carry a couple of basic upgrades — the
+      // shipyard is now the outfitter for higher-tier kit.
+      upg_hull_1: 1, upg_weapon_1: 1,
     },
   };
 };
@@ -135,7 +139,8 @@ const agriculturalRing: Builder = ({ rng, id, name, position }) => {
     targetStock: {
       grain: 200, vatmeat: 50, polymer: 80, parts: 20, fiber: 20, plasma: 80,
       medkits: 50, electronics: 20, weapons: 10,
-      upg_cargo_1: 1, upg_fuel_1: 1, upg_systems_nav_1: 1,
+      // Agri rings stock a single basic cargo upgrade; nothing else.
+      upg_cargo_1: 1,
     },
   };
 };
@@ -182,7 +187,9 @@ const frontierOutpost: Builder = ({ rng, id, name, position }) => {
     targetStock: {
       xenospice: 30, silk: 20, grain: 40, protein: 25, parts: 10, plasma: 70,
       luxury_goods: 30, medkits: 15, electronics: 15, weapons: 20, fiber: 10,
-      upg_cargo_2: 1, upg_fuel_2: 1, upg_hull_2: 1, upg_weapon_2: 1, upg_cargo_loader_2: 1,
+      // Frontier yards only handle hull/weapon patches — sturdier
+      // upgrades live at shipyards now.
+      upg_hull_2: 1, upg_weapon_2: 1,
     },
   };
 };
@@ -216,8 +223,49 @@ const researchStation: Builder = ({ rng, id, name, position }) => {
     targetStock: {
       electronics: 40, grain: 30, protein: 20, parts: 30, antimatter: 30, plasma: 80,
       medkits: 15, luxury_goods: 10,
-      upg_engine_2: 1, upg_fuel_2: 1, upg_hull_2: 1, upg_systems_exchange_2: 1,
-      ...(techLevel >= 9 ? { upg_cargo_3: 1, upg_engine_3: 1, upg_fuel_3: 1, upg_hull_3: 1, upg_cargo_loader_3: 1, upg_systems_oracle_3: 1 } : {}),
+      // Research stations stock a single specialty systems upgrade —
+      // shipyards now own the broad upgrade catalog including tier 3.
+      upg_systems_exchange_2: 1,
+    },
+  };
+};
+
+// Shipyard — dedicated rim outpost. The Markets tab swaps to a ship
+// blueprint catalog (handled in the UI); produces/consumes is empty so
+// no general-goods cargo trade happens here. The shipyard still stocks
+// every tier of upgrade good (expanded vs. regular stations) and the
+// hire system seeds a richer crew pool via a shipyard-specific bonus.
+// Contracts board still posts normally so a docked player can pick up
+// runs from the rim. Shipyards belong to no faction.
+const shipyard: Builder = ({ rng, id, name, position }) => {
+  const techLevel = rangeInt(rng, 6, 9);
+  return {
+    id, name, position,
+    population: rangeInt(rng, 120, 280),
+    traits: {
+      techLevel,
+      tags: ["shipyard", "rim", "high-tech"],
+    },
+    primaryExports: [],
+    primaryImports: [],
+    produces: [],
+    consumes: [],
+    // Expanded upgrade catalog — every tier-1 + tier-2 variant, plus
+    // tier-3 variants when the yard's tech level supports them. Other
+    // station types only stock a slice of the catalog; here you get
+    // the full vertical to outfit a freshly-bought ship in one stop.
+    targetStock: {
+      upg_cargo_1: 1, upg_cargo_modular_1: 1,
+      upg_engine_1: 1, upg_engine_solar_1: 1,
+      upg_fuel_1: 1, upg_hull_1: 1, upg_weapon_1: 1, upg_systems_nav_1: 1,
+      upg_cargo_2: 1, upg_cargo_loader_2: 1, upg_cargo_smuggler_2: 1,
+      upg_engine_2: 1, upg_fuel_2: 1, upg_hull_2: 1,
+      upg_weapon_2: 1, upg_systems_exchange_2: 1,
+      ...(techLevel >= 8 ? {
+        upg_cargo_3: 1, upg_cargo_loader_3: 1,
+        upg_engine_3: 1, upg_fuel_3: 1, upg_hull_3: 1,
+        upg_systems_oracle_3: 1,
+      } : {}),
     },
   };
 };
@@ -228,4 +276,5 @@ export const ARCHETYPE_BUILDERS: Record<ArchetypeName, Builder> = {
   "agricultural-ring":  agriculturalRing,
   "frontier-outpost":   frontierOutpost,
   "research-station":   researchStation,
+  "shipyard":           shipyard,
 };

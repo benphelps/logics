@@ -26,10 +26,11 @@ import { listLocalJobs } from "../../sim/jobs";
 import { effectivePerDistance, hasCrew, ignoresFuel, totalCrewWage, travelTicksFor } from "../../sim/crew";
 import { MAINTENANCE_DEBT_TRAVEL_BLOCK } from "../../sim/crew";
 import { listHiresAt } from "../../sim/hires";
+import { listShipyardInventory } from "../../sim/shipyards";
 import { selectRefuelType, UNLOAD_TICKS, unloadTicksRemainingFor } from "../../sim/traders";
 import { UPGRADE_SLOTS, installedUpgrade, isUpgradeGood, upgradeDef, upgradeEffectText } from "../../sim/upgrades";
 import type { CrewModifiers, CrewRole, Equity } from "../../sim/types";
-import type { CrewMember, GoodId, Job, JobId, LocationDef, LocationId, Trader, TraderId, UpgradeSlot, World } from "../../sim/types";
+import type { CrewMember, GoodId, Job, JobId, LocationDef, LocationId, ShipBlueprint, ShipTrait, Trader, TraderId, UpgradeSlot, World } from "../../sim/types";
 import { parseBasisUnderlying, priceChangePct } from "../../sim/stock";
 import { useCrewHeadshot } from "../headshots";
 import { goodArtUrl, jobArtUrl, shipArtUrl, stationArtUrl, stationKind, stationKindLabel, stationScale, stationScaleLabel, stationSubtype, stationSubtypeLabel } from "../art";
@@ -423,8 +424,12 @@ function contractCueText(_hint: GuidedHint, jobId: JobId, world: World, fallback
 
 type GoodInfoFocus = { kind: "good"; good: GoodId; source: "market" | "cargo" };
 type StationInfoFocus = { kind: "station"; loc: LocationId; source: "station" | "travel" };
-type InfoFocus = GoodInfoFocus | StationInfoFocus;
-type InfoPanelKind = "ship" | "station" | "good";
+// Ship blueprint hover/click focus — only set when a shipyard's
+// marketplace row is the active row in the markets table. The info
+// panel renders blueprint-shaped content, not goods-shaped content.
+type ShipBlueprintInfoFocus = { kind: "ship-blueprint"; blueprintId: string };
+type InfoFocus = GoodInfoFocus | StationInfoFocus | ShipBlueprintInfoFocus;
+type InfoPanelKind = "ship" | "station" | "good" | "ship-blueprint";
 type InfoPanelPhase = "idle" | "exiting" | "entering";
 type InfoPanelTransition = {
   renderedFocus: InfoFocus | null;
@@ -437,9 +442,9 @@ type InfoPanelTransition = {
 };
 
 function infoFocusKey(focus: InfoFocus): string {
-  return focus.kind === "good"
-    ? `good:${focus.source}:${focus.good}`
-    : `station:${focus.loc}`;
+  if (focus.kind === "good") return `good:${focus.source}:${focus.good}`;
+  if (focus.kind === "ship-blueprint") return `blueprint:${focus.blueprintId}`;
+  return `station:${focus.loc}`;
 }
 
 function infoPanelKind(focus: InfoFocus | null): InfoPanelKind {
@@ -455,7 +460,21 @@ function infoFocusLabel(focus: InfoFocus, world: World): string {
     const name = world.goods[focus.good]?.name ?? focus.good;
     return focus.source === "cargo" ? `${name} cargo` : name;
   }
+  if (focus.kind === "ship-blueprint") {
+    const bp = findBlueprintEverywhere(world, focus.blueprintId);
+    return bp ? `${bp.name} (${bp.classLabel})` : focus.blueprintId;
+  }
   return world.locations[focus.loc]?.name ?? focus.loc;
+}
+
+// Helper for label lookup — the focus only carries a blueprint id; the
+// blueprint itself lives in world.shipyardInventory keyed by station.
+function findBlueprintEverywhere(world: World, id: string) {
+  for (const list of Object.values(world.shipyardInventory ?? {})) {
+    const bp = list.find(b => b.id === id);
+    if (bp) return bp;
+  }
+  return null;
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
@@ -536,8 +555,11 @@ function DockedView({ ship, world, loc, guidedPlan, hint, target, hintText, cueT
   const pinnedStations = new Set<LocationId>();
   for (const pinned of pinnedFocuses) {
     if (pinned.kind === "station") pinnedStations.add(pinned.loc);
-    else if (pinned.source === "cargo") pinnedCargoGoods.add(pinned.good);
-    else pinnedMarketGoods.add(pinned.good);
+    else if (pinned.kind === "good" && pinned.source === "cargo") pinnedCargoGoods.add(pinned.good);
+    else if (pinned.kind === "good") pinnedMarketGoods.add(pinned.good);
+    // ship-blueprint pins don't drive cargo/market highlighting; they
+    // only affect which row gets the "active" treatment in the
+    // shipyard table, which the table component handles itself.
   }
 
   const pulseClass = suggestionPulse === 0
@@ -581,6 +603,11 @@ function DockedView({ ship, world, loc, guidedPlan, hint, target, hintText, cueT
             onSelectGood={(good) => togglePinnedFocus({ kind: "good", good, source: "market" })}
             onHoverGood={(good) => {
               if (good) setHoverFocus({ kind: "good", good, source: "market" });
+              else clearHoverFocus();
+            }}
+            onSelectBlueprint={(id) => togglePinnedFocus({ kind: "ship-blueprint", blueprintId: id })}
+            onHoverBlueprint={(id) => {
+              if (id) setHoverFocus({ kind: "ship-blueprint", blueprintId: id });
               else clearHoverFocus();
             }}
           />
@@ -1562,7 +1589,7 @@ function shouldGuardDepartureForSuggestions(world: World, target: HintTarget, de
   return hasLocalSuggestedAction || suggestedDifferentDestination;
 }
 
-function StationExchangeCard({ ship, world, loc, target, hintText, cueText, selectedGood, pinnedGoods, inTransit, onSelectGood, onHoverGood }: {
+function StationExchangeCard({ ship, world, loc, target, hintText, cueText, selectedGood, pinnedGoods, inTransit, onSelectGood, onHoverGood, onSelectBlueprint, onHoverBlueprint }: {
   ship: Trader;
   world: World;
   loc: LocationDef;
@@ -1574,6 +1601,8 @@ function StationExchangeCard({ ship, world, loc, target, hintText, cueText, sele
   inTransit: boolean;
   onSelectGood: (good: GoodId) => void;
   onHoverGood: (good: GoodId | null) => void;
+  onSelectBlueprint: (id: string) => void;
+  onHoverBlueprint: (id: string | null) => void;
 }) {
   // Both fleet-view cards bind to the shared FleetTab in the store —
   // selecting Markets/Offers/etc. on this side flips the ship card to
@@ -1586,14 +1615,22 @@ function StationExchangeCard({ ship, world, loc, target, hintText, cueText, sele
   const market = world.markets[loc.id];
   const offers = listHiresAt(world, loc.id);
   const localContractCount = listLocalJobs(world, loc.id).length;
-  const marketGoodsCount = Object.keys(world.goods).filter(gid =>
-    !isUpgradeGood(gid)
-    && ((market.stock[gid] ?? 0) > 0.001 || findCargoLot(ship, gid) != null)
-  ).length;
+  // Shipyards are a different kind of market: they sell ship blueprints
+  // exclusively, no goods / upgrades / crew / contracts. The Markets tab
+  // shows blueprints; the other tabs are hidden so the UI doesn't lie
+  // about empty inventories.
+  const isShipyard = loc.traits.tags.includes("shipyard");
+  const blueprints = isShipyard ? listShipyardInventory(world, loc.id) : [];
+  const marketGoodsCount = isShipyard
+    ? blueprints.length
+    : Object.keys(world.goods).filter(gid =>
+        !isUpgradeGood(gid)
+        && ((market.stock[gid] ?? 0) > 0.001 || findCargoLot(ship, gid) != null)
+      ).length;
   const upgradeCount = Object.keys(world.goods).filter(gid => isUpgradeGood(gid) && (market.stock[gid] ?? 0) >= 1).length;
-  const marketsSuggested = manualActions && targetSuggestsMarketAction(target);
-  const upgradesSuggested = manualActions && targetSuggestsUpgradeBuy(target);
-  const contractsSuggested = manualActions && targetSuggestsContracts(target);
+  const marketsSuggested = !isShipyard && manualActions && targetSuggestsMarketAction(target);
+  const upgradesSuggested = !isShipyard && manualActions && targetSuggestsUpgradeBuy(target);
+  const contractsSuggested = !isShipyard && manualActions && targetSuggestsContracts(target);
   const marketHintText = cueText.sections.market ?? hintText;
   const upgradeHintText = cueText.sections.upgrades ?? hintText;
   const contractHintText = cueText.sections.contracts ?? hintText;
@@ -1606,7 +1643,7 @@ function StationExchangeCard({ ship, world, loc, target, hintText, cueText, sele
           onClick={() => setTab("markets")}
           title={marketsSuggested ? marketHintText : undefined}
         >
-          Markets <span className="bridge-tab-count">{marketGoodsCount}</span>
+          {isShipyard ? "Ships" : "Markets"} <span className="bridge-tab-count">{marketGoodsCount}</span>
         </button>
         <button
           className={`bridge-tab ${tab === "upgrades" ? "active" : ""} ${upgradesSuggested ? "has-suggestion" : ""}`}
@@ -1628,19 +1665,31 @@ function StationExchangeCard({ ship, world, loc, target, hintText, cueText, sele
       </div>
       <div className={`exchange-card-tab-body ${inTransit ? "transit-preview-content" : ""}`} data-scroll-key={`fleet:${ship.id}:exchange:${tab}`}>
         {tab === "markets" && (
-          <MarketTableBody
-            ship={ship}
-            world={world}
-            loc={loc}
-            target={target}
-            hintText={hintText}
-            cueText={cueText}
-            selectedGood={selectedGood}
-            pinnedGoods={pinnedGoods}
-            interactionLocked={inTransit}
-            onSelectGood={onSelectGood}
-            onHoverGood={onHoverGood}
-          />
+          isShipyard ? (
+            <ShipyardMarketBody
+              ship={ship}
+              world={world}
+              loc={loc}
+              blueprints={blueprints}
+              interactionLocked={inTransit}
+              onSelectBlueprint={onSelectBlueprint}
+              onHoverBlueprint={onHoverBlueprint}
+            />
+          ) : (
+            <MarketTableBody
+              ship={ship}
+              world={world}
+              loc={loc}
+              target={target}
+              hintText={hintText}
+              cueText={cueText}
+              selectedGood={selectedGood}
+              pinnedGoods={pinnedGoods}
+              interactionLocked={inTransit}
+              onSelectGood={onSelectGood}
+              onHoverGood={onHoverGood}
+            />
+          )
         )}
         {tab === "upgrades" && <StationUpgradePurchaseTab ship={ship} world={world} loc={loc} target={target} hintText={hintText} cueText={cueText} interactionLocked={inTransit} />}
         {tab === "offers" && <HireOffersTab ship={ship} world={world} loc={loc} interactionLocked={inTransit} />}
@@ -1986,7 +2035,9 @@ function InfoAreaCard({ ship, world, loc, focus, pinnedFocuses, activePinnedKey,
     ? shipArtUrl(ship)
     : renderedFocus.kind === "station"
       ? stationArtUrl(stationLoc)
-      : goodArtUrl(world, renderedFocus.good);
+      : renderedFocus.kind === "ship-blueprint"
+        ? blueprintArtUrl(world, renderedFocus.blueprintId, ship)
+        : goodArtUrl(world, renderedFocus.good);
   const phaseClass = transition.phase === "idle" ? "" : `is-${transition.phase}`;
   const handleInfoAnimationEnd = (event: AnimationEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget) return;
@@ -2059,6 +2110,8 @@ function InfoAreaCard({ ship, world, loc, focus, pinnedFocuses, activePinnedKey,
               <ShipInfoPanelContent ship={ship} world={world} />
             ) : renderedFocus.kind === "station" ? (
               <StationTradeHelperInfoContent loc={stationLoc} world={world} />
+            ) : renderedFocus.kind === "ship-blueprint" ? (
+              <ShipBlueprintInfoContent ship={ship} world={world} blueprintId={renderedFocus.blueprintId} />
             ) : (
               <TradeGoodInfoContent ship={ship} world={world} loc={loc} focus={renderedFocus} target={target} hint={hint} />
             )}
@@ -2732,6 +2785,296 @@ function ShipUpgradesTab({ ship }: { ship: Trader }) {
       )}
     </div>
   );
+}
+
+// Shipyards swap the goods Markets table for a ship-blueprint table.
+// Hovering a row sets the active info focus to that blueprint so the
+// info panel switches to the dedicated ship-info content. Clicking the
+// row pins it (exact same toggle-pin behaviour as goods rows).
+function ShipyardMarketBody({ ship, loc, blueprints, interactionLocked, onSelectBlueprint, onHoverBlueprint }: {
+  ship: Trader;
+  world: World;
+  loc: LocationDef;
+  blueprints: ShipBlueprint[];
+  interactionLocked: boolean;
+  onSelectBlueprint: (id: string) => void;
+  onHoverBlueprint: (id: string | null) => void;
+}) {
+  const purchaseShip = useStore(s => s.purchaseShip);
+  // The buying ship is the one this fleet card already represents — by
+  // construction it must be docked here for the card to render at all.
+  const canBuy = !interactionLocked && ship.state === "idle" && ship.location === loc.id;
+  if (blueprints.length === 0) {
+    return (
+      <div className="market-table-zone">
+        <table className="market-table market-table-readonly">
+          <thead>
+            <tr>
+              <th>Ship</th>
+              <th>Class</th>
+              <th className="numeric">Price</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colSpan={3} className="dim" style={{ padding: "20px 12px", textAlign: "center" }}>No blueprints in inventory right now. Check back soon.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+  return (
+    <div
+      className="market-table-zone"
+      onMouseLeave={() => onHoverBlueprint(null)}
+      onBlur={(event) => {
+        const next = event.relatedTarget;
+        if (!(next instanceof Node) || !event.currentTarget.contains(next)) onHoverBlueprint(null);
+      }}
+    >
+      <SortableRows
+        rows={blueprints}
+        columns={[
+          { id: "name",  label: "ship",  getValue: bp => bp.name },
+          { id: "class", label: "class", getValue: bp => bp.classLabel },
+          { id: "cargo", label: "cargo", getValue: bp => bp.baseCapacity, defaultDirection: "desc" },
+          { id: "speed", label: "speed", getValue: bp => bp.baseSpeed, defaultDirection: "desc" },
+          { id: "hull",  label: "hull",  getValue: bp => bp.baseHull, defaultDirection: "desc" },
+          { id: "price", label: "price", getValue: bp => bp.price, defaultDirection: "desc" },
+        ]}
+      >
+        {(sorted, sort) => (
+          <table className={`market-table shipyard-market-table ${!canBuy ? "market-table-readonly" : ""}`}>
+            <colgroup>
+              <col className="col-good" />
+              <col className="col-num" />
+              <col className="col-num" />
+              <col className="col-num" />
+              <col className="col-num" />
+              <col className="col-num" />
+              {canBuy && <col className="col-action" />}
+            </colgroup>
+            <thead>
+              <tr>
+                <SortableTh sort={sort} columnId="name">Ship</SortableTh>
+                <SortableTh sort={sort} columnId="class">Class</SortableTh>
+                <SortableTh sort={sort} columnId="cargo" className="numeric">Cargo</SortableTh>
+                <SortableTh sort={sort} columnId="speed" className="numeric">Speed</SortableTh>
+                <SortableTh sort={sort} columnId="hull"  className="numeric">Hull</SortableTh>
+                <SortableTh sort={sort} columnId="price" className="numeric">Price</SortableTh>
+                {canBuy && <th>Action</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map(bp => {
+                const affordable = ship.funds >= bp.price;
+                const blockedReason = !affordable
+                  ? `Need Ç${bp.price.toLocaleString()}, have Ç${Math.floor(ship.funds).toLocaleString()}.`
+                  : "";
+                return (
+                  <tr
+                    key={bp.id}
+                    className="shipyard-market-row"
+                    onMouseEnter={() => onHoverBlueprint(bp.id)}
+                    onMouseLeave={() => onHoverBlueprint(null)}
+                    onClick={() => onSelectBlueprint(bp.id)}
+                  >
+                    <td>
+                      <span className="shipyard-row-name">{bp.name}</span>
+                      {bp.traits.length > 0 && (
+                        <span className="shipyard-row-trait dim"> · {bp.traits.length} trait{bp.traits.length === 1 ? "" : "s"}</span>
+                      )}
+                    </td>
+                    <td>
+                      <span className={`shipyard-class-pill shipyard-class-${bp.class}`}>{bp.classLabel}</span>
+                    </td>
+                    <td className="numeric mono">{bp.baseCapacity}</td>
+                    <td className="numeric mono">{bp.baseSpeed.toFixed(2)}</td>
+                    <td className="numeric mono">{bp.baseHull}</td>
+                    <td className="numeric mono">{fmtPrice(bp.price)}</td>
+                    {canBuy && (
+                      <td>
+                        <button
+                          type="button"
+                          className="btn-action btn-buy-ship"
+                          disabled={!affordable}
+                          title={blockedReason}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            if (!affordable) return;
+                            if (!confirm(`Buy ${bp.name} (${bp.classLabel}) for Ç${bp.price.toLocaleString()}?\nFunds will be debited from ${ship.name}.`)) return;
+                            purchaseShip(bp.id);
+                          }}
+                        >
+                          Buy
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </SortableRows>
+    </div>
+  );
+}
+
+function fmtPrice(amount: number): string {
+  if (amount >= 1_000_000) return `Ç${(amount / 1_000_000).toFixed(2)}M`;
+  if (amount >= 1_000) return `Ç${(amount / 1_000).toFixed(0)}k`;
+  return `Ç${amount.toLocaleString()}`;
+}
+
+// Art for a ship-blueprint info card. We don't have per-class hero
+// renders yet, so use the buying ship's art as a stand-in — keeps the
+// art slot warm and gives the panel some visual weight.
+function blueprintArtUrl(world: World, blueprintId: string, fallbackShip: Trader): string {
+  void world;
+  void blueprintId;
+  return shipArtUrl(fallbackShip);
+}
+
+// Info-panel content for a focused ship blueprint. Clones the structure
+// of ShipInfoPanelContent so it slots into the existing info-card frame
+// — eyebrow / title / meta line, KPI grid, themed sections — but with
+// blueprint-shaped data plus a Buy CTA.
+function ShipBlueprintInfoContent({ ship, world, blueprintId }: { ship: Trader; world: World; blueprintId: string }) {
+  const purchaseShip = useStore(s => s.purchaseShip);
+  const found = findBlueprintEverywhere(world, blueprintId);
+  if (!found) {
+    return (
+      <InfoPanelFrame
+        eyebrow="Ship blueprint"
+        title="Sold or expired"
+        metaClassName="station-info-tags"
+        meta={<span className="dim">This blueprint is no longer in inventory.</span>}
+      >
+        <div className="dim" style={{ padding: 12 }}>Pick another row to inspect.</div>
+      </InfoPanelFrame>
+    );
+  }
+  const bp = found;
+  const station = world.locations[bp.locationId];
+  const dockedHere = ship.state === "idle" && ship.location === bp.locationId;
+  const affordable = ship.funds >= bp.price;
+  const buyDisabledReason = !dockedHere
+    ? `Dock ${ship.name} at ${station?.name ?? "this shipyard"} to take delivery.`
+    : !affordable
+      ? `Need Ç${bp.price.toLocaleString()}, ${ship.name} has Ç${Math.floor(ship.funds).toLocaleString()}.`
+      : "";
+
+  return (
+    <InfoPanelFrame
+      eyebrow="Ship blueprint"
+      title={bp.name}
+      badge={<span className={`station-kind-pill shipyard-class-${bp.class}`}>{bp.classLabel}</span>}
+      metaClassName="station-info-tags"
+      meta={(
+        <>
+          <span>{station?.name ?? bp.locationId}</span>
+          <span>{world.goods[bp.fuelType]?.name ?? bp.fuelType}</span>
+          <span>{Object.keys(bp.preInstalled).length} pre-installed</span>
+          {bp.traits.length > 0 && <span>{bp.traits.length} trait{bp.traits.length === 1 ? "" : "s"}</span>}
+        </>
+      )}
+    >
+      <div className="trade-helper-note shipyard-info-flavor">{bp.flavor}</div>
+
+      <dl className="trade-helper-grid station-info-grid">
+        <Stat label="price" value={fmtPrice(bp.price)} />
+        <Stat label="cargo" value={`${bp.baseCapacity}`} />
+        <Stat label="speed" value={bp.baseSpeed.toFixed(2)} />
+        <Stat label="fuel cap" value={`${bp.baseFuelCapacity}`} />
+        <Stat label="hull" value={`${bp.baseHull}`} />
+        <Stat label="weapons" value={`${bp.baseWeaponPower}`} />
+      </dl>
+
+      <div className="trade-helper-section">
+        <div className="exchange-section-title">Pre-installed upgrades</div>
+        {Object.keys(bp.preInstalled).length === 0 ? (
+          <div className="trade-helper-line muted"><span>None</span><span className="dim">bare hull</span></div>
+        ) : (
+          (Object.keys(bp.preInstalled) as UpgradeSlot[]).map(slot => {
+            const goodId = bp.preInstalled[slot];
+            const def = goodId ? upgradeDef(goodId) : null;
+            if (!def) return null;
+            return (
+              <div key={slot} className="trade-helper-line">
+                <span><IconLabel icon={GiFactory}>{def.name}</IconLabel></span>
+                <span className="dim mono">{slotLabel(slot)} · T{def.tier}</span>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      <div className="trade-helper-section">
+        <div className="exchange-section-title">Traits</div>
+        {bp.traits.length === 0 ? (
+          <div className="trade-helper-line muted"><span>Standard hull</span><span className="dim">no special perks</span></div>
+        ) : (
+          bp.traits.map(trait => (
+            <div key={trait} className="trade-helper-line">
+              <span><IconLabel icon={traitIconFor(trait)}>{shipTraitLabel(trait)}</IconLabel></span>
+              <span className="dim shipyard-trait-blurb">{shipTraitBlurb(trait)}</span>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="trade-helper-section shipyard-buy-section">
+        <button
+          type="button"
+          className="btn-action btn-buy-ship-large primary"
+          disabled={!dockedHere || !affordable}
+          title={buyDisabledReason}
+          onClick={() => {
+            if (!dockedHere || !affordable) return;
+            if (!confirm(`Buy ${bp.name} (${bp.classLabel}) for Ç${bp.price.toLocaleString()}?\nFunds will be debited from ${ship.name}.`)) return;
+            purchaseShip(bp.id);
+          }}
+        >
+          Buy for Ç{bp.price.toLocaleString()}
+        </button>
+        {buyDisabledReason && <div className="dim shipyard-buy-blocked">{buyDisabledReason}</div>}
+      </div>
+    </InfoPanelFrame>
+  );
+}
+
+function slotLabel(slot: UpgradeSlot): string {
+  return UPGRADE_SLOTS.find(s => s.slot === slot)?.label ?? slot;
+}
+
+function shipTraitLabel(trait: ShipTrait): string {
+  switch (trait) {
+    case "self-piloted":   return "Self-piloted";
+    case "ai-navigator":   return "AI navigator";
+    case "extra-slot":     return "+1 upgrade slot";
+    case "fuel-efficient": return "Fuel-efficient";
+    case "rapid-unload":   return "Rapid unload";
+  }
+}
+
+function shipTraitBlurb(trait: ShipTrait): string {
+  switch (trait) {
+    case "self-piloted":   return "no captain crew needed";
+    case "ai-navigator":   return "autopilot without a navigator";
+    case "extra-slot":     return "one bonus upgrade socket";
+    case "fuel-efficient": return "burns less per distance";
+    case "rapid-unload":   return "faster unload at every dock";
+  }
+}
+
+function traitIconFor(trait: ShipTrait): IconType {
+  switch (trait) {
+    case "self-piloted":   return GiAstronautHelmet;
+    case "ai-navigator":   return GiPathDistance;
+    case "extra-slot":     return GiFactory;
+    case "fuel-efficient": return GiFuelTank;
+    case "rapid-unload":   return GiCargoCrate;
+  }
 }
 
 function StationUpgradePurchaseTab({ ship, world, loc, target, hintText, cueText, interactionLocked }: {

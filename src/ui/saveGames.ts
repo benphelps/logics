@@ -176,8 +176,38 @@ function migrateLoadedWorld(world: World): World {
       }
       world.player.portfolio = {};
     }
+    // Multi-ship migration: pre-multi-ship saves stored stock positions /
+    // trades / futures / reserved-* on the player. Each ship now owns its
+    // own copy. Promote the legacy player-wide state onto the first ship
+    // so trades and positions stick to the original ship the player was
+    // controlling. New ships start empty.
+    migratePlayerStockToShips(world);
   }
   return world;
+}
+
+function migratePlayerStockToShips(world: World): void {
+  const player = world.player;
+  if (!player) return;
+  const firstShipId = player.shipIds[0];
+  const firstShip = firstShipId ? world.traders[firstShipId] : null;
+  if (!firstShip) return;
+
+  if (player.positions && Object.keys(player.positions).length > 0 && !firstShip.stockPositions) {
+    firstShip.stockPositions = { ...player.positions };
+  }
+  if (player.trades && player.trades.length > 0 && !firstShip.stockTrades) {
+    firstShip.stockTrades = [...player.trades];
+  }
+  if (player.reservedShares && Object.keys(player.reservedShares).length > 0 && !firstShip.reservedShares) {
+    firstShip.reservedShares = { ...player.reservedShares };
+  }
+  if (player.futures && Object.keys(player.futures).length > 0 && !firstShip.futures) {
+    firstShip.futures = { ...player.futures };
+  }
+  if (player.reservedFutures && Object.keys(player.reservedFutures).length > 0 && !firstShip.reservedFutures) {
+    firstShip.reservedFutures = { ...player.reservedFutures };
+  }
 }
 
 // Pre-news saves won't have a newsEvents field. Backfill a fresh state so

@@ -173,6 +173,44 @@ export type UpgradeSlot = "cargo" | "engine" | "fuel" | "hull" | "weapon" | "sys
 export type UpgradeTier = 1 | 2 | 3 | 4;
 export type ShipUpgradeSlots = Partial<Record<UpgradeSlot, GoodId>>;
 
+// Ship class — drives the build-template that decides base stats and which
+// upgrade catalogs the ship can browse at a shipyard. Player ships also
+// keep this so the marketplace can offer class-restricted upgrades later.
+export type ShipClass = "freighter" | "courier" | "hauler" | "cruiser" | "exotic";
+
+// Per-ship perks baked at construction time. These are flags rather than
+// numeric modifiers — the sim reads them at decision points (e.g. a
+// `selfPiloted` ship doesn't require a captain crew member; an
+// `aiNavigator` ship doesn't require a navigator for autopilot guidance).
+export type ShipTrait =
+  | "self-piloted"     // built-in pilot — ship runs without a captain in the crew slot
+  | "ai-navigator"     // built-in navigator — autopilot/guidance unlocks without a navigator
+  | "extra-slot"       // grants one bonus upgrade slot (Phase F use)
+  | "fuel-efficient"   // baseline rangeEfficiency bonus
+  | "rapid-unload";    // baseline unloadSpeedBonus
+
+// A ship offered for sale at a shipyard. Purchase mints a Trader from the
+// blueprint and adds its id to player.shipIds.
+export interface ShipBlueprint {
+  id: string;
+  locationId: LocationId;
+  name: string;
+  class: ShipClass;
+  classLabel: string;
+  flavor: string;
+  baseCapacity: number;
+  baseSpeed: number;
+  baseFuelCapacity: number;
+  baseHull: number;
+  baseWeaponPower: number;
+  fuelType: GoodId;
+  preInstalled: ShipUpgradeSlots;
+  traits: ShipTrait[];
+  price: number;        // total purchase price; debited from buying ship's wallet
+  postedTick: number;
+  expiresAtTick: number;
+}
+
 export interface Trader {
   id: TraderId;
   name: string;
@@ -210,6 +248,20 @@ export interface Trader {
   crew?: ShipCrew;                  // player-only — NPCs operate without a crew model.
   maintenanceDebt?: number;         // accrued unpaid maintenance for player ships missing a mechanic.
   stockState?: ShipTraderState;     // Phase 2: agent stock-trading state (style, risk, positions). Optional so non-trading ships have nothing.
+  // Set when a ship was minted from a shipyard blueprint. Drives
+  // class-restricted upgrade catalogs and self-piloted/AI-navigator
+  // perks. Optional for back-compat with the starting ship and NPCs.
+  shipClass?: ShipClass;
+  traits?: ShipTrait[];
+  // Player-only stock-trading state. Per-ship so different ships can hold
+  // different positions in the same equity, and so cash flows always go
+  // through the trading ship's wallet. NPCs don't read these fields —
+  // their stock state lives on `stockState` above.
+  stockPositions?: Record<EquityId, StockPosition>;
+  stockTrades?: TradeRecord[];
+  reservedShares?: Record<EquityId, number>;
+  futures?: Record<EquityId, FuturesPosition>;
+  reservedFutures?: Record<EquityId, number>;
 }
 
 // --- agent stock-trading state ------------------------------------------
@@ -496,6 +548,12 @@ export interface World {
   // test worlds round-trip without explicit setup; eventMultiplier short-
   // circuits to 1 when undefined.
   newsEvents?: import("./news/types").NewsEventsState;
+  // Shipyard inventory — blueprints currently for sale at each shipyard
+  // station. Ticked alongside hires/jobs (expire-then-post). Optional for
+  // back-compat; old saves load with empty inventories that fill in
+  // organically over the first few ticks.
+  shipyardInventory?: Record<LocationId, ShipBlueprint[]>;
+  nextShipBlueprintId?: number;
 }
 
 // --- order book ----------------------------------------------------------

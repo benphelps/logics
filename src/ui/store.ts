@@ -22,6 +22,7 @@ import { MILESTONES, replenishUnlockedUpgrades } from "../sim/milestones";
 import { releaseCrewHeadshots } from "./headshots";
 import { abandonPosition, adjustPlayerLimit, buyShares, cancelPlayerLimit, coverShares, placeLimitBuy, placeLimitSell, sellShares, setStopLoss, setTakeProfit, shortShares } from "../sim/stock";
 import { openLongFuture as simOpenLongFuture, openShortFuture as simOpenShortFuture, closeFuture as simCloseFuture } from "../sim/stock/futures";
+import { purchaseShip as simPurchaseShip } from "../sim/shipyards";
 import {
   createGameSlot,
   deleteGameSlot,
@@ -144,9 +145,12 @@ function seedDeveloperPositions(world: World, ship: Trader): void {
   const commodity = sortedEquities(world, "commodity").find(eq => eq.underlyingId === "grain")
     ?? sortedEquities(world, "commodity")[0];
 
-  world.player.positions = {};
+  // Seed positions onto the dev ship rather than the player-global record;
+  // each ship now owns its own positions / trades / futures (only
+  // achievements stay shared across the fleet).
+  ship.stockPositions = {};
   if (station) {
-    world.player.positions[station.id] = {
+    ship.stockPositions[station.id] = {
       equityId: station.id,
       kind: "long",
       shares: 24,
@@ -157,7 +161,7 @@ function seedDeveloperPositions(world: World, ship: Trader): void {
     };
   }
   if (commodity) {
-    world.player.positions[commodity.id] = {
+    ship.stockPositions[commodity.id] = {
       equityId: commodity.id,
       kind: "long",
       shares: 40,
@@ -168,7 +172,7 @@ function seedDeveloperPositions(world: World, ship: Trader): void {
     };
   }
   if (syndicate) {
-    world.player.positions[syndicate.id] = {
+    ship.stockPositions[syndicate.id] = {
       equityId: syndicate.id,
       kind: "short",
       shares: 12,
@@ -314,6 +318,11 @@ interface UiState {
   openLongFuture: (contractId: EquityId, count: number) => void;
   openShortFuture: (contractId: EquityId, count: number) => void;
   closeFuture: (contractId: EquityId, count?: number) => void;
+  // Buy a ship from a shipyard. Buyer is the currently-selected ship;
+  // it must be docked at the same shipyard. Funds are debited from
+  // that ship's wallet and the new ship is added to player.shipIds,
+  // docked at the same yard with its own empty wallet.
+  purchaseShip: (blueprintId: string) => void;
   dismissNewsToast: (uid: string) => void;
 }
 
@@ -652,12 +661,12 @@ export const useStore = create<UiState>((set, get) => {
     },
     setStopLoss: (equityId, price) => {
       const w = get().world;
-      const r = setStopLoss(w, equityId, price);
+      const r = setStopLoss(w, equityId, price, selectedPlayerShipId(w, get().selectedTrader));
       persistCurrentGame({ lastError: r.ok ? null : r.reason });
     },
     setTakeProfit: (equityId, price) => {
       const w = get().world;
-      const r = setTakeProfit(w, equityId, price);
+      const r = setTakeProfit(w, equityId, price, selectedPlayerShipId(w, get().selectedTrader));
       persistCurrentGame({ lastError: r.ok ? null : r.reason });
     },
     placeLimitBuy: (equityId, qty, limitPrice) => {
@@ -694,6 +703,23 @@ export const useStore = create<UiState>((set, get) => {
       const w = get().world;
       const r = simCloseFuture(w, contractId, count, selectedPlayerShipId(w, get().selectedTrader));
       persistCurrentGame({ lastError: r.ok ? null : r.reason });
+    },
+    purchaseShip: (blueprintId) => {
+      const w = get().world;
+      const buyerId = selectedPlayerShipId(w, get().selectedTrader);
+      if (!buyerId) {
+        persistCurrentGame({ lastError: "No buying ship available." });
+        return;
+      }
+      const r = simPurchaseShip(w, blueprintId, buyerId);
+      if (r.ok) {
+        // Auto-pin the new ship in the picker so the player lands on
+        // the freshly-bought ship and can immediately outfit it.
+        set({ selectedTrader: r.shipId });
+        persistCurrentGame({ lastError: null });
+      } else {
+        persistCurrentGame({ lastError: r.reason });
+      }
     },
   };
 });
