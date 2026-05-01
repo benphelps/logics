@@ -314,6 +314,7 @@ describe("hires: dynamic pool", () => {
     const all = Object.values(w.hires);
     expect(all.length).toBeGreaterThan(0);
     const integerMods = new Set(["cargoCapacityBonus", "fuelCapacityBonus", "speedBonus"]);
+    const flatRateMods = new Set(["fuelRegenIdle"]);
     for (const h of all) {
       expect(h.hireCost).toBeGreaterThan(0);
       expect(h.wagePerTick).toBeGreaterThan(0);
@@ -321,6 +322,9 @@ describe("hires: dynamic pool", () => {
         if (integerMods.has(k)) {
           expect(v).toBeGreaterThanOrEqual(1);
           expect(v).toBeLessThanOrEqual(10);
+        } else if (flatRateMods.has(k)) {
+          expect(v).toBeGreaterThan(0);
+          expect(v).toBeLessThanOrEqual(1);
         } else {
           expect(v).toBeGreaterThan(0);
           expect(v).toBeLessThanOrEqual(0.15);

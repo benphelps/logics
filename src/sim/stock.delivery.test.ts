@@ -9,7 +9,6 @@ import {
   openLongFuture,
   openShortFuture,
 } from "./stock/futures";
-import type { CargoLot } from "./types";
 
 describe("stock — C-4 physical-delivery settlement", () => {
   it("each contract is listed with a deliveryStation set to a real location", () => {

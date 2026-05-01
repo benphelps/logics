@@ -7,6 +7,7 @@
 import { createWorld } from "../sim/world";
 import { tickWorld } from "../sim/tick";
 import { priceFor } from "../sim/pricing";
+import { unloadTicksRemainingFor } from "../sim/traders";
 import type { Trader } from "../sim/types";
 
 const TICKS = 25;
@@ -76,6 +77,7 @@ for (let t = 0; t <= TICKS; t++) {
   const market = w.markets[DST];
   const ship = w.traders.arriver;
   const stock = market.stock[GOOD] ?? 0;
+  const unloadLeft = unloadTicksRemainingFor(ship, GOOD);
   rows.push({
     tick: t,
     stock,
@@ -83,7 +85,7 @@ for (let t = 0; t <= TICKS; t++) {
     smoothed: market.prices[GOOD] ?? base,
     cargo: ship.cargo.reduce((s, l) => s + (l.good === GOOD ? l.qty : 0), 0),
     state: ship.state,
-    unloadLeft: ship.unloadTicksRemaining,
+    unloadLeft: unloadLeft > 0 ? unloadLeft : undefined,
   });
   if (t < TICKS) tickWorld(w);
 }

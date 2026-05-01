@@ -181,7 +181,7 @@ describe("stock — C-3 mark-to-market + settlement", () => {
     // PnL ≈ (1.5 entry - entry) × contractSize × 2 = entry × 0.5 × 100 × 2
     // Funds change ≈ +pnl + margin (refund).
     const pnlExpected = (targetSpot - entry) * c.contractSize * 2;
-    expect(ship.funds).toBeGreaterThan(fundsAfterOpen + pnlExpected * 0.6);
+    expect(ship.funds).toBeGreaterThan(fundsAfterOpen + margin + pnlExpected * 0.6);
   });
 
   it("listing roll: when near expires, a fresh far is listed for that good", () => {

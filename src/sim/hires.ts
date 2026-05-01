@@ -16,9 +16,9 @@ const EXPIRY_BY_TIER: Record<number, number> = { 1: 100, 2: 140, 3: 200 };
 // Each role has a pool of viable mods; tier dictates how many roll AND how
 // hot they roll within their range.
 const MOD_POOL_BY_ROLE: Record<CrewRole, (keyof CrewModifiers)[]> = {
-  captain:   ["speedBonus", "rangeEfficiency", "sellPremium", "buyDiscount"],
-  navigator: ["fuelCapacityBonus", "rangeEfficiency", "contractRewardBonus"],
-  mechanic:  ["cargoCapacityBonus", "maintenanceDiscount", "fuelCapacityBonus", "unloadSpeedBonus"],
+  captain:   ["speedBonus", "rangeEfficiency", "sellPremium", "buyDiscount", "dockingDiscount", "dividendBonus"],
+  navigator: ["fuelCapacityBonus", "rangeEfficiency", "contractRewardBonus", "treasuryYield"],
+  mechanic:  ["cargoCapacityBonus", "maintenanceDiscount", "fuelCapacityBonus", "unloadSpeedBonus", "fuelRegenIdle"],
 };
 
 // Per-modifier roll envelope. value = lerp(min, max, tierFraction * variance).
@@ -38,6 +38,10 @@ const MOD_RANGE: Record<keyof CrewModifiers, [number, number]> = {
   sellPremium:         [0.02, 0.05],
   maintenanceDiscount: [0.04, 0.10],
   contractRewardBonus: [0.03, 0.10],
+  dockingDiscount:     [0.05, 0.15],
+  fuelRegenIdle:       [0.2, 0.6],
+  treasuryYield:       [0.0002, 0.0008],
+  dividendBonus:       [0.03, 0.10],
 };
 
 // Modifier weights for cost rollup — each modifier contributes to hire price.
@@ -57,6 +61,10 @@ const MOD_COST_WEIGHT: Record<keyof CrewModifiers, number> = {
   sellPremium:         400_000,
   maintenanceDiscount: 100_000,
   contractRewardBonus: 200_000,
+  dockingDiscount:     250_000,
+  fuelRegenIdle:       50_000,
+  treasuryYield:       25_000_000,
+  dividendBonus:       250_000,
 };
 
 // Role-baseline pricing (T1 with no mods). Internal "captain" is presented
@@ -153,6 +161,8 @@ function rollModifiers(rng: Rng, role: CrewRole, tier: number): CrewModifiers {
     // Integer-typed modifiers
     if (key === "cargoCapacityBonus" || key === "fuelCapacityBonus" || key === "speedBonus") {
       v = Math.max(1, Math.round(v));
+    } else if (key === "treasuryYield") {
+      v = Math.round(v * 10_000) / 10_000;
     } else {
       v = Math.round(v * 100) / 100;
     }

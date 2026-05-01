@@ -38,7 +38,7 @@ import {
   type PlayerLimitView,
 } from "../../sim/stock";
 import { listStockExchangeHints, type StockExchangeHint } from "../../sim/stock/suggestions";
-import { goodArtUrl, headerArtUrl, shipArtUrl, stationArtUrl, stationKind, stationKindLabel, stationScale, stationScaleLabel, stationSubtype, stationSubtypeLabel } from "../art";
+import { goodArtUrl, shipArtUrl, stationArtUrl, stationKind, stationKindLabel, stationScale, stationScaleLabel, stationSubtype, stationSubtypeLabel } from "../art";
 import { SortableHeaderButton, SortableRows, SortableTh } from "../components/SortableTable";
 import "./StockMarketView.css";
 
@@ -1690,7 +1690,7 @@ function FuturesOrderForm({ equity, world, docked, access, hint, hintApplyKey = 
   );
 }
 
-function StockRowsTable({ rows, selectedId, onSelect, outOfRange = false }: {
+export function StockRowsTable({ rows, selectedId, onSelect, outOfRange = false }: {
   rows: EquityRow[];
   selectedId: string | null;
   onSelect: (equityId: string) => void;
@@ -1796,7 +1796,7 @@ interface CompanyPaneProps {
   onShort: (qty: number) => void;
 }
 
-function CompanyPane({ row, world, shipId, cash, docked, hasOpposite, hasLong, onBuy, onShort }: CompanyPaneProps) {
+export function CompanyPane({ row, world, shipId, cash, docked, hasOpposite, hasLong, onBuy, onShort }: CompanyPaneProps) {
   const eq = row.equity;
   const pos = row.position;
   const [buyQty, setBuyQty] = useState<number>(10);
@@ -2178,7 +2178,7 @@ interface PositionsPanelProps {
   onSetTakeProfit: (eqId: string, price: number | null) => void;
 }
 
-function PositionsPanel({ positions, world, shipId, focusedId, cash, docked, onSelect, onSell, onCover, onAbandon, onSetStopLoss, onSetTakeProfit }: PositionsPanelProps) {
+export function PositionsPanel({ positions, world, shipId, focusedId, cash, docked, onSelect, onSell, onCover, onAbandon, onSetStopLoss, onSetTakeProfit }: PositionsPanelProps) {
   if (positions.length === 0) {
     return <div className="stocks-detail-empty dim">No open positions.</div>;
   }
@@ -3509,7 +3509,7 @@ function fmtBig(n: number): string {
   return n.toFixed(0);
 }
 
-function goodsList(world: World, ids: string[], max = 4): string {
+export function goodsList(world: World, ids: string[], max = 4): string {
   const shown = ids.slice(0, max).map(id => world.goods[id]?.name ?? id);
   const more = ids.length > shown.length ? ` +${ids.length - shown.length}` : "";
   return shown.length > 0 ? `${shown.join(", ")}${more}` : "None listed";

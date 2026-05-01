@@ -3000,6 +3000,10 @@ const MOD_LABEL: Record<keyof CrewModifiers, (v: number) => string> = {
   sellPremium:         (v) => `+${(v * 100).toFixed(0)}% sell`,
   maintenanceDiscount: (v) => `−${(v * 100).toFixed(0)}% maint`,
   contractRewardBonus: (v) => `+${(v * 100).toFixed(0)}% contracts`,
+  dockingDiscount:     (v) => `−${(v * 100).toFixed(0)}% docking`,
+  fuelRegenIdle:       (v) => `+${v.toFixed(1)} fuel/tick`,
+  treasuryYield:       (v) => `+${(v * 100).toFixed(2)}%/tick yield`,
+  dividendBonus:       (v) => `+${(v * 100).toFixed(0)}% dividends`,
 };
 
 function modifiersText(mods: CrewModifiers): string {

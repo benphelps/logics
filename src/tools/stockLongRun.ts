@@ -173,8 +173,6 @@ snaps.push(snapshot(w));
 let firstFloatViolationTick: number | null = null;
 let firstClampViolationTick: number | null = null;
 
-let prevCash = initialCash;
-
 // Pinned-tick tally across the entire run (one increment per equity per
 // tick spent at floor/ceiling). Sampled every tick (not just snapshots).
 const pinnedTickTally: Record<string, { floor: number; ceiling: number; min: number; max: number }> = {};
@@ -241,8 +239,6 @@ for (let i = 1; i <= TICKS; i++) {
     if (!ci.ok && firstClampViolationTick == null) {
       firstClampViolationTick = w.tick;
     }
-    const cur = totalSystemCash(w);
-    prevCash = cur;
     snaps.push(snapshot(w));
   }
 }

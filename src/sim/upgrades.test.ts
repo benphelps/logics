@@ -262,7 +262,7 @@ describe("ship upgrades", () => {
       if (installPremium) installFreshUpgrade(world, ship, "upg_systems_haggler_2");
       // Identical market state in both runs.
       ship.funds = 0;
-      ship.cargo.push({ good: "parts", qty: 10, purchasedAt: 0, costBasis: 0, originLocation: "haven" });
+      ship.cargo.push({ good: "parts", qty: 10, source: "haven", unitPrice: 0, purchasedAt: 0 });
       world.markets.haven.prices.parts = 100;
       world.markets.haven.treasury = 5_000_000;
       world.markets.haven.stock.parts = 0;
