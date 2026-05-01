@@ -34,7 +34,7 @@ import type { CrewMember, GoodId, Job, JobId, LocationDef, LocationId, ShipBluep
 import { parseBasisUnderlying, priceChangePct } from "../../sim/stock";
 import { useCrewHeadshot } from "../headshots";
 import { goodArtUrl, jobArtUrl, shipArtUrl, stationArtUrl, stationKind, stationKindLabel, stationScale, stationScaleLabel, stationSubtype, stationSubtypeLabel } from "../art";
-import { useShipArtImageUrl } from "../shipArtApi";
+import { useBlueprintArtImageUrl, useShipArtImageUrl } from "../shipArtApi";
 import { SortableRows, SortableTh } from "../components/SortableTable";
 import { MiniSparkline } from "../components/MiniSparkline";
 import "./PlayerView.css";
@@ -2032,17 +2032,24 @@ function InfoAreaCard({ ship, world, loc, focus, pinnedFocuses, activePinnedKey,
 
   const renderedFocus = transition.renderedFocus;
   const stationLoc = renderedFocus?.kind === "station" ? world.locations[renderedFocus.loc] ?? loc : loc;
-  // When the ship view is the active focus (no focus pinned), let the
-  // ship-art API drop in a dynamic class-aware splash. Falls back to
-  // the static shipArtUrl until the API call lands so the panel
-  // never goes blank.
+  // Ship-art API hooks. When the ship view is the active focus, we
+  // ask for a class-aware splash for the actively-controlled ship;
+  // when a shipyard blueprint is the focus, we ask for one keyed on
+  // the blueprint's class + traits + name so each ship-for-sale gets
+  // its own image (same poolKey as the eventual minted ship, so the
+  // cache hits on purchase). Both fall back to their static art URLs
+  // until the API call lands so the panel never goes blank.
   const dynamicShipArt = useShipArtImageUrl(renderedFocus == null ? ship : null);
+  const renderedBlueprint = renderedFocus?.kind === "ship-blueprint"
+    ? findBlueprintEverywhere(world, renderedFocus.blueprintId)
+    : null;
+  const dynamicBlueprintArt = useBlueprintArtImageUrl(renderedBlueprint);
   const infoArtUrl = renderedFocus == null
     ? dynamicShipArt.imageUrl ?? shipArtUrl(ship)
     : renderedFocus.kind === "station"
       ? stationArtUrl(stationLoc)
       : renderedFocus.kind === "ship-blueprint"
-        ? blueprintArtUrl(world, renderedFocus.blueprintId, ship)
+        ? dynamicBlueprintArt.imageUrl ?? blueprintArtUrl(world, renderedFocus.blueprintId, ship)
         : goodArtUrl(world, renderedFocus.good);
   const phaseClass = transition.phase === "idle" ? "" : `is-${transition.phase}`;
   const handleInfoAnimationEnd = (event: AnimationEvent<HTMLDivElement>) => {

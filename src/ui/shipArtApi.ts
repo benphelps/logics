@@ -1,14 +1,12 @@
-// Hook + helpers for the dynamic ship-art splash. The fleet info card
-// (and any other panel that wants a class-aware ship hero) calls
-// `useShipArtImageUrl(ship)` to ask the /api/ship-art/for-ship endpoint
-// for either a cached image or a pending entry. While the upstream
-// (Gemini Flash Image by default) generates, the hook keeps polling
-// the entry's statusUrl every 1.5s; once ready, it swaps to the API
-// image. The hook returns null until ready so callers can fall back to
-// the static `shipArtUrl(ship)` in the meantime.
+// Hooks + helpers for the dynamic ship-art splash. Both ship traders
+// (the fleet info card) and ship blueprints (the shipyard
+// marketplace info panel) hit the same /api/ship-art/for-ship
+// endpoint, just with their own shaped payload. The hook returns
+// instantly with `status: "pending"` while a generation runs upstream;
+// callers fall back to their static art until `imageUrl` lands.
 
 import { useEffect, useRef, useState } from "react";
-import type { ShipClass, ShipTrait, Trader } from "../sim/types";
+import type { ShipBlueprint, ShipClass, ShipTrait, Trader } from "../sim/types";
 
 interface ShipArtEntryPointer {
   id: string;
@@ -21,6 +19,13 @@ interface ShipArtEntryPointer {
 interface ShipArtForShipResponse {
   source: "cache" | "pending";
   entry: ShipArtEntryPointer;
+}
+
+interface ShipArtPayload {
+  class: ShipClass;
+  traits: ShipTrait[];
+  name?: string;
+  flavor?: string;
 }
 
 const POLL_INTERVAL_MS = 1500;
@@ -43,17 +48,6 @@ function inferClass(ship: Trader): ShipClass | null {
   return "freighter";
 }
 
-// Stable cache-shaped key per ship for React effect deps. We don't
-// want art to flicker every tick when ship.funds changes, so the dep
-// only includes the fields the prompt cares about.
-function shipKey(ship: Trader): string {
-  return [
-    ship.id,
-    ship.shipClass ?? inferClass(ship) ?? "",
-    (ship.traits ?? []).slice().sort().join(","),
-  ].join("|");
-}
-
 export interface ShipArtState {
   // The API image url once ready. While loading or failed, null —
   // callers should fall back to the static art in that case.
@@ -62,18 +56,20 @@ export interface ShipArtState {
   error?: string;
 }
 
-export function useShipArtImageUrl(ship: Trader | null): ShipArtState {
+// Shared core: kicks off the lookup-or-pending request, polls until
+// the entry is ready, returns ShipArtState. The dep is a single
+// stable string so React only re-runs when the prompt-shaping fields
+// actually change.
+function useShipArtForPayload(payload: ShipArtPayload | null, depKey: string): ShipArtState {
   const [state, setState] = useState<ShipArtState>({ imageUrl: null, status: "idle" });
   const pollAbort = useRef<AbortController | null>(null);
-  const key = ship ? shipKey(ship) : "";
 
   useEffect(() => {
-    if (!ship) {
+    if (!payload) {
       setState({ imageUrl: null, status: "idle" });
       return;
     }
-    const cls = inferClass(ship);
-    if (!cls || !SUPPORTED_CLASSES.includes(cls)) {
+    if (!SUPPORTED_CLASSES.includes(payload.class)) {
       setState({ imageUrl: null, status: "idle" });
       return;
     }
@@ -81,8 +77,6 @@ export function useShipArtImageUrl(ship: Trader | null): ShipArtState {
     const controller = new AbortController();
     pollAbort.current?.abort();
     pollAbort.current = controller;
-    const traits = (ship.traits ?? []).filter((t): t is ShipTrait => Boolean(t));
-
     setState({ imageUrl: null, status: "pending" });
 
     void (async () => {
@@ -90,12 +84,16 @@ export function useShipArtImageUrl(ship: Trader | null): ShipArtState {
         const seedResponse = await fetch("/api/ship-art/for-ship", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ class: cls, traits, name: ship.name }),
+          body: JSON.stringify({
+            class: payload.class,
+            traits: payload.traits,
+            name: payload.name,
+            flavor: payload.flavor,
+          }),
           signal: controller.signal,
         });
         if (!seedResponse.ok) {
-          const detail = await safeError(seedResponse);
-          setState({ imageUrl: null, status: "failed", error: detail });
+          setState({ imageUrl: null, status: "failed", error: await safeError(seedResponse) });
           return;
         }
         const seed = await seedResponse.json() as ShipArtForShipResponse;
@@ -116,7 +114,6 @@ export function useShipArtImageUrl(ship: Trader | null): ShipArtState {
           await delay(POLL_INTERVAL_MS, controller.signal);
           if (controller.signal.aborted) return;
           const polled = await fetch(statusUrl, { signal: controller.signal });
-          // 202 = still pending, 200 = ready, 500 = failed.
           if (polled.status === 202) continue;
           const body = await polled.json().catch(() => null) as { entry?: ShipArtEntryPointer } | null;
           const entry = body?.entry;
@@ -133,8 +130,6 @@ export function useShipArtImageUrl(ship: Trader | null): ShipArtState {
             return;
           }
         }
-        // Timed out — leave state as pending so the caller keeps the
-        // static fallback rather than flashing an error.
       } catch (error) {
         if (controller.signal.aborted) return;
         const message = error instanceof Error ? error.message : "ship-art lookup failed";
@@ -143,11 +138,42 @@ export function useShipArtImageUrl(ship: Trader | null): ShipArtState {
     })();
 
     return () => controller.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- key collapses
-    // the relevant Trader fields into one stable string.
-  }, [key]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- depKey
+    // collapses the relevant prompt fields into one stable string.
+  }, [depKey]);
 
   return state;
+}
+
+export function useShipArtImageUrl(ship: Trader | null): ShipArtState {
+  const cls = ship ? inferClass(ship) : null;
+  const traits = ship ? (ship.traits ?? []).filter((t): t is ShipTrait => Boolean(t)) : [];
+  const payload: ShipArtPayload | null = ship && cls
+    ? { class: cls, traits, name: ship.name }
+    : null;
+  const depKey = ship && cls
+    ? [ship.id, cls, [...traits].sort().join(",")].join("|")
+    : "";
+  return useShipArtForPayload(payload, depKey);
+}
+
+export function useBlueprintArtImageUrl(blueprint: ShipBlueprint | null): ShipArtState {
+  const payload: ShipArtPayload | null = blueprint
+    ? {
+        class: blueprint.class,
+        traits: blueprint.traits ?? [],
+        name: blueprint.name,
+        flavor: blueprint.flavor,
+      }
+    : null;
+  const depKey = blueprint
+    ? [
+        blueprint.id,
+        blueprint.class,
+        [...(blueprint.traits ?? [])].sort().join(","),
+      ].join("|")
+    : "";
+  return useShipArtForPayload(payload, depKey);
 }
 
 async function safeError(response: Response): Promise<string> {

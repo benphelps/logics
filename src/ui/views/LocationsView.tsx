@@ -6,6 +6,7 @@ import { findRoutePath, pathDistance, reachableNeighbors, routeDistance, routeSe
 import type { Equity, LocationDef, LocationId, Trader, TraderId, World } from "../../sim/types";
 import { listHiresAt } from "../../sim/hires";
 import { listShipyardInventory } from "../../sim/shipyards";
+import { useBlueprintArtImageUrl } from "../shipArtApi";
 import { isUpgradeGood, upgradeDef } from "../../sim/upgrades";
 import { parseBasisUnderlying, priceChangePct } from "../../sim/stock";
 import { activeFuelType } from "../../sim/traders";
@@ -1453,6 +1454,11 @@ function ShipyardMarketSection({ world, loc }: { world: World; loc: LocationDef 
   const purchaseShip = useStore(s => s.purchaseShip);
   const selectedTraderId = useStore(s => s.selectedTrader);
   const [openId, setOpenId] = useState<string | null>(null);
+  // Only one accordion item is open at a time, so we can lift the
+  // ship-art lookup to the parent and key it on the focused
+  // blueprint. The rest of the inventory stays text-only.
+  const openBlueprint = openId ? blueprints.find(bp => bp.id === openId) ?? null : null;
+  const openArt = useBlueprintArtImageUrl(openBlueprint);
 
   const playerShipIds = world.player?.shipIds ?? [];
   // The "buying ship" is the picker selection if it's a player ship
@@ -1501,6 +1507,14 @@ function ShipyardMarketSection({ world, loc }: { world: World; loc: LocationDef 
                   </button>
                   {isOpen && (
                     <div className="atlas-shipyard-body">
+                      {openArt.imageUrl && (
+                        <div
+                          className="atlas-shipyard-hero"
+                          role="img"
+                          aria-label={`${bp.name} ${bp.classLabel} hero art`}
+                          style={{ backgroundImage: `url("${openArt.imageUrl}")` }}
+                        />
+                      )}
                       <div className="atlas-shipyard-flavor dim">{bp.flavor}</div>
                       <dl className="trade-helper-grid atlas-shipyard-stats">
                         <DetailStat label="cargo" value={`${bp.baseCapacity}`} />

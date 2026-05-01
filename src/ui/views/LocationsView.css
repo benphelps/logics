@@ -1501,6 +1501,19 @@
   border-top: 1px solid var(--atlas-line);
 }
 
+/* Hero image inside the expanded blueprint body. The image is
+   AI-generated per blueprint via /api/ship-art/for-ship; until it
+   lands the slot stays empty rather than flashing a placeholder. */
+.atlas-shipyard-hero {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 4px;
+  background-position: center;
+  background-size: cover;
+  border: 1px solid var(--atlas-line);
+  margin-bottom: 2px;
+}
+
 .atlas-shipyard-flavor {
   font-size: 11px;
   line-height: 1.4;
