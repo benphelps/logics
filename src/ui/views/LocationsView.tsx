@@ -8,6 +8,8 @@ import { listHiresAt } from "../../sim/hires";
 import { listShipyardInventory } from "../../sim/shipyards";
 import { isUpgradeGood, upgradeDef } from "../../sim/upgrades";
 import { parseBasisUnderlying, priceChangePct } from "../../sim/stock";
+import { activeFuelType } from "../../sim/traders";
+import { effectivePerDistance, ignoresFuel, travelTicksFor } from "../../sim/crew";
 import { stationArtUrl } from "../art";
 import { MiniSparkline } from "../components/MiniSparkline";
 import { SortableRows, SortableTh } from "../components/SortableTable";
@@ -1124,6 +1126,8 @@ function DetailPanel(props: {
           <DetailStat label="net trade" value={fmtSignedFlow(exchange.netTradeFlow)} />
         </dl>
 
+        <StationTravelAction world={world} loc={loc} />
+
         {exchange.equity && (
           <section className="trade-helper-section">
             <div className="exchange-section-title">Exchange</div>
@@ -1496,6 +1500,75 @@ function DetailStat({ label, value }: { label: string; value: string }) {
     <div className="cargo-stat">
       <dt className="dim">{label}</dt>
       <dd className="mono info-value">{value}</dd>
+    </div>
+  );
+}
+
+// "Travel here" CTA on the atlas station detail panel. Resolves the
+// active player ship from the topbar picker (falls back to the first
+// player ship), then mirrors travelTo()'s gating logic so the button
+// disables itself with a clear reason for in-transit ships, missing
+// routes, fuel shortfalls, or already-at-this-station. Clicking
+// dispatches the same store travel action the fleet view uses.
+function StationTravelAction({ world, loc }: { world: World; loc: LocationDef }) {
+  const travel = useStore(s => s.travel);
+  const selectedTrader = useStore(s => s.selectedTrader);
+  const player = world.player;
+  if (!player) return null;
+  const ids = player.shipIds;
+  const ship = (selectedTrader && ids.includes(selectedTrader)
+    ? world.traders[selectedTrader]
+    : ids.map(id => world.traders[id]).find(Boolean)) ?? null;
+  if (!ship) return null;
+
+  const atDest = ship.location === loc.id && ship.state === "idle";
+  const inTransit = ship.state === "transit";
+  // Ship in transit but bound for this station — render the transit
+  // status instead of a Depart button so the player can see the ETA.
+  const inboundHere = inTransit && ship.destination === loc.id;
+  const dist = atDest ? 0 : routeDistance(world, ship.location, loc.id);
+  const fuelFree = ignoresFuel(ship);
+  const ft = activeFuelType(ship) ?? ship.fuelTypes[0] ?? null;
+  const perDistance = ft ? effectivePerDistance(ship, ft.perDistance) : 0;
+  const fuelNeeded = !fuelFree && dist != null ? dist * perDistance : 0;
+  const fuelOnHand = ship.currentFuel?.qty ?? 0;
+  const eta = dist != null ? travelTicksFor(ship, dist) : 0;
+
+  let blockReason: string | null = null;
+  if (atDest) blockReason = `${ship.name} is already at ${loc.name}.`;
+  else if (inboundHere) blockReason = `${ship.name} is already inbound — ETA ${ship.ticksRemaining}t.`;
+  else if (inTransit) blockReason = `${ship.name} is in transit, can't redirect.`;
+  else if (dist == null) blockReason = "No plotted route to this station.";
+  else if (!fuelFree && fuelOnHand < fuelNeeded - 0.001) {
+    blockReason = `Need ${fuelNeeded.toFixed(1)} fuel, ${ship.name} has ${fuelOnHand.toFixed(1)}.`;
+  }
+  const disabled = blockReason != null;
+
+  const metaText = atDest
+    ? "you are here"
+    : inboundHere
+      ? `inbound · ${ship.ticksRemaining}t`
+      : dist == null
+        ? "no route"
+        : `${dist.toFixed(1)}u · ${eta}t · ${fuelFree ? "no fuel" : `${fuelNeeded.toFixed(1)} ${ft?.good ?? "fuel"}`}`;
+
+  return (
+    <div className="atlas-travel-action">
+      <button
+        type="button"
+        className={`atlas-travel-btn ${disabled ? "disabled" : "primary"}`}
+        disabled={disabled}
+        title={blockReason ?? `Travel ${ship.name} to ${loc.name}`}
+        onClick={() => { if (!disabled) travel(ship.id, loc.id); }}
+      >
+        <span className="atlas-travel-label">
+          {atDest ? "Docked here" : inboundHere ? "Inbound" : `Travel ${ship.name}`}
+        </span>
+        <span className="atlas-travel-meta mono">{metaText}</span>
+      </button>
+      {blockReason && !atDest && !inboundHere && (
+        <div className="atlas-travel-block dim">{blockReason}</div>
+      )}
     </div>
   );
 }

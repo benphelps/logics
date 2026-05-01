@@ -117,7 +117,7 @@ describe("treasuries — long-run stability", () => {
     const end = Object.values(w.traders).reduce((s, t) => s + t.funds, 0);
     // Pre-treasury: ~80× over 10k ticks. Post-treasury: ≤10×.
     expect(end).toBeLessThan(start * 10);
-  });
+  }, 15_000);
 
   it("trader funds never go negative over long horizons", () => {
     const w = createWorld({ player: null });

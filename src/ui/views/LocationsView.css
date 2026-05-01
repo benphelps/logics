@@ -1294,6 +1294,68 @@
   border-top: 1px solid var(--atlas-line);
 }
 
+/* Travel-here CTA on the station info panel. Mirrors the fleet view's
+   primary-button shape so the action reads as the headline thing on
+   the panel; meta line breaks out the trip economics (distance / ETA
+   / fuel needed) under the label. */
+.atlas-travel-action {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.atlas-travel-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 14px;
+  background: rgba(31, 111, 168, 0.45);
+  border: 1px solid rgba(118, 199, 255, 0.42);
+  border-radius: 5px;
+  color: white;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.atlas-travel-btn:hover:not(:disabled) {
+  background: rgba(42, 117, 173, 0.65);
+  border-color: rgba(118, 199, 255, 0.7);
+}
+
+.atlas-travel-btn:disabled,
+.atlas-travel-btn.disabled {
+  background: rgba(40, 48, 60, 0.5);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
+
+.atlas-travel-label {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.atlas-travel-meta {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  opacity: 0.85;
+}
+
+.atlas-travel-btn:disabled .atlas-travel-meta,
+.atlas-travel-btn.disabled .atlas-travel-meta {
+  opacity: 1;
+  color: var(--text-dim);
+}
+
+.atlas-travel-block {
+  font-size: 10.5px;
+  line-height: 1.3;
+  padding: 0 4px;
+}
+
 /* Shipyard marketplace section — a small accordion of ship blueprints
    for sale at the focused shipyard, with class chip + headline price
    on the summary row and stat grid + upgrade/trait chips + Buy action
