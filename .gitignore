@@ -12,6 +12,7 @@ dist
 dist-ssr
 .logics-cache
 *.local
+my-notes.md
 
 # Editor directories and files
 .vscode/*
