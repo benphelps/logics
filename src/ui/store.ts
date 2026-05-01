@@ -18,6 +18,7 @@ import {
 import { abandonJob, acceptJob, collectTradeJob } from "../sim/jobs";
 import { fireCrew, hireCrew, recomputeShipStats } from "../sim/crew";
 import { deriveCrewIdentity } from "../sim/crewIdentity";
+import { MILESTONES, replenishUnlockedUpgrades } from "../sim/milestones";
 import { releaseCrewHeadshots } from "./headshots";
 import { abandonPosition, adjustPlayerLimit, buyShares, cancelPlayerLimit, coverShares, placeLimitBuy, placeLimitSell, sellShares, setStopLoss, setTakeProfit, shortShares } from "../sim/stock";
 import { openLongFuture as simOpenLongFuture, openShortFuture as simOpenShortFuture, closeFuture as simCloseFuture } from "../sim/stock/futures";
@@ -186,6 +187,12 @@ function seedDeveloperPositions(world: World, ship: Trader): void {
   }
 }
 
+function completeDeveloperCharters(world: World): void {
+  if (!world.player) return;
+  world.player.manualActionCount = Math.max(...Object.values(MILESTONES));
+  replenishUnlockedUpgrades(world);
+}
+
 function createDeveloperWorld(): World {
   const world = createStartingWorld({ startingFunds: 250_000 });
   const ship = playerShip(world);
@@ -220,6 +227,7 @@ function createDeveloperWorld(): World {
   seedDeveloperCargo(world, ship);
   seedDeveloperContract(world, ship);
   seedDeveloperPositions(world, ship);
+  completeDeveloperCharters(world);
   return world;
 }
 
