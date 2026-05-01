@@ -26,6 +26,7 @@ import { listLocalJobs } from "../../sim/jobs";
 import { effectivePerDistance, hasCrew, ignoresFuel, totalCrewWage, travelTicksFor } from "../../sim/crew";
 import { MAINTENANCE_DEBT_TRAVEL_BLOCK } from "../../sim/crew";
 import { listHiresAt } from "../../sim/hires";
+import { listShipOffers } from "../../sim/shipyard";
 import { selectRefuelType, UNLOAD_TICKS, unloadTicksRemainingFor } from "../../sim/traders";
 import { UPGRADE_SLOTS, installedUpgrade, isUpgradeGood, upgradeDef, upgradeEffectText } from "../../sim/upgrades";
 import type { CrewModifiers, CrewRole, Equity } from "../../sim/types";
@@ -3247,6 +3248,8 @@ function ActiveContractsTab({ ship, world, jobs, target, cueText, hintText }: {
 // expiry countdown; rows are sorted tier asc / cost asc by listHiresAt.
 function HireOffersTab({ ship, world, loc, interactionLocked }: { ship: Trader; world: World; loc: LocationDef; interactionLocked: boolean }) {
   const offers = listHiresAt(world, loc.id);
+  const shipOffers = listShipOffers(world, loc.id);
+  const buyShip = useStore((s) => s.buyShip);
   const docked = ship.state === "idle" && ship.location === loc.id && !interactionLocked;
 
   return (
@@ -3264,6 +3267,23 @@ function HireOffersTab({ ship, world, loc, interactionLocked }: { ship: Trader; 
               worldTick={world.tick}
               docked={docked}
             />
+          ))}
+        </div>
+      )}
+      {shipOffers.length > 0 && (
+        <div className="crew-offer-grid">
+          {shipOffers.map((offer) => (
+            <article key={offer.id} className="crew-card crew-offer-card tier-high">
+              <div className="crew-card-main">
+                <div className="crew-card-name">{offer.name}</div>
+                <div className="faint">{offer.class.toUpperCase()} · {offer.traits.join(" · ")}</div>
+                <div className="faint">Upgrades: {offer.upgrades.length} installed</div>
+              </div>
+              <div className="crew-card-actions">
+                <span className="crew-action-price mono">Ç{offer.price.toLocaleString()}</span>
+                <button className="btn-action crew-card-action primary" onClick={() => buyShip(ship.id, offer.id)} disabled={!docked || ship.funds < offer.price}>Buy ship</button>
+              </div>
+            </article>
           ))}
         </div>
       )}

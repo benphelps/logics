@@ -21,6 +21,7 @@ import { deriveCrewIdentity } from "../sim/crewIdentity";
 import { releaseCrewHeadshots } from "./headshots";
 import { abandonPosition, adjustPlayerLimit, buyShares, cancelPlayerLimit, coverShares, placeLimitBuy, placeLimitSell, sellShares, setStopLoss, setTakeProfit, shortShares } from "../sim/stock";
 import { openLongFuture as simOpenLongFuture, openShortFuture as simOpenShortFuture, closeFuture as simCloseFuture } from "../sim/stock/futures";
+import { buyShipFromShipyard } from "../sim/shipyard";
 import {
   createGameSlot,
   deleteGameSlot,
@@ -284,6 +285,7 @@ interface UiState {
   abandonJob: (jobId: JobId) => void;
   hireCrew: (traderId: TraderId, candidateId: string) => void;
   fireCrew: (traderId: TraderId, role: CrewRole) => void;
+  buyShip: (buyerShipId: TraderId, offerId: string) => void;
   repairShip: (traderId: TraderId) => void;
   installUpgradeFromCargo: (traderId: TraderId, good: GoodId) => void;
   installUpgradeFromMarket: (traderId: TraderId, good: GoodId) => void;
@@ -590,6 +592,11 @@ export const useStore = create<UiState>((set, get) => {
       const firedId = t.crew?.[role]?.id;
       const r = fireCrew(t, role);
       if (r.ok && firedId) releaseCrewHeadshots(get().activeSaveId, [firedId]);
+      persistCurrentGame({ lastError: r.ok ? null : r.reason });
+    },
+    buyShip: (buyerShipId, offerId) => {
+      const w = get().world;
+      const r = buyShipFromShipyard(w, buyerShipId, offerId);
       persistCurrentGame({ lastError: r.ok ? null : r.reason });
     },
     repairShip: (traderId) => {
