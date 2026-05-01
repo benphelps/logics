@@ -87,23 +87,22 @@ fresh one.
 
 ### Providers
 
-- `gemini` (default) — Google `gemini-2.5-flash-image` via the
-  Generative Language `:generateContent` endpoint. Requires
-  `GEMINI_API_KEY` (falls back to `GOOGLE_API_KEY`). ~2× faster than
-  the OpenAI path at comparable fidelity. The model picks its own
-  pixel dimensions (1024-square is typical); aspect hints have to
-  ride in the prompt. Override the model with `SHIP_ART_GEMINI_MODEL`
-  — setting it to anything starting with `imagen-` (e.g.
-  `imagen-4.0-fast-generate-001`, `imagen-4.0-ultra-generate-001`)
-  switches the dispatcher to the Imagen `:predict` shape with
-  aspect-ratio mapping (`1024x1024 → 1:1`, `1024x1536 → 9:16`,
-  `1536x1024 → 16:9`).
-- `openai` — `gpt-image-1.5`, takes our pixel sizes directly.
-  Requires `OPENAI_API_KEY`. Override the model with
+- `openai` (default) — `gpt-image-1.5`, takes our pixel sizes
+  directly. Requires `OPENAI_API_KEY`. Override the model with
   `SHIP_ART_OPENAI_MODEL`.
+- `gemini` — Google `gemini-2.5-flash-image` via the Generative
+  Language `:generateContent` endpoint. Requires `GEMINI_API_KEY`
+  (falls back to `GOOGLE_API_KEY`). ~2× faster than OpenAI but the
+  model picks its own pixel dimensions (1024-square typical). Aspect
+  hints have to ride in the prompt. Override the model with
+  `SHIP_ART_GEMINI_MODEL` — setting it to anything starting with
+  `imagen-` (e.g. `imagen-4.0-fast-generate-001`,
+  `imagen-4.0-ultra-generate-001`) switches the dispatcher to the
+  Imagen `:predict` shape with aspect-ratio mapping (`1024x1024 →
+  1:1`, `1024x1536 → 9:16`, `1536x1024 → 16:9`).
 
-Switch the global default with `SHIP_ART_PROVIDER=openai` (or
-`gemini`); per-request `provider` always wins.
+Switch the global default with `SHIP_ART_PROVIDER=gemini` (or
+`openai`); per-request `provider` always wins.
 
 `GET /api/ship-art/options` returns the allowed enums + the active
 default provider.

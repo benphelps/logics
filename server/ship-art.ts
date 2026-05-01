@@ -123,13 +123,12 @@ const DEFAULT_GEMINI_MODEL = process.env.SHIP_ART_GEMINI_MODEL ?? "gemini-2.5-fl
 const DEFAULT_OUTPUT_FORMAT = process.env.SHIP_ART_IMAGE_FORMAT ?? "webp";
 const DEFAULT_QUALITY: Quality = "low";
 const DEFAULT_SIZE: ImageSize = "1536x1024";
-// Default provider for in-game ship-art generation. Gemini's
-// gemini-2.5-flash-image is roughly 2x faster than gpt-image-1.5 at
-// comparable fidelity (clean ship silhouette, no fake-UI text leakage)
-// and meaningfully cheaper, so the game uses it by default. Override
-// with SHIP_ART_PROVIDER=openai (or via per-request `provider`) for
-// the OpenAI path.
-const DEFAULT_PROVIDER: ImageProvider = (process.env.SHIP_ART_PROVIDER === "openai" ? "openai" : "gemini");
+// Default provider for in-game ship-art generation. OpenAI's
+// gpt-image-1.5 produces consistently usable info-card backdrops at
+// the requested pixel size with no fake-UI text leakage. Override
+// with SHIP_ART_PROVIDER=gemini (or via per-request `provider`) for
+// the faster but model-picked-size Gemini Flash Image path.
+const DEFAULT_PROVIDER: ImageProvider = (process.env.SHIP_ART_PROVIDER === "gemini" ? "gemini" : "openai");
 const PROMPT_VERSION = 1;
 
 const QUALITIES: Quality[] = ["low", "medium", "high"];
