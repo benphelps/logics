@@ -10,6 +10,7 @@ const DEFAULT_URL = "http://127.0.0.1:5173/";
 const DEFAULT_OUT_DIRS = {
   "my-fleet": "public/site/screenshots/wiki/my-fleet",
   exchange: "public/site/screenshots/wiki/exchange",
+  "readme-full": "public/site/screenshots/readme",
 };
 const DEFAULT_VIEWPORT = { width: 1600, height: 1300 };
 const PUBLIC_ROOT = path.resolve("public");
@@ -499,7 +500,63 @@ const exchangeShots = [
   },
 ];
 
-const shots = captureView === "exchange" ? exchangeShots : myFleetShots;
+const readmeFullShots = [
+  {
+    id: "fleet-full",
+    section: "readme",
+    label: "My Fleet",
+    title: "Full My Fleet UI",
+    text: "Full-viewport My Fleet operations screen for README composition.",
+    alt: "Full Logics UI showing My Fleet ship operations, station travel, dockside markets, and ship context",
+    selector: ".app",
+    pad: 0,
+    maxHeight: DEFAULT_VIEWPORT.height,
+    pre: async (page) => {
+      await page.evaluate(() => {
+        const useStore = window.__LOGICS_CAPTURE_STORE__;
+        if (!useStore) return;
+        const state = useStore.getState();
+        useStore.setState({
+          selectedTab: "player",
+          stockGuideEnabled: false,
+          speed: 0,
+          lastError: null,
+          tickEpoch: state.tickEpoch + 1,
+        });
+      });
+      await closeGameMenu(page);
+      await page.waitForSelector(".player-view");
+      await selectShipTab(page, "Cargo");
+      await selectExchangeTab(page, "Markets");
+      await clearInfoFocus(page);
+      await page.wait(350);
+    },
+  },
+  {
+    id: "exchange-full",
+    section: "readme",
+    label: "Exchange",
+    title: "Full Exchange UI",
+    text: "Full-viewport Exchange market desk for README composition.",
+    alt: "Full Logics UI showing the Exchange listing browser, positions, market detail, order book, tape, and order form",
+    selector: ".app",
+    pad: 0,
+    maxHeight: DEFAULT_VIEWPORT.height,
+    pre: async (page) => {
+      await enrichExchangeDeveloperState(page);
+      await closeGameMenu(page);
+      await selectExchangeListing(page, "commodity");
+      await selectPnoTab(page, "Positions");
+      await page.wait(350);
+    },
+  },
+];
+
+const shots = captureView === "exchange"
+  ? exchangeShots
+  : captureView === "readme-full"
+    ? readmeFullShots
+    : myFleetShots;
 
 main().catch((error) => {
   console.error(error);

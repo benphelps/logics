@@ -1,4 +1,4 @@
-# Logics
+![Logics gameplay screenshot](public/site/screenshots/readme-ui-composite.png)
 
 Logics is a browser game about running a space trucking outfit inside a living station economy. You start with one ship, one wallet, and a simple question: what should I buy here, and where can I sell it for more?
 
@@ -11,20 +11,6 @@ The loop grows from hands-on cargo runs into fleet coordination, staged crew aut
 - **Hire a crew.** Navigators surface route and exchange suggestions, mechanics handle maintenance, and pilots let auto mode run the ship.
 - **Invest in the economy.** Trade assets on the Exchange while your ships change the underlying station and commodity signals.
 - **Build toward scale.** Current systems support the direction toward buying more ships, moving into larger hulls, assigning crews, and earning from established teams while you focus on bigger opportunities.
-
-## UI Callouts
-
-### My Fleet
-
-![My Fleet screen showing ship operations, station travel, dockside markets, and ship context](public/site/screenshots/readme-fleet.png)
-
-My Fleet is the hands-on operations screen: cargo, fuel, hull damage, contracts, crew, upgrades, station markets, and travel decisions all live here. The current build starts with the Voyager, but the UI and save model are already shaped around a selected ship inside a growing fleet.
-
-### Exchange
-
-![Exchange screen showing listing browser, account panels, market detail, order book, tape, and order entry](public/site/screenshots/readme-exchange.png)
-
-The Exchange is the financial layer over the logistics sim. A docked ship can use its own wallet to place orders, hold long or short positions, manage futures, and read live book/tape data tied back to stations, syndicates, commodities, and sector indices.
 
 ## Current Build
 
