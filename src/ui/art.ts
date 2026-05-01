@@ -15,7 +15,13 @@ export type StationSubtype =
   | "spire"
   | "lab";
 
-export type ShipArtFamily = "freighter" | "hauler" | "courier" | "scout" | "tanker";
+// Ship art families. Includes the four "name-root" families that the
+// existing NPC fleet uses (freighter / hauler / courier / scout /
+// tanker) plus the two extra ShipClass values introduced by the
+// shipyard system (cruiser / exotic). Trader.shipClass takes
+// precedence when set so blueprint-minted ships always pick the
+// class-specific art over a name-root guess.
+export type ShipArtFamily = "freighter" | "hauler" | "courier" | "scout" | "tanker" | "cruiser" | "exotic";
 export type ShipTabArtKey = "fuel" | "hull" | "cargo" | "upgrades" | "crew";
 export type HeaderArtKey =
   | "marketBazaar"
@@ -35,6 +41,12 @@ export const SHIP_ART: Record<ShipArtFamily | "default", string> = {
   courier: "/art/ships/courier.webp",
   scout: "/art/ships/scout.webp",
   tanker: "/art/ships/tanker.webp",
+  // Cruiser and exotic art slots. Until a dedicated asset is
+  // generated, both reuse the existing scout silhouette so
+  // shipyard-minted ships still resolve to a real file. Replace
+  // these via the /api/ship-art generator and re-run art:coverage.
+  cruiser: "/art/ships/scout.webp",
+  exotic: "/art/ships/scout.webp",
 };
 
 export const SHIP_FAMILY_TERMS: Record<ShipArtFamily, string[]> = {
@@ -43,6 +55,11 @@ export const SHIP_FAMILY_TERMS: Record<ShipArtFamily, string[]> = {
   courier: ["kestrel", "falcon", "swallow", "hawk", "sparrow", "skylark", "pinion", "tern", "egret", "cygnet"],
   scout: ["mantis", "otter", "stoat", "wolf", "hound", "lynx", "sable", "raven", "magpie", "vulture"],
   tanker: ["marlin"],
+  // Cruiser / exotic ships are minted from shipyard blueprints with
+  // randomly-picked names from the same NPC pool — no dedicated
+  // name terms. shipArtFamily() routes via Trader.shipClass first.
+  cruiser: [],
+  exotic: [],
 };
 
 export const STATION_ART: Record<string, string> = {
@@ -105,7 +122,17 @@ export const STATION_SUBTYPE_TERMS: Record<StationKind, Array<{ subtype: Station
     { subtype: "lab", terms: ["praxis", "crucible", "sigma", "theta", "omicron", "lab", "institute", "compound"] },
   ],
   shipyard: [
-    { subtype: "foundry", terms: ["forge", "drydock", "shipyard", "yards"] },
+    // Single subtype for now since shipyards share one art asset.
+    // Cover every name root + suffix in src/sim/gen/names.ts so a
+    // generated Stays / Slipway / Keel / etc. resolves to the same
+    // shipyard splash instead of falling through to the generic
+    // station fallback. Re-introduce more subtypes once dedicated
+    // shipyard art lands.
+    { subtype: "foundry", terms: [
+      "drydock", "slipway", "keel", "spar", "rigging", "stanchion",
+      "berth", "cradle", "hangar", "prow", "aegis", "bastion",
+      "shipyard", "yards", "stays", "forge",
+    ] },
   ],
   station: [],
 };
@@ -169,6 +196,16 @@ export function shipArtUrl(ship: Trader): string {
 }
 
 export function shipArtFamily(ship: Trader): ShipArtFamily {
+  // Shipyard-minted ships carry a definitive ShipClass. Map the four
+  // overlapping classes (freighter / courier / hauler) plus the two
+  // class-only families (cruiser / exotic) directly so blueprints
+  // always pick the class-specific art instead of name-root guessing.
+  if (ship.shipClass === "cruiser") return "cruiser";
+  if (ship.shipClass === "exotic")  return "exotic";
+  if (ship.shipClass === "freighter") return "freighter";
+  if (ship.shipClass === "hauler") return "hauler";
+  if (ship.shipClass === "courier") return "courier";
+
   const haystack = `${ship.name} ${ship.id}`.toLowerCase();
   for (const family of Object.keys(SHIP_FAMILY_TERMS) as ShipArtFamily[]) {
     if (SHIP_FAMILY_TERMS[family].some(term => haystack.includes(term))) return family;

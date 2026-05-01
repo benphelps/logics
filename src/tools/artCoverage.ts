@@ -78,9 +78,63 @@ function artExists(url: string): boolean {
   return existsSync(join(PUBLIC_DIR, url.replace(/^\//, "")));
 }
 
+// Status helpers. The basic check (file-on-disk?) doesn't tell the
+// whole story: when a brand-new category points at an existing asset
+// (e.g. shipyard reusing the mining-foundry plate, cruiser reusing
+// scout) the report would say "covered" even though there's no
+// dedicated art for that category. The alias map below feeds the
+// honest status — a url is "dedicated" when the category is the only
+// owner, "alias" when another category uses the same file.
+
 function status(url: string): string {
   return artExists(url) ? "covered" : "missing";
 }
+
+interface AliasIndex {
+  // Each url maps to the list of category labels that resolve to it,
+  // plus the archetype "root" per owner so we can distinguish
+  // intentional intra-archetype aliasing from genuine cross-category
+  // borrowing.
+  ownersByUrl: Map<string, { ownerKey: string; root: string }[]>;
+}
+
+function buildAliasIndex(entries: Record<string, string>, prefix: string): AliasIndex {
+  const ownersByUrl = new Map<string, { ownerKey: string; root: string }[]>();
+  for (const [key, url] of Object.entries(entries)) {
+    if (key === "default") continue;                  // headshot/default fallback isn't a real category
+    const ownerKey = `${prefix}:${key}`;
+    const root = `${prefix}:${key.split(":")[0]}`;     // e.g. station:agri:large → station:agri
+    const list = ownersByUrl.get(url) ?? [];
+    list.push({ ownerKey, root });
+    ownersByUrl.set(url, list);
+  }
+  return { ownersByUrl };
+}
+
+function aliasStatus(index: AliasIndex, url: string, ownerKey: string): string {
+  if (!artExists(url)) return "missing";
+  const owners = index.ownersByUrl.get(url) ?? [];
+  if (owners.length <= 1) return "dedicated";
+  // Cross-archetype share = a different root owns this same url.
+  // Intentional intra-archetype aliasing (agri:large = agri:standard
+  // = agri) doesn't count as a stub.
+  const myRoot = ownerKey.split(":").slice(0, 2).join(":");
+  const foreign = owners.some(o => o.root !== myRoot);
+  if (!foreign) return "dedicated";
+  return "alias";
+}
+
+// Shared assets we know are intentionally placeholders pending real
+// art. Surfaced as a dedicated section so the coverage report makes
+// the "we lied earlier" stuff obvious.
+const KNOWN_ALIAS_NOTES: Record<string, string> = {
+  "ship:cruiser": "reuses scout.webp until dedicated cruiser art lands",
+  "ship:exotic": "reuses scout.webp until dedicated exotic art lands",
+  "station:shipyard": "reuses mining-foundry.webp until dedicated shipyard art lands",
+  "station:shipyard:foundry": "reuses mining-foundry.webp until dedicated shipyard art lands",
+  "station:shipyard:compact": "reuses mining-belt-small.webp until dedicated shipyard art lands",
+  "station:shipyard:large": "reuses mining-foundry.webp until dedicated shipyard art lands",
+};
 
 function fakeStation(kind: StationKind, name: string, scale: StationScale = "standard"): LocationDef {
   const fixture = SCALE_FIXTURES[kind][scale];
@@ -103,7 +157,7 @@ function fakeStation(kind: StationKind, name: string, scale: StationScale = "sta
   };
 }
 
-function fakeShip(root: string): Trader {
+function fakeShip(root: string, shipClass?: import("../sim/types").ShipClass): Trader {
   return {
     id: `t_${root.toLowerCase()}`,
     name: root,
@@ -120,6 +174,7 @@ function fakeShip(root: string): Trader {
     ticksRemaining: 0,
     pilot: "npc",
     log: [],
+    shipClass,
   };
 }
 
@@ -131,6 +186,31 @@ function lineTable(headers: string[], rows: string[][]): string {
   const head = `| ${headers.join(" | ")} |`;
   const sep = `| ${headers.map(() => "---").join(" | ")} |`;
   return [head, sep, ...rows.map(row => `| ${row.join(" | ")} |`)].join("\n");
+}
+
+function buildStubAliasRows(shipAlias: AliasIndex, stationAlias: AliasIndex): string[][] {
+  // Walk every ship + station entry and surface any whose URL is
+  // owned by a category with a *different* archetype root —
+  // intra-archetype aliasing (agri:large reusing agricultural-ring)
+  // is intentional and doesn't count.
+  const rows: { category: string; url: string; others: string[]; note: string }[] = [];
+  const collect = (entries: Record<string, string>, index: AliasIndex, prefix: string) => {
+    for (const [key, url] of Object.entries(entries)) {
+      if (key === "default") continue;
+      const owners = index.ownersByUrl.get(url) ?? [];
+      const ownerKey = `${prefix}:${key}`;
+      const myRoot = ownerKey.split(":").slice(0, 2).join(":");
+      const foreign = owners.filter(o => o.root !== myRoot);
+      if (foreign.length === 0) continue;
+      const note = KNOWN_ALIAS_NOTES[ownerKey] ?? "";
+      rows.push({ category: ownerKey, url, others: foreign.map(o => o.ownerKey), note });
+    }
+  };
+  collect(SHIP_ART, shipAlias, "ship");
+  collect(STATION_ART, stationAlias, "station");
+  rows.sort((a, b) => a.category.localeCompare(b.category));
+  if (rows.length === 0) return [["—", "—", "—", "no stub aliases — every category has dedicated art"]];
+  return rows.map(r => [r.category, r.url, r.others.join(", ") || "—", r.note || "—"]);
 }
 
 function summarize(label: string, total: number, covered: number): string {
@@ -157,6 +237,21 @@ function main(): void {
     return [root, family, directRoot ? "name-root" : "stat fallback", url, status(url)];
   });
 
+  // Ship-class coverage. Mirrors the name-root table but exercises
+  // the ShipClass routing path used by shipyard-minted ships, so the
+  // freighter / courier / hauler / cruiser / exotic resolution gets
+  // tracked alongside the legacy NPC families. Status is honest
+  // about aliased entries — cruiser/exotic still flag "alias" until
+  // they get their own art.
+  const SHIP_CLASSES = ["freighter", "courier", "hauler", "cruiser", "exotic"] as const;
+  const shipAlias = buildAliasIndex(SHIP_ART, "ship");
+  const shipClassRows = SHIP_CLASSES.map(cls => {
+    const ship = fakeShip("Atlas", cls);
+    const family = shipArtFamily(ship);
+    const url = shipArtUrl(ship);
+    return [cls, family, url, aliasStatus(shipAlias, url, `ship:${cls}`)];
+  });
+
   const stationTermRows = STATION_ARCHETYPES.map(({ archetype, kind }) => {
     const terms = [...STATION_NAME_ROOTS[archetype], ...STATION_NAME_SUFFIXES[archetype]];
     const unmatched = terms.filter(term => stationSubtypeFromText(term, kind) == null);
@@ -173,6 +268,7 @@ function main(): void {
     ];
   });
 
+  const stationAlias = buildAliasIndex(STATION_ART, "station");
   const stationScaleKinds = [...STATION_ARCHETYPES.map(entry => entry.kind), "station"] as StationKind[];
   const stationScaleRows = stationScaleKinds.flatMap(kind => {
     return (["compact", "standard", "large"] as StationScale[]).map(scale => {
@@ -180,7 +276,7 @@ function main(): void {
       const candidates = stationArtCandidates(loc);
       const key = firstResolvedKey(candidates, STATION_ART) ?? "-";
       const url = stationArtUrl(loc);
-      return [kind, scale, key, url, status(url)];
+      return [kind, scale, key, url, aliasStatus(stationAlias, url, `station:${key}`)];
     });
   });
 
@@ -189,7 +285,7 @@ function main(): void {
     const candidates = stationArtCandidates(loc);
     const key = firstResolvedKey(candidates, STATION_ART) ?? "-";
     const url = stationArtUrl(loc);
-    return [loc.name, stationKind(loc), key, url, status(url)];
+    return [loc.name, stationKind(loc), key, url, aliasStatus(stationAlias, url, `station:${key}`)];
   });
 
   const goodRows = Object.values(GOODS)
@@ -225,7 +321,9 @@ function main(): void {
     lineTable(["Area", "Covered", "Coverage"], [
       summarize("Referenced asset files", assetUrls.size, assetUrls.size - missingAssets.length).slice(2, -2).split(" | "),
       summarize("Ship name roots", shipRows.length, shipRows.filter(row => row[4] === "covered").length).slice(2, -2).split(" | "),
-      summarize("Station default universe", worldStationRows.length, worldStationRows.filter(row => row[4] === "covered").length).slice(2, -2).split(" | "),
+      summarize("Ship classes (dedicated)", shipClassRows.length, shipClassRows.filter(row => row[3] === "dedicated").length).slice(2, -2).split(" | "),
+      summarize("Station default universe", worldStationRows.length, worldStationRows.filter(row => row[4] !== "missing").length).slice(2, -2).split(" | "),
+      summarize("Station scales (dedicated)", stationScaleRows.length, stationScaleRows.filter(row => row[4] === "dedicated").length).slice(2, -2).split(" | "),
       summarize("Trade goods", goodRows.length, goodRows.filter(row => row[5] === "covered").length).slice(2, -2).split(" | "),
       summarize("Trade goods exact art", goodRows.length, goodRows.filter(row => row[3] === "exact").length).slice(2, -2).split(" | "),
       summarize("Upgrade slots", upgradeRows.length, upgradeRows.filter(row => row[2] === "covered").length).slice(2, -2).split(" | "),
@@ -237,9 +335,22 @@ function main(): void {
     "",
     missingAssets.length > 0 ? missingAssets.map(url => `- ${url}`).join("\n") : "None.",
     "",
+    "## Stub Aliases",
+    "",
+    "These categories resolve to art shared with another category — they need their own dedicated asset before the resolver should claim 100%.",
+    "",
+    lineTable(
+      ["Category", "Shared Url", "Sharing With", "Note"],
+      buildStubAliasRows(shipAlias, stationAlias),
+    ),
+    "",
     "## Ship Name Roots",
     "",
     lineTable(["Root", "Family", "Match", "Art", "Status"], shipRows),
+    "",
+    "## Ship Classes",
+    "",
+    lineTable(["Class", "Resolved Family", "Art", "Status"], shipClassRows),
     "",
     "## Station Name Terms",
     "",

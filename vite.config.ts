@@ -2,10 +2,11 @@ import { resolve } from "node:path";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { headshotDevServerPlugin } from "./server/headshots";
+import { shipArtDevServerPlugin } from "./server/ship-art";
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), headshotDevServerPlugin()],
+  plugins: [react(), headshotDevServerPlugin(), shipArtDevServerPlugin()],
   build: {
     rollupOptions: {
       input: {

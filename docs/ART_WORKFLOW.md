@@ -60,6 +60,44 @@ Avoid: text, logos, signage, UI, characters, close-up cockpit, huge planet, over
 6. Open `docs/ART_COVERAGE.md` and confirm the missing section is empty or intentionally documented.
 7. Run validation before committing.
 
+## Ship Art Generation API
+
+The dev / production server exposes an OpenAI-backed image-gen
+endpoint for ship art at `/api/ship-art/generate`. The body shape:
+
+```json
+{
+  "class": "freighter | courier | hauler | cruiser | exotic",
+  "family": "(optional, defaults to class) freighter | courier | hauler | cruiser | exotic | scout | tanker",
+  "name": "(optional) ship name to inform proportions",
+  "traits": ["self-piloted", "ai-navigator", ...],
+  "flavor": "(optional) blueprint flavor string",
+  "size": "1024x1024 | 1024x1536 | 1536x1024",
+  "quality": "low | medium | high"
+}
+```
+
+The server builds a class-tuned prompt from `server/ship-art.ts`'s
+`CLASS_PROMPTS` / `FAMILY_FALLBACK_PROMPTS` / `TRAIT_PROMPTS` blocks.
+Each successful generation persists to `.logics-cache/ship-art/`
+keyed by class + family + traits hash; subsequent calls with the
+same key can either reuse the cached entry or generate a fresh one.
+
+`GET /api/ship-art/options` returns the allowed enums.
+`GET /api/ship-art/cache` lists every persisted entry.
+`GET /api/ship-art/image/:id` streams the bytes.
+`GET /api/ship-art/status/:id` returns the generation status.
+
+## Stub Aliases
+
+`docs/ART_COVERAGE.md` includes a "Stub Aliases" section listing
+categories whose URL is shared with a category from a different
+archetype (e.g. `station:shipyard` reusing `mining-foundry.webp`).
+Intra-archetype aliasing — `agri:large` reusing `agricultural-ring.webp`
+because every agri scale paints the same plate — is intentional and
+not flagged. When a stub alias appears, that category needs its own
+dedicated asset; treat the row as a TODO until it does.
+
 Example conversion:
 
 ```bash

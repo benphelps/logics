@@ -3,6 +3,7 @@ import { stat } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { extname, resolve, sep } from "node:path";
 import { handleHeadshotRequest } from "./headshots.js";
+import { handleShipArtRequest } from "./ship-art.js";
 
 const DIST_DIR = resolve(process.cwd(), process.env.LOGICS_DIST_DIR ?? "dist");
 const PORT = Number(process.env.PORT ?? 3000);
@@ -38,6 +39,7 @@ server.listen(PORT, HOST, () => {
 async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
   try {
     if (await handleHeadshotRequest(req, res)) return;
+    if (await handleShipArtRequest(req, res)) return;
     await serveStatic(req, res);
   } catch (error) {
     if (res.headersSent) {
