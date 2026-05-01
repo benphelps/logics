@@ -48,7 +48,12 @@ export function createWorld(opts?: {
     const stock: Record<GoodId, number> = {};
     const prices: Record<GoodId, number> = {};
     for (const goodId of Object.keys(goods)) {
-      stock[goodId] = loc.targetStock[goodId] ?? 0;
+      // Upgrade tiers are milestone-gated — start at stock 0 regardless of
+      // targetStock; replenishUnlockedUpgrades will seed each tier the first
+      // tick after its milestone is met (and never re-seed afterward, so
+      // post-purchase stock stays at 0).
+      const isUpgrade = goods[goodId].category === "upgrade";
+      stock[goodId] = isUpgrade ? 0 : (loc.targetStock[goodId] ?? 0);
       prices[goodId] = goods[goodId].basePrice;
     }
     const treasuryTarget = defaultTreasuryTarget(loc);

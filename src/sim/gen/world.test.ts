@@ -194,6 +194,11 @@ describe("invariants hold at scale", () => {
     for (const loc of Object.values(w.locations)) {
       const market = w.markets[loc.id];
       for (const good of Object.values(w.goods)) {
+        // Skip upgrade goods — those are milestone-gated and stay at stock 0
+        // until the player crosses the action milestone. Without a player
+        // running the world, they correctly stay locked, which would skew
+        // this commodity-economy invariant.
+        if (good.category === "upgrade") continue;
         const target = loc.targetStock[good.id] ?? 0;
         if (target <= 0) continue;
         quotes += 1;

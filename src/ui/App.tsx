@@ -3,6 +3,7 @@ import { useStore, type Tab } from "./store";
 import { useTickDriver } from "./useTickDriver";
 import { TopBar } from "./components/TopBar";
 import { BridgeTabScroller } from "./components/BridgeTabScroller";
+import { ChartersView } from "./views/ChartersView";
 import { MarketsView } from "./views/MarketsView";
 import { LocationsView } from "./views/LocationsView";
 import { PlayerView } from "./views/PlayerView";
@@ -42,6 +43,7 @@ export function App() {
             {tab === "locations" && <LocationsView />}
             {tab === "player"    && <PlayerView />}
             {tab === "stocks"    && <StockMarketView />}
+            {tab === "charters"  && <ChartersView />}
           </div>
         </main>
       </div>

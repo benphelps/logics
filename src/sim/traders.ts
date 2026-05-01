@@ -27,6 +27,7 @@ import {
 } from "./crew";
 import { isUpgradeGood, upgradeDef } from "./upgrades";
 import { buildDestinationLoadoutPlans, buildLocalFetchPlans, type PlannedBuy, type RoutePlanCandidate } from "./loadoutPlans";
+import { incrementManualActions, isMilestoneMet, upgradeTierMilestone, MILESTONES, MILESTONE_LABELS } from "./milestones";
 
 export const MIN_PROFIT_PER_TICK = 0.05;
 export const MAX_DRAW_FRACTION = 0.5;
@@ -1273,6 +1274,7 @@ export function installUpgradeFromCargo(world: World, trader: Trader, goodId: Go
 
   const result = finalizeUpgradeInstall(world, trader, goodId, previous);
   if (!result.ok) restoreUpgradeInstall(trader, snap);
+  if (result.ok && isPlayerShip(world, trader)) incrementManualActions(world);
   return result;
 }
 
@@ -1309,6 +1311,15 @@ export function installUpgradeFromMarket(world: World, trader: Trader, goodId: G
   if (!def) return { ok: false, reason: "That good is not a ship upgrade." };
   if (trader.upgrades?.[def.slot] === goodId) return { ok: false, reason: `${def.name} is already installed.` };
 
+  // Belt-and-suspenders milestone gate. Stocking is also gated at the
+  // market level (market.stock stays at 0), but if stock is somehow non-zero
+  // for a locked tier we still refuse the buy here so the rule holds end-to-end.
+  const tierKey = upgradeTierMilestone(def.tier);
+  if (tierKey && !isMilestoneMet(world, tierKey)) {
+    const remaining = MILESTONES[tierKey] - (world.player?.manualActionCount ?? 0);
+    return { ok: false, reason: `Tier-${def.tier} modules unlock at ${MILESTONES[tierKey]} actions (${remaining} more to go) — ${MILESTONE_LABELS[tierKey].label}.` };
+  }
+
   const market = world.markets[trader.location];
   const stock = market.stock[goodId] ?? 0;
   if (stock < 1) return { ok: false, reason: `${def.name} is not in stock here.` };
@@ -1336,6 +1347,7 @@ export function installUpgradeFromMarket(world: World, trader: Trader, goodId: G
     market.stock[goodId] = stockBefore;
     market.treasury = treasuryBefore;
   }
+  if (result.ok && isPlayerShip(world, trader)) incrementManualActions(world);
   return result;
 }
 
@@ -1374,6 +1386,7 @@ export function buyAtLocation(world: World, trader: Trader, goodId: GoodId, qty:
 
   const events: TraderEvent[] = [{ trader: trader.id, kind: "buy", good: goodId, qty, unitPrice: price, from: trader.location }];
   for (const ev of events) pushTraderEvent(world, trader, ev);
+  if (isPlayerShip(world, trader)) incrementManualActions(world);
   return { ok: true, events };
 }
 
@@ -1419,6 +1432,7 @@ export function sellAtLocation(world: World, trader: Trader, goodId: GoodId, qty
   const events: TraderEvent[] = [];
   beginUnloadLots(world, trader, movedLots, events);
   for (const ev of events) pushTraderEvent(world, trader, ev);
+  if (isPlayerShip(world, trader)) incrementManualActions(world);
   return { ok: true, events };
 }
 
@@ -1451,6 +1465,7 @@ export function refuelManual(world: World, trader: Trader, qty?: number): Execut
 
   const events: TraderEvent[] = [{ trader: trader.id, kind: "refuel", good: ft.good, qty: buyQty, unitPrice: price }];
   for (const ev of events) pushTraderEvent(world, trader, ev);
+  if (isPlayerShip(world, trader)) incrementManualActions(world);
   return { ok: true, events };
 }
 
@@ -1478,6 +1493,7 @@ export function travelTo(world: World, trader: Trader, dst: LocationId): Execute
   const events: TraderEvent[] = [];
   departForReposition(world, trader, dst, fuelNeeded, travelTicksFor(trader, dist), events);
   for (const ev of events) pushTraderEvent(world, trader, ev);
+  if (isPlayerShip(world, trader)) incrementManualActions(world);
   return { ok: true, events };
 }
 

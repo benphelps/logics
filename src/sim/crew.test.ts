@@ -6,6 +6,7 @@ import {
 } from "./crew";
 import { executeTrade, listTradeOptions, repairShip, travelTo } from "./traders";
 import { generateHires, listHiresAt } from "./hires";
+import { unlockAllMilestonesForTests } from "./milestones";
 import type { CrewModifiers, CrewRole, Hire, World } from "./types";
 
 function getPlayerShip(w: ReturnType<typeof createWorld>) {
@@ -287,6 +288,7 @@ describe("crew: pricing + wages", () => {
 describe("hires: dynamic pool", () => {
   it("generateHires posts offers at stations over time, capped per-station", () => {
     const w = createWorld();
+    unlockAllMilestonesForTests(w);
     tickN(w, 200);
     const havenOffers = listHiresAt(w, "haven");
     expect(havenOffers.length).toBeGreaterThan(0);
@@ -307,6 +309,7 @@ describe("hires: dynamic pool", () => {
 
   it("generated hires have small modifiers (or none) and sane costs", () => {
     const w = createWorld();
+    unlockAllMilestonesForTests(w);
     tickN(w, 400);
     const all = Object.values(w.hires);
     expect(all.length).toBeGreaterThan(0);
@@ -326,8 +329,9 @@ describe("hires: dynamic pool", () => {
     }
   });
 
-  it("generated navigators have an affordable early tier", () => {
+  it("generated navigators have a reasonable T1 base price", () => {
     const w = createWorld();
+    unlockAllMilestonesForTests(w);
     const navigators = [];
     for (let i = 0; i < 1_200; i++) {
       navigators.push(...tickWorld(w).hiresPosted.filter(h => h.role === "navigator"));
@@ -335,16 +339,19 @@ describe("hires: dynamic pool", () => {
 
     const tierOne = navigators.filter(h => h.tier === 1);
     expect(tierOne.length).toBeGreaterThan(0);
-    expect(Math.min(...tierOne.map(h => h.hireCost))).toBeLessThanOrEqual(25_000);
+    // T1 navigator base is now Ç45k (action milestone is the gate, not price).
+    // Cap is loose so trait-bearing variants still pass.
+    expect(Math.min(...tierOne.map(h => h.hireCost))).toBeLessThanOrEqual(60_000);
 
     const tierTwo = navigators.filter(h => h.tier === 2);
     if (tierTwo.length > 0) {
-      expect(Math.max(...tierTwo.map(h => h.hireCost))).toBeLessThanOrEqual(95_000);
+      expect(Math.max(...tierTwo.map(h => h.hireCost))).toBeLessThanOrEqual(150_000);
     }
   });
 
-  it("generated pilots are a later auto-play unlock", () => {
+  it("generated pilots stay a meaningful expense", () => {
     const w = createWorld();
+    unlockAllMilestonesForTests(w);
     const pilots = [];
     for (let i = 0; i < 1_200; i++) {
       pilots.push(...tickWorld(w).hiresPosted.filter(h => h.role === "captain"));
@@ -352,7 +359,8 @@ describe("hires: dynamic pool", () => {
 
     const tierOne = pilots.filter(h => h.tier === 1);
     expect(tierOne.length).toBeGreaterThan(0);
-    expect(Math.min(...tierOne.map(h => h.hireCost))).toBeGreaterThanOrEqual(120_000);
+    // T1 captain base is now Ç90k (action gate handles autopilot pacing).
+    expect(Math.min(...tierOne.map(h => h.hireCost))).toBeGreaterThanOrEqual(80_000);
   });
 
   it("generation is deterministic for the same starting state", () => {

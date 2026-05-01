@@ -30,6 +30,23 @@ The main tab buttons are:
 - **Exchange**: station, syndicate, commodity, basis, futures, and index trading.
 - **Markets**: commodity logistics and supply/demand reading.
 - **Atlas**: stations, route planning, and ship positions.
+- **Charters**: career progress, manual-action milestones, crew offer unlocks, and upgrade-tier licenses.
+
+### Career Charters
+
+Manual actions advance the player's career counter. Buying, selling, traveling, refueling, accepting work, collecting work, installing upgrades, hiring crew, and placing exchange orders all count. Auto-pilot actions do not count.
+
+Charters use that counter to stage the game's lift:
+
+| Unlock | Actions | What changes |
+|---|---:|---|
+| Local Outfitters | 25 | Tier-1 modules can stock in station upgrade markets. |
+| Navigator's Guild | 50 | Stations can post navigator offers; hired navigators unlock guidance. |
+| Mechanic's Guild | 100 | Stations can post mechanic offers; hired mechanics handle maintenance. |
+| Refit Yards | 150 | Tier-2 modules can stock in station upgrade markets. |
+| Pilot's Guild | 250 | Stations can post pilot offers; hired pilots unlock auto-pilot trading. |
+| Specialist Yards | 500 | Tier-3 modules can stock in station upgrade markets. |
+| Apex Foundries | 900 | Tier-4 endgame modules can stock in station upgrade markets. |
 
 ### Tick And Speed
 
@@ -345,6 +362,13 @@ Auto-pilot uses the same underlying market and route math as NPC traders, with p
 | Idle maintenance | 0 |
 | Cargo unload duration | 4 ticks before modifiers |
 | Maintenance debt grounding threshold | Ç8,000 |
+| Tier-1 module unlock | 25 manual actions |
+| Navigator offer unlock | 50 manual actions |
+| Mechanic offer unlock | 100 manual actions |
+| Tier-2 module unlock | 150 manual actions |
+| Pilot offer unlock | 250 manual actions |
+| Tier-3 module unlock | 500 manual actions |
+| Tier-4 module unlock | 900 manual actions |
 
 ## Source Notes
 

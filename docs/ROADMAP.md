@@ -4,6 +4,22 @@ What's done, what's next, and the pile of things we've talked about and shelved 
 
 ---
 
+## Current direction
+
+Logics is moving toward a public-facing browser game about space trucking, fleet coordination, and market speculation. The first loop is intentionally direct: control one ship, buy goods, move them between stations, sell into demand, and take contracts. The long loop is staged delegation: unlock guidance, hire a navigator, hire a mechanic, hire a pilot, upgrade the ship, and eventually hand routine work to a crew while the player moves on to larger ships, more ships, and higher-risk market decisions.
+
+The app should keep that promise clear:
+
+- **My Fleet** is the hands-on trucking screen.
+- **Exchange** is the Wall Street layer on top of the same simulated economy.
+- **Markets** is the commodity pressure board.
+- **Atlas** is the route, station, ship, and future danger map.
+- **Charters** is the career-progress surface for staged unlocks.
+
+Future additions should reinforce that progression: multi-ship ownership, shipyard purchases, bigger hulls with traits, route danger, dangerous jobs, weapon modules with real combat consequences, and crews that generate income while the player coordinates the next tier of work.
+
+---
+
 ## Done
 
 Listed in commit order. Each was scoped tight, landed with tests, and updated this doc.
@@ -43,6 +59,10 @@ Listed in commit order. Each was scoped tight, landed with tests, and updated th
 | Auto-pilot multi-good loadout | With a navigator, `stepTrader` pre-loads accepted-contract goods (high-tier first) before the primary buy when a buy_for_route's destination matches an accepted contract for a different good. One trip, multiple contracts fulfilled. |
 | Cargo reservation in `listTradeOptions` | When sizing the primary buy for manual guidance or auto+navigator, the engine reserves cargo for accepted-contract goods at the same destination available at this source. Recommended `hint.qty` shrinks; the suggested Buy button uses it (not bay-max), leaving room for the contract good. |
 | Single-page website + logo | Added `website.html` with a standalone React/CSS site that presents Logics as a space logistics trading idle clicker. Added compact SVG logo assets in `public/site/` and captured live gameplay screenshots into `public/site/screenshots/`. |
+| Expanded Exchange instruments | Exchange now covers station shares, syndicates, commodity spot listings, station basis pairs, futures contracts, and indices, with order books, positions, orders, futures P&L, history, settlement handling, and navigator trade insights. |
+| Ship upgrades as real cargo/modules | Station upgrade stock, carried module goods, install/remove/replace flows, slot-specific effects, and shared crew/upgrade modifiers are in the player loop. |
+| Save slots + app shell | Local save slots, autosave status, new game/load/delete controls, developer state, per-tab scroll memory, and the five-tab app shell are in the UI. |
+| Career charters + staged unlocks | Manual-action milestones now gate upgrade tiers and crew offer pools. The Charters tab shows what is cleared, what is next, and how close the player is to the next unlock. |
 
 ---
 
@@ -66,28 +86,63 @@ NPC traders only think one trip ahead. A smarter trader would chain "carry fuel 
 
 ---
 
-## Queued (next up — game layer)
+## Queued (next up — game/app layer)
 
-These cross from "sim that runs" to "game you play."
+These are the next steps for turning the current sim-heavy build into a more public player-facing app.
 
-### Player ship + work board
-The biggest jump. Player has 1+ ships they manually control. Jobs come from:
-- `stuck` events from broke/stranded NPC traders → "Rescue stranded ship" contracts
-- Persistent shortages → "Deliver N grain to Saffron" contracts
-- Faction politics → escort, smuggling, diplomatic missions
-**Foundations already in**: `stuck` events fire today; `locationsImporting(world, good)` lists shortage-prone ports.
+### Public onboarding and first-session clarity
+The opening session should sell the core loop without a tutorial wall: the player sees one good move, takes it, sees the wallet/cargo/fuel change, and understands why the next route matters.
 
-### First UI screen
-Single dense market table — locations down, goods across, with stock/price cells. Sortable, filterable. The MVP visual sanity check before more screens.
-**Stack picked**: Vite + React + TanStack Table + Zustand. Vite/React already scaffolded. TanStack/Zustand installed.
+Needed:
+- better first-run copy and empty states
+- clearer "why this action is suggested" language
+- route profit and expected travel cost surfaced near the action
+- tighter pacing around the first navigator/mechanic/pilot unlocks
 
-### Ship traits / upgrades scaffolding
-Generalize the multi-fuel `fuelTypes` pattern: ship has slotted modules (engine, hull, cargo bay, sensors, life support). Each module has stats; player visits a shipyard to upgrade. Multi-fuel is already an example — `fuelTypes` swap is exactly the upgrade flow.
-**Why not yet**: needs UI to be useful. Slot on top of player layer.
+### Multi-ship ownership
+The UI already has a selected-ship picker and the save model stores `player.shipIds`, but the player still needs a real way to buy, name, switch, and retire ships.
 
-### Clicker-friendly automation feedback
-The current mechanics support manual shipping and crew-gated auto-pilot, but the feedback should feel more incremental and idle-friendly. Add clearer route earnings, per-ship earning rates, automation unlock moments, and compact "next best action" surfaces that make repeated shipping decisions satisfying before the player opens the dense tables.
-**Why not yet**: this is mostly UX polish and progression framing. It should follow the current bridge/contract flows so the signals are tied to real sim actions, not a separate meta layer.
+Needed:
+- shipyard offers or station-listed hulls
+- transfer or funding rules between ships
+- per-ship route/crew summaries in My Fleet
+- fleet-level income and idle-progress readouts
+
+### Bigger ships and hull traits
+Current upgrades modify one starting hull. The next progression step is buying whole new ships with built-in traits: scout, courier, tanker, freighter, hauler, combat escort, and specialty exchange/logistics vessels.
+
+Needed:
+- hull catalog and purchase rules
+- trait surface in the ship picker and info card
+- route constraints that make different hulls matter
+- migration path from starter ship to larger fleets
+
+### Automation readability
+Crew-gated auto-pilot works, but players need a better way to supervise it. The goal is not hidden AI magic; it is readable delegation.
+
+Needed:
+- per-ship "current plan" and recent profit summary
+- clearer stuck/blocked auto states
+- route earnings per tick
+- fleet exception queue for ships needing player attention
+
+### Route danger and dangerous work
+Danger should add tension to trucking routes without turning Logics into an RTS. It belongs in lanes, jobs, ship stats, crew decisions, and insurance-like market consequences.
+
+Needed:
+- danger rating on lanes and Atlas filters
+- dangerous contracts with higher reward and real failure risk
+- hull/weapon checks during route resolution
+- repair, damage, and loss outcomes that can be reasoned about
+
+### Weapon upgrades with real consumers
+Weapons already exist as upgrade slots and stats, but they do not yet affect route outcomes. Do not add more weapon content until there is a route-danger reader.
+
+Needed:
+- route combat/danger resolution
+- weapon power contribution
+- job types that pay for risk mitigation
+- UI language that keeps combat secondary to logistics
 
 ---
 
@@ -107,17 +162,17 @@ Mentioned in passing. Would create natural "deliver fast" pressure for food good
 ### Population growth
 Currently static. Long games could grow stations (more pop = more consumption = more demand). Out of scope until late-game progression matters.
 
-### Save / load
-Not yet. Sim is a serializable plain object (`World` is just data + functions are stateless). `JSON.stringify(world)` should round-trip; will need a small reviver for any future class instances. Trivial to add when needed.
+### Cloud / account save
+Local browser save slots are in. Account-backed cloud save is still out of scope because the project currently has no backend and benefits from staying deterministic and local-first.
 
 ### Time / calendar
 Currently just an integer `tick`. No day/week/season concept. Could add for content that varies (harvest seasons, faction events). Defer until content needs it.
 
-### Procedural universe generation
-The sim is data-driven enough to support it (drop in a generated `LOCATIONS` map + `GOODS` map and `createWorld` does the rest). Not built. Could be a "new game" flow when the game has any of those.
+### Procedural universe selection
+Programmatic world generation exists for scenarios and benchmarks. A player-facing "new universe" flow is still parked until the core game has enough content variety for world selection to matter.
 
-### Combat / ship damage
-Implied by escort jobs but not modeled. Needs: hull/shields stats, damage events, repair cost. Big surface area; defer until escort jobs justify it.
+### Combat as a primary loop
+Route danger, dangerous jobs, hull damage, and weapon checks are planned. Direct combat as a primary minute-to-minute loop is still deferred; the game should remain about logistics and coordination first.
 
 ### Reputation / faction standing
 The `faction` trait exists. Reputation is the consumer that doesn't yet exist. Defer until faction matters (port access, prices, mission availability).
@@ -149,8 +204,8 @@ Mentioned. The data model supports an arbitrary `fuelTypes` list. Endgame "exoti
 ### Antimatter-only ships
 Specialized vessels that can't fall back to plasma. Possible with current data model — just don't include plasma in `fuelTypes`. Risk: very tied to one refuel port. Interesting design knob; not a priority.
 
-### A "rescue stranded trader" contract type
-Came up multiple times — the broke + stuck trader is a perfect work-board hook. Implementation is trivial once a work board exists: scan for `funds=0 AND state="idle"` traders and emit a job to deliver fuel + small subsidy. This is the cleanest "Tier 0" job to ship when the player layer lands.
+### Expanded rescue and service jobs
+Basic rescue calls are implemented. Parked ideas include towing, repair dispatch, fuel subscriptions, escort variants, and station service contracts that need stronger route-danger and multi-ship support first.
 
 ---
 

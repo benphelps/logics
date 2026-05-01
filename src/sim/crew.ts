@@ -1,6 +1,7 @@
 import type { CrewModifiers, CrewRole, HireId, ShipCrew, Trader, World } from "./types";
 import { snapshotFromHire, takeHire } from "./hires";
 import { combinedUpgradeModifiers } from "./upgrades";
+import { incrementManualActions } from "./milestones";
 
 // Maintenance debt accrued for player ships without a mechanic. Once debt
 // crosses this threshold, the ship can't depart until repaired. Sized so
@@ -141,6 +142,7 @@ export function hireCrew(world: World, ship: Trader, hireId: HireId): CrewAction
   ship.crew[offer.role] = snapshotFromHire(offer);
   takeHire(world, hireId);            // consume the offer
   recomputeShipStats(ship);
+  incrementManualActions(world);
   return { ok: true };
 }
 

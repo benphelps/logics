@@ -19,8 +19,9 @@ The site presents Logics as a space logistics trading idle clicker:
 - trading layer: markets, contracts, prices, and shortages
 - shipping layer: cargo, fuel, lanes, maintenance, and station travel
 - automation layer: crew, upgrades, auto-pilot, and passive positions
+- career layer: Charters, manual-action unlocks, staged guidance, and staged automation
 
-The visual language should stay close to the game UI: dark command panels, compact uppercase labels, cyan/amber market accents, and existing industrial space art.
+The public pitch should stay close to the current game direction: space trucking, coordination, and Wall Street simulation in the browser; part spreadsheet, part clicker, part idler. The visual language should stay close to the game UI: dark command panels, compact uppercase labels, cyan/amber market accents, and existing industrial space art.
 
 ## Refreshing Screenshots
 
@@ -30,6 +31,7 @@ Start the app with `npm run dev`, open the game, and capture these views into `p
 - `markets.png` — Markets
 - `atlas.png` — Atlas
 - `exchange.png` — Exchange
+- `readme-fleet.png` and `readme-exchange.png` — README-specific callouts captured from the live UI
 
 The screenshots should come from the running game UI so the site reflects the current build instead of drifting into mockups.
 

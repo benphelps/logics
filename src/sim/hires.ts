@@ -1,6 +1,7 @@
 import type { CrewModifiers, CrewRole, Hire, HireId, LocationDef, World } from "./types";
 import { mulberry32, type Rng } from "./gen/rng";
 import { rollCrewIdentity } from "./crewIdentity";
+import { crewRoleMilestone, isMilestoneMet } from "./milestones";
 
 // --- tunables --------------------------------------------------------------
 
@@ -60,12 +61,18 @@ const MOD_COST_WEIGHT: Record<keyof CrewModifiers, number> = {
 
 // Role-baseline pricing (T1 with no mods). Internal "captain" is presented
 // as Pilot in the UI. Progression is:
-//   navigator — early guidance unlock, roughly a handful of manual actions
-//   mechanic  — mid/cheap maintenance stabilizer
-//   captain   — later autopilot unlock after meaningful hand play
+//   navigator — guidance unlock; gated by 50-action milestone, not price
+//   mechanic  — maintenance stabilizer; gated by 100-action milestone
+//   captain   — autopilot unlock; gated by 250-action milestone
+//
+// Action gates do most of the gating work now, so prices are tuned around
+// "what's reasonable to spend once you've earned the unlock" rather than
+// "how long will it take to save up". Navigator is a real chunk of the
+// starting wallet; captain comes down so the player can actually afford
+// it shortly after the milestone fires.
 const BASE_HIRE_BY_ROLE: Record<CrewRole, number> = {
-  captain:   140_000,
-  navigator: 18_000,
+  captain:   90_000,
+  navigator: 45_000,
   mechanic:  40_000,
 };
 const BASE_WAGE_BY_ROLE: Record<CrewRole, number> = {
@@ -163,8 +170,16 @@ function modifierCost(mods: CrewModifiers): number {
   return total;
 }
 
-function generateHire(rng: Rng, loc: LocationDef, world: World): Hire {
-  const role = pickWeighted(rng, ROLE_WEIGHTS.map(r => ({ item: r.role, weight: r.weight })));
+// Filter the role pool by met milestones — locked roles get weight 0 so
+// the hire board never offers a navigator/mechanic/captain before the
+// player has earned them. If every role is locked, returns null and the
+// caller skips this posting tick.
+function unlockedRoleWeights(world: World): { role: CrewRole; weight: number }[] {
+  return ROLE_WEIGHTS.filter(r => isMilestoneMet(world, crewRoleMilestone(r.role)));
+}
+
+function generateHire(rng: Rng, loc: LocationDef, world: World, allowedRoles: { role: CrewRole; weight: number }[]): Hire {
+  const role = pickWeighted(rng, allowedRoles.map(r => ({ item: r.role, weight: r.weight })));
   const tier = rollTier(rng, loc);
   const modifiers = rollModifiers(rng, role, tier);
   const baseHire = BASE_HIRE_BY_ROLE[role];
@@ -197,6 +212,11 @@ function generateHire(rng: Rng, loc: LocationDef, world: World): Hire {
 
 export function generateHires(world: World): Hire[] {
   const posted: Hire[] = [];
+  // Locked roles produce no offers — once the player crosses the milestone
+  // for that role, postings start showing up at the next eligible tick.
+  const allowedRoles = unlockedRoleWeights(world);
+  if (allowedRoles.length === 0) return posted;
+
   // Count current offers per station so we don't blow past the per-station cap.
   const perLoc: Record<string, number> = {};
   for (const h of Object.values(world.hires)) perLoc[h.location] = (perLoc[h.location] ?? 0) + 1;
@@ -210,7 +230,7 @@ export function generateHires(world: World): Hire[] {
     const techFactor = Math.max(0.5, loc.traits.techLevel / 5);
     const chance = HIRE_BASE_POST_CHANCE * popFactor * techFactor;
     if (rng() > chance) continue;
-    const h = generateHire(rng, loc, world);
+    const h = generateHire(rng, loc, world, allowedRoles);
     world.hires[h.id] = h;
     posted.push(h);
   }

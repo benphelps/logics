@@ -21,6 +21,7 @@ import {
 } from "../traders";
 import { makePlayer } from "../data/player";
 import { SHIP_UPGRADES, upgradeEffectText, type ShipUpgradeDef } from "../upgrades";
+import { unlockAllMilestonesForTests } from "../milestones";
 import type { CrewMember, GoodId, Trader, World } from "../types";
 import { writeReports } from "./progression_report";
 import { join } from "path";
@@ -302,6 +303,15 @@ function runOneSeed(seedIdx: number, sharedUpgrades: Map<GoodId, UpgradeRecord>,
   // out for a real one as soon as one is hired.
   ship.crew.captain = AUDIT_CAPTAIN;
   recomputeShipStats(ship);
+
+  // The audit drives the ship via autopilot, which goes through internal
+  // entry points and does NOT increment the manual-action counter. To keep
+  // this audit focused on price-based pacing (its original purpose), we
+  // bypass the action milestones at the start of each run. The report
+  // explicitly notes that real-game pacing has TWO layers — milestone
+  // (action-count) gates AND price-affordability — and only the second
+  // is being measured here.
+  unlockAllMilestonesForTests(world);
 
   const fundsTrace: RunResult["fundsTrace"] = [];
 

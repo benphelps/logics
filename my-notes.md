@@ -19,18 +19,16 @@ the focus view for stations should be more focused on the station, not the fleet
 
 detect eye placement in headshot images, lets us scale images perfectly and center the headshots in circle UI elements
 
-# sync and save tabs
+# unify the UI components
 
-sync and save tab positions,
+do a full audit of each view, its panels, the panel headers and tabs, the tables they contain, and any reused UI patterns
 
-when moving between tabs, remember the last tabs you had open in that view, so when you return, the same tabs are still open
+i would like you to create a new unified set of UI components to use for all future UI work, and an eventual refactor of the existing UI to use those components
 
-on the main fleet view, sync the upper and lower open tabs, so cargo to market, updgrades to upgrades, crews to offers, contracts to contracts, open one, the other switches to it
+they should be flexible enough to handle all the different use cases we have across the UI, but also standardized enough to create a consistent look and feel across the entire game, and make it easier and faster to build new UI in the future
 
-store the open tabs in the save state as well
+if an existing UI element would need to be changed to fit into this new set of proposed components, make a note of where that might have to happen
 
-# stock market simulation undulations
+create a new page in the UI using this new set of components, a kitchen sink page that has examples of all the different components and how they can be used, this will be a reference for future UI work and a testing ground for the new components as well
 
-review the stock market over time, check for patterns of undulations, see if we can make it more interesting, outside of random news events, what im seeing are larger patterns over 100s of ticks, it's much worse on some asset types than others, so check them all
-
-fix anything you find to imrpove and make the market more interesting, fun and fair
+no changes to existing UI yet, just create the new components and the new page

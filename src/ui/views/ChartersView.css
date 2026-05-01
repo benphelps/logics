@@ -1,0 +1,466 @@
+/* Charters view — two stacked panels within the standard page bounds.
+
+   Top panel: tabbed milestone badges (carded — actual badges with rarity
+   colors and EARNED stamps).
+
+   Bottom panel: captain's ledger — modeled on the location info panel from
+   the fleet view (one art-splash header + one flat sorted table). Uses the
+   muted/dim/light location-panel palette only — no rarity colors here. */
+
+/* Match the markets/stocks page bounds so switching tabs doesn't shift.
+   Side-by-side grid; same proportion as the Stocks shell so the page
+   chrome lines up tab-to-tab (left bigger, right narrower). */
+.charters-view {
+  --charter-surface: #15181d;
+  --charter-surface-soft: #101317;
+  --charter-surface-raised: #1b2026;
+  --charter-line: #25282d;
+  --charter-line-soft: rgba(255, 255, 255, 0.06);
+  /* Alias the ship-* tokens used by the shared .bridge-card / .bridge-card-tabs
+     / .trade-helper-* / .cargo-stat styles so the right-side ledger renders
+     with the same surface, borders, and divider lines as the fleet view's
+     ShipInfoPanelContent. Without these the panel background goes transparent
+     and pill / section borders disappear. Mirrors what .stocks-view does. */
+  --ship-surface: var(--charter-surface);
+  --ship-surface-soft: var(--charter-surface-soft);
+  --ship-surface-raised: var(--charter-surface-raised);
+  --ship-line: var(--charter-line);
+  --ship-line-soft: var(--charter-line-soft);
+  display: grid;
+  grid-template-columns: minmax(530px, 2.1fr) minmax(360px, 1.35fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 14px;
+  height: 100%;
+  min-height: 0;
+  max-width: 1540px;
+  margin: 0 auto;
+  padding: 0;
+}
+
+/* ============================================================
+   TOP PANEL — milestone badges
+   ============================================================ */
+
+.charters-badges-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg-1, #11161c);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.charters-badges-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.charters-badges-tabs {
+  /* The shared .bridge-card-tabs default is flex: 1 for horizontal layouts.
+     Inside a column flex card it would stretch vertically and leave a gap;
+     pin it to its content height instead. */
+  flex: 0 0 auto !important;
+  width: 100%;
+  border-radius: 0;
+  border-width: 0;
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+}
+.charters-badges-tabs .bridge-tab {
+  flex: 1 0 max-content;
+  justify-content: center;
+  min-width: 92px;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.charters-badges-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 62px;
+  padding: 12px 14px;
+  background-image:
+    linear-gradient(
+      to bottom,
+      rgba(13, 17, 22, 0.14) 0%,
+      rgba(13, 17, 22, 0.78) 88%,
+      rgba(13, 17, 22, 1) 100%
+    ),
+    linear-gradient(
+      90deg,
+      rgba(13, 17, 22, 0.86),
+      rgba(13, 17, 22, 0.38) 58%,
+      rgba(13, 17, 22, 0.84)
+    ),
+    var(--card-art);
+  background-position:
+    center center,
+    center center,
+    var(--header-art-pan-x, 50%) var(--header-art-pan-y, 50%);
+  background-repeat: no-repeat;
+  background-size:
+    100% 100%,
+    100% 100%,
+    104% auto;
+  background-clip: padding-box;
+  text-shadow:
+    0 1px 10px rgba(0, 0, 0, 0.88),
+    0 0 1px rgba(0, 0, 0, 0.95);
+}
+
+.charters-badges-head-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+.charters-badges-eyebrow {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.charters-badges-name {
+  color: #eef6ff;
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.charters-badges-head-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  text-align: right;
+}
+.charters-badges-head-stat-num {
+  font-size: 18px;
+  font-weight: 700;
+  color: rgba(232, 238, 244, 0.96);
+  line-height: 1;
+}
+.charters-badges-head-stat-sep {
+  margin: 0 1px;
+  color: var(--text-dim);
+  font-size: 14px;
+}
+.charters-badges-head-stat-label {
+  color: var(--text-dim);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.charters-badges-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+  padding: 12px;
+}
+
+/* ============================================================
+   RIGHT PANEL — captain's ledger sidebar
+   Reuses ShipInfoPanelContent's markup (.bridge-card .info-area-card +
+   .info-panel-frame inner). The InfoPanelFrame / trade-helper /
+   cargo-stat / station-info-grid classes are owned by PlayerView.css —
+   no charter-specific CSS needed for the inner content. The
+   .charters-sidebar-card class below is just an optional hook in case
+   we want a per-view tweak later.
+   ============================================================ */
+/* Standalone use of the bridge-card / info-panel-frame markup: when the
+   inner content sits directly inside .bridge-card (no .info-area-content
+   wrapper that PlayerView's pinned info area provides), the chip row would
+   hit the card edge. Add small vertical insets so it reads as a proper card. */
+.charters-sidebar-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.charters-sidebar-card .info-panel-fixed {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+.charters-sidebar-card .info-panel-scroll {
+  padding-top: 10px;
+  padding-bottom: 14px;
+}
+/* First grid in the scroll body shouldn't double up its top margin. */
+.charters-sidebar-card .info-panel-scroll > .trade-helper-grid {
+  margin-top: 0;
+}
+
+/* Art splash header — mirrors the badges-head and the stocks/markets
+   art-panel-head pattern: triple-layered gradient over the art so the
+   eyebrow + title + pill stay legible at any pan position. The bottom
+   stop hits 100% opacity so no 1px of art bleeds above the border. */
+.charters-ledger-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 62px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--ship-line-soft);
+  background-image:
+    linear-gradient(
+      to bottom,
+      rgba(13, 17, 22, 0.14) 0%,
+      rgba(13, 17, 22, 0.78) 88%,
+      rgba(13, 17, 22, 1) 100%
+    ),
+    linear-gradient(
+      90deg,
+      rgba(13, 17, 22, 0.86),
+      rgba(13, 17, 22, 0.38) 58%,
+      rgba(13, 17, 22, 0.84)
+    ),
+    var(--card-art);
+  background-position:
+    center center,
+    center center,
+    var(--header-art-pan-x, 50%) var(--header-art-pan-y, 50%);
+  background-repeat: no-repeat;
+  background-size:
+    100% 100%,
+    100% 100%,
+    104% auto;
+  background-clip: padding-box;
+  text-shadow:
+    0 1px 10px rgba(0, 0, 0, 0.88),
+    0 0 1px rgba(0, 0, 0, 0.95);
+}
+
+.charters-ledger-head-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+.charters-ledger-eyebrow {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.charters-ledger-name {
+  color: #eef6ff;
+  font-size: 16px;
+  font-weight: 650;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ============================================================
+   Milestone badge cards (used inside the top panel only)
+   ============================================================ */
+
+.milestone-badge {
+  display: grid;
+  grid-template-columns: 50px minmax(0, 1fr);
+  gap: 11px;
+  padding: 11px 13px;
+  border: 1px solid rgba(154, 182, 202, 0.1);
+  border-radius: 5px;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(121, 157, 184, 0.045),
+      rgba(121, 157, 184, 0.012)
+    ),
+    rgba(20, 26, 33, 0.82);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.025);
+  position: relative;
+  overflow: hidden;
+  min-height: 86px;
+  transition: transform 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
+}
+.milestone-badge:hover {
+  transform: translateY(-1px);
+  border-color: rgba(154, 182, 202, 0.18);
+}
+
+.milestone-badge.locked {
+  border-color: rgba(154, 182, 202, 0.075);
+}
+.milestone-badge.locked .milestone-emblem-icon {
+  color: rgba(126, 159, 182, 0.5);
+}
+.milestone-badge.locked .milestone-name {
+  color: rgba(214, 224, 236, 0.6);
+}
+
+.milestone-badge.earned {
+  background:
+    linear-gradient(
+      135deg,
+      rgba(180, 200, 220, 0.07),
+      rgba(120, 150, 180, 0.02)
+    ),
+    rgba(22, 30, 38, 0.88);
+}
+.milestone-badge.earned .milestone-name {
+  color: rgba(232, 238, 244, 0.96);
+}
+
+.milestone-badge.rarity-common.earned   { border-color: rgba(212, 224, 235, 0.28); }
+.milestone-badge.rarity-common.earned   .milestone-name        { color: rgba(232, 238, 244, 0.96); }
+.milestone-badge.rarity-common.earned   .milestone-emblem-icon { color: rgba(220, 232, 244, 0.92); }
+
+.milestone-badge.rarity-uncommon.earned { border-color: rgba(111, 182, 255, 0.32); }
+.milestone-badge.rarity-uncommon        .milestone-name        { color: #6fb6ff; }
+.milestone-badge.rarity-uncommon.earned .milestone-emblem-icon { color: #7cc1ff; filter: drop-shadow(0 0 6px rgba(111, 182, 255, 0.35)); }
+
+.milestone-badge.rarity-rare.earned     { border-color: rgba(199, 155, 255, 0.32); }
+.milestone-badge.rarity-rare            .milestone-name        { color: #c79bff; }
+.milestone-badge.rarity-rare.earned     .milestone-emblem-icon { color: #d3a9ff; filter: drop-shadow(0 0 6px rgba(199, 155, 255, 0.4)); }
+
+.milestone-badge.rarity-legendary.earned { border-color: rgba(244, 182, 67, 0.42); box-shadow: inset 0 1px rgba(244, 182, 67, 0.12), 0 0 22px rgba(244, 182, 67, 0.08); }
+.milestone-badge.rarity-legendary        .milestone-name        { color: #f4b643; }
+.milestone-badge.rarity-legendary.earned .milestone-emblem-icon { color: #ffd078; filter: drop-shadow(0 0 8px rgba(244, 182, 67, 0.55)); }
+
+.milestone-emblem {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  border-radius: 4px;
+  background:
+    radial-gradient(
+      ellipse at center,
+      rgba(126, 159, 182, 0.06) 0%,
+      rgba(126, 159, 182, 0.02) 60%,
+      transparent 100%
+    );
+}
+.milestone-emblem-icon {
+  width: 30px;
+  height: 30px;
+  color: rgba(180, 200, 220, 0.78);
+  transition: color 240ms ease, filter 240ms ease;
+}
+
+.milestone-stamp {
+  position: absolute;
+  bottom: -3px;
+  right: -10px;
+  padding: 2px 7px 1px;
+  background: rgba(244, 182, 67, 0.92);
+  color: #1a1408;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  border-radius: 2px;
+  transform: rotate(-8deg);
+  box-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.45),
+    0 0 6px rgba(244, 182, 67, 0.5);
+  pointer-events: none;
+}
+
+.milestone-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.milestone-name {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.18;
+  letter-spacing: 0.005em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.milestone-desc {
+  color: var(--text-dim);
+  font-size: 10.5px;
+  line-height: 1.32;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.milestone-bar-row {
+  margin-top: 5px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+}
+
+.milestone-bar {
+  height: 5px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+.milestone-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+  transition: width 360ms ease;
+  box-shadow: 0 0 8px rgba(79, 182, 255, 0.25);
+}
+.milestone-badge.rarity-uncommon    .milestone-bar-fill {
+  background: linear-gradient(90deg, var(--accent-dim), #6fb6ff);
+  box-shadow: 0 0 8px rgba(111, 182, 255, 0.3);
+}
+.milestone-badge.rarity-rare        .milestone-bar-fill {
+  background: linear-gradient(90deg, #6e3aa7, #c79bff);
+  box-shadow: 0 0 8px rgba(199, 155, 255, 0.3);
+}
+.milestone-badge.rarity-legendary.earned .milestone-bar-fill,
+.milestone-badge.rarity-legendary       .milestone-bar-fill {
+  background: linear-gradient(90deg, #c98a1d, #f4b643);
+  box-shadow: 0 0 10px rgba(244, 182, 67, 0.35);
+}
+
+.milestone-bar-text {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  color: var(--text-dim);
+}
+.milestone-bar-curr {
+  color: rgba(214, 224, 236, 0.92);
+  font-weight: 700;
+}
+.milestone-bar-sep,
+.milestone-bar-target {
+  color: var(--text-dim);
+}
+.milestone-bar-remaining {
+  margin-left: 8px;
+  color: var(--text-faint);
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+}
+
+.milestone-state-met {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: #f4b643;
+  text-shadow: 0 0 8px rgba(244, 182, 67, 0.4);
+}
+.milestone-target-cap {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--text-faint);
+  letter-spacing: 0.04em;
+}

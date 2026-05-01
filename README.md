@@ -1,79 +1,78 @@
 # Logics
 
-An easy-to-play space logistics trading idle clicker. You start by running a single hauler: read prices, buy cargo, ship it to a better market, collect contracts, and reinvest. As the game opens up, the same choices become automated routes, crew-managed ships, upgrades, and passive market positions.
+Logics is a browser game about running a space trucking outfit inside a living station economy. You start with one ship, one wallet, and a simple question: what should I buy here, and where can I sell it for more?
 
-The core is still a dense single-player market simulation. Stations produce and consume goods, NPC traders move cargo, treasuries close the money loop, and an equity exchange sits on top of the goods market. The player-facing direction is simpler: clear shipping actions first, automation and optimization second.
+The loop grows from hands-on cargo runs into fleet coordination, staged crew automation, ship upgrades, and a simulated market desk where the same economy can be traded through station shares, syndicates, commodities, basis pairs, futures, and indices. It is part spreadsheet, part clicker, part idler, and part Wall Street terminal for a sector you can physically move goods through.
 
-## Website
+## Gameplay
 
-The project includes a single-page website for presenting the game:
+- **Run the route yourself.** Buy cargo, refuel, take contracts, travel between stations, sell into shortages, and keep the ship repaired.
+- **Unlock better guidance.** Career charters track manual actions and gradually open upgrade tiers, navigator offers, mechanic offers, and pilot offers.
+- **Hire a crew.** Navigators surface route and exchange suggestions, mechanics handle maintenance, and pilots let auto mode run the ship.
+- **Invest in the economy.** Trade assets on the Exchange while your ships change the underlying station and commodity signals.
+- **Build toward scale.** Current systems support the direction toward buying more ships, moving into larger hulls, assigning crews, and earning from established teams while you focus on bigger opportunities.
 
-- `website.html` — marketing/site entry point
-- `src/site/` — React + CSS for the website
-- `public/site/logics-mark.svg` and `public/site/logics-wordmark.svg` — small-size logo assets
-- `public/site/screenshots/` — gameplay screenshots captured from the running app
+## UI Callouts
 
-Run the Vite dev server and open `http://localhost:5173/website.html` (or the port Vite selects). The playable game remains at `index.html` / `/`.
+### My Fleet
 
-## Stack
+![My Fleet screen showing ship operations, station travel, dockside markets, and ship context](public/site/screenshots/readme-fleet.png)
 
-- Vite + React + TypeScript (dense-grid UI)
-- Zustand + TanStack Table for the grid views
-- Vitest for the sim test suite
-- `tsx` for the headless scenario harnesses
+My Fleet is the hands-on operations screen: cargo, fuel, hull damage, contracts, crew, upgrades, station markets, and travel decisions all live here. The current build starts with the Voyager, but the UI and save model are already shaped around a selected ship inside a growing fleet.
 
-## Run
+### Exchange
+
+![Exchange screen showing listing browser, account panels, market detail, order book, tape, and order entry](public/site/screenshots/readme-exchange.png)
+
+The Exchange is the financial layer over the logistics sim. A docked ship can use its own wallet to place orders, hold long or short positions, manage futures, and read live book/tape data tied back to stations, syndicates, commodities, and sector indices.
+
+## Current Build
+
+The game currently includes:
+
+- A deterministic single-player logistics economy with stations, goods, treasuries, NPC traders, contracts, fuel, maintenance, taxes, and docking fees.
+- Manual ship control through **My Fleet** with route-aware suggestions once a navigator is hired.
+- Ship-local wallets, cargo, fuel, upgrades, crew, contracts, and auto-pilot mode.
+- Career **Charters** that gate upgrade tiers and crew offer pools through manual-action milestones.
+- A full **Exchange** with spot-style listings, order books, player positions, limit orders, futures, history, dividends, borrow fees, settlement jobs, and navigator trade insights.
+- **Markets** and **Atlas** tabs for commodity pressure, station context, ships, routes, and news.
+- Local save slots and a developer state for screenshot/documentation capture.
+
+Planned additions include buying new ships, controlling more than one ship, larger hull classes with traits, dangerous route work, combat-relevant jobs, actual weapon upgrades, and higher-stakes fleet/market automation.
+
+## Run Locally
 
 ```sh
 npm install
-npm test               # run all sim tests (247 tests, ~22s)
-npm run sim 500        # run the starter universe for 500 ticks, print state
-npm run audit          # long-horizon stability + stock-market audit (default 10k ticks)
-npm run audit -- 25000 # 25k-tick audit
-npm run bench          # scale benchmark: 10 → 1000 locations, ms/tick
-npm run dev            # Vite dev server (full UI)
-npm run screenshots:wiki # refresh wiki UI captures from an active Vite server
+npm run dev
 ```
 
-## Where things live
+Open the Vite URL for the playable game. The marketing page is available at `/website.html`, and the player wiki is available at `/wiki.html`.
 
-```
-src/sim/                          pure TS sim, no React
-  types.ts                        Goods, Locations, Markets, Traders, Player, Equities, World
-  pricing.ts                      price = base × clamp((target/stock)^0.6, 0.25, 5)
-  economy.ts                      maintenance, stockpile cap, treasuries, NPC wealth carry
-  geometry.ts                     distance(a, b) = euclidean × laneModifier
-  locations.ts                    net production + trait-based queries
-  traders.ts                      NPC arbitrage with multi-fuel; closed-loop money via treasuries
-  jobs.ts                         shortage contracts + rescue calls
-  hires.ts                        per-station crew offer pool
-  crew.ts                         crew modifiers + auto-pilot gating + maintenance debt
-  upgrades.ts                     ship modules + slot system
-  suggestions.ts                  manual-mode hint engine
-  stock.ts                        equity exchange: stations + syndicates, long/short, stop/take, dividends
-  tick.ts                         orchestrates: trade → produce → consume → reprice → maint → carry → treasury → market → jobs → hires
-  data/                           starter universe content
-  scenarios/run.ts                short scenario printout — `npm run sim`
-  scenarios/audit.ts              long-horizon audit harness — `npm run audit`
-  scenarios/bench.ts              scale benchmark — `npm run bench`
-  gen/                            seeded archetype-based world generator
-  *.test.ts                       247 tests across 14 files
-src/ui/                           Vite/React app
-  views/MarketsView.tsx           commodity exchange grid
-  views/LocationsView.tsx         atlas
-  views/PlayerView.tsx            bridge / fleet management
-  views/StockMarketView.tsx       equity exchange (tape, positions, trades, sidebar trade controls)
-  store.ts                        zustand store with sim actions
-  saveGames.ts                    localStorage persistence + migration
-src/site/                         single-page website for the game
-public/site/                      website logo + gameplay screenshots
+Useful checks:
+
+```sh
+npm test
+npm run build
+npm run audit
+npm run screenshots:wiki
 ```
 
-## Docs
+## Project Layout
 
-- [`docs/VISION.md`](docs/VISION.md) — what the game is, what it isn't, the design pillars
-- [`docs/WIKI.md`](docs/WIKI.md) — player-facing wiki for the main tabs and mechanics
-- [`docs/SIM.md`](docs/SIM.md) — current simulation model in detail (economy, geometry, ships, supply chains, treasuries, equity exchange)
-- [`docs/ROADMAP.md`](docs/ROADMAP.md) — what's done, what's queued, what's deferred, and what we've discussed but parked
-- [`docs/WEBSITE.md`](docs/WEBSITE.md) — website entry point, assets, and screenshot refresh notes
-- [`docs/AUDIT_REPORT.md`](docs/AUDIT_REPORT.md) — before/after metrics for the Tier-3 stability + stock market work
+```text
+src/sim/                    deterministic TypeScript simulation
+src/ui/                     playable React app
+src/site/                   website and wiki React surfaces
+docs/                       design docs, roadmap, simulation notes, wiki source
+public/site/screenshots/    public UI screenshots
+scripts/                    screenshot and scenario tooling
+```
+
+Key docs:
+
+- [Vision](docs/VISION.md)
+- [Roadmap](docs/ROADMAP.md)
+- [Simulation Model](docs/SIM.md)
+- [Player Wiki](docs/WIKI.md)
+- [Website Notes](docs/WEBSITE.md)

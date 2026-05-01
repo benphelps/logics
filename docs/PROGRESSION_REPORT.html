@@ -100,21 +100,22 @@
 </head>
 <body>
   <h1>Progression Audit — Director Report</h1>
-  <p class="meta">2026-04-30 21:14:26 UTC · 5 seeds × 8,000 ticks · 43 upgrades, 9 crew tiers tracked</p>
+  <p class="meta">2026-05-01 01:03:29 UTC · 5 seeds × 8,000 ticks · 43 upgrades, 9 crew tiers tracked</p>
 
   <div class="tldr">
     <strong>TL;DR.</strong>
     <ul>
       <li><strong>43/43</strong> upgrades become reachable inside 8,000 ticks; <strong>12</strong> are actually installed in &gt;50% of seeds; <strong>0</strong> never become reachable at all.</li>
-      <li>Pilot autopilot gates at <strong>t=1,972</strong> — the single biggest pacing wall. Until then, the player has no path to the captain-led trade loop.</li>
-      <li>Final median ship funds: <strong>Ç1.33M</strong> at t=8,000. Wealth growth is healthy through t≈3000, then flattens.</li>
+      <li>Pilot autopilot gates at <strong>t=1,787</strong> — the single biggest pacing wall. Until then, the player has no path to the captain-led trade loop.</li>
+      <li>Final median ship funds: <strong>Ç744.3k</strong> at t=8,000. Wealth growth is healthy through t≈3000, then flattens.</li>
       <li>Variant pricing is <strong>broken</strong>: many T1/T2 variants priced just above their cheaper sibling are never purchased — they exist only as shelf clutter.</li>
-      <li>3 pacing dead zones identified (gaps ≥400 ticks). See "Pacing dead zones" below.</li>
+      <li>4 pacing dead zones identified (gaps ≥400 ticks). See "Pacing dead zones" below.</li>
     </ul>
   </div>
 
   <h2>Methodology</h2>
-  <p>An autopilot-driven player ship is run from t=0 across 5 world seeds (1 starter universe, 4 generated 12-location worlds, all starting at a trade-hub). A synthetic zero-cost captain is slotted on the audit ship so the autopilot can drive — without it, the ship sits idle with no path to wealth (which is itself a finding). Each tick, the audit:</p>
+  <p><strong>Two-layer pacing.</strong> The game now gates progression on TWO axes: a <em>manual-action counter</em> (player must complete N buys / sells / travels / hires / share-trades before the navigator's guild posts offers, the next upgrade tier appears in markets, etc.) AND <em>price affordability</em>. This audit measures the second layer only — to isolate the price ladder, the audit fast-forwards past every action-count milestone before each run starts. So "reachable t=350" below means "by t=350 the player would have the cash to buy this <em>assuming the milestones are already met</em>". Real pacing is whichever gate is harder for a given item.</p>
+  <p><strong>Run setup.</strong> Autopilot-driven player ship runs from t=0 across 5 seeds (1 starter universe, 4 generated 12-location worlds, all starting at a trade-hub). A synthetic zero-cost captain is slotted on the audit ship so the autopilot can drive. Each tick, the audit:</p>
   <ol>
     <li>Repairs maintenance debt above Ç5k.</li>
     <li>Posts hire offers visible to the ship; records affordability + actually hires real crew when funds permit.</li>
@@ -127,50 +128,51 @@
   <p class="chart-caption">Median ship funds across seeds (heavy line) with p25–p75 envelope. The ramp-up phase ends around t≈3000, after which the curve flattens — the wealth ceiling beyond that point limits which upgrades remain in reach.</p>
   <svg viewBox="0 0 880 280" xmlns="http://www.w3.org/2000/svg" class="chart">
   <rect x="70" y="24" width="786" height="216" fill="#fafafa" stroke="none"/>
-  <line x1="70" x2="856" y1="240.0" y2="240.0" stroke="#e8e8e8" stroke-width="1"/><line x1="70" x2="856" y1="204.2" y2="204.2" stroke="#e8e8e8" stroke-width="1"/><line x1="70" x2="856" y1="168.5" y2="168.5" stroke="#e8e8e8" stroke-width="1"/><line x1="70" x2="856" y1="132.7" y2="132.7" stroke="#e8e8e8" stroke-width="1"/><line x1="70" x2="856" y1="96.9" y2="96.9" stroke="#e8e8e8" stroke-width="1"/><line x1="70" x2="856" y1="61.2" y2="61.2" stroke="#e8e8e8" stroke-width="1"/><line x1="70" x2="856" y1="25.4" y2="25.4" stroke="#e8e8e8" stroke-width="1"/>
-  <text x="64" y="244.0" text-anchor="end" font-size="11" fill="#666">Ç0</text><text x="64" y="208.2" text-anchor="end" font-size="11" fill="#666">Ç500.0k</text><text x="64" y="172.5" text-anchor="end" font-size="11" fill="#666">Ç1.00M</text><text x="64" y="136.7" text-anchor="end" font-size="11" fill="#666">Ç1.50M</text><text x="64" y="100.9" text-anchor="end" font-size="11" fill="#666">Ç2.00M</text><text x="64" y="65.2" text-anchor="end" font-size="11" fill="#666">Ç2.50M</text><text x="64" y="29.4" text-anchor="end" font-size="11" fill="#666">Ç3.00M</text>
+  <line x1="70" x2="856" y1="240.0" y2="240.0" stroke="#e8e8e8" stroke-width="1"/><line x1="70" x2="856" y1="199.5" y2="199.5" stroke="#e8e8e8" stroke-width="1"/><line x1="70" x2="856" y1="159.1" y2="159.1" stroke="#e8e8e8" stroke-width="1"/><line x1="70" x2="856" y1="118.6" y2="118.6" stroke="#e8e8e8" stroke-width="1"/><line x1="70" x2="856" y1="78.2" y2="78.2" stroke="#e8e8e8" stroke-width="1"/><line x1="70" x2="856" y1="37.7" y2="37.7" stroke="#e8e8e8" stroke-width="1"/>
+  <text x="64" y="244.0" text-anchor="end" font-size="11" fill="#666">Ç0</text><text x="64" y="203.5" text-anchor="end" font-size="11" fill="#666">Ç200.0k</text><text x="64" y="163.1" text-anchor="end" font-size="11" fill="#666">Ç400.0k</text><text x="64" y="122.6" text-anchor="end" font-size="11" fill="#666">Ç600.0k</text><text x="64" y="82.2" text-anchor="end" font-size="11" fill="#666">Ç800.0k</text><text x="64" y="41.7" text-anchor="end" font-size="11" fill="#666">Ç1.00M</text>
   <text x="70.0" y="256" text-anchor="middle" font-size="11" fill="#666">0</text><text x="168.3" y="256" text-anchor="middle" font-size="11" fill="#666">1,000</text><text x="266.5" y="256" text-anchor="middle" font-size="11" fill="#666">2,000</text><text x="364.8" y="256" text-anchor="middle" font-size="11" fill="#666">3,000</text><text x="463.0" y="256" text-anchor="middle" font-size="11" fill="#666">4,000</text><text x="561.3" y="256" text-anchor="middle" font-size="11" fill="#666">5,000</text><text x="659.5" y="256" text-anchor="middle" font-size="11" fill="#666">6,000</text><text x="757.8" y="256" text-anchor="middle" font-size="11" fill="#666">7,000</text><text x="856.0" y="256" text-anchor="middle" font-size="11" fill="#666">8,000</text>
   <text x="463" y="276" text-anchor="middle" font-size="11" fill="#888">tick</text>
-  <path d="M70.1,236.1 L79.9,237.9 L89.7,237.2 L99.6,237.1 L109.4,237.8 L119.2,237.7 L129.0,237.2 L138.9,237.3 L148.7,237.1 L158.5,236.6 L168.3,234.9 L178.2,232.0 L188.0,236.8 L197.8,236.3 L207.6,234.8 L217.5,231.9 L227.3,230.8 L237.1,231.7 L246.9,232.7 L256.8,226.9 L266.6,229.6 L276.4,233.4 L286.2,233.0 L296.1,230.5 L305.9,228.3 L315.7,227.4 L325.5,227.3 L335.4,228.8 L345.2,226.7 L355.0,227.3 L364.8,224.0 L374.7,223.1 L384.5,222.6 L394.3,219.1 L404.1,216.3 L414.0,214.2 L423.8,214.8 L433.6,213.1 L443.4,211.3 L453.3,210.3 L463.1,208.5 L472.9,205.7 L482.7,199.3 L492.6,190.2 L502.4,185.8 L512.2,179.8 L522.0,173.5 L531.9,169.7 L541.7,163.9 L551.5,158.5 L561.3,153.7 L571.2,149.4 L581.0,144.6 L590.8,142.2 L600.6,139.0 L610.5,136.7 L620.3,133.2 L630.1,127.9 L639.9,123.8 L649.8,122.9 L659.6,120.7 L669.4,115.4 L679.2,112.2 L689.1,110.8 L698.9,105.8 L708.7,100.2 L718.5,96.6 L728.4,91.7 L738.2,86.0 L748.0,81.4 L757.8,76.4 L767.7,71.8 L777.5,68.5 L787.3,63.6 L797.1,60.4 L807.0,55.5 L816.8,51.3 L826.6,47.5 L836.4,42.9 L846.3,40.8 L856.0,34.3 L856.0,180.6 L846.3,180.6 L836.4,181.3 L826.6,182.2 L816.8,183.7 L807.0,185.2 L797.1,187.0 L787.3,187.5 L777.5,189.5 L767.7,189.0 L757.8,190.1 L748.0,191.4 L738.2,191.1 L728.4,192.4 L718.5,193.5 L708.7,194.6 L698.9,195.4 L689.1,196.2 L679.2,197.0 L669.4,197.1 L659.6,196.5 L649.8,197.4 L639.9,199.2 L630.1,200.4 L620.3,201.1 L610.5,202.2 L600.6,202.3 L590.8,203.3 L581.0,203.5 L571.2,205.4 L561.3,207.2 L551.5,208.6 L541.7,209.3 L531.9,209.9 L522.0,210.1 L512.2,211.1 L502.4,211.6 L492.6,213.0 L482.7,214.3 L472.9,214.7 L463.1,216.2 L453.3,218.1 L443.4,223.5 L433.6,226.7 L423.8,232.4 L414.0,230.9 L404.1,231.9 L394.3,232.4 L384.5,230.1 L374.7,233.0 L364.8,236.9 L355.0,234.5 L345.2,236.2 L335.4,233.4 L325.5,234.6 L315.7,236.1 L305.9,237.1 L296.1,235.1 L286.2,237.3 L276.4,238.3 L266.6,236.0 L256.8,232.9 L246.9,237.2 L237.1,234.1 L227.3,236.2 L217.5,237.6 L207.6,237.4 L197.8,237.3 L188.0,237.9 L178.2,237.2 L168.3,236.6 L158.5,237.3 L148.7,238.8 L138.9,237.9 L129.0,237.8 L119.2,238.9 L109.4,238.2 L99.6,237.5 L89.7,238.6 L79.9,238.1 L70.1,236.1 Z" fill="#3a8db8" fill-opacity="0.18" stroke="none"/>
-  <path d="M70.1,236.1 L79.9,238.1 L89.7,237.6 L99.6,237.4 L109.4,238.1 L119.2,237.9 L129.0,237.5 L138.9,237.6 L148.7,238.4 L158.5,236.7 L168.3,236.4 L178.2,236.6 L188.0,237.7 L197.8,237.2 L207.6,236.1 L217.5,237.4 L227.3,236.1 L237.1,234.1 L246.9,234.2 L256.8,231.2 L266.6,232.5 L276.4,237.4 L286.2,236.1 L296.1,234.1 L305.9,233.5 L315.7,232.7 L325.5,231.9 L335.4,231.3 L345.2,230.7 L355.0,229.3 L364.8,228.4 L374.7,227.0 L384.5,226.5 L394.3,226.2 L404.1,224.3 L414.0,222.8 L423.8,221.5 L433.6,219.6 L443.4,218.3 L453.3,216.8 L463.1,212.8 L472.9,206.8 L482.7,205.0 L492.6,205.1 L502.4,202.6 L512.2,201.3 L522.0,200.1 L531.9,199.7 L541.7,197.9 L551.5,197.5 L561.3,195.0 L571.2,194.8 L581.0,192.8 L590.8,193.0 L600.6,190.9 L610.5,189.0 L620.3,188.2 L630.1,184.1 L639.9,183.2 L649.8,182.4 L659.6,179.1 L669.4,177.2 L679.2,176.5 L689.1,174.3 L698.9,171.6 L708.7,168.6 L718.5,166.4 L728.4,167.5 L738.2,163.0 L748.0,162.3 L757.8,159.2 L767.7,157.1 L777.5,155.0 L787.3,155.1 L797.1,154.7 L807.0,153.2 L816.8,150.5 L826.6,150.5 L836.4,148.8 L846.3,147.2 L856.0,144.8" fill="none" stroke="#1f6896" stroke-width="2"/>
+  <path d="M70.1,228.9 L79.9,234.4 L89.7,232.2 L99.6,234.6 L109.4,236.2 L119.2,235.5 L129.0,232.2 L138.9,232.9 L148.7,234.5 L158.5,231.3 L168.3,227.8 L178.2,224.2 L188.0,229.1 L197.8,224.3 L207.6,231.4 L217.5,229.5 L227.3,226.1 L237.1,224.0 L246.9,219.8 L256.8,218.0 L266.6,214.1 L276.4,229.8 L286.2,220.0 L296.1,225.8 L305.9,208.4 L315.7,210.3 L325.5,203.4 L335.4,204.3 L345.2,197.0 L355.0,192.5 L364.8,191.4 L374.7,184.8 L384.5,183.3 L394.3,174.7 L404.1,175.6 L414.0,178.1 L423.8,173.3 L433.6,171.7 L443.4,172.0 L453.3,166.0 L463.1,162.9 L472.9,159.1 L482.7,160.7 L492.6,150.7 L502.4,146.6 L512.2,144.3 L522.0,151.3 L531.9,134.7 L541.7,139.1 L551.5,129.5 L561.3,124.3 L571.2,119.7 L581.0,124.6 L590.8,122.5 L600.6,118.4 L610.5,117.1 L620.3,108.4 L630.1,113.5 L639.9,106.4 L649.8,102.3 L659.6,94.2 L669.4,86.7 L679.2,79.1 L689.1,77.1 L698.9,74.0 L708.7,71.4 L718.5,73.3 L728.4,70.5 L738.2,60.2 L748.0,54.7 L757.8,54.6 L767.7,54.1 L777.5,50.4 L787.3,43.1 L797.1,40.4 L807.0,37.7 L816.8,41.5 L826.6,41.2 L836.4,37.1 L846.3,40.9 L856.0,34.3 L856.0,135.3 L846.3,135.4 L836.4,140.5 L826.6,143.6 L816.8,146.9 L807.0,148.3 L797.1,150.9 L787.3,153.6 L777.5,155.9 L767.7,160.9 L757.8,160.5 L748.0,163.8 L738.2,165.7 L728.4,164.5 L718.5,166.6 L708.7,171.3 L698.9,175.4 L689.1,176.6 L679.2,175.9 L669.4,178.5 L659.6,179.5 L649.8,181.3 L639.9,187.1 L630.1,186.9 L620.3,186.6 L610.5,189.6 L600.6,192.3 L590.8,193.1 L581.0,196.1 L571.2,199.4 L561.3,204.1 L551.5,202.2 L541.7,208.3 L531.9,206.5 L522.0,216.0 L512.2,214.4 L502.4,217.4 L492.6,221.7 L482.7,225.8 L472.9,228.3 L463.1,230.4 L453.3,224.2 L443.4,225.6 L433.6,225.5 L423.8,226.9 L414.0,229.7 L404.1,227.8 L394.3,231.5 L384.5,234.5 L374.7,237.0 L364.8,221.9 L355.0,226.0 L345.2,229.3 L335.4,226.6 L325.5,231.3 L315.7,231.7 L305.9,235.1 L296.1,236.3 L286.2,230.4 L276.4,234.1 L266.6,230.2 L256.8,230.8 L246.9,232.8 L237.1,231.1 L227.3,236.5 L217.5,236.1 L207.6,236.0 L197.8,233.7 L188.0,231.8 L178.2,234.2 L168.3,232.4 L158.5,235.0 L148.7,238.1 L138.9,233.5 L129.0,235.0 L119.2,239.7 L109.4,237.4 L99.6,236.9 L89.7,235.4 L79.9,236.3 L70.1,228.9 Z" fill="#3a8db8" fill-opacity="0.18" stroke="none"/>
+  <path d="M70.1,228.9 L79.9,235.5 L89.7,234.6 L99.6,236.6 L109.4,236.3 L119.2,236.1 L129.0,232.6 L138.9,233.1 L148.7,237.1 L158.5,233.3 L168.3,231.6 L178.2,228.8 L188.0,229.7 L197.8,232.5 L207.6,232.2 L217.5,230.1 L227.3,230.0 L237.1,226.3 L246.9,222.8 L256.8,221.5 L266.6,230.2 L276.4,230.8 L286.2,225.5 L296.1,228.6 L305.9,221.7 L315.7,215.9 L325.5,210.5 L335.4,209.5 L345.2,208.5 L355.0,206.3 L364.8,206.6 L374.7,204.3 L384.5,199.5 L394.3,194.0 L404.1,196.4 L414.0,192.5 L423.8,186.7 L433.6,183.1 L443.4,178.7 L453.3,176.1 L463.1,173.8 L472.9,176.3 L482.7,173.1 L492.6,168.1 L502.4,167.4 L512.2,162.3 L522.0,163.4 L531.9,163.4 L541.7,162.9 L551.5,160.6 L561.3,156.8 L571.2,153.7 L581.0,151.9 L590.8,148.5 L600.6,147.7 L610.5,148.7 L620.3,144.3 L630.1,145.8 L639.9,137.2 L649.8,136.3 L659.6,131.8 L669.4,126.5 L679.2,128.1 L689.1,127.0 L698.9,127.1 L708.7,121.3 L718.5,122.4 L728.4,119.8 L738.2,117.3 L748.0,114.1 L757.8,112.0 L767.7,112.2 L777.5,109.0 L787.3,105.5 L797.1,100.5 L807.0,95.9 L816.8,91.9 L826.6,93.2 L836.4,93.2 L846.3,91.7 L856.0,89.5" fill="none" stroke="#1f6896" stroke-width="2"/>
   <text x="850" y="38" text-anchor="end" font-size="11" fill="#1f6896">median funds (p25–p75 envelope)</text>
 </svg>
 
   <h2>Per-slot tier ladder</h2>
   <p class="chart-caption">For each upgrade slot, the earliest tick the player reaches a given tier. Ticks bunched on the left = healthy ramp; long horizontal hops = pacing dead zones for that slot. ✕ markers on the right = tiers that never reached.</p>
-  <svg viewBox="0 0 880 260" xmlns="http://www.w3.org/2000/svg" class="chart"><rect x="90" y="24" width="710" height="200" fill="#fafafa"/><line x1="90.0" x2="90.0" y1="24" y2="224" stroke="#e8e8e8"/><text x="90.0" y="240" text-anchor="middle" font-size="11" fill="#666">0</text><line x1="178.8" x2="178.8" y1="24" y2="224" stroke="#e8e8e8"/><text x="178.8" y="240" text-anchor="middle" font-size="11" fill="#666">1,000</text><line x1="267.5" x2="267.5" y1="24" y2="224" stroke="#e8e8e8"/><text x="267.5" y="240" text-anchor="middle" font-size="11" fill="#666">2,000</text><line x1="356.3" x2="356.3" y1="24" y2="224" stroke="#e8e8e8"/><text x="356.3" y="240" text-anchor="middle" font-size="11" fill="#666">3,000</text><line x1="445.0" x2="445.0" y1="24" y2="224" stroke="#e8e8e8"/><text x="445.0" y="240" text-anchor="middle" font-size="11" fill="#666">4,000</text><line x1="533.8" x2="533.8" y1="24" y2="224" stroke="#e8e8e8"/><text x="533.8" y="240" text-anchor="middle" font-size="11" fill="#666">5,000</text><line x1="622.5" x2="622.5" y1="24" y2="224" stroke="#e8e8e8"/><text x="622.5" y="240" text-anchor="middle" font-size="11" fill="#666">6,000</text><line x1="711.3" x2="711.3" y1="24" y2="224" stroke="#e8e8e8"/><text x="711.3" y="240" text-anchor="middle" font-size="11" fill="#666">7,000</text><line x1="800.0" x2="800.0" y1="24" y2="224" stroke="#e8e8e8"/><text x="800.0" y="240" text-anchor="middle" font-size="11" fill="#666">8,000</text><text x="445" y="256" text-anchor="middle" font-size="11" fill="#888">tick</text><text x="82" y="45" text-anchor="end" font-size="12" font-weight="600" fill="#444">cargo</text><line x1="90" x2="800" y1="41" y2="41" stroke="#ddd"/><circle cx="90.0" cy="41" r="6" fill="#d8732d" stroke="#fff" stroke-width="1.5"/><text x="90.0" y="32" text-anchor="middle" font-size="10" fill="#444">T1</text><circle cx="91.0" cy="41" r="6" fill="#d8732d" stroke="#fff" stroke-width="1.5"/><text x="91.0" y="32" text-anchor="middle" font-size="10" fill="#444">T2</text><circle cx="242.5" cy="41" r="6" fill="#d8732d" stroke="#fff" stroke-width="1.5"/><text x="242.5" y="32" text-anchor="middle" font-size="10" fill="#444">T3</text><circle cx="178.0" cy="41" r="6" fill="#d8732d" stroke="#fff" stroke-width="1.5"/><text x="178.0" y="32" text-anchor="middle" font-size="10" fill="#444">T4</text><text x="82" y="78" text-anchor="end" font-size="12" font-weight="600" fill="#444">engine</text><line x1="90" x2="800" y1="74" y2="74" stroke="#ddd"/><circle cx="90.0" cy="74" r="6" fill="#3a8db8" stroke="#fff" stroke-width="1.5"/><text x="90.0" y="65" text-anchor="middle" font-size="10" fill="#444">T1</text><circle cx="92.6" cy="74" r="6" fill="#3a8db8" stroke="#fff" stroke-width="1.5"/><text x="92.6" y="65" text-anchor="middle" font-size="10" fill="#444">T2</text><circle cx="329.8" cy="74" r="6" fill="#3a8db8" stroke="#fff" stroke-width="1.5"/><text x="329.8" y="65" text-anchor="middle" font-size="10" fill="#444">T4</text><circle cx="188.2" cy="74" r="6" fill="#3a8db8" stroke="#fff" stroke-width="1.5"/><text x="188.2" y="65" text-anchor="middle" font-size="10" fill="#444">T3</text><text x="82" y="111" text-anchor="end" font-size="12" font-weight="600" fill="#444">fuel</text><line x1="90" x2="800" y1="107" y2="107" stroke="#ddd"/><circle cx="90.0" cy="107" r="6" fill="#5ba85f" stroke="#fff" stroke-width="1.5"/><text x="90.0" y="98" text-anchor="middle" font-size="10" fill="#444">T1</text><circle cx="90.0" cy="107" r="6" fill="#5ba85f" stroke="#fff" stroke-width="1.5"/><text x="90.0" y="98" text-anchor="middle" font-size="10" fill="#444">T2</text><circle cx="301.8" cy="107" r="6" fill="#5ba85f" stroke="#fff" stroke-width="1.5"/><text x="301.8" y="98" text-anchor="middle" font-size="10" fill="#444">T4</text><circle cx="159.8" cy="107" r="6" fill="#5ba85f" stroke="#fff" stroke-width="1.5"/><text x="159.8" y="98" text-anchor="middle" font-size="10" fill="#444">T3</text><text x="82" y="145" text-anchor="end" font-size="12" font-weight="600" fill="#444">hull</text><line x1="90" x2="800" y1="141" y2="141" stroke="#ddd"/><circle cx="90.0" cy="141" r="6" fill="#8b6db1" stroke="#fff" stroke-width="1.5"/><text x="90.0" y="132" text-anchor="middle" font-size="10" fill="#444">T1</text><circle cx="92.4" cy="141" r="6" fill="#8b6db1" stroke="#fff" stroke-width="1.5"/><text x="92.4" y="132" text-anchor="middle" font-size="10" fill="#444">T2</text><circle cx="245.8" cy="141" r="6" fill="#8b6db1" stroke="#fff" stroke-width="1.5"/><text x="245.8" y="132" text-anchor="middle" font-size="10" fill="#444">T3</text><circle cx="158.9" cy="141" r="6" fill="#8b6db1" stroke="#fff" stroke-width="1.5"/><text x="158.9" y="132" text-anchor="middle" font-size="10" fill="#444">T4</text><text x="82" y="178" text-anchor="end" font-size="12" font-weight="600" fill="#444">weapon</text><line x1="90" x2="800" y1="174" y2="174" stroke="#ddd"/><circle cx="92.6" cy="174" r="6" fill="#c14a4a" stroke="#fff" stroke-width="1.5"/><text x="92.6" y="165" text-anchor="middle" font-size="10" fill="#444">T1</text><circle cx="92.7" cy="174" r="6" fill="#c14a4a" stroke="#fff" stroke-width="1.5"/><text x="92.7" y="165" text-anchor="middle" font-size="10" fill="#444">T2</text><circle cx="178.0" cy="174" r="6" fill="#c14a4a" stroke="#fff" stroke-width="1.5"/><text x="178.0" y="165" text-anchor="middle" font-size="10" fill="#444">T4</text><circle cx="178.0" cy="174" r="6" fill="#c14a4a" stroke="#fff" stroke-width="1.5"/><text x="178.0" y="165" text-anchor="middle" font-size="10" fill="#444">T3</text><text x="82" y="211" text-anchor="end" font-size="12" font-weight="600" fill="#444">systems</text><line x1="90" x2="800" y1="207" y2="207" stroke="#ddd"/><circle cx="90.0" cy="207" r="6" fill="#b29a3a" stroke="#fff" stroke-width="1.5"/><text x="90.0" y="198" text-anchor="middle" font-size="10" fill="#444">T1</text><circle cx="90.0" cy="207" r="6" fill="#b29a3a" stroke="#fff" stroke-width="1.5"/><text x="90.0" y="198" text-anchor="middle" font-size="10" fill="#444">T2</text><circle cx="372.0" cy="207" r="6" fill="#b29a3a" stroke="#fff" stroke-width="1.5"/><text x="372.0" y="198" text-anchor="middle" font-size="10" fill="#444">T4</text><circle cx="231.8" cy="207" r="6" fill="#b29a3a" stroke="#fff" stroke-width="1.5"/><text x="231.8" y="198" text-anchor="middle" font-size="10" fill="#444">T3</text></svg>
+  <svg viewBox="0 0 880 260" xmlns="http://www.w3.org/2000/svg" class="chart"><rect x="90" y="24" width="710" height="200" fill="#fafafa"/><line x1="90.0" x2="90.0" y1="24" y2="224" stroke="#e8e8e8"/><text x="90.0" y="240" text-anchor="middle" font-size="11" fill="#666">0</text><line x1="178.8" x2="178.8" y1="24" y2="224" stroke="#e8e8e8"/><text x="178.8" y="240" text-anchor="middle" font-size="11" fill="#666">1,000</text><line x1="267.5" x2="267.5" y1="24" y2="224" stroke="#e8e8e8"/><text x="267.5" y="240" text-anchor="middle" font-size="11" fill="#666">2,000</text><line x1="356.3" x2="356.3" y1="24" y2="224" stroke="#e8e8e8"/><text x="356.3" y="240" text-anchor="middle" font-size="11" fill="#666">3,000</text><line x1="445.0" x2="445.0" y1="24" y2="224" stroke="#e8e8e8"/><text x="445.0" y="240" text-anchor="middle" font-size="11" fill="#666">4,000</text><line x1="533.8" x2="533.8" y1="24" y2="224" stroke="#e8e8e8"/><text x="533.8" y="240" text-anchor="middle" font-size="11" fill="#666">5,000</text><line x1="622.5" x2="622.5" y1="24" y2="224" stroke="#e8e8e8"/><text x="622.5" y="240" text-anchor="middle" font-size="11" fill="#666">6,000</text><line x1="711.3" x2="711.3" y1="24" y2="224" stroke="#e8e8e8"/><text x="711.3" y="240" text-anchor="middle" font-size="11" fill="#666">7,000</text><line x1="800.0" x2="800.0" y1="24" y2="224" stroke="#e8e8e8"/><text x="800.0" y="240" text-anchor="middle" font-size="11" fill="#666">8,000</text><text x="445" y="256" text-anchor="middle" font-size="11" fill="#888">tick</text><text x="82" y="45" text-anchor="end" font-size="12" font-weight="600" fill="#444">cargo</text><line x1="90" x2="800" y1="41" y2="41" stroke="#ddd"/><circle cx="90.0" cy="41" r="6" fill="#d8732d" stroke="#fff" stroke-width="1.5"/><text x="90.0" y="32" text-anchor="middle" font-size="10" fill="#444">T1</text><circle cx="91.0" cy="41" r="6" fill="#d8732d" stroke="#fff" stroke-width="1.5"/><text x="91.0" y="32" text-anchor="middle" font-size="10" fill="#444">T2</text><circle cx="165.0" cy="41" r="6" fill="#d8732d" stroke="#fff" stroke-width="1.5"/><text x="165.0" y="32" text-anchor="middle" font-size="10" fill="#444">T3</text><circle cx="193.2" cy="41" r="6" fill="#d8732d" stroke="#fff" stroke-width="1.5"/><text x="193.2" y="32" text-anchor="middle" font-size="10" fill="#444">T4</text><text x="82" y="78" text-anchor="end" font-size="12" font-weight="600" fill="#444">engine</text><line x1="90" x2="800" y1="74" y2="74" stroke="#ddd"/><circle cx="90.0" cy="74" r="6" fill="#3a8db8" stroke="#fff" stroke-width="1.5"/><text x="90.0" y="65" text-anchor="middle" font-size="10" fill="#444">T1</text><circle cx="92.6" cy="74" r="6" fill="#3a8db8" stroke="#fff" stroke-width="1.5"/><text x="92.6" y="65" text-anchor="middle" font-size="10" fill="#444">T2</text><circle cx="182.6" cy="74" r="6" fill="#3a8db8" stroke="#fff" stroke-width="1.5"/><text x="182.6" y="65" text-anchor="middle" font-size="10" fill="#444">T4</text><circle cx="205.1" cy="74" r="6" fill="#3a8db8" stroke="#fff" stroke-width="1.5"/><text x="205.1" y="65" text-anchor="middle" font-size="10" fill="#444">T3</text><text x="82" y="111" text-anchor="end" font-size="12" font-weight="600" fill="#444">fuel</text><line x1="90" x2="800" y1="107" y2="107" stroke="#ddd"/><circle cx="90.0" cy="107" r="6" fill="#5ba85f" stroke="#fff" stroke-width="1.5"/><text x="90.0" y="98" text-anchor="middle" font-size="10" fill="#444">T1</text><circle cx="90.0" cy="107" r="6" fill="#5ba85f" stroke="#fff" stroke-width="1.5"/><text x="90.0" y="98" text-anchor="middle" font-size="10" fill="#444">T2</text><circle cx="193.2" cy="107" r="6" fill="#5ba85f" stroke="#fff" stroke-width="1.5"/><text x="193.2" y="98" text-anchor="middle" font-size="10" fill="#444">T4</text><circle cx="170.1" cy="107" r="6" fill="#5ba85f" stroke="#fff" stroke-width="1.5"/><text x="170.1" y="98" text-anchor="middle" font-size="10" fill="#444">T3</text><text x="82" y="145" text-anchor="end" font-size="12" font-weight="600" fill="#444">hull</text><line x1="90" x2="800" y1="141" y2="141" stroke="#ddd"/><circle cx="90.0" cy="141" r="6" fill="#8b6db1" stroke="#fff" stroke-width="1.5"/><text x="90.0" y="132" text-anchor="middle" font-size="10" fill="#444">T1</text><circle cx="92.4" cy="141" r="6" fill="#8b6db1" stroke="#fff" stroke-width="1.5"/><text x="92.4" y="132" text-anchor="middle" font-size="10" fill="#444">T2</text><circle cx="165.0" cy="141" r="6" fill="#8b6db1" stroke="#fff" stroke-width="1.5"/><text x="165.0" y="132" text-anchor="middle" font-size="10" fill="#444">T3</text><circle cx="165.1" cy="141" r="6" fill="#8b6db1" stroke="#fff" stroke-width="1.5"/><text x="165.1" y="132" text-anchor="middle" font-size="10" fill="#444">T4</text><text x="82" y="178" text-anchor="end" font-size="12" font-weight="600" fill="#444">weapon</text><line x1="90" x2="800" y1="174" y2="174" stroke="#ddd"/><circle cx="92.6" cy="174" r="6" fill="#c14a4a" stroke="#fff" stroke-width="1.5"/><text x="92.6" y="165" text-anchor="middle" font-size="10" fill="#444">T1</text><circle cx="92.6" cy="174" r="6" fill="#c14a4a" stroke="#fff" stroke-width="1.5"/><text x="92.6" y="165" text-anchor="middle" font-size="10" fill="#444">T2</text><circle cx="193.2" cy="174" r="6" fill="#c14a4a" stroke="#fff" stroke-width="1.5"/><text x="193.2" y="165" text-anchor="middle" font-size="10" fill="#444">T4</text><circle cx="193.2" cy="174" r="6" fill="#c14a4a" stroke="#fff" stroke-width="1.5"/><text x="193.2" y="165" text-anchor="middle" font-size="10" fill="#444">T3</text><text x="82" y="211" text-anchor="end" font-size="12" font-weight="600" fill="#444">systems</text><line x1="90" x2="800" y1="207" y2="207" stroke="#ddd"/><circle cx="90.0" cy="207" r="6" fill="#b29a3a" stroke="#fff" stroke-width="1.5"/><text x="90.0" y="198" text-anchor="middle" font-size="10" fill="#444">T1</text><circle cx="90.0" cy="207" r="6" fill="#b29a3a" stroke="#fff" stroke-width="1.5"/><text x="90.0" y="198" text-anchor="middle" font-size="10" fill="#444">T2</text><circle cx="288.3" cy="207" r="6" fill="#b29a3a" stroke="#fff" stroke-width="1.5"/><text x="288.3" y="198" text-anchor="middle" font-size="10" fill="#444">T4</text><circle cx="261.8" cy="207" r="6" fill="#b29a3a" stroke="#fff" stroke-width="1.5"/><text x="261.8" y="198" text-anchor="middle" font-size="10" fill="#444">T3</text></svg>
 
   <h2>Unlock timeline</h2>
   <p class="chart-caption">Every unlock plotted by tick, color-coded by slot (top row) or crew role (bottom row). Clusters show "burst" milestones; gaps show pacing flat spots.</p>
-  <svg viewBox="0 0 880 220" xmlns="http://www.w3.org/2000/svg" class="chart"><rect x="70" y="24" width="750" height="146" fill="#fafafa"/><line x1="70.0" x2="70.0" y1="24" y2="170" stroke="#e8e8e8"/><text x="70.0" y="186" text-anchor="middle" font-size="11" fill="#666">0</text><line x1="163.8" x2="163.8" y1="24" y2="170" stroke="#e8e8e8"/><text x="163.8" y="186" text-anchor="middle" font-size="11" fill="#666">1,000</text><line x1="257.5" x2="257.5" y1="24" y2="170" stroke="#e8e8e8"/><text x="257.5" y="186" text-anchor="middle" font-size="11" fill="#666">2,000</text><line x1="351.3" x2="351.3" y1="24" y2="170" stroke="#e8e8e8"/><text x="351.3" y="186" text-anchor="middle" font-size="11" fill="#666">3,000</text><line x1="445.0" x2="445.0" y1="24" y2="170" stroke="#e8e8e8"/><text x="445.0" y="186" text-anchor="middle" font-size="11" fill="#666">4,000</text><line x1="538.8" x2="538.8" y1="24" y2="170" stroke="#e8e8e8"/><text x="538.8" y="186" text-anchor="middle" font-size="11" fill="#666">5,000</text><line x1="632.5" x2="632.5" y1="24" y2="170" stroke="#e8e8e8"/><text x="632.5" y="186" text-anchor="middle" font-size="11" fill="#666">6,000</text><line x1="726.3" x2="726.3" y1="24" y2="170" stroke="#e8e8e8"/><text x="726.3" y="186" text-anchor="middle" font-size="11" fill="#666">7,000</text><line x1="820.0" x2="820.0" y1="24" y2="170" stroke="#e8e8e8"/><text x="820.0" y="186" text-anchor="middle" font-size="11" fill="#666">8,000</text><text x="445" y="216" text-anchor="middle" font-size="11" fill="#888">tick</text><text x="62" y="79.1" text-anchor="end" font-size="12" font-weight="600" fill="#444">upgrades</text><text x="62" y="137.5" text-anchor="end" font-size="12" font-weight="600" fill="#444">crew</text><circle cx="70.0" cy="75.1" r="5" fill="#d8732d" fill-opacity="0.7" stroke="#d8732d" stroke-width="1.5"><title>Standard Cargo Bay (T1) @ t=0</title></circle><circle cx="70.0" cy="75.1" r="5" fill="#d8732d" fill-opacity="0.7" stroke="#d8732d" stroke-width="1.5"><title>Modular Container Bay (T1) @ t=0</title></circle><circle cx="73.8" cy="75.1" r="5" fill="#d8732d" fill-opacity="0.7" stroke="#d8732d" stroke-width="1.5"><title>Heavy Hauler Frame (T2) @ t=41</title></circle><circle cx="103.2" cy="75.1" r="5" fill="#d8732d" fill-opacity="0.7" stroke="#d8732d" stroke-width="1.5"><title>Rapid Cargo Lift (T2) @ t=354</title></circle><circle cx="71.0" cy="75.1" r="5" fill="#d8732d" fill-opacity="0.7" stroke="#d8732d" stroke-width="1.5"><title>Smuggler&apos;s Compartment (T2) @ t=11</title></circle><circle cx="231.1" cy="75.1" r="5" fill="#d8732d" fill-opacity="0.7" stroke="#d8732d" stroke-width="1.5"><title>Megahauler Conversion (T3) @ t=1718</title></circle><circle cx="325.3" cy="75.1" r="5" fill="#d8732d" fill-opacity="0.7" stroke="#d8732d" stroke-width="1.5"><title>Zero-G Unload Matrix (T3) @ t=2723</title></circle><circle cx="163.0" cy="75.1" r="5" fill="#d8732d" fill-opacity="0.7" stroke="#d8732d" stroke-width="1.5"><title>Atlas Hauler Spine (T4) @ t=992</title></circle><circle cx="88.6" cy="75.1" r="5" fill="#3a8db8" fill-opacity="0.7" stroke="#3a8db8" stroke-width="1.5"><title>Vector Thrusters (T1) @ t=198</title></circle><circle cx="70.0" cy="75.1" r="5" fill="#3a8db8" fill-opacity="0.7" stroke="#3a8db8" stroke-width="1.5"><title>Solar Sail Rig (T1) @ t=0</title></circle><circle cx="77.0" cy="75.1" r="5" fill="#3a8db8" fill-opacity="0.7" stroke="#3a8db8" stroke-width="1.5"><title>Slipstream Drive (T2) @ t=75</title></circle><circle cx="72.7" cy="75.1" r="5" fill="#3a8db8" fill-opacity="0.7" stroke="#3a8db8" stroke-width="1.5"><title>Microjump Coil (T2) @ t=29</title></circle><circle cx="323.3" cy="75.1" r="5" fill="#3a8db8" fill-opacity="0.7" stroke="#3a8db8" stroke-width="1.5"><title>FTL Fold Drive (T4) @ t=2702</title></circle><circle cx="173.7" cy="75.1" r="5" fill="#3a8db8" fill-opacity="0.7" stroke="#3a8db8" stroke-width="1.5"><title>Singularity Burst Drive (T3) @ t=1106</title></circle><circle cx="70.0" cy="75.1" r="5" fill="#5ba85f" fill-opacity="0.7" stroke="#5ba85f" stroke-width="1.5"><title>Fuel Reclaimer Pump (T1) @ t=0</title></circle><circle cx="70.0" cy="75.1" r="5" fill="#5ba85f" fill-opacity="0.7" stroke="#5ba85f" stroke-width="1.5"><title>Solar Bloom Collector (T1) @ t=0</title></circle><circle cx="72.5" cy="75.1" r="5" fill="#5ba85f" fill-opacity="0.7" stroke="#5ba85f" stroke-width="1.5"><title>Hydrogen Spinner Reclaimer (T2) @ t=27</title></circle><circle cx="72.7" cy="75.1" r="5" fill="#5ba85f" fill-opacity="0.7" stroke="#5ba85f" stroke-width="1.5"><title>Auxiliary Tank Lattice (T2) @ t=29</title></circle><circle cx="293.7" cy="75.1" r="5" fill="#5ba85f" fill-opacity="0.7" stroke="#5ba85f" stroke-width="1.5"><title>Zero-Point Fuel Core (T4) @ t=2386</title></circle><circle cx="143.8" cy="75.1" r="5" fill="#5ba85f" fill-opacity="0.7" stroke="#5ba85f" stroke-width="1.5"><title>Bio-Reactor Stack (T3) @ t=787</title></circle><circle cx="70.0" cy="75.1" r="5" fill="#8b6db1" fill-opacity="0.7" stroke="#8b6db1" stroke-width="1.5"><title>Reinforced Plating (T1) @ t=0</title></circle><circle cx="72.5" cy="75.1" r="5" fill="#8b6db1" fill-opacity="0.7" stroke="#8b6db1" stroke-width="1.5"><title>Composite Battle Plating (T2) @ t=27</title></circle><circle cx="72.7" cy="75.1" r="5" fill="#8b6db1" fill-opacity="0.7" stroke="#8b6db1" stroke-width="1.5"><title>Ablative Plate Layers (T2) @ t=29</title></circle><circle cx="75.0" cy="75.1" r="5" fill="#8b6db1" fill-opacity="0.7" stroke="#8b6db1" stroke-width="1.5"><title>Photon Damping Coat (T2) @ t=53</title></circle><circle cx="234.5" cy="75.1" r="5" fill="#8b6db1" fill-opacity="0.7" stroke="#8b6db1" stroke-width="1.5"><title>Adamant Carapace (T3) @ t=1755</title></circle><circle cx="142.8" cy="75.1" r="5" fill="#8b6db1" fill-opacity="0.7" stroke="#8b6db1" stroke-width="1.5"><title>Self-Repair Nanite Mesh (T4) @ t=776</title></circle><circle cx="88.6" cy="75.1" r="5" fill="#c14a4a" fill-opacity="0.7" stroke="#c14a4a" stroke-width="1.5"><title>Pulse Cannon Turret (T1) @ t=198</title></circle><circle cx="72.7" cy="75.1" r="5" fill="#c14a4a" fill-opacity="0.7" stroke="#c14a4a" stroke-width="1.5"><title>Point-Defense Lattice (T1) @ t=29</title></circle><circle cx="72.8" cy="75.1" r="5" fill="#c14a4a" fill-opacity="0.7" stroke="#c14a4a" stroke-width="1.5"><title>Quad Gauss Battery (T2) @ t=30</title></circle><circle cx="73.0" cy="75.1" r="5" fill="#c14a4a" fill-opacity="0.7" stroke="#c14a4a" stroke-width="1.5"><title>Bounty Hunter Rig (T2) @ t=32</title></circle><circle cx="163.0" cy="75.1" r="5" fill="#c14a4a" fill-opacity="0.7" stroke="#c14a4a" stroke-width="1.5"><title>Plasma Lance Array (T4) @ t=992</title></circle><circle cx="163.0" cy="75.1" r="5" fill="#c14a4a" fill-opacity="0.7" stroke="#c14a4a" stroke-width="1.5"><title>EMP Disruptor Array (T3) @ t=992</title></circle><circle cx="70.0" cy="75.1" r="5" fill="#b29a3a" fill-opacity="0.7" stroke="#b29a3a" stroke-width="1.5"><title>Survey Computer (T1) @ t=0</title></circle><circle cx="70.0" cy="75.1" r="5" fill="#b29a3a" fill-opacity="0.7" stroke="#b29a3a" stroke-width="1.5"><title>Haggler&apos;s Earpiece (T1) @ t=0</title></circle><circle cx="230.8" cy="75.1" r="5" fill="#b29a3a" fill-opacity="0.7" stroke="#b29a3a" stroke-width="1.5"><title>Exchange Relay (T2) @ t=1715</title></circle><circle cx="106.3" cy="75.1" r="5" fill="#b29a3a" fill-opacity="0.7" stroke="#b29a3a" stroke-width="1.5"><title>Bridge Ticker Tape (T2) @ t=387</title></circle><circle cx="367.9" cy="75.1" r="5" fill="#b29a3a" fill-opacity="0.7" stroke="#b29a3a" stroke-width="1.5"><title>Oracle Trade Core (T4) @ t=3178</title></circle><circle cx="219.8" cy="75.1" r="5" fill="#b29a3a" fill-opacity="0.7" stroke="#b29a3a" stroke-width="1.5"><title>Pressure Atlas Console (T3) @ t=1598</title></circle><circle cx="70.0" cy="75.1" r="5" fill="#5ba85f" fill-opacity="0.7" stroke="#5ba85f" stroke-width="1.5"><title>Hyperion Bloom Reclaimer (T2) @ t=0</title></circle><circle cx="125.7" cy="75.1" r="5" fill="#b29a3a" fill-opacity="0.7" stroke="#b29a3a" stroke-width="1.5"><title>Bonded Treasury Module (T2) @ t=594</title></circle><circle cx="70.0" cy="75.1" r="5" fill="#b29a3a" fill-opacity="0.7" stroke="#b29a3a" stroke-width="1.5"><title>Diplomatic Beacon (T2) @ t=0</title></circle><circle cx="219.9" cy="75.1" r="5" fill="#b29a3a" fill-opacity="0.7" stroke="#b29a3a" stroke-width="1.5"><title>Shareholder Relations Suite (T3) @ t=1599</title></circle><circle cx="156.3" cy="75.1" r="5" fill="#b29a3a" fill-opacity="0.7" stroke="#b29a3a" stroke-width="1.5"><title>Negotiator&apos;s Console (T2) @ t=921</title></circle><circle cx="254.9" cy="133.5" r="5" fill="#c14a4a" fill-opacity="0.7" stroke="#c14a4a" stroke-width="1.5"><title>captain T1 @ t=1972</title></circle><circle cx="392.4" cy="133.5" r="5" fill="#c14a4a" fill-opacity="0.7" stroke="#c14a4a" stroke-width="1.5"><title>captain T2 @ t=3439</title></circle><circle cx="475.0" cy="133.5" r="5" fill="#c14a4a" fill-opacity="0.7" stroke="#c14a4a" stroke-width="1.5"><title>captain T3 @ t=4320</title></circle><circle cx="75.1" cy="133.5" r="5" fill="#3a8db8" fill-opacity="0.7" stroke="#3a8db8" stroke-width="1.5"><title>mechanic T1 @ t=54</title></circle><circle cx="179.5" cy="133.5" r="5" fill="#3a8db8" fill-opacity="0.7" stroke="#3a8db8" stroke-width="1.5"><title>mechanic T2 @ t=1168</title></circle><circle cx="261.0" cy="133.5" r="5" fill="#3a8db8" fill-opacity="0.7" stroke="#3a8db8" stroke-width="1.5"><title>mechanic T3 @ t=2037</title></circle><circle cx="72.7" cy="133.5" r="5" fill="#5ba85f" fill-opacity="0.7" stroke="#5ba85f" stroke-width="1.5"><title>navigator T1 @ t=29</title></circle><circle cx="98.7" cy="133.5" r="5" fill="#5ba85f" fill-opacity="0.7" stroke="#5ba85f" stroke-width="1.5"><title>navigator T2 @ t=306</title></circle><circle cx="253.7" cy="133.5" r="5" fill="#5ba85f" fill-opacity="0.7" stroke="#5ba85f" stroke-width="1.5"><title>navigator T3 @ t=1959</title></circle><circle cx="76" cy="203" r="5" fill="#d8732d"/><text x="86" y="207" font-size="11" fill="#555">cargo</text><circle cx="154" cy="203" r="5" fill="#3a8db8"/><text x="164" y="207" font-size="11" fill="#555">engine</text><circle cx="232" cy="203" r="5" fill="#5ba85f"/><text x="242" y="207" font-size="11" fill="#555">fuel</text><circle cx="310" cy="203" r="5" fill="#8b6db1"/><text x="320" y="207" font-size="11" fill="#555">hull</text><circle cx="388" cy="203" r="5" fill="#c14a4a"/><text x="398" y="207" font-size="11" fill="#555">weapon</text><circle cx="466" cy="203" r="5" fill="#b29a3a"/><text x="476" y="207" font-size="11" fill="#555">systems</text></svg>
+  <svg viewBox="0 0 880 220" xmlns="http://www.w3.org/2000/svg" class="chart"><rect x="70" y="24" width="750" height="146" fill="#fafafa"/><line x1="70.0" x2="70.0" y1="24" y2="170" stroke="#e8e8e8"/><text x="70.0" y="186" text-anchor="middle" font-size="11" fill="#666">0</text><line x1="163.8" x2="163.8" y1="24" y2="170" stroke="#e8e8e8"/><text x="163.8" y="186" text-anchor="middle" font-size="11" fill="#666">1,000</text><line x1="257.5" x2="257.5" y1="24" y2="170" stroke="#e8e8e8"/><text x="257.5" y="186" text-anchor="middle" font-size="11" fill="#666">2,000</text><line x1="351.3" x2="351.3" y1="24" y2="170" stroke="#e8e8e8"/><text x="351.3" y="186" text-anchor="middle" font-size="11" fill="#666">3,000</text><line x1="445.0" x2="445.0" y1="24" y2="170" stroke="#e8e8e8"/><text x="445.0" y="186" text-anchor="middle" font-size="11" fill="#666">4,000</text><line x1="538.8" x2="538.8" y1="24" y2="170" stroke="#e8e8e8"/><text x="538.8" y="186" text-anchor="middle" font-size="11" fill="#666">5,000</text><line x1="632.5" x2="632.5" y1="24" y2="170" stroke="#e8e8e8"/><text x="632.5" y="186" text-anchor="middle" font-size="11" fill="#666">6,000</text><line x1="726.3" x2="726.3" y1="24" y2="170" stroke="#e8e8e8"/><text x="726.3" y="186" text-anchor="middle" font-size="11" fill="#666">7,000</text><line x1="820.0" x2="820.0" y1="24" y2="170" stroke="#e8e8e8"/><text x="820.0" y="186" text-anchor="middle" font-size="11" fill="#666">8,000</text><text x="445" y="216" text-anchor="middle" font-size="11" fill="#888">tick</text><text x="62" y="79.1" text-anchor="end" font-size="12" font-weight="600" fill="#444">upgrades</text><text x="62" y="137.5" text-anchor="end" font-size="12" font-weight="600" fill="#444">crew</text><circle cx="70.0" cy="75.1" r="5" fill="#d8732d" fill-opacity="0.7" stroke="#d8732d" stroke-width="1.5"><title>Standard Cargo Bay (T1) @ t=0</title></circle><circle cx="70.0" cy="75.1" r="5" fill="#d8732d" fill-opacity="0.7" stroke="#d8732d" stroke-width="1.5"><title>Modular Container Bay (T1) @ t=0</title></circle><circle cx="78.0" cy="75.1" r="5" fill="#d8732d" fill-opacity="0.7" stroke="#d8732d" stroke-width="1.5"><title>Heavy Hauler Frame (T2) @ t=85</title></circle><circle cx="72.7" cy="75.1" r="5" fill="#d8732d" fill-opacity="0.7" stroke="#d8732d" stroke-width="1.5"><title>Rapid Cargo Lift (T2) @ t=29</title></circle><circle cx="71.0" cy="75.1" r="5" fill="#d8732d" fill-opacity="0.7" stroke="#d8732d" stroke-width="1.5"><title>Smuggler&apos;s Compartment (T2) @ t=11</title></circle><circle cx="149.2" cy="75.1" r="5" fill="#d8732d" fill-opacity="0.7" stroke="#d8732d" stroke-width="1.5"><title>Megahauler Conversion (T3) @ t=845</title></circle><circle cx="191.7" cy="75.1" r="5" fill="#d8732d" fill-opacity="0.7" stroke="#d8732d" stroke-width="1.5"><title>Zero-G Unload Matrix (T3) @ t=1298</title></circle><circle cx="179.0" cy="75.1" r="5" fill="#d8732d" fill-opacity="0.7" stroke="#d8732d" stroke-width="1.5"><title>Atlas Hauler Spine (T4) @ t=1163</title></circle><circle cx="93.3" cy="75.1" r="5" fill="#3a8db8" fill-opacity="0.7" stroke="#3a8db8" stroke-width="1.5"><title>Vector Thrusters (T1) @ t=248</title></circle><circle cx="70.0" cy="75.1" r="5" fill="#3a8db8" fill-opacity="0.7" stroke="#3a8db8" stroke-width="1.5"><title>Solar Sail Rig (T1) @ t=0</title></circle><circle cx="76.8" cy="75.1" r="5" fill="#3a8db8" fill-opacity="0.7" stroke="#3a8db8" stroke-width="1.5"><title>Slipstream Drive (T2) @ t=72</title></circle><circle cx="72.7" cy="75.1" r="5" fill="#3a8db8" fill-opacity="0.7" stroke="#3a8db8" stroke-width="1.5"><title>Microjump Coil (T2) @ t=29</title></circle><circle cx="167.8" cy="75.1" r="5" fill="#3a8db8" fill-opacity="0.7" stroke="#3a8db8" stroke-width="1.5"><title>FTL Fold Drive (T4) @ t=1043</title></circle><circle cx="191.6" cy="75.1" r="5" fill="#3a8db8" fill-opacity="0.7" stroke="#3a8db8" stroke-width="1.5"><title>Singularity Burst Drive (T3) @ t=1297</title></circle><circle cx="70.0" cy="75.1" r="5" fill="#5ba85f" fill-opacity="0.7" stroke="#5ba85f" stroke-width="1.5"><title>Fuel Reclaimer Pump (T1) @ t=0</title></circle><circle cx="70.0" cy="75.1" r="5" fill="#5ba85f" fill-opacity="0.7" stroke="#5ba85f" stroke-width="1.5"><title>Solar Bloom Collector (T1) @ t=0</title></circle><circle cx="72.5" cy="75.1" r="5" fill="#5ba85f" fill-opacity="0.7" stroke="#5ba85f" stroke-width="1.5"><title>Hydrogen Spinner Reclaimer (T2) @ t=27</title></circle><circle cx="72.7" cy="75.1" r="5" fill="#5ba85f" fill-opacity="0.7" stroke="#5ba85f" stroke-width="1.5"><title>Auxiliary Tank Lattice (T2) @ t=29</title></circle><circle cx="179.0" cy="75.1" r="5" fill="#5ba85f" fill-opacity="0.7" stroke="#5ba85f" stroke-width="1.5"><title>Zero-Point Fuel Core (T4) @ t=1163</title></circle><circle cx="154.7" cy="75.1" r="5" fill="#5ba85f" fill-opacity="0.7" stroke="#5ba85f" stroke-width="1.5"><title>Bio-Reactor Stack (T3) @ t=903</title></circle><circle cx="70.0" cy="75.1" r="5" fill="#8b6db1" fill-opacity="0.7" stroke="#8b6db1" stroke-width="1.5"><title>Reinforced Plating (T1) @ t=0</title></circle><circle cx="72.5" cy="75.1" r="5" fill="#8b6db1" fill-opacity="0.7" stroke="#8b6db1" stroke-width="1.5"><title>Composite Battle Plating (T2) @ t=27</title></circle><circle cx="72.7" cy="75.1" r="5" fill="#8b6db1" fill-opacity="0.7" stroke="#8b6db1" stroke-width="1.5"><title>Ablative Plate Layers (T2) @ t=29</title></circle><circle cx="91.5" cy="75.1" r="5" fill="#8b6db1" fill-opacity="0.7" stroke="#8b6db1" stroke-width="1.5"><title>Photon Damping Coat (T2) @ t=229</title></circle><circle cx="149.2" cy="75.1" r="5" fill="#8b6db1" fill-opacity="0.7" stroke="#8b6db1" stroke-width="1.5"><title>Adamant Carapace (T3) @ t=845</title></circle><circle cx="149.3" cy="75.1" r="5" fill="#8b6db1" fill-opacity="0.7" stroke="#8b6db1" stroke-width="1.5"><title>Self-Repair Nanite Mesh (T4) @ t=846</title></circle><circle cx="93.3" cy="75.1" r="5" fill="#c14a4a" fill-opacity="0.7" stroke="#c14a4a" stroke-width="1.5"><title>Pulse Cannon Turret (T1) @ t=248</title></circle><circle cx="72.7" cy="75.1" r="5" fill="#c14a4a" fill-opacity="0.7" stroke="#c14a4a" stroke-width="1.5"><title>Point-Defense Lattice (T1) @ t=29</title></circle><circle cx="72.7" cy="75.1" r="5" fill="#c14a4a" fill-opacity="0.7" stroke="#c14a4a" stroke-width="1.5"><title>Quad Gauss Battery (T2) @ t=29</title></circle><circle cx="72.7" cy="75.1" r="5" fill="#c14a4a" fill-opacity="0.7" stroke="#c14a4a" stroke-width="1.5"><title>Bounty Hunter Rig (T2) @ t=29</title></circle><circle cx="179.0" cy="75.1" r="5" fill="#c14a4a" fill-opacity="0.7" stroke="#c14a4a" stroke-width="1.5"><title>Plasma Lance Array (T4) @ t=1163</title></circle><circle cx="179.0" cy="75.1" r="5" fill="#c14a4a" fill-opacity="0.7" stroke="#c14a4a" stroke-width="1.5"><title>EMP Disruptor Array (T3) @ t=1163</title></circle><circle cx="70.0" cy="75.1" r="5" fill="#b29a3a" fill-opacity="0.7" stroke="#b29a3a" stroke-width="1.5"><title>Survey Computer (T1) @ t=0</title></circle><circle cx="70.0" cy="75.1" r="5" fill="#b29a3a" fill-opacity="0.7" stroke="#b29a3a" stroke-width="1.5"><title>Haggler&apos;s Earpiece (T1) @ t=0</title></circle><circle cx="261.0" cy="75.1" r="5" fill="#b29a3a" fill-opacity="0.7" stroke="#b29a3a" stroke-width="1.5"><title>Exchange Relay (T2) @ t=2037</title></circle><circle cx="130.9" cy="75.1" r="5" fill="#b29a3a" fill-opacity="0.7" stroke="#b29a3a" stroke-width="1.5"><title>Bridge Ticker Tape (T2) @ t=650</title></circle><circle cx="279.4" cy="75.1" r="5" fill="#b29a3a" fill-opacity="0.7" stroke="#b29a3a" stroke-width="1.5"><title>Oracle Trade Core (T4) @ t=2234</title></circle><circle cx="251.5" cy="75.1" r="5" fill="#b29a3a" fill-opacity="0.7" stroke="#b29a3a" stroke-width="1.5"><title>Pressure Atlas Console (T3) @ t=1936</title></circle><circle cx="70.0" cy="75.1" r="5" fill="#5ba85f" fill-opacity="0.7" stroke="#5ba85f" stroke-width="1.5"><title>Hyperion Bloom Reclaimer (T2) @ t=0</title></circle><circle cx="146.6" cy="75.1" r="5" fill="#b29a3a" fill-opacity="0.7" stroke="#b29a3a" stroke-width="1.5"><title>Bonded Treasury Module (T2) @ t=817</title></circle><circle cx="70.0" cy="75.1" r="5" fill="#b29a3a" fill-opacity="0.7" stroke="#b29a3a" stroke-width="1.5"><title>Diplomatic Beacon (T2) @ t=0</title></circle><circle cx="251.6" cy="75.1" r="5" fill="#b29a3a" fill-opacity="0.7" stroke="#b29a3a" stroke-width="1.5"><title>Shareholder Relations Suite (T3) @ t=1937</title></circle><circle cx="138.6" cy="75.1" r="5" fill="#b29a3a" fill-opacity="0.7" stroke="#b29a3a" stroke-width="1.5"><title>Negotiator&apos;s Console (T2) @ t=732</title></circle><circle cx="237.5" cy="133.5" r="5" fill="#c14a4a" fill-opacity="0.7" stroke="#c14a4a" stroke-width="1.5"><title>captain T1 @ t=1787</title></circle><circle cx="312.3" cy="133.5" r="5" fill="#c14a4a" fill-opacity="0.7" stroke="#c14a4a" stroke-width="1.5"><title>captain T2 @ t=2585</title></circle><circle cx="425.7" cy="133.5" r="5" fill="#c14a4a" fill-opacity="0.7" stroke="#c14a4a" stroke-width="1.5"><title>captain T3 @ t=3794</title></circle><circle cx="75.1" cy="133.5" r="5" fill="#3a8db8" fill-opacity="0.7" stroke="#3a8db8" stroke-width="1.5"><title>mechanic T1 @ t=54</title></circle><circle cx="187.3" cy="133.5" r="5" fill="#3a8db8" fill-opacity="0.7" stroke="#3a8db8" stroke-width="1.5"><title>mechanic T2 @ t=1251</title></circle><circle cx="327.7" cy="133.5" r="5" fill="#3a8db8" fill-opacity="0.7" stroke="#3a8db8" stroke-width="1.5"><title>mechanic T3 @ t=2749</title></circle><circle cx="72.7" cy="133.5" r="5" fill="#5ba85f" fill-opacity="0.7" stroke="#5ba85f" stroke-width="1.5"><title>navigator T1 @ t=29</title></circle><circle cx="191.6" cy="133.5" r="5" fill="#5ba85f" fill-opacity="0.7" stroke="#5ba85f" stroke-width="1.5"><title>navigator T2 @ t=1297</title></circle><circle cx="365.3" cy="133.5" r="5" fill="#5ba85f" fill-opacity="0.7" stroke="#5ba85f" stroke-width="1.5"><title>navigator T3 @ t=3150</title></circle><circle cx="76" cy="203" r="5" fill="#d8732d"/><text x="86" y="207" font-size="11" fill="#555">cargo</text><circle cx="154" cy="203" r="5" fill="#3a8db8"/><text x="164" y="207" font-size="11" fill="#555">engine</text><circle cx="232" cy="203" r="5" fill="#5ba85f"/><text x="242" y="207" font-size="11" fill="#555">fuel</text><circle cx="310" cy="203" r="5" fill="#8b6db1"/><text x="320" y="207" font-size="11" fill="#555">hull</text><circle cx="388" cy="203" r="5" fill="#c14a4a"/><text x="398" y="207" font-size="11" fill="#555">weapon</text><circle cx="466" cy="203" r="5" fill="#b29a3a"/><text x="476" y="207" font-size="11" fill="#555">systems</text></svg>
 
   <h2>Crew unlock pacing</h2>
   <p class="chart-caption">First tick each crew role/tier becomes affordable in person. Bars stop at the unlock tick; missing bars = never affordable in this run.</p>
-  <svg viewBox="0 0 880 322" xmlns="http://www.w3.org/2000/svg" class="chart"><rect x="146" y="20" width="654" height="252" fill="#fafafa"/><line x1="146.0" x2="146.0" y1="20" y2="272" stroke="#e8e8e8"/><text x="146.0" y="310" text-anchor="middle" font-size="11" fill="#666">0</text><line x1="227.8" x2="227.8" y1="20" y2="272" stroke="#e8e8e8"/><text x="227.8" y="310" text-anchor="middle" font-size="11" fill="#666">1,000</text><line x1="309.5" x2="309.5" y1="20" y2="272" stroke="#e8e8e8"/><text x="309.5" y="310" text-anchor="middle" font-size="11" fill="#666">2,000</text><line x1="391.3" x2="391.3" y1="20" y2="272" stroke="#e8e8e8"/><text x="391.3" y="310" text-anchor="middle" font-size="11" fill="#666">3,000</text><line x1="473.0" x2="473.0" y1="20" y2="272" stroke="#e8e8e8"/><text x="473.0" y="310" text-anchor="middle" font-size="11" fill="#666">4,000</text><line x1="554.8" x2="554.8" y1="20" y2="272" stroke="#e8e8e8"/><text x="554.8" y="310" text-anchor="middle" font-size="11" fill="#666">5,000</text><line x1="636.5" x2="636.5" y1="20" y2="272" stroke="#e8e8e8"/><text x="636.5" y="310" text-anchor="middle" font-size="11" fill="#666">6,000</text><line x1="718.3" x2="718.3" y1="20" y2="272" stroke="#e8e8e8"/><text x="718.3" y="310" text-anchor="middle" font-size="11" fill="#666">7,000</text><line x1="800.0" x2="800.0" y1="20" y2="272" stroke="#e8e8e8"/><text x="800.0" y="310" text-anchor="middle" font-size="11" fill="#666">8,000</text><text x="130" y="38" text-anchor="end" font-size="12" fill="#333">captain T1</text><text x="134" y="38" text-anchor="start" font-size="10" fill="#888">Ç140.0k</text><rect x="146.0" y="28" width="161.2" height="14" fill="#c14a4a" fill-opacity="0.7"/><text x="313.2" y="38" font-size="11" fill="#444">t=1,972</text><text x="130" y="66" text-anchor="end" font-size="12" fill="#333">captain T2</text><text x="134" y="66" text-anchor="start" font-size="10" fill="#888">Ç228.0k</text><rect x="146.0" y="56" width="281.1" height="14" fill="#c14a4a" fill-opacity="0.7"/><text x="433.1" y="66" font-size="11" fill="#444">t=3,439</text><text x="130" y="94" text-anchor="end" font-size="12" fill="#333">captain T3</text><text x="134" y="94" text-anchor="start" font-size="10" fill="#888">Ç422.4k</text><rect x="146.0" y="84" width="353.2" height="14" fill="#c14a4a" fill-opacity="0.7"/><text x="505.2" y="94" font-size="11" fill="#444">t=4,320</text><text x="130" y="122" text-anchor="end" font-size="12" fill="#333">mechanic T1</text><text x="134" y="122" text-anchor="start" font-size="10" fill="#888">Ç40.0k</text><rect x="146.0" y="112" width="4.4" height="14" fill="#3a8db8" fill-opacity="0.7"/><text x="156.4" y="122" font-size="11" fill="#444">t=54</text><text x="130" y="150" text-anchor="end" font-size="12" fill="#333">mechanic T2</text><text x="134" y="150" text-anchor="start" font-size="10" fill="#888">Ç70.5k</text><rect x="146.0" y="140" width="95.5" height="14" fill="#3a8db8" fill-opacity="0.7"/><text x="247.5" y="150" font-size="11" fill="#444">t=1,168</text><text x="130" y="178" text-anchor="end" font-size="12" fill="#333">mechanic T3</text><text x="134" y="178" text-anchor="start" font-size="10" fill="#888">Ç164.4k</text><rect x="146.0" y="168" width="166.5" height="14" fill="#3a8db8" fill-opacity="0.7"/><text x="318.5" y="178" font-size="11" fill="#444">t=2,037</text><text x="130" y="206" text-anchor="end" font-size="12" fill="#333">navigator T1</text><text x="134" y="206" text-anchor="start" font-size="10" fill="#888">Ç18.0k</text><rect x="146.0" y="196" width="2.4" height="14" fill="#5ba85f" fill-opacity="0.7"/><text x="154.4" y="206" font-size="11" fill="#444">t=29</text><text x="130" y="234" text-anchor="end" font-size="12" fill="#333">navigator T2</text><text x="134" y="234" text-anchor="start" font-size="10" fill="#888">Ç45.0k</text><rect x="146.0" y="224" width="25.0" height="14" fill="#5ba85f" fill-opacity="0.7"/><text x="177.0" y="234" font-size="11" fill="#444">t=306</text><text x="130" y="262" text-anchor="end" font-size="12" fill="#333">navigator T3</text><text x="134" y="262" text-anchor="start" font-size="10" fill="#888">Ç140.4k</text><rect x="146.0" y="252" width="160.1" height="14" fill="#5ba85f" fill-opacity="0.7"/><text x="312.1" y="262" font-size="11" fill="#444">t=1,959</text><text x="473" y="322" text-anchor="middle" font-size="11" fill="#888">tick of first affordable in-person offer</text></svg>
+  <svg viewBox="0 0 880 322" xmlns="http://www.w3.org/2000/svg" class="chart"><rect x="146" y="20" width="654" height="252" fill="#fafafa"/><line x1="146.0" x2="146.0" y1="20" y2="272" stroke="#e8e8e8"/><text x="146.0" y="310" text-anchor="middle" font-size="11" fill="#666">0</text><line x1="227.8" x2="227.8" y1="20" y2="272" stroke="#e8e8e8"/><text x="227.8" y="310" text-anchor="middle" font-size="11" fill="#666">1,000</text><line x1="309.5" x2="309.5" y1="20" y2="272" stroke="#e8e8e8"/><text x="309.5" y="310" text-anchor="middle" font-size="11" fill="#666">2,000</text><line x1="391.3" x2="391.3" y1="20" y2="272" stroke="#e8e8e8"/><text x="391.3" y="310" text-anchor="middle" font-size="11" fill="#666">3,000</text><line x1="473.0" x2="473.0" y1="20" y2="272" stroke="#e8e8e8"/><text x="473.0" y="310" text-anchor="middle" font-size="11" fill="#666">4,000</text><line x1="554.8" x2="554.8" y1="20" y2="272" stroke="#e8e8e8"/><text x="554.8" y="310" text-anchor="middle" font-size="11" fill="#666">5,000</text><line x1="636.5" x2="636.5" y1="20" y2="272" stroke="#e8e8e8"/><text x="636.5" y="310" text-anchor="middle" font-size="11" fill="#666">6,000</text><line x1="718.3" x2="718.3" y1="20" y2="272" stroke="#e8e8e8"/><text x="718.3" y="310" text-anchor="middle" font-size="11" fill="#666">7,000</text><line x1="800.0" x2="800.0" y1="20" y2="272" stroke="#e8e8e8"/><text x="800.0" y="310" text-anchor="middle" font-size="11" fill="#666">8,000</text><text x="130" y="38" text-anchor="end" font-size="12" fill="#333">captain T1</text><text x="134" y="38" text-anchor="start" font-size="10" fill="#888">Ç90.0k</text><rect x="146.0" y="28" width="146.1" height="14" fill="#c14a4a" fill-opacity="0.7"/><text x="298.1" y="38" font-size="11" fill="#444">t=1,787</text><text x="130" y="66" text-anchor="end" font-size="12" fill="#333">captain T2</text><text x="134" y="66" text-anchor="start" font-size="10" fill="#888">Ç153.0k</text><rect x="146.0" y="56" width="211.3" height="14" fill="#c14a4a" fill-opacity="0.7"/><text x="363.3" y="66" font-size="11" fill="#444">t=2,585</text><text x="130" y="94" text-anchor="end" font-size="12" fill="#333">captain T3</text><text x="134" y="94" text-anchor="start" font-size="10" fill="#888">Ç306.0k</text><rect x="146.0" y="84" width="310.2" height="14" fill="#c14a4a" fill-opacity="0.7"/><text x="462.2" y="94" font-size="11" fill="#444">t=3,794</text><text x="130" y="122" text-anchor="end" font-size="12" fill="#333">mechanic T1</text><text x="134" y="122" text-anchor="start" font-size="10" fill="#888">Ç40.0k</text><rect x="146.0" y="112" width="4.4" height="14" fill="#3a8db8" fill-opacity="0.7"/><text x="156.4" y="122" font-size="11" fill="#444">t=54</text><text x="130" y="150" text-anchor="end" font-size="12" fill="#333">mechanic T2</text><text x="134" y="150" text-anchor="start" font-size="10" fill="#888">Ç72.0k</text><rect x="146.0" y="140" width="102.3" height="14" fill="#3a8db8" fill-opacity="0.7"/><text x="254.3" y="150" font-size="11" fill="#444">t=1,251</text><text x="130" y="178" text-anchor="end" font-size="12" fill="#333">mechanic T3</text><text x="134" y="178" text-anchor="start" font-size="10" fill="#888">Ç156.5k</text><rect x="146.0" y="168" width="224.7" height="14" fill="#3a8db8" fill-opacity="0.7"/><text x="376.7" y="178" font-size="11" fill="#444">t=2,749</text><text x="130" y="206" text-anchor="end" font-size="12" fill="#333">navigator T1</text><text x="134" y="206" text-anchor="start" font-size="10" fill="#888">Ç45.0k</text><rect x="146.0" y="196" width="2.4" height="14" fill="#5ba85f" fill-opacity="0.7"/><text x="154.4" y="206" font-size="11" fill="#444">t=29</text><text x="130" y="234" text-anchor="end" font-size="12" fill="#333">navigator T2</text><text x="134" y="234" text-anchor="start" font-size="10" fill="#888">Ç85.5k</text><rect x="146.0" y="224" width="106.0" height="14" fill="#5ba85f" fill-opacity="0.7"/><text x="258.0" y="234" font-size="11" fill="#444">t=1,297</text><text x="130" y="262" text-anchor="end" font-size="12" fill="#333">navigator T3</text><text x="134" y="262" text-anchor="start" font-size="10" fill="#888">Ç205.2k</text><rect x="146.0" y="252" width="257.5" height="14" fill="#5ba85f" fill-opacity="0.7"/><text x="409.5" y="262" font-size="11" fill="#444">t=3,150</text><text x="473" y="322" text-anchor="middle" font-size="11" fill="#888">tick of first affordable in-person offer</text></svg>
 
   <h2>Variant utilization</h2>
   <p class="chart-caption">Install rate per upgrade — fraction of seeds where the auto-buyer actually purchased + installed it. Bars near 0% are the cannibalized variants.</p>
-  <svg viewBox="0 0 804 718" xmlns="http://www.w3.org/2000/svg" class="chart"><rect x="0" y="0" width="804" height="718" fill="#fafafa"/><text x="6" y="29" font-size="11" fill="#444" opacity="1">T1 cargo · Standard Cargo Bay</text><rect x="240" y="20" width="480" height="10" fill="#ececec"/><rect x="240" y="20" width="384.0" height="10" fill="#d8732d"/><text x="726" y="29" font-size="11" fill="#444">80%</text><text x="6" y="45" font-size="11" fill="#444" opacity="0.5">T1 cargo · Modular Container Bay</text><rect x="240" y="36" width="480" height="10" fill="#ececec"/><text x="726" y="45" font-size="11" fill="#444">0%</text><text x="6" y="61" font-size="11" fill="#444" opacity="1">T1 engine · Vector Thrusters</text><rect x="240" y="52" width="480" height="10" fill="#ececec"/><rect x="240" y="52" width="480.0" height="10" fill="#3a8db8"/><text x="726" y="61" font-size="11" fill="#444">100%</text><text x="6" y="77" font-size="11" fill="#444" opacity="0.5">T1 engine · Solar Sail Rig</text><rect x="240" y="68" width="480" height="10" fill="#ececec"/><text x="726" y="77" font-size="11" fill="#444">0%</text><text x="6" y="93" font-size="11" fill="#444" opacity="1">T1 fuel · Fuel Reclaimer Pump</text><rect x="240" y="84" width="480" height="10" fill="#ececec"/><rect x="240" y="84" width="480.0" height="10" fill="#5ba85f"/><text x="726" y="93" font-size="11" fill="#444">100%</text><text x="6" y="109" font-size="11" fill="#444" opacity="0.5">T1 fuel · Solar Bloom Collector</text><rect x="240" y="100" width="480" height="10" fill="#ececec"/><text x="726" y="109" font-size="11" fill="#444">0%</text><text x="6" y="125" font-size="11" fill="#444" opacity="1">T1 hull · Reinforced Plating</text><rect x="240" y="116" width="480" height="10" fill="#ececec"/><rect x="240" y="116" width="480.0" height="10" fill="#8b6db1"/><text x="726" y="125" font-size="11" fill="#444">100%</text><text x="6" y="141" font-size="11" fill="#444" opacity="1">T1 systems · Survey Computer</text><rect x="240" y="132" width="480" height="10" fill="#ececec"/><rect x="240" y="132" width="480.0" height="10" fill="#b29a3a"/><text x="726" y="141" font-size="11" fill="#444">100%</text><text x="6" y="157" font-size="11" fill="#444" opacity="0.5">T1 systems · Haggler&apos;s Earpiece</text><rect x="240" y="148" width="480" height="10" fill="#ececec"/><text x="726" y="157" font-size="11" fill="#444">0%</text><text x="6" y="173" font-size="11" fill="#444" opacity="1">T1 weapon · Pulse Cannon Turret</text><rect x="240" y="164" width="480" height="10" fill="#ececec"/><rect x="240" y="164" width="288.0" height="10" fill="#c14a4a"/><text x="726" y="173" font-size="11" fill="#444">60%</text><text x="6" y="189" font-size="11" fill="#444" opacity="0.5">T1 weapon · Point-Defense Lattice</text><rect x="240" y="180" width="480" height="10" fill="#ececec"/><text x="726" y="189" font-size="11" fill="#444">0%</text><text x="6" y="205" font-size="11" fill="#444" opacity="1">T2 cargo · Heavy Hauler Frame</text><rect x="240" y="196" width="480" height="10" fill="#ececec"/><rect x="240" y="196" width="480.0" height="10" fill="#d8732d"/><text x="726" y="205" font-size="11" fill="#444">100%</text><text x="6" y="221" font-size="11" fill="#444" opacity="0.5">T2 cargo · Smuggler&apos;s Compartment</text><rect x="240" y="212" width="480" height="10" fill="#ececec"/><text x="726" y="221" font-size="11" fill="#444">0%</text><text x="6" y="237" font-size="11" fill="#444" opacity="0.5">T2 cargo · Rapid Cargo Lift</text><rect x="240" y="228" width="480" height="10" fill="#ececec"/><text x="726" y="237" font-size="11" fill="#444">0%</text><text x="6" y="253" font-size="11" fill="#444" opacity="1">T2 engine · Slipstream Drive</text><rect x="240" y="244" width="480" height="10" fill="#ececec"/><rect x="240" y="244" width="480.0" height="10" fill="#3a8db8"/><text x="726" y="253" font-size="11" fill="#444">100%</text><text x="6" y="269" font-size="11" fill="#444" opacity="0.5">T2 engine · Microjump Coil</text><rect x="240" y="260" width="480" height="10" fill="#ececec"/><text x="726" y="269" font-size="11" fill="#444">0%</text><text x="6" y="285" font-size="11" fill="#444" opacity="1">T2 fuel · Hydrogen Spinner Reclaimer</text><rect x="240" y="276" width="480" height="10" fill="#ececec"/><rect x="240" y="276" width="480.0" height="10" fill="#5ba85f"/><text x="726" y="285" font-size="11" fill="#444">100%</text><text x="6" y="301" font-size="11" fill="#444" opacity="0.5">T2 fuel · Auxiliary Tank Lattice</text><rect x="240" y="292" width="480" height="10" fill="#ececec"/><text x="726" y="301" font-size="11" fill="#444">0%</text><text x="6" y="317" font-size="11" fill="#444" opacity="0.5">T2 fuel · Hyperion Bloom Reclaimer</text><rect x="240" y="308" width="480" height="10" fill="#ececec"/><text x="726" y="317" font-size="11" fill="#444">0%</text><text x="6" y="333" font-size="11" fill="#444" opacity="1">T2 hull · Composite Battle Plating</text><rect x="240" y="324" width="480" height="10" fill="#ececec"/><rect x="240" y="324" width="480.0" height="10" fill="#8b6db1"/><text x="726" y="333" font-size="11" fill="#444">100%</text><text x="6" y="349" font-size="11" fill="#444" opacity="0.5">T2 hull · Photon Damping Coat</text><rect x="240" y="340" width="480" height="10" fill="#ececec"/><text x="726" y="349" font-size="11" fill="#444">0%</text><text x="6" y="365" font-size="11" fill="#444" opacity="0.5">T2 hull · Ablative Plate Layers</text><rect x="240" y="356" width="480" height="10" fill="#ececec"/><text x="726" y="365" font-size="11" fill="#444">0%</text><text x="6" y="381" font-size="11" fill="#444" opacity="0.5">T2 systems · Diplomatic Beacon</text><rect x="240" y="372" width="480" height="10" fill="#ececec"/><text x="726" y="381" font-size="11" fill="#444">0%</text><text x="6" y="397" font-size="11" fill="#444" opacity="1">T2 systems · Bridge Ticker Tape</text><rect x="240" y="388" width="480" height="10" fill="#ececec"/><rect x="240" y="388" width="96.0" height="10" fill="#b29a3a"/><text x="726" y="397" font-size="11" fill="#444">20%</text><text x="6" y="413" font-size="11" fill="#444" opacity="1">T2 systems · Exchange Relay</text><rect x="240" y="404" width="480" height="10" fill="#ececec"/><rect x="240" y="404" width="384.0" height="10" fill="#b29a3a"/><text x="726" y="413" font-size="11" fill="#444">80%</text><text x="6" y="429" font-size="11" fill="#444" opacity="0.5">T2 systems · Negotiator&apos;s Console</text><rect x="240" y="420" width="480" height="10" fill="#ececec"/><text x="726" y="429" font-size="11" fill="#444">0%</text><text x="6" y="445" font-size="11" fill="#444" opacity="0.5">T2 systems · Bonded Treasury Module</text><rect x="240" y="436" width="480" height="10" fill="#ececec"/><text x="726" y="445" font-size="11" fill="#444">0%</text><text x="6" y="461" font-size="11" fill="#444" opacity="1">T2 weapon · Quad Gauss Battery</text><rect x="240" y="452" width="480" height="10" fill="#ececec"/><rect x="240" y="452" width="480.0" height="10" fill="#c14a4a"/><text x="726" y="461" font-size="11" fill="#444">100%</text><text x="6" y="477" font-size="11" fill="#444" opacity="0.5">T2 weapon · Bounty Hunter Rig</text><rect x="240" y="468" width="480" height="10" fill="#ececec"/><text x="726" y="477" font-size="11" fill="#444">0%</text><text x="6" y="493" font-size="11" fill="#444" opacity="1">T3 cargo · Megahauler Conversion</text><rect x="240" y="484" width="480" height="10" fill="#ececec"/><rect x="240" y="484" width="192.0" height="10" fill="#d8732d"/><text x="726" y="493" font-size="11" fill="#444">40%</text><text x="6" y="509" font-size="11" fill="#444" opacity="0.5">T3 cargo · Zero-G Unload Matrix</text><rect x="240" y="500" width="480" height="10" fill="#ececec"/><text x="726" y="509" font-size="11" fill="#444">0%</text><text x="6" y="525" font-size="11" fill="#444" opacity="0.5">T3 engine · Singularity Burst Drive</text><rect x="240" y="516" width="480" height="10" fill="#ececec"/><text x="726" y="525" font-size="11" fill="#444">0%</text><text x="6" y="541" font-size="11" fill="#444" opacity="1">T3 fuel · Bio-Reactor Stack</text><rect x="240" y="532" width="480" height="10" fill="#ececec"/><rect x="240" y="532" width="96.0" height="10" fill="#5ba85f"/><text x="726" y="541" font-size="11" fill="#444">20%</text><text x="6" y="557" font-size="11" fill="#444" opacity="1">T3 hull · Adamant Carapace</text><rect x="240" y="548" width="480" height="10" fill="#ececec"/><rect x="240" y="548" width="192.0" height="10" fill="#8b6db1"/><text x="726" y="557" font-size="11" fill="#444">40%</text><text x="6" y="573" font-size="11" fill="#444" opacity="1">T3 systems · Pressure Atlas Console</text><rect x="240" y="564" width="480" height="10" fill="#ececec"/><rect x="240" y="564" width="96.0" height="10" fill="#b29a3a"/><text x="726" y="573" font-size="11" fill="#444">20%</text><text x="6" y="589" font-size="11" fill="#444" opacity="0.5">T3 systems · Shareholder Relations Suite</text><rect x="240" y="580" width="480" height="10" fill="#ececec"/><text x="726" y="589" font-size="11" fill="#444">0%</text><text x="6" y="605" font-size="11" fill="#444" opacity="1">T3 weapon · EMP Disruptor Array</text><rect x="240" y="596" width="480" height="10" fill="#ececec"/><rect x="240" y="596" width="96.0" height="10" fill="#c14a4a"/><text x="726" y="605" font-size="11" fill="#444">20%</text><text x="6" y="621" font-size="11" fill="#444" opacity="1">T4 cargo · Atlas Hauler Spine</text><rect x="240" y="612" width="480" height="10" fill="#ececec"/><rect x="240" y="612" width="96.0" height="10" fill="#d8732d"/><text x="726" y="621" font-size="11" fill="#444">20%</text><text x="6" y="637" font-size="11" fill="#444" opacity="1">T4 engine · FTL Fold Drive</text><rect x="240" y="628" width="480" height="10" fill="#ececec"/><rect x="240" y="628" width="192.0" height="10" fill="#3a8db8"/><text x="726" y="637" font-size="11" fill="#444">40%</text><text x="6" y="653" font-size="11" fill="#444" opacity="1">T4 fuel · Zero-Point Fuel Core</text><rect x="240" y="644" width="480" height="10" fill="#ececec"/><rect x="240" y="644" width="192.0" height="10" fill="#5ba85f"/><text x="726" y="653" font-size="11" fill="#444">40%</text><text x="6" y="669" font-size="11" fill="#444" opacity="1">T4 hull · Self-Repair Nanite Mesh</text><rect x="240" y="660" width="480" height="10" fill="#ececec"/><rect x="240" y="660" width="96.0" height="10" fill="#8b6db1"/><text x="726" y="669" font-size="11" fill="#444">20%</text><text x="6" y="685" font-size="11" fill="#444" opacity="1">T4 systems · Oracle Trade Core</text><rect x="240" y="676" width="480" height="10" fill="#ececec"/><rect x="240" y="676" width="192.0" height="10" fill="#b29a3a"/><text x="726" y="685" font-size="11" fill="#444">40%</text><text x="6" y="701" font-size="11" fill="#444" opacity="1">T4 weapon · Plasma Lance Array</text><rect x="240" y="692" width="480" height="10" fill="#ececec"/><rect x="240" y="692" width="96.0" height="10" fill="#c14a4a"/><text x="726" y="701" font-size="11" fill="#444">20%</text></svg>
+  <svg viewBox="0 0 804 718" xmlns="http://www.w3.org/2000/svg" class="chart"><rect x="0" y="0" width="804" height="718" fill="#fafafa"/><text x="6" y="29" font-size="11" fill="#444" opacity="1">T1 cargo · Standard Cargo Bay</text><rect x="240" y="20" width="480" height="10" fill="#ececec"/><rect x="240" y="20" width="480.0" height="10" fill="#d8732d"/><text x="726" y="29" font-size="11" fill="#444">100%</text><text x="6" y="45" font-size="11" fill="#444" opacity="0.5">T1 cargo · Modular Container Bay</text><rect x="240" y="36" width="480" height="10" fill="#ececec"/><text x="726" y="45" font-size="11" fill="#444">0%</text><text x="6" y="61" font-size="11" fill="#444" opacity="1">T1 engine · Vector Thrusters</text><rect x="240" y="52" width="480" height="10" fill="#ececec"/><rect x="240" y="52" width="384.0" height="10" fill="#3a8db8"/><text x="726" y="61" font-size="11" fill="#444">80%</text><text x="6" y="77" font-size="11" fill="#444" opacity="0.5">T1 engine · Solar Sail Rig</text><rect x="240" y="68" width="480" height="10" fill="#ececec"/><text x="726" y="77" font-size="11" fill="#444">0%</text><text x="6" y="93" font-size="11" fill="#444" opacity="1">T1 fuel · Fuel Reclaimer Pump</text><rect x="240" y="84" width="480" height="10" fill="#ececec"/><rect x="240" y="84" width="480.0" height="10" fill="#5ba85f"/><text x="726" y="93" font-size="11" fill="#444">100%</text><text x="6" y="109" font-size="11" fill="#444" opacity="0.5">T1 fuel · Solar Bloom Collector</text><rect x="240" y="100" width="480" height="10" fill="#ececec"/><text x="726" y="109" font-size="11" fill="#444">0%</text><text x="6" y="125" font-size="11" fill="#444" opacity="1">T1 hull · Reinforced Plating</text><rect x="240" y="116" width="480" height="10" fill="#ececec"/><rect x="240" y="116" width="480.0" height="10" fill="#8b6db1"/><text x="726" y="125" font-size="11" fill="#444">100%</text><text x="6" y="141" font-size="11" fill="#444" opacity="1">T1 systems · Survey Computer</text><rect x="240" y="132" width="480" height="10" fill="#ececec"/><rect x="240" y="132" width="480.0" height="10" fill="#b29a3a"/><text x="726" y="141" font-size="11" fill="#444">100%</text><text x="6" y="157" font-size="11" fill="#444" opacity="0.5">T1 systems · Haggler&apos;s Earpiece</text><rect x="240" y="148" width="480" height="10" fill="#ececec"/><text x="726" y="157" font-size="11" fill="#444">0%</text><text x="6" y="173" font-size="11" fill="#444" opacity="1">T1 weapon · Pulse Cannon Turret</text><rect x="240" y="164" width="480" height="10" fill="#ececec"/><rect x="240" y="164" width="288.0" height="10" fill="#c14a4a"/><text x="726" y="173" font-size="11" fill="#444">60%</text><text x="6" y="189" font-size="11" fill="#444" opacity="0.5">T1 weapon · Point-Defense Lattice</text><rect x="240" y="180" width="480" height="10" fill="#ececec"/><text x="726" y="189" font-size="11" fill="#444">0%</text><text x="6" y="205" font-size="11" fill="#444" opacity="1">T2 cargo · Heavy Hauler Frame</text><rect x="240" y="196" width="480" height="10" fill="#ececec"/><rect x="240" y="196" width="384.0" height="10" fill="#d8732d"/><text x="726" y="205" font-size="11" fill="#444">80%</text><text x="6" y="221" font-size="11" fill="#444" opacity="0.5">T2 cargo · Smuggler&apos;s Compartment</text><rect x="240" y="212" width="480" height="10" fill="#ececec"/><text x="726" y="221" font-size="11" fill="#444">0%</text><text x="6" y="237" font-size="11" fill="#444" opacity="0.5">T2 cargo · Rapid Cargo Lift</text><rect x="240" y="228" width="480" height="10" fill="#ececec"/><text x="726" y="237" font-size="11" fill="#444">0%</text><text x="6" y="253" font-size="11" fill="#444" opacity="1">T2 engine · Slipstream Drive</text><rect x="240" y="244" width="480" height="10" fill="#ececec"/><rect x="240" y="244" width="384.0" height="10" fill="#3a8db8"/><text x="726" y="253" font-size="11" fill="#444">80%</text><text x="6" y="269" font-size="11" fill="#444" opacity="0.5">T2 engine · Microjump Coil</text><rect x="240" y="260" width="480" height="10" fill="#ececec"/><text x="726" y="269" font-size="11" fill="#444">0%</text><text x="6" y="285" font-size="11" fill="#444" opacity="1">T2 fuel · Hydrogen Spinner Reclaimer</text><rect x="240" y="276" width="480" height="10" fill="#ececec"/><rect x="240" y="276" width="384.0" height="10" fill="#5ba85f"/><text x="726" y="285" font-size="11" fill="#444">80%</text><text x="6" y="301" font-size="11" fill="#444" opacity="0.5">T2 fuel · Auxiliary Tank Lattice</text><rect x="240" y="292" width="480" height="10" fill="#ececec"/><text x="726" y="301" font-size="11" fill="#444">0%</text><text x="6" y="317" font-size="11" fill="#444" opacity="1">T2 fuel · Hyperion Bloom Reclaimer</text><rect x="240" y="308" width="480" height="10" fill="#ececec"/><rect x="240" y="308" width="96.0" height="10" fill="#5ba85f"/><text x="726" y="317" font-size="11" fill="#444">20%</text><text x="6" y="333" font-size="11" fill="#444" opacity="1">T2 hull · Composite Battle Plating</text><rect x="240" y="324" width="480" height="10" fill="#ececec"/><rect x="240" y="324" width="384.0" height="10" fill="#8b6db1"/><text x="726" y="333" font-size="11" fill="#444">80%</text><text x="6" y="349" font-size="11" fill="#444" opacity="0.5">T2 hull · Photon Damping Coat</text><rect x="240" y="340" width="480" height="10" fill="#ececec"/><text x="726" y="349" font-size="11" fill="#444">0%</text><text x="6" y="365" font-size="11" fill="#444" opacity="0.5">T2 hull · Ablative Plate Layers</text><rect x="240" y="356" width="480" height="10" fill="#ececec"/><text x="726" y="365" font-size="11" fill="#444">0%</text><text x="6" y="381" font-size="11" fill="#444" opacity="1">T2 systems · Diplomatic Beacon</text><rect x="240" y="372" width="480" height="10" fill="#ececec"/><rect x="240" y="372" width="96.0" height="10" fill="#b29a3a"/><text x="726" y="381" font-size="11" fill="#444">20%</text><text x="6" y="397" font-size="11" fill="#444" opacity="0.5">T2 systems · Bridge Ticker Tape</text><rect x="240" y="388" width="480" height="10" fill="#ececec"/><text x="726" y="397" font-size="11" fill="#444">0%</text><text x="6" y="413" font-size="11" fill="#444" opacity="1">T2 systems · Exchange Relay</text><rect x="240" y="404" width="480" height="10" fill="#ececec"/><rect x="240" y="404" width="288.0" height="10" fill="#b29a3a"/><text x="726" y="413" font-size="11" fill="#444">60%</text><text x="6" y="429" font-size="11" fill="#444" opacity="0.5">T2 systems · Negotiator&apos;s Console</text><rect x="240" y="420" width="480" height="10" fill="#ececec"/><text x="726" y="429" font-size="11" fill="#444">0%</text><text x="6" y="445" font-size="11" fill="#444" opacity="0.5">T2 systems · Bonded Treasury Module</text><rect x="240" y="436" width="480" height="10" fill="#ececec"/><text x="726" y="445" font-size="11" fill="#444">0%</text><text x="6" y="461" font-size="11" fill="#444" opacity="1">T2 weapon · Quad Gauss Battery</text><rect x="240" y="452" width="480" height="10" fill="#ececec"/><rect x="240" y="452" width="384.0" height="10" fill="#c14a4a"/><text x="726" y="461" font-size="11" fill="#444">80%</text><text x="6" y="477" font-size="11" fill="#444" opacity="0.5">T2 weapon · Bounty Hunter Rig</text><rect x="240" y="468" width="480" height="10" fill="#ececec"/><text x="726" y="477" font-size="11" fill="#444">0%</text><text x="6" y="493" font-size="11" fill="#444" opacity="1">T3 cargo · Megahauler Conversion</text><rect x="240" y="484" width="480" height="10" fill="#ececec"/><rect x="240" y="484" width="96.0" height="10" fill="#d8732d"/><text x="726" y="493" font-size="11" fill="#444">20%</text><text x="6" y="509" font-size="11" fill="#444" opacity="0.5">T3 cargo · Zero-G Unload Matrix</text><rect x="240" y="500" width="480" height="10" fill="#ececec"/><text x="726" y="509" font-size="11" fill="#444">0%</text><text x="6" y="525" font-size="11" fill="#444" opacity="1">T3 engine · Singularity Burst Drive</text><rect x="240" y="516" width="480" height="10" fill="#ececec"/><rect x="240" y="516" width="96.0" height="10" fill="#3a8db8"/><text x="726" y="525" font-size="11" fill="#444">20%</text><text x="6" y="541" font-size="11" fill="#444" opacity="1">T3 fuel · Bio-Reactor Stack</text><rect x="240" y="532" width="480" height="10" fill="#ececec"/><rect x="240" y="532" width="96.0" height="10" fill="#5ba85f"/><text x="726" y="541" font-size="11" fill="#444">20%</text><text x="6" y="557" font-size="11" fill="#444" opacity="1">T3 hull · Adamant Carapace</text><rect x="240" y="548" width="480" height="10" fill="#ececec"/><rect x="240" y="548" width="96.0" height="10" fill="#8b6db1"/><text x="726" y="557" font-size="11" fill="#444">20%</text><text x="6" y="573" font-size="11" fill="#444" opacity="1">T3 systems · Pressure Atlas Console</text><rect x="240" y="564" width="480" height="10" fill="#ececec"/><rect x="240" y="564" width="96.0" height="10" fill="#b29a3a"/><text x="726" y="573" font-size="11" fill="#444">20%</text><text x="6" y="589" font-size="11" fill="#444" opacity="0.5">T3 systems · Shareholder Relations Suite</text><rect x="240" y="580" width="480" height="10" fill="#ececec"/><text x="726" y="589" font-size="11" fill="#444">0%</text><text x="6" y="605" font-size="11" fill="#444" opacity="1">T3 weapon · EMP Disruptor Array</text><rect x="240" y="596" width="480" height="10" fill="#ececec"/><rect x="240" y="596" width="96.0" height="10" fill="#c14a4a"/><text x="726" y="605" font-size="11" fill="#444">20%</text><text x="6" y="621" font-size="11" fill="#444" opacity="1">T4 cargo · Atlas Hauler Spine</text><rect x="240" y="612" width="480" height="10" fill="#ececec"/><rect x="240" y="612" width="96.0" height="10" fill="#d8732d"/><text x="726" y="621" font-size="11" fill="#444">20%</text><text x="6" y="637" font-size="11" fill="#444" opacity="1">T4 engine · FTL Fold Drive</text><rect x="240" y="628" width="480" height="10" fill="#ececec"/><rect x="240" y="628" width="96.0" height="10" fill="#3a8db8"/><text x="726" y="637" font-size="11" fill="#444">20%</text><text x="6" y="653" font-size="11" fill="#444" opacity="1">T4 fuel · Zero-Point Fuel Core</text><rect x="240" y="644" width="480" height="10" fill="#ececec"/><rect x="240" y="644" width="96.0" height="10" fill="#5ba85f"/><text x="726" y="653" font-size="11" fill="#444">20%</text><text x="6" y="669" font-size="11" fill="#444" opacity="1">T4 hull · Self-Repair Nanite Mesh</text><rect x="240" y="660" width="480" height="10" fill="#ececec"/><rect x="240" y="660" width="96.0" height="10" fill="#8b6db1"/><text x="726" y="669" font-size="11" fill="#444">20%</text><text x="6" y="685" font-size="11" fill="#444" opacity="1">T4 systems · Oracle Trade Core</text><rect x="240" y="676" width="480" height="10" fill="#ececec"/><rect x="240" y="676" width="96.0" height="10" fill="#b29a3a"/><text x="726" y="685" font-size="11" fill="#444">20%</text><text x="6" y="701" font-size="11" fill="#444" opacity="1">T4 weapon · Plasma Lance Array</text><rect x="240" y="692" width="480" height="10" fill="#ececec"/><rect x="240" y="692" width="96.0" height="10" fill="#c14a4a"/><text x="726" y="701" font-size="11" fill="#444">20%</text></svg>
 
   <h2>Findings</h2>
-  <div class="finding high"><h3>Variant cannibalization — 17 upgrades effectively dead on arrival</h3><pre>Within each (slot × tier), the auto-buyer always climbs to the cheapest rung first. Variants priced even slightly higher than their slot+tier sibling never get bought. Examples:
-  • Modular Container Bay (Ç11,500, install 0%) loses to Standard Cargo Bay (Ç8,000, install 80%)
-  • Rapid Cargo Lift (Ç42,000, install 0%) loses to Heavy Hauler Frame (Ç24,000, install 100%)
-  • Smuggler&apos;s Compartment (Ç38,000, install 0%) loses to Heavy Hauler Frame (Ç24,000, install 100%)
-  • Zero-G Unload Matrix (Ç110,000, install 0%) loses to Megahauler Conversion (Ç64,000, install 40%)
-  • Solar Sail Rig (Ç13,500, install 0%) loses to Vector Thrusters (Ç10,000, install 100%)
-  • Microjump Coil (Ç34,000, install 0%) loses to Slipstream Drive (Ç30,000, install 100%)</pre></div>
-<div class="finding high"><h3>Captain wall: autopilot doesn&apos;t open until t=1,972</h3><pre>Pilot T1 hire cost (Ç140,000) gates the entire autopilot loop. With &quot;good play&quot; the autopilot synthetic captain reached funds parity at this tick; without the synthetic, real players are slower because manual play &lt; autopilot. That&apos;s roughly 30+ minutes of trading at 1 tick/sec before the loop opens.</pre></div>
-<div class="finding med"><h3>3 pacing dead zones (≥400 ticks with no new unlock)</h3><pre>  • t=1168 → t=1598 (Δ430)  between &quot;mechanic T2&quot; → &quot;Pressure Atlas Console&quot;
-  • t=2723 → t=3178 (Δ455)  between &quot;Zero-G Unload Matrix&quot; → &quot;Oracle Trade Core&quot;
-  • t=3439 → t=4320 (Δ881)  between &quot;captain T2&quot; → &quot;captain T3&quot;</pre></div>
-<div class="finding low"><h3>Captain T3 looks like dead loot</h3><pre>Captain T3 median offer Ç422,400; affordable at t=4,320 but never hired in any seed within 8000 ticks. Either players never accumulate enough surplus, or the upgrade-vs-crew ROI tradeoff makes T3 captain worse than two T2 hires.</pre></div>
+  <div class="finding high"><h3>Variant cannibalization — 15 upgrades effectively dead on arrival</h3><pre>Within each (slot × tier), the auto-buyer always climbs to the cheapest rung first. Variants priced even slightly higher than their slot+tier sibling never get bought. Examples:
+  • Modular Container Bay (Ç11,500, install 0%) loses to Standard Cargo Bay (Ç8,000, install 100%)
+  • Rapid Cargo Lift (Ç42,000, install 0%) loses to Heavy Hauler Frame (Ç24,000, install 80%)
+  • Smuggler&apos;s Compartment (Ç38,000, install 0%) loses to Heavy Hauler Frame (Ç24,000, install 80%)
+  • Solar Sail Rig (Ç13,500, install 0%) loses to Vector Thrusters (Ç10,000, install 80%)
+  • Microjump Coil (Ç34,000, install 0%) loses to Slipstream Drive (Ç30,000, install 80%)
+  • Solar Bloom Collector (Ç9,500, install 0%) loses to Fuel Reclaimer Pump (Ç7,500, install 100%)</pre></div>
+<div class="finding high"><h3>Captain wall: autopilot doesn&apos;t open until t=1,787</h3><pre>Pilot T1 hire cost (Ç90,000) gates the entire autopilot loop. With &quot;good play&quot; the autopilot synthetic captain reached funds parity at this tick; without the synthetic, real players are slower because manual play &lt; autopilot. That&apos;s roughly 30+ minutes of trading at 1 tick/sec before the loop opens.</pre></div>
+<div class="finding med"><h3>4 pacing dead zones (≥400 ticks with no new unlock)</h3><pre>  • t=248 → t=650 (Δ402)  between &quot;Pulse Cannon Turret&quot; → &quot;Bridge Ticker Tape&quot;
+  • t=1298 → t=1787 (Δ489)  between &quot;Zero-G Unload Matrix&quot; → &quot;captain T1&quot;
+  • t=2749 → t=3150 (Δ401)  between &quot;mechanic T3&quot; → &quot;navigator T3&quot;
+  • t=3150 → t=3794 (Δ644)  between &quot;navigator T3&quot; → &quot;captain T3&quot;</pre></div>
+<div class="finding low"><h3>Captain T3 looks like dead loot</h3><pre>Captain T3 median offer Ç306,000; affordable at t=3,794 but never hired in any seed within 8000 ticks. Either players never accumulate enough surplus, or the upgrade-vs-crew ROI tradeoff makes T3 captain worse than two T2 hires.</pre></div>
 <div class="finding low"><h3>Captain T2 also never hired</h3><pre>Even at the affordable tick, the auto-buyer never picked up Captain T2 — a pattern worth scrutinising. Likely cause: the audit&apos;s hiring policy stops upgrading captain after the first hire (T1), and your players might do the same.</pre></div>
 
   <h2>Recommendations</h2>
   <div class="rec"><h3>Differentiate variants — make the price gap match a real choice</h3><p>Today the variants share a slot+tier and the cheaper option dominates. Either (a) drop the loser variants&apos; price ~10–15% below the canonical to give them a real reason to exist as the budget pick, or (b) lift their effects with a clearly distinct stat profile (e.g., Modular Container Bay sacrifices capacity for unload speed — make that tradeoff matter for late-game players). The current pricing makes 15+ items shelf decoration.</p></div>
-<div class="rec"><h3>Make autopilot reachable in the first session</h3><p>Drop T1 captain hireCost from Ç140,000 → ~Ç80k–Ç100k, OR introduce a Tier-0 &quot;rookie pilot&quot; at Ç40k–Ç50k that unlocks autopilot with reduced effects (no contract bonus, no speed bonus). Either lands captain-pilot in the first hour-of-play instead of after.</p></div>
-<div class="rec"><h3>Compress the upper price band</h3><p>26/43 upgrades install in &lt;20% of seeds, mostly clustered Ç80k+. The wealth curve doesn&apos;t grow fast enough to keep up with the price ladder past T2. Either (a) cut top-tier prices ~25% so they unlock by t≈3000, or (b) introduce a &quot;trade volume&quot; multiplier so late-game runs scale faster.</p></div>
+<div class="rec"><h3>Make autopilot reachable in the first session</h3><p>Drop T1 captain hireCost from Ç90,000 → ~Ç80k–Ç100k, OR introduce a Tier-0 &quot;rookie pilot&quot; at Ç40k–Ç50k that unlocks autopilot with reduced effects (no contract bonus, no speed bonus). Either lands captain-pilot in the first hour-of-play instead of after.</p></div>
+<div class="rec"><h3>Compress the upper price band</h3><p>31/43 upgrades install in &lt;20% of seeds, mostly clustered Ç80k+. The wealth curve doesn&apos;t grow fast enough to keep up with the price ladder past T2. Either (a) cut top-tier prices ~25% so they unlock by t≈3000, or (b) introduce a &quot;trade volume&quot; multiplier so late-game runs scale faster.</p></div>
 <div class="rec"><h3>Add filler unlocks to break long stretches</h3><p>Each dead zone is a session-cliff: the player notices when nothing new opens for ~7+ minutes. Slot one mid-priced upgrade or hire offer into each gap (e.g., a Ç55k systems variant or a T1.5 captain). The exact items matter less than the existence of a &apos;next thing&apos;.</p></div>
 
   <h2>Appendix: full upgrade table</h2>
@@ -190,7 +192,7 @@
         <td>+15 fuel · −8% fuel/dist</td>
         <td class="num ">t=0</td>
         <td class="num ">t=0</td>
-        <td class="num ">t=71</td>
+        <td class="num ">t=180</td>
         <td class="num">100%</td>
         <td class="meta">Haven Station, Ironhold Belt, Verdant Ring</td>
       </tr>
@@ -202,8 +204,8 @@
         <td>+15 cargo</td>
         <td class="num ">t=0</td>
         <td class="num ">t=0</td>
-        <td class="num ">t=66</td>
-        <td class="num">80%</td>
+        <td class="num ">t=166</td>
+        <td class="num">100%</td>
         <td class="meta">Haven Station, Verdant Ring</td>
       </tr>
       <tr>
@@ -214,7 +216,7 @@
         <td>+1 hull</td>
         <td class="num ">t=0</td>
         <td class="num ">t=0</td>
-        <td class="num ">t=495</td>
+        <td class="num ">t=318</td>
         <td class="num">100%</td>
         <td class="meta">Haven Station, Ironhold Belt</td>
       </tr>
@@ -250,7 +252,7 @@
         <td>+3% contracts</td>
         <td class="num ">t=0</td>
         <td class="num ">t=0</td>
-        <td class="num ">t=177</td>
+        <td class="num ">t=398</td>
         <td class="num">100%</td>
         <td class="meta">Haven Station, Verdant Ring</td>
       </tr>
@@ -286,8 +288,8 @@
         <td>+18 fuel · +0.5 fuel/tick docked</td>
         <td class="num ">t=0</td>
         <td class="num ">t=0</td>
-        <td class="num never">never</td>
-        <td class="num">0%</td>
+        <td class="num ">t=564</td>
+        <td class="num">20%</td>
         <td class="meta">Haven Station</td>
       </tr>
       <tr>
@@ -298,8 +300,8 @@
         <td>−30% docking</td>
         <td class="num ">t=0</td>
         <td class="num ">t=0</td>
-        <td class="num never">never</td>
-        <td class="num">0%</td>
+        <td class="num ">t=763</td>
+        <td class="num">20%</td>
         <td class="meta">Haven Station</td>
       </tr>
       <tr>
@@ -322,8 +324,8 @@
         <td>+35 fuel · −18% fuel/dist</td>
         <td class="num ">t=0</td>
         <td class="num ">t=27</td>
-        <td class="num ">t=527</td>
-        <td class="num">100%</td>
+        <td class="num ">t=614</td>
+        <td class="num">80%</td>
         <td class="meta">Saffron Rim</td>
       </tr>
       <tr>
@@ -334,8 +336,8 @@
         <td>+2 hull · −5% maintenance</td>
         <td class="num ">t=0</td>
         <td class="num ">t=27</td>
-        <td class="num ">t=654</td>
-        <td class="num">100%</td>
+        <td class="num ">t=1,109</td>
+        <td class="num">80%</td>
         <td class="meta">Ironhold Belt, Saffron Rim</td>
       </tr>
       <tr>
@@ -393,9 +395,9 @@
         <td>Quad Gauss Battery</td>
         <td>+3 weapons · +5% contracts</td>
         <td class="num ">t=0</td>
-        <td class="num ">t=30</td>
-        <td class="num ">t=1,193</td>
-        <td class="num">100%</td>
+        <td class="num ">t=29</td>
+        <td class="num ">t=2,269</td>
+        <td class="num">80%</td>
         <td class="meta">Ironhold Belt, Saffron Rim</td>
       </tr>
       <tr>
@@ -405,69 +407,9 @@
         <td>Bounty Hunter Rig</td>
         <td>+3 weapons · +8% contracts</td>
         <td class="num ">t=0</td>
-        <td class="num ">t=32</td>
+        <td class="num ">t=29</td>
         <td class="num never">never</td>
         <td class="num">0%</td>
-        <td class="meta">Ironhold Belt</td>
-      </tr>
-      <tr>
-        <td>2</td>
-        <td>cargo</td>
-        <td class="num">Ç24,000</td>
-        <td>Heavy Hauler Frame</td>
-        <td>+35 cargo</td>
-        <td class="num ">t=0</td>
-        <td class="num ">t=41</td>
-        <td class="num ">t=359</td>
-        <td class="num">100%</td>
-        <td class="meta">Saffron Rim</td>
-      </tr>
-      <tr>
-        <td>2</td>
-        <td>hull</td>
-        <td class="num">Ç29,500</td>
-        <td>Photon Damping Coat</td>
-        <td>+1 hull · +6% contracts</td>
-        <td class="num ">t=0</td>
-        <td class="num ">t=53</td>
-        <td class="num never">never</td>
-        <td class="num">0%</td>
-        <td class="meta">Saffron Rim</td>
-      </tr>
-      <tr>
-        <td>2</td>
-        <td>engine</td>
-        <td class="num">Ç30,000</td>
-        <td>Slipstream Drive</td>
-        <td>+0.5 speed · −10% fuel/dist</td>
-        <td class="num ">t=0</td>
-        <td class="num ">t=75</td>
-        <td class="num ">t=1,714</td>
-        <td class="num">100%</td>
-        <td class="meta">Ironhold Belt</td>
-      </tr>
-      <tr>
-        <td>1</td>
-        <td>engine</td>
-        <td class="num">Ç10,000</td>
-        <td>Vector Thrusters</td>
-        <td>+0.25 speed</td>
-        <td class="num ">t=0</td>
-        <td class="num ">t=198</td>
-        <td class="num ">t=422</td>
-        <td class="num">100%</td>
-        <td class="meta">Ironhold Belt</td>
-      </tr>
-      <tr>
-        <td>1</td>
-        <td>weapon</td>
-        <td class="num">Ç12,000</td>
-        <td>Pulse Cannon Turret</td>
-        <td>+1 weapons</td>
-        <td class="num ">t=0</td>
-        <td class="num ">t=198</td>
-        <td class="num ">t=682</td>
-        <td class="num">60%</td>
         <td class="meta">Ironhold Belt</td>
       </tr>
       <tr>
@@ -477,9 +419,69 @@
         <td>Rapid Cargo Lift</td>
         <td>+10 cargo · +100% unload speed</td>
         <td class="num ">t=0</td>
-        <td class="num ">t=354</td>
+        <td class="num ">t=29</td>
         <td class="num never">never</td>
         <td class="num">0%</td>
+        <td class="meta">Ironhold Belt</td>
+      </tr>
+      <tr>
+        <td>2</td>
+        <td>engine</td>
+        <td class="num">Ç30,000</td>
+        <td>Slipstream Drive</td>
+        <td>+0.5 speed · −10% fuel/dist</td>
+        <td class="num ">t=0</td>
+        <td class="num ">t=72</td>
+        <td class="num ">t=1,607</td>
+        <td class="num">80%</td>
+        <td class="meta">Ironhold Belt</td>
+      </tr>
+      <tr>
+        <td>2</td>
+        <td>cargo</td>
+        <td class="num">Ç24,000</td>
+        <td>Heavy Hauler Frame</td>
+        <td>+35 cargo</td>
+        <td class="num ">t=0</td>
+        <td class="num ">t=85</td>
+        <td class="num ">t=1,734</td>
+        <td class="num">80%</td>
+        <td class="meta">Saffron Rim</td>
+      </tr>
+      <tr>
+        <td>2</td>
+        <td>hull</td>
+        <td class="num">Ç29,500</td>
+        <td>Photon Damping Coat</td>
+        <td>+1 hull · +6% contracts</td>
+        <td class="num ">t=0</td>
+        <td class="num ">t=229</td>
+        <td class="num never">never</td>
+        <td class="num">0%</td>
+        <td class="meta">Saffron Rim</td>
+      </tr>
+      <tr>
+        <td>1</td>
+        <td>engine</td>
+        <td class="num">Ç10,000</td>
+        <td>Vector Thrusters</td>
+        <td>+0.25 speed</td>
+        <td class="num ">t=0</td>
+        <td class="num ">t=248</td>
+        <td class="num ">t=491</td>
+        <td class="num">80%</td>
+        <td class="meta">Ironhold Belt</td>
+      </tr>
+      <tr>
+        <td>1</td>
+        <td>weapon</td>
+        <td class="num">Ç12,000</td>
+        <td>Pulse Cannon Turret</td>
+        <td>+1 weapons</td>
+        <td class="num ">t=0</td>
+        <td class="num ">t=248</td>
+        <td class="num ">t=670</td>
+        <td class="num">60%</td>
         <td class="meta">Ironhold Belt</td>
       </tr>
       <tr>
@@ -489,10 +491,22 @@
         <td>Bridge Ticker Tape</td>
         <td>+6% contracts</td>
         <td class="num ">t=0</td>
-        <td class="num ">t=387</td>
-        <td class="num ">t=596</td>
-        <td class="num">20%</td>
+        <td class="num ">t=650</td>
+        <td class="num never">never</td>
+        <td class="num">0%</td>
         <td class="meta">Saffron Rim</td>
+      </tr>
+      <tr>
+        <td>2</td>
+        <td>systems</td>
+        <td class="num">Ç58,000</td>
+        <td>Negotiator&apos;s Console</td>
+        <td>−4% buy · +4% sell</td>
+        <td class="num ">t=46</td>
+        <td class="num ">t=732</td>
+        <td class="num never">never</td>
+        <td class="num">0%</td>
+        <td class="meta">Haven Station</td>
       </tr>
       <tr>
         <td>2</td>
@@ -500,10 +514,34 @@
         <td class="num">Ç62,000</td>
         <td>Bonded Treasury Module</td>
         <td>+4% contracts · +0.08%/tick yield</td>
-        <td class="num ">t=1,159</td>
-        <td class="num ">t=594</td>
+        <td class="num ">t=1,017</td>
+        <td class="num ">t=817</td>
         <td class="num never">never</td>
         <td class="num">0%</td>
+        <td class="meta">Saffron Rim</td>
+      </tr>
+      <tr>
+        <td>3</td>
+        <td>cargo</td>
+        <td class="num">Ç64,000</td>
+        <td>Megahauler Conversion</td>
+        <td>+60 cargo</td>
+        <td class="num ">t=1,105</td>
+        <td class="num ">t=845</td>
+        <td class="num ">t=913</td>
+        <td class="num">20%</td>
+        <td class="meta">Saffron Rim</td>
+      </tr>
+      <tr>
+        <td>3</td>
+        <td>hull</td>
+        <td class="num">Ç70,000</td>
+        <td>Adamant Carapace</td>
+        <td>+4 hull · −10% maintenance</td>
+        <td class="num ">t=1,253</td>
+        <td class="num ">t=845</td>
+        <td class="num ">t=1,164</td>
+        <td class="num">20%</td>
         <td class="meta">Saffron Rim</td>
       </tr>
       <tr>
@@ -512,9 +550,9 @@
         <td class="num">Ç72,000</td>
         <td>Self-Repair Nanite Mesh</td>
         <td>+3 hull · −20% maintenance</td>
-        <td class="num ">t=1,184</td>
-        <td class="num ">t=776</td>
-        <td class="num ">t=1,085</td>
+        <td class="num ">t=1,261</td>
+        <td class="num ">t=846</td>
+        <td class="num ">t=1,253</td>
         <td class="num">20%</td>
         <td class="meta">Saffron Rim</td>
       </tr>
@@ -524,23 +562,23 @@
         <td class="num">Ç82,000</td>
         <td>Bio-Reactor Stack</td>
         <td>+30 fuel · −30% fuel/dist</td>
-        <td class="num ">t=1,404</td>
-        <td class="num ">t=787</td>
-        <td class="num ">t=801</td>
+        <td class="num ">t=1,702</td>
+        <td class="num ">t=903</td>
+        <td class="num ">t=1,051</td>
         <td class="num">20%</td>
         <td class="meta">Verdant Ring</td>
       </tr>
       <tr>
-        <td>2</td>
-        <td>systems</td>
-        <td class="num">Ç58,000</td>
-        <td>Negotiator&apos;s Console</td>
-        <td>−4% buy · +4% sell</td>
-        <td class="num ">t=781</td>
-        <td class="num ">t=921</td>
-        <td class="num never">never</td>
-        <td class="num">0%</td>
-        <td class="meta">Haven Station</td>
+        <td>4</td>
+        <td>engine</td>
+        <td class="num">Ç95,000</td>
+        <td>FTL Fold Drive</td>
+        <td>+1 speed · FTL instant travel</td>
+        <td class="num ">t=1,763</td>
+        <td class="num ">t=1,043</td>
+        <td class="num ">t=2,129</td>
+        <td class="num">20%</td>
+        <td class="meta">Ironhold Belt</td>
       </tr>
       <tr>
         <td>3</td>
@@ -548,9 +586,9 @@
         <td class="num">Ç86,000</td>
         <td>EMP Disruptor Array</td>
         <td>+4 weapons · −10% fuel/dist</td>
-        <td class="num ">t=1,447</td>
-        <td class="num ">t=992</td>
-        <td class="num ">t=1,152</td>
+        <td class="num ">t=1,708</td>
+        <td class="num ">t=1,163</td>
+        <td class="num ">t=1,299</td>
         <td class="num">20%</td>
         <td class="meta">Saffron Rim</td>
       </tr>
@@ -560,9 +598,21 @@
         <td class="num">Ç88,000</td>
         <td>Atlas Hauler Spine</td>
         <td>+90 cargo</td>
-        <td class="num ">t=1,704</td>
-        <td class="num ">t=992</td>
-        <td class="num ">t=1,107</td>
+        <td class="num ">t=1,709</td>
+        <td class="num ">t=1,163</td>
+        <td class="num ">t=1,609</td>
+        <td class="num">20%</td>
+        <td class="meta">Saffron Rim</td>
+      </tr>
+      <tr>
+        <td>4</td>
+        <td>fuel</td>
+        <td class="num">Ç90,000</td>
+        <td>Zero-Point Fuel Core</td>
+        <td>+60 fuel · fuel-free travel</td>
+        <td class="num ">t=1,762</td>
+        <td class="num ">t=1,163</td>
+        <td class="num ">t=1,701</td>
         <td class="num">20%</td>
         <td class="meta">Saffron Rim</td>
       </tr>
@@ -572,9 +622,9 @@
         <td class="num">Ç90,000</td>
         <td>Plasma Lance Array</td>
         <td>+6 weapons · +10% contracts</td>
-        <td class="num ">t=1,704</td>
-        <td class="num ">t=992</td>
-        <td class="num ">t=1,502</td>
+        <td class="num ">t=1,762</td>
+        <td class="num ">t=1,163</td>
+        <td class="num ">t=1,824</td>
         <td class="num">20%</td>
         <td class="meta">Saffron Rim</td>
       </tr>
@@ -584,8 +634,20 @@
         <td class="num">Ç105,000</td>
         <td>Singularity Burst Drive</td>
         <td>+1.4 speed</td>
-        <td class="num ">t=1,793</td>
-        <td class="num ">t=1,106</td>
+        <td class="num ">t=1,806</td>
+        <td class="num ">t=1,297</td>
+        <td class="num ">t=2,049</td>
+        <td class="num">20%</td>
+        <td class="meta">Saffron Rim</td>
+      </tr>
+      <tr>
+        <td>3</td>
+        <td>cargo</td>
+        <td class="num">Ç110,000</td>
+        <td>Zero-G Unload Matrix</td>
+        <td>+20 cargo · instant unload</td>
+        <td class="num ">t=1,853</td>
+        <td class="num ">t=1,298</td>
         <td class="num never">never</td>
         <td class="num">0%</td>
         <td class="meta">Saffron Rim</td>
@@ -596,9 +658,9 @@
         <td class="num">Ç118,000</td>
         <td>Pressure Atlas Console</td>
         <td>−6% maintenance · +10% contracts</td>
-        <td class="num ">t=1,838</td>
-        <td class="num ">t=1,598</td>
-        <td class="num ">t=1,621</td>
+        <td class="num ">t=2,427</td>
+        <td class="num ">t=1,936</td>
+        <td class="num ">t=2,280</td>
         <td class="num">20%</td>
         <td class="meta">Saffron Rim</td>
       </tr>
@@ -608,8 +670,8 @@
         <td class="num">Ç124,000</td>
         <td>Shareholder Relations Suite</td>
         <td>+0.05%/tick yield · +12% dividends</td>
-        <td class="num ">t=1,886</td>
-        <td class="num ">t=1,599</td>
+        <td class="num ">t=2,457</td>
+        <td class="num ">t=1,937</td>
         <td class="num never">never</td>
         <td class="num">0%</td>
         <td class="meta">Saffron Rim</td>
@@ -621,70 +683,10 @@
         <td>Exchange Relay</td>
         <td>remote exchange collection</td>
         <td class="num ">t=0</td>
-        <td class="num ">t=1,715</td>
-        <td class="num ">t=2,074</td>
-        <td class="num">80%</td>
+        <td class="num ">t=2,037</td>
+        <td class="num ">t=2,038</td>
+        <td class="num">60%</td>
         <td class="meta">Ironhold Belt</td>
-      </tr>
-      <tr>
-        <td>3</td>
-        <td>cargo</td>
-        <td class="num">Ç64,000</td>
-        <td>Megahauler Conversion</td>
-        <td>+60 cargo</td>
-        <td class="num ">t=1,168</td>
-        <td class="num ">t=1,718</td>
-        <td class="num ">t=1,922</td>
-        <td class="num">40%</td>
-        <td class="meta">Saffron Rim</td>
-      </tr>
-      <tr>
-        <td>3</td>
-        <td>hull</td>
-        <td class="num">Ç70,000</td>
-        <td>Adamant Carapace</td>
-        <td>+4 hull · −10% maintenance</td>
-        <td class="num ">t=1,177</td>
-        <td class="num ">t=1,755</td>
-        <td class="num ">t=2,387</td>
-        <td class="num">40%</td>
-        <td class="meta">Saffron Rim</td>
-      </tr>
-      <tr>
-        <td>4</td>
-        <td>fuel</td>
-        <td class="num">Ç90,000</td>
-        <td>Zero-Point Fuel Core</td>
-        <td>+60 fuel · fuel-free travel</td>
-        <td class="num ">t=1,704</td>
-        <td class="num ">t=2,386</td>
-        <td class="num ">t=2,789</td>
-        <td class="num">40%</td>
-        <td class="meta">Saffron Rim</td>
-      </tr>
-      <tr>
-        <td>4</td>
-        <td>engine</td>
-        <td class="num">Ç95,000</td>
-        <td>FTL Fold Drive</td>
-        <td>+1 speed · FTL instant travel</td>
-        <td class="num ">t=1,734</td>
-        <td class="num ">t=2,702</td>
-        <td class="num ">t=2,985</td>
-        <td class="num">40%</td>
-        <td class="meta">Ironhold Belt</td>
-      </tr>
-      <tr>
-        <td>3</td>
-        <td>cargo</td>
-        <td class="num">Ç110,000</td>
-        <td>Zero-G Unload Matrix</td>
-        <td>+20 cargo · instant unload</td>
-        <td class="num ">t=1,814</td>
-        <td class="num ">t=2,723</td>
-        <td class="num never">never</td>
-        <td class="num">0%</td>
-        <td class="meta">Saffron Rim</td>
       </tr>
       <tr>
         <td>4</td>
@@ -692,10 +694,10 @@
         <td class="num">Ç130,000</td>
         <td>Oracle Trade Core</td>
         <td>remote exchange collection · +3% sell · +12% contracts</td>
-        <td class="num ">t=1,945</td>
-        <td class="num ">t=3,178</td>
-        <td class="num ">t=3,458</td>
-        <td class="num">40%</td>
+        <td class="num ">t=2,515</td>
+        <td class="num ">t=2,234</td>
+        <td class="num ">t=2,350</td>
+        <td class="num">20%</td>
         <td class="meta">Saffron Rim</td>
       </tr></tbody>
   </table>
@@ -712,32 +714,32 @@
       <tr>
         <td>captain</td>
         <td>1</td>
-        <td class="num">Ç140.0k</td>
-        <td class="num">Ç140.0k</td>
-        <td class="num ">t=1,972</td>
-        <td class="num ">t=2,082</td>
-        <td class="num">100%</td>
-        <td class="num meta">8,196</td>
+        <td class="num">Ç90.0k</td>
+        <td class="num">Ç90.0k</td>
+        <td class="num ">t=1,787</td>
+        <td class="num ">t=1,936</td>
+        <td class="num">80%</td>
+        <td class="num meta">8,080</td>
       </tr>
       <tr>
         <td>captain</td>
         <td>2</td>
-        <td class="num">Ç228.0k</td>
-        <td class="num">Ç228.0k</td>
-        <td class="num ">t=3,439</td>
+        <td class="num">Ç153.0k</td>
+        <td class="num">Ç153.0k</td>
+        <td class="num ">t=2,585</td>
         <td class="num never">never</td>
         <td class="num">0%</td>
-        <td class="num meta">9,089</td>
+        <td class="num meta">10,447</td>
       </tr>
       <tr>
         <td>captain</td>
         <td>3</td>
-        <td class="num">Ç422.4k</td>
-        <td class="num">Ç416.4k</td>
-        <td class="num ">t=4,320</td>
+        <td class="num">Ç306.0k</td>
+        <td class="num">Ç302.4k</td>
+        <td class="num ">t=3,794</td>
         <td class="num never">never</td>
         <td class="num">0%</td>
-        <td class="num meta">5,567</td>
+        <td class="num meta">5,275</td>
       </tr>
       <tr>
         <td>mechanic</td>
@@ -745,59 +747,59 @@
         <td class="num">Ç40.0k</td>
         <td class="num">Ç40.0k</td>
         <td class="num ">t=54</td>
-        <td class="num ">t=714</td>
+        <td class="num ">t=54</td>
         <td class="num">100%</td>
-        <td class="num meta">12,841</td>
+        <td class="num meta">11,638</td>
       </tr>
       <tr>
         <td>mechanic</td>
         <td>2</td>
-        <td class="num">Ç70.5k</td>
-        <td class="num">Ç63.6k</td>
-        <td class="num ">t=1,168</td>
+        <td class="num">Ç72.0k</td>
+        <td class="num">Ç64.5k</td>
+        <td class="num ">t=1,251</td>
         <td class="num never">never</td>
         <td class="num">0%</td>
-        <td class="num meta">14,511</td>
+        <td class="num meta">17,135</td>
       </tr>
       <tr>
         <td>mechanic</td>
         <td>3</td>
-        <td class="num">Ç164.4k</td>
-        <td class="num">Ç127.0k</td>
-        <td class="num ">t=2,037</td>
+        <td class="num">Ç156.5k</td>
+        <td class="num">Ç155.8k</td>
+        <td class="num ">t=2,749</td>
         <td class="num never">never</td>
         <td class="num">0%</td>
-        <td class="num meta">7,510</td>
+        <td class="num meta">10,225</td>
       </tr>
       <tr>
         <td>navigator</td>
         <td>1</td>
-        <td class="num">Ç18.0k</td>
-        <td class="num">Ç18.0k</td>
+        <td class="num">Ç45.0k</td>
+        <td class="num">Ç45.0k</td>
         <td class="num ">t=29</td>
-        <td class="num ">t=29</td>
-        <td class="num">100%</td>
-        <td class="num meta">22,066</td>
+        <td class="num ">t=762</td>
+        <td class="num">80%</td>
+        <td class="num meta">21,031</td>
       </tr>
       <tr>
         <td>navigator</td>
         <td>2</td>
-        <td class="num">Ç45.0k</td>
-        <td class="num">Ç42.8k</td>
-        <td class="num ">t=306</td>
+        <td class="num">Ç85.5k</td>
+        <td class="num">Ç79.5k</td>
+        <td class="num ">t=1,297</td>
         <td class="num never">never</td>
         <td class="num">0%</td>
-        <td class="num meta">22,109</td>
+        <td class="num meta">24,927</td>
       </tr>
       <tr>
         <td>navigator</td>
         <td>3</td>
-        <td class="num">Ç140.4k</td>
-        <td class="num">Ç124.8k</td>
-        <td class="num ">t=1,959</td>
+        <td class="num">Ç205.2k</td>
+        <td class="num">Ç210.0k</td>
+        <td class="num ">t=3,150</td>
         <td class="num never">never</td>
         <td class="num">0%</td>
-        <td class="num meta">11,741</td>
+        <td class="num meta">14,872</td>
       </tr></tbody>
   </table>
 

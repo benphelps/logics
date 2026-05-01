@@ -26,11 +26,15 @@ A commodity logistics view. It shows the goods economy across stations: stock, p
 
 The map view for stations, ships, and routes. It shows where stations sit, where ships are docked or in transit, and how the network connects. Future route content is expected to make lanes more meaningful, including danger level and combat-relevant locations.
 
+### Charters
+
+The career-progress page. Charters track manual player actions and show staged unlocks for upgrade tiers and crew offer pools. This is where the player sees how close they are to navigator guidance, mechanic upkeep support, pilot automation, and higher-tier ship modules.
+
 ## Core Systems
 
 ### Upgrades & Crew
 
-Detailed tables for ship modules, crew roles, crew tiers, offer generation, and the shared modifier system that drives ship stats, automation, maintenance, trading perks, and exchange settlement behavior.
+Detailed tables for ship modules, crew roles, crew tiers, milestone gates, offer generation, and the shared modifier system that drives ship stats, automation, maintenance, trading perks, and exchange settlement behavior.
 
 Read: [`wiki/UPGRADES_AND_CREW.md`](wiki/UPGRADES_AND_CREW.md)
 

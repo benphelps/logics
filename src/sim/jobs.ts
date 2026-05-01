@@ -2,6 +2,7 @@ import type { EquityId, GoodId, Job, JobId, JobTier, LocationId, TradeAction, Tr
 import { pushJobAbandoned, pushJobAccepted, pushJobCompleted, pushJobExpired } from "./log";
 import { contractRewardFraction } from "./crew";
 import { eventMultiplier } from "./news/modifier";
+import { incrementManualActions } from "./milestones";
 
 // Fold the trader's contractRewardBonus modifier into the base reward, then
 // apply any active news-event multiplier on contract rewards (per-destination).
@@ -397,6 +398,7 @@ export function acceptJob(world: World, jobId: JobId, traderId: TraderId): JobAc
   if (!isPlayerShip(world, traderId)) return { ok: false, reason: "Only player ships can accept jobs." };
   job.acceptedBy = traderId;
   pushJobAccepted(world, ship, job);
+  incrementManualActions(world);
   return { ok: true };
 }
 
@@ -417,6 +419,7 @@ export function collectTradeJob(world: World, jobId: JobId, traderId: TraderId):
   ship.funds += reward;
   pushJobCompleted(world, ship, { reward, partial: false }, job);
   delete world.jobs[job.id];
+  incrementManualActions(world);
   return { ok: true };
 }
 

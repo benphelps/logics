@@ -16,7 +16,7 @@ const screenshots = [
     title: "My Fleet",
     label: "Ship operations",
     image: "/site/screenshots/fleet.png",
-    description: "Manage a growing roster of trading ships, from hands-on haulers to automated routes that keep earning.",
+    description: "Run the ship by hand, then layer in crew, upgrades, contracts, and auto-pilot as the operation grows.",
   },
   {
     title: "Exchange",
@@ -42,12 +42,12 @@ const loops = [
   {
     title: "Click the profitable move",
     icon: GiReceiveMoney,
-    text: "Start hands-on: scan prices, buy low, carry cargo, sell high, and collect contract bonuses.",
+    text: "Start hands-on: read prices, buy low, haul cargo, sell into demand, and collect contract bonuses.",
   },
   {
-    title: "Automate the route",
+    title: "Delegate the routine",
     icon: GiShipWheel,
-    text: "Hire crew, unlock auto-pilot behavior, and let captains keep ships moving while you tune the network.",
+    text: "Hire a navigator for guidance, a mechanic for upkeep, and a pilot when the route is ready for auto mode.",
   },
   {
     title: "Scale into logistics",
@@ -59,17 +59,17 @@ const loops = [
 const features = [
   { icon: GiTrade, title: "Trading", text: "Commodity prices react to local stockpiles, production, and incoming cargo." },
   { icon: GiCargoCrate, title: "Shipping", text: "Ships have cargo, fuel, maintenance debt, wallets, and route constraints." },
-  { icon: GiUpgrade, title: "Upgrades", text: "Modules, crew, and automation create steady idle progression without hiding the numbers." },
+  { icon: GiUpgrade, title: "Progression", text: "Charters, modules, crew, and automation create steady idle progression without hiding the numbers." },
   { icon: GiFactory, title: "Economy", text: "Stations produce, consume, tax, replenish treasuries, and move money in a closed loop." },
   { icon: GiChart, title: "Markets", text: "A stock exchange lets players invest in the same station economy they influence." },
   { icon: GiRadarSweep, title: "Readable sim", text: "Clamped price bands and deterministic ticks keep long runs understandable." },
 ];
 
 const stats = [
-  { label: "Core loop", value: "Ship -> Trade -> Automate" },
+  { label: "Core loop", value: "Ship -> Trade -> Delegate" },
   { label: "Session style", value: "Clicker-friendly idle sim" },
   { label: "Perspective", value: "Single-player browser game" },
-  { label: "Current focus", value: "Fleet, contracts, markets" },
+  { label: "Current focus", value: "Fleet, Exchange, Charters" },
 ];
 
 const footerGroups = [
@@ -134,11 +134,11 @@ export function Site() {
 
         <div className="site-hero-content">
           <div className="site-hero-copy">
-            <span className="site-kicker">Space logistics trading idle clicker</span>
+            <span className="site-kicker">Space trucking, coordination, and markets</span>
             <h1 id="site-title">Logics</h1>
             <p>
-              An easy-to-play space logistics game about spotting profitable cargo, shipping it across a
-              living station economy, and automating the routes that keep your fleet earning.
+              An easy-to-play space logistics game about running cargo, reading a living station economy,
+              hiring the crew that takes over routine work, and trading the market built on top of it.
             </p>
             <div className="site-hero-actions">
               <a className="site-primary-action" href="/">
@@ -178,10 +178,10 @@ export function Site() {
         <div className="site-section-inner">
           <div className="site-section-head">
             <span className="site-kicker">Operations</span>
-            <h2 id="screens-title">Four tabs for the whole route network</h2>
+            <h2 id="screens-title">Operate the route network</h2>
             <p>
-              Move between fleet control, asset trading, commodity logistics, and the sector map without
-              losing sight of what your ships should do next.
+              Move between fleet control, asset trading, commodity logistics, and the sector map while
+              career charters pace the next layer of guidance, upkeep, automation, and ship upgrades.
             </p>
           </div>
 
@@ -207,7 +207,7 @@ export function Site() {
             <h2 id="loop-title">Simple actions, compounding systems</h2>
             <p>
               Logics starts like a clicker: make clear, satisfying shipping decisions. The depth comes from
-              deciding which repeated moves deserve automation.
+              deciding which repeated moves deserve a crew, a better ship, or a market position.
             </p>
           </div>
 
@@ -231,10 +231,10 @@ export function Site() {
         <div className="site-section-inner site-systems-layout">
           <div className="site-section-head">
             <span className="site-kicker">What you manage</span>
-            <h2 id="systems-title">Trading, shipping, automation</h2>
+            <h2 id="systems-title">Trading, trucking, delegation</h2>
             <p>
               The game is approachable at the surface, but it keeps the simulation legible for players who
-              want to optimize routes, contracts, and passive market positions.
+              want to optimize routes, crews, contracts, upgrades, and passive market positions.
             </p>
           </div>
 
@@ -257,7 +257,7 @@ export function Site() {
         <div className="site-section-inner cta-layout">
           <div>
             <span className="site-kicker">Current build</span>
-            <h2 id="cta-title">Run routes now, automate the fleet next.</h2>
+            <h2 id="cta-title">Run the route, hire the crew, trade the economy.</h2>
           </div>
           <div className="stat-strip" aria-label="Game summary">
             {stats.map((stat) => (

@@ -641,7 +641,8 @@ function htmlReport(data: ReportData): string {
   </div>
 
   <h2>Methodology</h2>
-  <p>An autopilot-driven player ship is run from t=0 across ${data.seedCount} world seeds (1 starter universe, ${data.seedCount - 1} generated 12-location worlds, all starting at a trade-hub). A synthetic zero-cost captain is slotted on the audit ship so the autopilot can drive — without it, the ship sits idle with no path to wealth (which is itself a finding). Each tick, the audit:</p>
+  <p><strong>Two-layer pacing.</strong> The game now gates progression on TWO axes: a <em>manual-action counter</em> (player must complete N buys / sells / travels / hires / share-trades before the navigator's guild posts offers, the next upgrade tier appears in markets, etc.) AND <em>price affordability</em>. This audit measures the second layer only — to isolate the price ladder, the audit fast-forwards past every action-count milestone before each run starts. So "reachable t=350" below means "by t=350 the player would have the cash to buy this <em>assuming the milestones are already met</em>". Real pacing is whichever gate is harder for a given item.</p>
+  <p><strong>Run setup.</strong> Autopilot-driven player ship runs from t=0 across ${data.seedCount} seeds (1 starter universe, ${data.seedCount - 1} generated 12-location worlds, all starting at a trade-hub). A synthetic zero-cost captain is slotted on the audit ship so the autopilot can drive. Each tick, the audit:</p>
   <ol>
     <li>Repairs maintenance debt above Ç5k.</li>
     <li>Posts hire offers visible to the ship; records affordability + actually hires real crew when funds permit.</li>
@@ -779,7 +780,9 @@ _${data.generatedAt} · ${data.seedCount} seeds × ${data.horizon.toLocaleString
 
 ## Methodology
 
-An autopilot-driven player ship runs from t=0 across ${data.seedCount} world seeds (1 starter universe, ${data.seedCount - 1} generated 12-location worlds, all starting at a trade-hub). A synthetic zero-cost captain is slotted on the audit ship so the autopilot can drive. Each tick, the audit:
+**Two-layer pacing.** Progression gates on TWO axes: a manual-action counter (50 actions for navigator's guild, 250 for autopilot, etc.) AND price affordability. This audit measures the second layer only — milestones are pre-unlocked at the start of each seed so we can isolate the price ladder. Real pacing is whichever gate is harder for a given item.
+
+**Run setup.** Autopilot-driven player ship runs from t=0 across ${data.seedCount} world seeds (1 starter universe, ${data.seedCount - 1} generated 12-location worlds, all starting at a trade-hub). A synthetic zero-cost captain is slotted on the audit ship so the autopilot can drive. Each tick, the audit:
 
 1. Repairs maintenance debt above Ç5k.
 2. Records affordability of every visible hire offer; hires real crew when funds permit.

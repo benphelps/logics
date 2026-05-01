@@ -2,9 +2,11 @@
 
 ## What this game is
 
-An **easy-to-play space logistics trading idle clicker** about running a fleet inside a **living market economy**. The first minute should be readable: buy cargo, ship it, sell it, take the next better job. The long game is automation: crew, upgrades, auto-pilot behavior, route tuning, and passive market positions that keep earning while the player optimizes.
+An **easy-to-play space logistics trading idle clicker** about running a space trucking operation inside a **living market economy**. The first minute should be readable: buy cargo, ship it, sell it, take the next better job. The long game is coordination: crew, upgrades, auto-pilot behavior, route tuning, passive market positions, and eventually multiple ships earning under established teams while the player moves on to larger opportunities.
 
 The economy is still the protagonist. Ships, jobs, fuel, trade routes, crew, and the clicker-style interactions exist to give the player levers on the simulation.
+
+The shorthand pitch: **space trucking, coordination, and Wall Street simulation in the browser** — part spreadsheet, part clicker, part idler.
 
 Inspirations: Patrician, Port Royale, Offworld Trading Company, X-series. Setting: late-era / space.
 
@@ -64,30 +66,43 @@ The idle/clicker layer should not be a separate currency fountain. It should aut
 
 Automation should make the player's earlier manual decisions feel validated, not obsolete.
 
+### 7. Unlocks teach delegation
+
+Progression should arrive in staged, readable layers:
+
+- Manual actions teach cargo, fuel, routes, contracts, and exchange orders.
+- Charters turn that activity into visible career progress.
+- Navigators add guidance before automation takes control.
+- Mechanics remove upkeep friction once the player understands it.
+- Pilots unlock auto-pilot only after the player has learned enough to supervise it.
+- Larger hulls and multi-ship ownership should expand the same loop instead of replacing it.
+
 ## What this game isn't
 
-- **Not real-time-strategy**. No combat as a primary loop. (Escort jobs may have damage state, but combat is not the game.)
+- **Not real-time-strategy**. Route danger, dangerous jobs, hull damage, and weapon checks can exist, but direct combat is not the primary loop.
 - **Not a city builder**. The player operates within stations, doesn't build them.
 - **Not a roguelike or rogue-lite**. The world is persistent, prices are recoverable, you can't lose by bad luck in five minutes.
 - **Not skinned forever**. The current era (space, antimatter, plasma fuel, station names) was committed to early but the sim is theme-agnostic — `polymer` and `parts` are commodity ids, not lore.
 
-## The look (planned)
+## The look
 
 A **dense, industrial command UI** with readable click targets. Think compact bridge panels, sortable market tables, route cards, job boards, and status strips. No 3D, no cinematic camera, no NPC dialogue trees. The drama is in prices, cargo holds, route timing, and automation decisions.
 
-A small map view may exist for spatial intuition (we have positions on locations now), but it's a sidebar, not the main act.
+The map exists for spatial intuition, routes, ship locations, and future danger/combat context. It supports the logistics game; it is not the main act.
 
 ## What "late game" looks like (target)
 
 - Player runs ~10–30 ships
+- Player buys larger ships and specialized hulls with meaningful traits
 - Player has retrofitted some ships to advanced fuel paths (antimatter today; later: more tiers)
 - Player runs persistent contracts (subscribe to deliver X to Y on schedule, instead of one-off jobs)
 - Player has reputation/standing with factions, modulating port access and prices
 - Player holds a portfolio of station and syndicate equities, riding NPC arbitrage as a passive return stream alongside their own active trading
 - Player has automated enough routine shipping that their active attention shifts to exceptions: shortages, new chains, bad lanes, and investment opportunities
+- Player can take dangerous jobs and route through dangerous space with hull, crew, and weapon upgrades that matter
 - The universe has grown — more locations, more goods, more chains — but a unit of grain still costs roughly what it cost on day one
 
-The work to make late-game feel different is **adding scale**, not adding price inflation. New locations, new goods, new tiers, new ship classes, new contract types.
+The work to make late-game feel different is **adding scale and responsibility**, not adding price inflation. New locations, new goods, new tiers, new ship classes, new contract types, and new route risks.
 
 ## The equity exchange
 

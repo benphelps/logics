@@ -222,27 +222,44 @@ Each ship is financially independent. **All player-side flows touch `trader.fund
 
 Three roles today (`captain`, `navigator`, `mechanic`). Mercenary is reserved for future combat work. NPC ships have no crew model — they operate with implicit captains. Crew is a player-only system.
 
-`CrewMember { id, role, name, tier, hireCost, wagePerTick, modifiers }` — a snapshot from a hire offer, copied onto `ship.crew` when hired. `CrewModifiers` scaffolds eight stat-touching fields:
+`CrewMember { id, role, name, tier, hireCost, wagePerTick, modifiers }` — a snapshot from a hire offer, copied onto `ship.crew` when hired. `CrewModifiers` includes stat-touching fields and action-time effects:
 
 | Modifier | Wired |
 |---|---|
 | `cargoCapacityBonus`, `fuelCapacityBonus`, `speedBonus` | Yes — `recomputeShipStats` folds into effective stats |
 | `rangeEfficiency` | Yes — read at every fuel calc via `effectivePerDistance` |
 | `maintenanceDiscount` | Yes — applied in `chargeOperationalCosts` |
-| `buyDiscount`, `sellPremium`, `contractRewardBonus` | Defined but not yet wired at trade/contract time |
+| `buyDiscount`, `sellPremium`, `contractRewardBonus`, `dockingDiscount`, `dividendBonus`, `treasuryYield`, `fuelRegenIdle` | Yes — folded through action-specific helper functions |
+| `instantUnload`, `remoteSettlementCollection`, `instantTravel`, `fuelFreeTravel` | Yes — read by cargo, exchange settlement, route, and fuel logic |
 
 Each ship has an effective `capacity` / `speed` / `fuelCapacity` plus an immutable `baseCapacity` / `baseSpeed` / `baseFuelCapacity`. `recomputeShipStats(ship)` runs after any hire/fire and idempotently rebuilds the effective stats from base + crew modifier sum.
+
+#### Career gates
+
+Manual player actions advance `world.player.manualActionCount`. Charter milestones gate the player-facing unlock sequence:
+
+| Milestone | Actions | Gate |
+|---|---:|---|
+| `upgradeTier1` | 25 | Tier-1 upgrade stock |
+| `navigatorOffers` | 50 | Navigator offers |
+| `mechanicOffers` | 100 | Mechanic offers |
+| `upgradeTier2` | 150 | Tier-2 upgrade stock |
+| `captainOffers` | 250 | Pilot/captain offers |
+| `upgradeTier3` | 500 | Tier-3 upgrade stock |
+| `upgradeTier4` | 900 | Tier-4 upgrade stock |
+
+Auto-pilot actions deliberately do not increment this counter, so Charters measure player involvement rather than automated volume.
 
 #### Dynamic hire pool
 
 Crew aren't a static roster — `world.hires: Record<HireId, Hire>` is a per-station pool that `generateHires(world)` populates each tick (deterministic per-`(loc, tick)` `mulberry32`, scaled by population × techLevel) and `expireHires(world)` clears past deadline. Capped at `HIRE_MAX_PER_STATION = 6`. Tier rolled by station tech (low-tech ≈ 85% T1, mid opens T2, high opens T3). Modifier values are deliberately small (caps: +2-6 cargo, +3-8 fuel, 3-10% percentages, 0-2 mods per hire). Cost = `(roleBaseline + Σ MOD_COST_WEIGHT × value) × tierMult`.
 
 Role baselines (T1, no mods):
-- Captain `Ç25,000` + `Ç4/t` wage
+- Captain / UI Pilot `Ç90,000` + `Ç9/t` wage
 - Mechanic `Ç40,000` + `Ç3/t` wage
-- Navigator `Ç140,000` + `Ç10/t` wage
+- Navigator `Ç45,000` + `Ç3/t` wage
 
-Tuned so each role becomes affordable on roughly this timeline: captain within ~10 manual trades; mechanic shortly after (before the maintenance-debt grounding bites); navigator after a stretch of auto-trading has built up funds.
+The action gates now do most of the progression pacing. Prices are tuned around what is reasonable to spend once the unlock is earned: navigator for advice first, mechanic for upkeep, then pilot/captain for auto-pilot.
 
 ### Maintenance debt + repair
 

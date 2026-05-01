@@ -4,8 +4,12 @@ import { chargeDockingFee, applyIdlePerks } from "./economy";
 import { buyAtLocation, installUpgradeFromCargo, installUpgradeFromMarket, removeInstalledUpgrade, sellAtLocation, travelTo, UNLOAD_TICKS } from "./traders";
 import { tickN } from "./tick";
 import { createWorld } from "./world";
+import { unlockAllMilestonesForTests } from "./milestones";
 
 function playerShip(world: ReturnType<typeof createWorld>) {
+  // Tests assume upgrades + crew offers are immediately available; bypass
+  // the action-count milestones so the test surface stays unchanged.
+  unlockAllMilestonesForTests(world);
   return world.traders[world.player!.shipIds[0]];
 }
 

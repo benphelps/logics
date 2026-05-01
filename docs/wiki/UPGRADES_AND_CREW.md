@@ -30,6 +30,20 @@ Some modifiers change ship stats immediately when the ship is recomputed. Other 
 | `treasuryYield` | Pays idle ship-wallet yield from the dock's station treasury, capped at 1% per tick. |
 | `dividendBonus` | Adds a bonus on long-position dividend payouts. |
 
+## Career Unlocks
+
+The Charters tab tracks manual player actions and gates upgrade stock plus crew offer pools. Manual actions include player-driven ship operations and exchange orders. Auto-pilot work does not advance these gates.
+
+| Unlock | Actions | Effect |
+|---|---:|---|
+| Local Outfitters | 25 | Tier-1 modules can appear in station markets. |
+| Navigator's Guild | 50 | Navigator offers can appear. |
+| Mechanic's Guild | 100 | Mechanic offers can appear. |
+| Refit Yards | 150 | Tier-2 modules can appear. |
+| Pilot's Guild | 250 | Pilot offers can appear. |
+| Specialist Yards | 500 | Tier-3 modules can appear. |
+| Apex Foundries | 900 | Tier-4 modules can appear. |
+
 ## Upgrade Rules
 
 Upgrade modules are goods until installed. They can be bought at stations, carried in cargo, sold like cargo, or installed into a ship slot.
@@ -43,6 +57,7 @@ Rules:
 - Removing a module moves it into cargo.
 - Install/remove/replacement is rejected if the resulting cargo mass would exceed ship capacity.
 - Selling a carried module uses the normal cargo sell flow and unload timing unless the ship has instant unload.
+- Station upgrade stock is gated by the matching Charter tier. Locked module tiers can be shown as future stock, but they do not seed into station markets until unlocked.
 
 Upgrade rarity follows the UI tier scale:
 
@@ -143,8 +158,8 @@ Crew roles are ship-local. Hiring replaces any existing crew member in that role
 
 | UI role | Sim role | Main unlock | Possible rolled modifiers | Base hire | Base wage | Offer weight |
 |---|---|---|---|---:|---:|---:|
-| Pilot | `captain` | Auto-pilot trading | speed, fuel efficiency, sell premium, buy discount | Ç140,000 | Ç9/t | 2 |
-| Navigator | `navigator` | Guided hints and highlighted next actions | fuel capacity, fuel efficiency, contract rewards | Ç18,000 | Ç3/t | 5 |
+| Pilot | `captain` | Auto-pilot trading | speed, fuel efficiency, sell premium, buy discount | Ç90,000 | Ç9/t | 2 |
+| Navigator | `navigator` | Guided hints and highlighted next actions | fuel capacity, fuel efficiency, contract rewards | Ç45,000 | Ç3/t | 5 |
 | Mechanic | `mechanic` | Auto-paid maintenance and no maintenance debt | cargo capacity, maintenance discount, fuel capacity, unload speed | Ç40,000 | Ç3/t | 3 |
 
 ## Hiring And Firing
@@ -165,6 +180,7 @@ Offer generation:
 
 - A station can have up to 6 open hire offers.
 - Each station has a base 6% per-tick chance to post an offer, scaled by population and tech level.
+- A role cannot appear before its Charter milestone is met.
 - Higher-tech stations can roll higher-tier crew more often.
 - Tier 1 offers expire after 100 ticks.
 - Tier 2 offers expire after 140 ticks.
