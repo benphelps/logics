@@ -20,7 +20,6 @@
 // the broker fee on opens/closes.
 
 import type {
-  AgentFuturesPosition,
   Equity,
   EquityId,
   FuturesContract,
@@ -57,9 +56,9 @@ export const FUTURES_CONTRACT_SIZE_PER_GOOD: Partial<Record<GoodId, number>> = {
 export const MTM_INTERVAL_TICKS = 4;
 
 // Tiny per-tick carry agents apply on top of spot when valuing futures.
-// Drives a small price differential between near and far contracts. Zero
-// is also acceptable — this is a flavour knob, not a fairness one.
-export const FUTURES_AGENT_CARRY_BPS = 0.00005;
+// Kept deliberately small: the old value made the roll/convergence rhythm
+// visible as a 500-tick sawtooth on some contracts.
+export const FUTURES_AGENT_CARRY_BPS = 0.000015;
 
 // Broker fee on open + close, mirrors the spot equity rate.
 export const FUTURES_BROKER_FEE_RATE = 0.01;
@@ -188,7 +187,6 @@ export function rollListings(world: World, goodId: GoodId): void {
 // from short to long (or vice versa). Updates lastMarkPrice on the
 // position. Skips if mark hasn't moved.
 function applyMtmToPosition(
-  world: World,
   c: FuturesContract,
   pos: { contracts: number; lastMarkPrice: number },
   marker: { add: (cash: number) => void },
@@ -221,7 +219,6 @@ function tickContractMtM(world: World, c: FuturesContract): void {
     const ship = playerShipId ? world.traders[playerShipId] : null;
     if (ship) {
       applyMtmToPosition(
-        world,
         c,
         { contracts: fp.contracts * sign, lastMarkPrice: fp.lastMarkPrice },
         { add: cash => { ship.funds += cash; c.clearing -= cash; } },
@@ -240,7 +237,6 @@ function tickContractMtM(world: World, c: FuturesContract): void {
     const ap = t.stockState?.futuresPositions?.[c.id];
     if (!ap || ap.contracts === 0) continue;
     applyMtmToPosition(
-      world,
       c,
       { contracts: ap.contracts, lastMarkPrice: ap.lastMarkPrice },
       { add: cash => {
@@ -336,7 +332,7 @@ export function tickFutures(world: World): void {
 
 // True when a player short can settle physically: ship at the contract's
 // delivery station, holding ≥ contractSize × contracts of the goodId.
-export function canDeliverPhysical(world: World, c: FuturesContract, fp: FuturesPosition, ship: Trader): boolean {
+export function canDeliverPhysical(_world: World, c: FuturesContract, fp: FuturesPosition, ship: Trader): boolean {
   if (fp.side !== "short") return false;
   if (ship.location !== c.deliveryStation) return false;
   const required = c.contractSize * fp.contracts;

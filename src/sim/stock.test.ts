@@ -11,6 +11,7 @@ import {
   cancelPlayerLimit,
   checkPositionTriggers,
   coverShares,
+  computeFundamental,
   ensureStockMarket,
   listEquities,
   listPlayerLimits,
@@ -33,6 +34,8 @@ import {
   SHORT_BORROW_RATE_PER_TICK,
   TRADE_LEDGER_MAX,
   EXCHANGE_TRADE_MAX_HOPS,
+  SYNDICATE_REVENUE_MULT_CAP,
+  SYNDICATE_WEALTH_MULT_MAX,
 } from "./stock";
 import { exchangeLossForgiveness } from "./jobs";
 
@@ -99,6 +102,18 @@ describe("stock market — price invariants", () => {
     for (const id of Object.keys(a.equities)) {
       expect(b.equities[id].price).toBeCloseTo(a.equities[id].price, 5);
     }
+  });
+
+  it("syndicate fundamentals stay bounded under extreme wealth and revenue", () => {
+    const w = createWorld();
+    const eq = listEquities(w).find(e => e.kind === "syndicate")!;
+    const synd = w.syndicates[eq.underlyingId];
+    synd.recentRevenue = 1_000_000_000;
+    for (const id of synd.memberShipIds) {
+      w.traders[id].funds = 1_000_000_000;
+    }
+    const maxMult = SYNDICATE_WEALTH_MULT_MAX * (1 + SYNDICATE_REVENUE_MULT_CAP);
+    expect(computeFundamental(w, eq)).toBeLessThanOrEqual(eq.anchorPrice * maxMult + 0.0001);
   });
 });
 
@@ -449,27 +464,39 @@ describe("stock market — short positions", () => {
     expect(fundsAfterShort - fundsAfterTicks).toBeGreaterThan(expectedFeePerTick * 8);
   });
 
-  it("short refuses to open against a depleted underlying — no trapped positions", () => {
+  it("short can open against live bids even when the underlying treasury is depleted", () => {
     const w = createWorld();
     const ship = w.traders[w.player!.shipIds[0]];
     ship.funds = 1_000_000;
     const eq = listEquities(w).find(e => e.kind === "syndicate")!;
-    w.syndicates[eq.underlyingId].treasury = 0;       // book is empty
-    expect(maxShortableShares(w, eq)).toBe(0);
-    const result = shortShares(w, eq.id, 100);
+    w.syndicates[eq.underlyingId].treasury = 0;
+    expect(maxShortableShares(w, eq, ship.id)).toBeGreaterThan(0);
+    const result = shortShares(w, eq.id, 10);
+    expect(result.ok).toBe(true);
+    expect(w.player!.positions?.[eq.id]?.kind).toBe("short");
+  });
+
+  it("short refuses when no live bids can take the borrowed shares", () => {
+    const w = createWorld();
+    const ship = w.traders[w.player!.shipIds[0]];
+    ship.funds = 1_000_000;
+    const eq = listEquities(w).find(e => e.kind === "syndicate")!;
+    if (w.orderBooks?.[eq.id]) w.orderBooks[eq.id].bids = [];
+    expect(maxShortableShares(w, eq, ship.id)).toBe(0);
+    const result = shortShares(w, eq.id, 10);
     expect(result.ok).toBe(false);
     expect(w.player!.positions?.[eq.id]).toBeUndefined();
   });
 
-  it("short caps at what the underlying can fund", () => {
+  it("short caps at lendable float plus live bid depth", () => {
     const w = createWorld();
     const ship = w.traders[w.player!.shipIds[0]];
     ship.funds = 1_000_000;
     const eq = listEquities(w).find(e => e.kind === "syndicate")!;
-    w.syndicates[eq.underlyingId].treasury = 5_000;     // only enough for ~2 shares at Ç250
-    const cap = maxShortableShares(w, eq);
-    expect(cap).toBeGreaterThan(0);
-    expect(cap).toBeLessThan(50);
+    const book = w.orderBooks![eq.id];
+    book.bids = book.bids.slice(0, 1).map(b => ({ ...b, qty: 3 }));
+    const cap = maxShortableShares(w, eq, ship.id);
+    expect(cap).toBe(3);
     const overResult = shortShares(w, eq.id, cap + 1);
     expect(overResult.ok).toBe(false);
     const okResult = shortShares(w, eq.id, cap);

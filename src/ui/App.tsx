@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useStore } from "./store";
 import { useTickDriver } from "./useTickDriver";
 import { TopBar } from "./components/TopBar";
+import { BridgeTabScroller } from "./components/BridgeTabScroller";
 import { MarketsView } from "./views/MarketsView";
 import { LocationsView } from "./views/LocationsView";
 import { PlayerView } from "./views/PlayerView";
@@ -44,6 +45,7 @@ export function App() {
         </main>
       </div>
       <NewsToast />
+      <BridgeTabScroller />
     </div>
   );
 }

@@ -396,6 +396,10 @@ export interface Equity {
   underlyingId: string;
   // Recent history (capped) — used by the UI to draw sparklines.
   history?: { tick: number; price: number }[];
+  // Bounded latent market tone used by the share-price update. It gives
+  // assets a little persistent over/under-reaction without changing their
+  // long-run fair value.
+  marketMood?: number;
   // Last dividend paid per share (tick stamped). Anchor for "yield"
   // calculations in the UI.
   lastDividend?: { tick: number; perShare: number };

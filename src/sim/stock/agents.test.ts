@@ -128,6 +128,23 @@ describe("agents — Phase 3 ship-lifecycle coupling", () => {
     const endShares = trader.stockState!.positions[eq.id]?.shares ?? 0;
     expect(endShares).toBeLessThan(startShares);
   });
+
+  it("stale agent orders expire when an agent stops posting", () => {
+    const w = createWorld();
+    const trader = Object.values(w.traders).find(t => t.pilot === "npc")!;
+    const eq = Object.values(w.equities).find(e => e.kind !== "futures")!;
+    const book = w.orderBooks![eq.id];
+    const before = [...book.bids, ...book.asks].filter(o => o.agentId === trader.id).length;
+    expect(before).toBeGreaterThan(0);
+
+    trader.stockState!.riskAppetite = 0;
+    trader.stockState!.stockWallet = 100_000;
+    for (let i = 0; i < 12; i++) tickWorld(w);
+
+    const afterBook = w.orderBooks![eq.id];
+    const after = [...afterBook.bids, ...afterBook.asks].filter(o => o.agentId === trader.id).length;
+    expect(after).toBe(0);
+  });
 });
 
 describe("agents — initialization", () => {

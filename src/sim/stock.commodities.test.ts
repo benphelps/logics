@@ -6,7 +6,7 @@
 //  - tradability (no proximity rule)
 //  - settlement (P2P stockWallet, no station treasury, no settlement job)
 //  - dividends (commodity equities pay none)
-//  - shorts (capped by aggregate agent stockWallet, not a treasury)
+//  - shorts (capped by lendable float and live bid depth, not a treasury)
 //  - long-horizon invariants (float, clamp, system-cash drift bounded)
 
 import { describe, it, expect } from "vitest";
@@ -91,6 +91,18 @@ describe("stock — C-1 commodity fundamentals", () => {
     const eq = listCommodityEquities(w).find(e => e.underlyingId === "grain")!;
     for (const m of Object.values(w.markets)) m.stock.grain = 0;
     expect(computeFundamental(w, eq)).toBe(eq.anchorPrice);
+  });
+
+  it("counts empty shortage markets with a small reserve weight", () => {
+    const w = createWorld();
+    const eq = listCommodityEquities(w).find(e => e.underlyingId === "grain")!;
+    const loc = Object.values(w.locations).find(l => (l.targetStock.grain ?? 0) > 0)!;
+    for (const m of Object.values(w.markets)) {
+      m.stock.grain = 0;
+      m.prices.grain = eq.anchorPrice;
+    }
+    w.markets[loc.id].prices.grain = eq.anchorPrice * 3;
+    expect(computeFundamental(w, eq)).toBeGreaterThan(eq.anchorPrice);
   });
 });
 

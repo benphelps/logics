@@ -1,6 +1,6 @@
 .stocks-view {
-  --stock-surface: #15191f;
-  --stock-surface-soft: #101419;
+  --stock-surface: #15181d;
+  --stock-surface-soft: #101317;
   --stock-surface-raised: #1b2026;
   --stock-line: rgba(255, 255, 255, 0.08);
   --stock-up: #6cd99a;
@@ -530,7 +530,7 @@
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.06em;
-  color: var(--text-dim);
+  color: var(--text-faint);
   text-transform: uppercase;
 }
 
@@ -1285,51 +1285,104 @@
 
 /* positions / trades tables — fill their panel space */
 .stocks-positions-list,
-.stocks-trades-list {
+.stocks-trades-list,
+.stocks-insights-list {
   flex: 1;
   min-height: 0;
   overflow: auto;
 }
 
 .stocks-positions-table,
-.stocks-trades-table {
+.stocks-trades-table,
+.stocks-insights-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 12px;
 }
 
 .stocks-positions-table th,
-.stocks-trades-table th {
+.stocks-trades-table th,
+.stocks-insights-table th {
   position: sticky;
   top: 0;
   z-index: 2;
   background: var(--stock-surface-soft);
   border-top: 1px solid var(--stock-line);
   border-bottom: 1px solid var(--stock-line);
-  padding: 6px 8px;
+  padding: 5px 12px;
   text-align: left;
   font-size: 11px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--text-dim);
+  color: var(--text-faint);
   white-space: nowrap;
 }
 
 .stocks-positions-table td,
-.stocks-trades-table td {
+.stocks-trades-table td,
+.stocks-insights-table td {
   padding: 7px 8px;
   border-bottom: 1px solid var(--stock-line);
   vertical-align: middle;
 }
 
-.stocks-positions-table tr,
-.stocks-trades-table tr {
-  cursor: pointer;
+.stocks-positions-table td:first-of-type,
+.stocks-trades-table td:first-of-type,
+.stocks-insights-table td:first-of-type {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--stock-line);
+  vertical-align: middle;
 }
 
 .stocks-positions-table tr:hover,
-.stocks-trades-table tr:hover {
+.stocks-trades-table tr:hover,
+.stocks-insights-table tr:hover {
   background: rgba(255, 255, 255, 0.025);
+}
+
+.stocks-insights-table tr.guided {
+  background: rgba(79, 182, 255, 0.055);
+}
+
+.stocks-insights-table tr.blocked {
+  opacity: 0.72;
+}
+
+.stocks-insights-table td {
+  padding-top: 9px;
+  padding-bottom: 9px;
+}
+
+.stocks-insights-table .stocks-hint-chin-action {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 3px 7px;
+}
+
+.stocks-insight-status {
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.stocks-insight-status.ready {
+  color: var(--stock-up);
+}
+
+.stocks-insight-status.blocked {
+  color: #ffb3bb;
+}
+
+.stocks-insight-reason {
+  max-width: 420px;
+  overflow: hidden;
+  color: var(--text-dim);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .action-tag {
@@ -1912,11 +1965,16 @@
   min-height: 0;
 }
 
-.stocks-shell-left,
-.stocks-shell-right {
+.stocks-shell-left {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-height: 0;
+}
+
+.stocks-shell-right {
+  display: flex;
+  flex-direction: column;
   min-height: 0;
 }
 
@@ -1952,6 +2010,104 @@
 .stocks-shell-panel-meta {
   font-size: 10px;
   color: var(--text-faint);
+}
+
+.stock-guidance-cell {
+  position: relative;
+  display: inline-block;
+  min-width: 0;
+}
+
+.stock-guidance-cell.field,
+.stock-guidance-cell.full,
+.stocks-order-side > .stock-guidance-cell {
+  display: block;
+  width: 100%;
+}
+
+.stock-guidance-cell.field > label,
+.stock-guidance-cell.full > .stocks-order-submit,
+.stocks-order-side > .stock-guidance-cell > .stocks-order-side-btn,
+.stocks-position-row .stock-guidance-cell > .btn-action {
+  width: 100%;
+}
+
+.stock-guidance-marker {
+  position: absolute;
+  top: -7px;
+  left: -7px;
+  z-index: 8;
+  cursor: help;
+}
+
+.stock-guidance-marker.clickable {
+  cursor: pointer;
+}
+
+.stock-guidance-marker-dot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-2);
+  box-shadow: 0 0 0 2px var(--bg-2);
+  animation: stock-marker-pulse 2.2s ease-in-out infinite;
+}
+
+@keyframes stock-marker-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 2px var(--bg-2),
+      0 0 0 0 rgba(79, 182, 255, 0.6);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px var(--bg-2),
+      0 0 0 8px rgba(79, 182, 255, 0);
+  }
+}
+
+.stock-guidance-tooltip {
+  position: fixed;
+  width: 280px;
+  padding: 8px 10px;
+  background: var(--bg-3);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+  transform: translateY(-100%);
+  z-index: 1000;
+  white-space: normal;
+  animation: stock-tooltip-fade 0.12s ease forwards;
+}
+
+@keyframes stock-tooltip-fade {
+  from {
+    opacity: 0;
+    transform: translateY(calc(-100% + 4px));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-100%);
+  }
+}
+
+.stock-guidance-tooltip-label {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 /* --- Equity selector (left, top) --- */
@@ -2025,7 +2181,6 @@
 
 .stocks-selector-row.selected {
   background: rgba(79, 182, 255, 0.08);
-  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .stocks-selector-row.far {
@@ -2104,10 +2259,8 @@
 }
 
 /* P&O panel uses the shared .bridge-card-tabs + .bridge-tab style for
-   sub-tabs so the styling matches the rest of the app. The bridge-card-tabs
-   container has its own background + border + padding, so it sits directly
-   in the panel like exchange-card does on the fleet view. Each tab gets
-   flex: 1 so they share the bar width evenly with centered text. */
+   sub-tabs so the styling matches the rest of the app. Tabs keep a
+   minimum width and horizontally pan when crowded. */
 .stocks-pno-tabs {
   flex: 0 0 auto;
   width: 100%;
@@ -2117,11 +2270,41 @@
 }
 
 .stocks-pno-tabs .bridge-tab {
-  flex: 1 1 0;
+  flex: 1 0 max-content;
   justify-content: center;
-  min-width: 0;
+  min-width: var(--bridge-tab-min-width, 92px);
   padding-left: 8px;
   padding-right: 8px;
+}
+
+.stocks-view .bridge-tab .bridge-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: 18px;
+  padding: 0 6px;
+  line-height: 1;
+}
+
+.stocks-view .bridge-tab.has-suggestion .bridge-tab-count,
+.stocks-view .bridge-tab.has-suggestion.active .bridge-tab-count {
+  background: rgba(63, 161, 230, 0.9);
+  border-radius: 999px;
+  color: #fff;
+  font-weight: 700;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+  animation: stock-tab-suggestion-pulse 2.2s ease-in-out infinite;
+}
+
+@keyframes stock-tab-suggestion-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(79, 182, 255, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(79, 182, 255, 0);
+  }
 }
 
 .stocks-pno-body {
@@ -2491,6 +2674,94 @@
   background: rgba(239, 111, 125, 0.1) !important;
   color: var(--stock-down) !important;
   border-color: rgba(239, 111, 125, 0.35) !important;
+}
+
+/* --- Exchange hint chin (bottom of stock list + info panel) --- */
+
+.stocks-hint-chin {
+  appearance: none;
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 0.72fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 4px 8px 4px 10px;
+  background: var(--stock-surface-soft);
+  border: 1px solid transparent;
+  border-top-color: var(--stock-line);
+  color: var(--text-dim);
+  cursor: pointer;
+  text-align: left;
+}
+
+.stocks-hint-chin:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+}
+
+.stocks-hint-chin.enabled {
+  background: rgba(79, 182, 255, 0.09);
+}
+
+.stocks-hint-chin.enabled:hover {
+  background: rgba(79, 182, 255, 0.13);
+}
+
+.stocks-hint-chin-action {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border: 1px solid rgba(245, 196, 110, 0.28);
+  border-radius: 4px;
+  color: #f5c46e;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.15;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.stocks-hint-chin-action.sell,
+.stocks-hint-chin-action.cover,
+.stocks-hint-chin-action.close_future {
+  color: #9dd7ff;
+  border-color: rgba(157, 215, 255, 0.28);
+}
+
+.stocks-hint-chin-reason,
+.stocks-hint-chin-meta,
+.stocks-hint-chin-empty {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stocks-hint-chin-reason {
+  min-width: 0;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.stocks-hint-chin-meta {
+  color: var(--text-faint);
+  font-size: 10px;
+  text-align: right;
+}
+
+.stocks-hint-chin-empty {
+  grid-column: 1 / -1;
+  min-width: 0;
+  font-size: 11px;
+}
+
+.stocks-hint-chin.blocked .stocks-hint-chin-action {
+  color: #ffb3bb;
+  border-color: rgba(239, 111, 125, 0.38);
+}
+
+.stocks-hint-chin.blocked .stocks-hint-chin-reason {
+  color: #ffb3bb;
 }
 
 /* --- Info column (right) --- */

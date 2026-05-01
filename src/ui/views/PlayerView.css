@@ -8,7 +8,7 @@
   --ship-action-blue-hover: #2a75ad;
   --ship-action-blue-line: #50aee8;
   --ship-action-blue-line-hover: #74c4f2;
-  --bridge-gap: 14px;
+  --bridge-gap: 12px;
   --bridge-columns: minmax(530px, 2.1fr) minmax(360px, 1.35fr);
   --bridge-top-title-height: 42px;
   display: flex;
@@ -113,7 +113,7 @@
   /* No outer padding: children sit at the card edges. Internal sections that
      want a content indent declare their own padding (--bridge-table-pad-x is
      the standard 28px indent for table cells and section labels). */
-  --bridge-table-pad-x: 28px;
+  --bridge-table-pad-x: 12px;
   --card-art-opacity: 0.32;
   --card-art-position: center 34%;
   --card-art-height: 44%;
@@ -427,9 +427,9 @@
 
 .ship-status-tabs .action-cell {
   display: flex;
-  flex: 1 1 0;
+  flex: 1 0 max-content;
   align-self: stretch;
-  min-width: 0;
+  min-width: var(--bridge-tab-min-width, 92px);
 }
 
 .ship-status-tabs .action-cell > .ship-status-entry {
@@ -441,12 +441,7 @@
 }
 
 .ship-cargo-tabs .bridge-tab {
-  flex: 1 1 0;
   justify-content: center;
-  min-width: 0;
-  min-height: 0;
-  padding: 7px 10px;
-  border-radius: 4px 4px 0 0;
 }
 
 .ship-meter-tab {
@@ -1040,16 +1035,95 @@
 /* ---- bridge-card horizontal tabs (cargo / crew) ---- */
 
 .bridge-card-tabs {
+  --bridge-tab-min-width: 96px;
+  --bridge-tab-edge-fade-width: 42px;
+  position: relative;
+  isolation: isolate;
   display: inline-flex;
+  flex-wrap: nowrap;
   align-items: stretch;
   gap: 2px;
   padding: 3px;
   background: var(--ship-surface-soft);
   border: 1px solid var(--ship-line);
+  border-left: 0;
+  border-right: 0;
   border-bottom-width: 0;
   border-radius: 6px;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
   flex: 1;
   min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -ms-overflow-style: none;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.bridge-card-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.bridge-card-tabs::before,
+.bridge-card-tabs::after {
+  content: "";
+  position: sticky;
+  top: 0;
+  bottom: 0;
+  z-index: 4;
+  flex: 0 0 var(--bridge-tab-edge-fade-width);
+  align-self: stretch;
+  width: var(--bridge-tab-edge-fade-width);
+  min-height: 100%;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease;
+}
+
+.bridge-card-tabs::before {
+  left: -3px;
+  margin-right: calc(-1 * var(--bridge-tab-edge-fade-width));
+  background: linear-gradient(
+    to right,
+    var(--ship-surface-soft) 0 10px,
+    rgba(16, 19, 23, 0)
+  );
+  box-shadow: -3px 0 0 var(--ship-surface-soft);
+}
+
+.bridge-card-tabs::after {
+  right: -3px;
+  margin-left: calc(-1 * var(--bridge-tab-edge-fade-width));
+  background: linear-gradient(
+    to left,
+    var(--ship-surface-soft) 0 10px,
+    rgba(16, 19, 23, 0)
+  );
+  box-shadow: 3px 0 0 var(--ship-surface-soft);
+}
+
+.bridge-card-tabs.bridge-tabs-edge-start::before,
+.bridge-card-tabs.bridge-tabs-edge-end::after {
+  opacity: 1;
+}
+
+.bridge-card-tabs.bridge-tabs-suggestion-start::before {
+  background: linear-gradient(
+    to right,
+    rgba(31, 111, 168, 0.82) 0 10px,
+    rgba(31, 111, 168, 0)
+  );
+  box-shadow: -3px 0 0 rgba(31, 111, 168, 0.82);
+}
+
+.bridge-card-tabs.bridge-tabs-suggestion-end::after {
+  background: linear-gradient(
+    to left,
+    rgba(31, 111, 168, 0.82) 0 10px,
+    rgba(31, 111, 168, 0)
+  );
+  box-shadow: 3px 0 0 rgba(31, 111, 168, 0.82);
 }
 
 .ship-status-tabs,
@@ -1134,17 +1208,15 @@
 
 .ship-card :is(.cargo-table, .upgrade-table, .crew-table, .jobs-table) th {
   --sticky-table-header-line: rgba(232, 242, 252, 0.13);
-  border-top-color: rgba(232, 242, 252, 0.13);
-  border-bottom-color: rgba(232, 242, 252, 0.13);
-}
-
-.ship-card :is(.cargo-table, .upgrade-table, .crew-table, .jobs-table) td {
-  border-top-color: rgba(232, 242, 252, 0.09);
-  border-bottom-color: rgba(232, 242, 252, 0.09);
 }
 
 .bridge-tab {
   appearance: none;
+  position: relative;
+  z-index: 1;
+  flex: 1 0 max-content;
+  flex-shrink: 0;
+  min-width: var(--bridge-tab-min-width, 92px);
   background: transparent;
   border: none;
   color: var(--text-dim);
@@ -1159,6 +1231,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  white-space: nowrap;
 }
 
 .bridge-tab .ui-icon {
@@ -1214,6 +1287,7 @@
 }
 
 .bridge-tab-count {
+  flex: 0 0 auto;
   font-size: 10px;
   color: var(--text-faint);
   font-weight: 500;
@@ -2530,9 +2604,9 @@ button.upgrade-remove-pill {
 }
 
 .exchange-card .bridge-tab {
-  flex: 1 1 0;
+  flex: 1 0 max-content;
   justify-content: center;
-  min-width: 0;
+  min-width: var(--bridge-tab-min-width, 92px);
   padding-left: 8px;
   padding-right: 8px;
 }
@@ -2630,7 +2704,7 @@ button.upgrade-remove-pill {
 
 .info-area-tabs {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   flex: 0 0 auto;
   gap: 2px;
   align-items: stretch;
@@ -2663,8 +2737,9 @@ button.upgrade-remove-pill {
 }
 
 .info-area-tab {
-  min-width: 0;
-  max-width: 100%;
+  flex: 0 0 auto;
+  min-width: var(--bridge-tab-min-width, 92px);
+  max-width: 220px;
   padding: 0;
   overflow: hidden;
   gap: 0;
@@ -3374,13 +3449,11 @@ button.upgrade-remove-pill {
   text-align: left;
   font-size: 11px;
   font-weight: 500;
-  color: var(--text-dim);
+  color: var(--text-faint);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  padding: 7px 9px;
+  padding: 6px 12px;
   background: var(--ship-surface-soft);
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
 
@@ -4235,13 +4308,11 @@ button.upgrade-remove-pill {
   text-align: left;
   font-size: 11px;
   font-weight: 500;
-  color: var(--text-dim);
+  color: var(--text-faint);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   padding: 7px 8px;
   background: var(--ship-surface-soft);
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
 }
 
 .cargo-table th.numeric {
@@ -4466,7 +4537,15 @@ button.upgrade-remove-pill {
   stroke: none;
 }
 
-.mini-sparkline.tone-up .mini-sparkline-line { stroke: var(--good); }
-.mini-sparkline.tone-up .mini-sparkline-area { fill: var(--good-bg); }
-.mini-sparkline.tone-down .mini-sparkline-line { stroke: var(--bad); }
-.mini-sparkline.tone-down .mini-sparkline-area { fill: var(--bad-bg); }
+.mini-sparkline.tone-up .mini-sparkline-line {
+  stroke: var(--good);
+}
+.mini-sparkline.tone-up .mini-sparkline-area {
+  fill: var(--good-bg);
+}
+.mini-sparkline.tone-down .mini-sparkline-line {
+  stroke: var(--bad);
+}
+.mini-sparkline.tone-down .mini-sparkline-area {
+  fill: var(--bad-bg);
+}

@@ -48,14 +48,13 @@ import { eventMultiplier } from "./news/modifier";
 import type { NewsScope } from "./news/types";
 import { createTradeJob, exchangeLossForgiveness } from "./jobs";
 import { pushNote } from "./log";
-import { cancelOrder as cancelBookOrder, ensureOrderBook, executeMarketOrder, placeLimitOrder as placeBookLimit, simulateMarketOrder, matchBook } from "./stock/orderbook";
+import { ageOrders, cancelAgentOrders, cancelOrder as cancelBookOrder, ensureOrderBook, executeMarketOrder, placeLimitOrder as placeBookLimit, simulateMarketOrder, matchBook } from "./stock/orderbook";
 import { SYNTHETIC_MM_AGENT_ID } from "./stock/market-maker";
 import { applyAgentFill, seedAgentPositions, stepStockAgents, warmUpBook } from "./stock/agents";
 import {
   applyAgentFuturesFill,
   ensureFuturesListings,
   FUTURES_AGENT_CARRY_BPS,
-  isFuturesEquity,
   markPriceFor,
   tickFutures,
 } from "./stock/futures";
@@ -76,7 +75,15 @@ export const DIVIDEND_INTERVAL = 200;          // ticks between dividend payouts
 export const DIVIDEND_PAYOUT_FRACTION = 0.05;  // 5% of treasury surplus → dividends
 
 export const SYNDICATE_REVENUE_DECAY = 0.95;   // per-tick decay on recent revenue
-export const SYNDICATE_PRICE_REVENUE_WEIGHT = 0.0001; // how much revenue tilts price
+export const SYNDICATE_PRICE_REVENUE_WEIGHT = 0.00003; // how much revenue tilts price
+export const SYNDICATE_WEALTH_RATIO_MIN = 0.2;
+export const SYNDICATE_WEALTH_RATIO_MAX = 3.0;
+export const SYNDICATE_WEALTH_MULT_MIN = 0.6;
+export const SYNDICATE_WEALTH_MULT_MAX = 1.85;
+export const SYNDICATE_REVENUE_MULT_CAP = 0.25;
+export const COMMODITY_SHORTAGE_WEIGHT_FRACTION = 0.08;
+export const SHORT_BORROWABLE_FLOAT_FRACTION = 0.35;
+export const SHORT_LENDABLE_POSITION_FRACTION = 0.5;
 
 export const SHARE_PRICE_HISTORY_MAX = 150;    // capped history per equity (also the per-save retention)
 export const RECENT_TRADES_MAX = 100;          // capped tape per equity (T&S + volume window)
@@ -389,28 +396,53 @@ function syndicateFundamental(world: World, eq: Equity): number {
   if (!synd) return eq.anchorPrice;
   const wealth = syndicateWealth(world, synd);
   const fairWealth = Math.max(1, synd.memberShipIds.length * 20_000);
-  const wealthMult = 0.5 + 0.5 * (wealth / fairWealth);
-  const revenueMult = 1 + synd.recentRevenue * SYNDICATE_PRICE_REVENUE_WEIGHT;
+  const wealthMult = syndicateWealthMultiplier(wealth / fairWealth);
+  const revenueTilt = Math.max(0, Math.min(
+    SYNDICATE_REVENUE_MULT_CAP,
+    synd.recentRevenue * SYNDICATE_PRICE_REVENUE_WEIGHT,
+  ));
+  const revenueMult = 1 + revenueTilt;
   return eq.anchorPrice * wealthMult * revenueMult;
 }
 
+function syndicateWealthMultiplier(ratio: number): number {
+  const clamped = Math.max(SYNDICATE_WEALTH_RATIO_MIN, Math.min(SYNDICATE_WEALTH_RATIO_MAX, ratio));
+  if (clamped >= 1) {
+    const t = (clamped - 1) / (SYNDICATE_WEALTH_RATIO_MAX - 1);
+    return 1 + t * (SYNDICATE_WEALTH_MULT_MAX - 1);
+  }
+  const t = (clamped - SYNDICATE_WEALTH_RATIO_MIN) / (1 - SYNDICATE_WEALTH_RATIO_MIN);
+  return SYNDICATE_WEALTH_MULT_MIN + t * (1 - SYNDICATE_WEALTH_MULT_MIN);
+}
+
 // Commodity fundamental — volume-weighted spot index across all stations
-// for the underlying good. Glutted producers pull the spot down; shortage
-// sites pull it up. The +1 floor in the denominator prevents zero-stock
-// divides on a good no one stocks. If every market is empty, falls back
-// to the anchor.
+// for the underlying good. Glutted producers pull the spot down; empty
+// shortage sites still get a small reserve weight instead of disappearing.
 function commodityFundamental(world: World, eq: Equity): number {
-  const goodId = eq.underlyingId;
+  return commoditySpotPrice(world, eq.underlyingId, eq.anchorPrice);
+}
+
+function commoditySpotPrice(world: World, goodId: string, fallback: number): number {
   let numerator = 0;
   let denom = 0;
-  for (const market of Object.values(world.markets)) {
+  const base = world.goods[goodId]?.basePrice ?? fallback;
+  for (const loc of Object.values(world.locations)) {
+    const market = world.markets[loc.id];
+    if (!market) continue;
     const stock = market.stock[goodId] ?? 0;
     const price = market.prices[goodId];
-    if (price == null || stock <= 0) continue;
-    numerator += price * stock;
-    denom += stock;
+    if (price == null || !Number.isFinite(price)) continue;
+    const target = loc.targetStock[goodId] ?? 0;
+    const stockWeight = Math.max(0, stock);
+    const shortageWeight = target > 0 && price > base * 1.02
+      ? target * COMMODITY_SHORTAGE_WEIGHT_FRACTION
+      : 0;
+    const weight = Math.max(stockWeight, shortageWeight);
+    if (weight <= 0) continue;
+    numerator += price * weight;
+    denom += weight;
   }
-  if (denom <= 0) return eq.anchorPrice;
+  if (denom <= 0) return fallback;
   return numerator / denom;
 }
 
@@ -615,32 +647,112 @@ export function basisSpreadVsSpot(world: World, eq: Equity): number {
   if (!parts) return 0;
   const local = world.markets[parts.locationId]?.prices[parts.goodId];
   if (local == null) return 0;
-  // Build a synthetic commodity equity to reuse commodityFundamental.
-  const goodId = parts.goodId;
-  let numerator = 0, denom = 0;
-  for (const market of Object.values(world.markets)) {
-    const stock = market.stock[goodId] ?? 0;
-    const price = market.prices[goodId];
-    if (price == null || stock <= 0) continue;
-    numerator += price * stock;
-    denom += stock;
-  }
-  const spot = denom > 0 ? numerator / denom : eq.anchorPrice;
+  const spot = commoditySpotPrice(world, parts.goodId, eq.anchorPrice);
   return local - spot;
 }
 
-function deterministicNoise(eq: Equity, tick: number): number {
+interface PriceDynamicsProfile {
+  smoothing: number;
+  noise: number;
+  sentimentDecay: number;
+  sentimentShock: number;
+  sentimentPressure: number;
+  sentimentCap: number;
+}
+
+const PRICE_DYNAMICS_BY_KIND: Record<Equity["kind"], PriceDynamicsProfile> = {
+  station: {
+    smoothing: 0.075,
+    noise: 0.0022,
+    sentimentDecay: 0.965,
+    sentimentShock: 0.0008,
+    sentimentPressure: 0.015,
+    sentimentCap: 0.025,
+  },
+  syndicate: {
+    smoothing: 0.060,
+    noise: 0.0032,
+    sentimentDecay: 0.955,
+    sentimentShock: 0.0012,
+    sentimentPressure: 0.012,
+    sentimentCap: 0.035,
+  },
+  commodity: {
+    smoothing: 0.135,
+    noise: 0.0038,
+    sentimentDecay: 0.940,
+    sentimentShock: 0.0015,
+    sentimentPressure: 0.010,
+    sentimentCap: 0.035,
+  },
+  basis: {
+    smoothing: 0.155,
+    noise: 0.0045,
+    sentimentDecay: 0.930,
+    sentimentShock: 0.0018,
+    sentimentPressure: 0.010,
+    sentimentCap: 0.045,
+  },
+  futures: {
+    smoothing: 0.180,
+    noise: 0.0030,
+    sentimentDecay: 0.920,
+    sentimentShock: 0.0014,
+    sentimentPressure: 0.006,
+    sentimentCap: 0.028,
+  },
+  index: {
+    smoothing: 0.075,
+    noise: 0.0016,
+    sentimentDecay: 0.970,
+    sentimentShock: 0.0006,
+    sentimentPressure: 0.006,
+    sentimentCap: 0.018,
+  },
+};
+
+function priceDynamicsProfile(world: World, eq: Equity): PriceDynamicsProfile {
+  const base = PRICE_DYNAMICS_BY_KIND[eq.kind];
+  if (eq.kind !== "futures") return base;
+  const c = world.contracts?.[eq.id];
+  if (!c) return base;
+  const tte = Math.max(0, c.expiryTick - world.tick);
+  if (tte >= 80) return base;
+  const urgency = 1 - tte / 80;
+  return {
+    ...base,
+    smoothing: base.smoothing + urgency * 0.12,
+    sentimentCap: base.sentimentCap * (1 - urgency * 0.45),
+  };
+}
+
+function deterministicUnitNoise(eq: Equity, tick: number, salt = 0): number {
   // Per-equity seeded noise so prices wiggle realistically. Same world tick
   // → same noise (determinism preserved).
-  const seed = (hashStr(eq.id) ^ tick) | 0;
+  const seed = (hashStr(eq.id) ^ Math.imul(tick + 1, 0x45d9f3b) ^ salt) | 0;
   const rng = mulberry32(seed);
-  return (rng() - 0.5) * 2 * SHARE_PRICE_NOISE;
+  return (rng() - 0.5) * 2;
+}
+
+function deterministicNoise(eq: Equity, tick: number, scale = SHARE_PRICE_NOISE): number {
+  return deterministicUnitNoise(eq, tick) * scale;
 }
 
 function hashStr(s: string): number {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
   return h;
+}
+
+function updateMarketMood(world: World, eq: Equity, fundamental: number, profile: PriceDynamicsProfile): number {
+  const prev = Number.isFinite(eq.marketMood) ? eq.marketMood! : 0;
+  const pressure = eq.price > 0
+    ? Math.max(-1, Math.min(1, (fundamental - eq.price) / eq.price))
+    : 0;
+  const innovation = deterministicUnitNoise(eq, world.tick, 0x51f15eed) * profile.sentimentShock;
+  const next = prev * profile.sentimentDecay + innovation + pressure * profile.sentimentPressure;
+  eq.marketMood = Math.max(-profile.sentimentCap, Math.min(profile.sentimentCap, next));
+  return eq.marketMood;
 }
 
 // Map an equity's kind to the news scope that targets it, plus the ctx the
@@ -668,17 +780,24 @@ function equityEventMultiplier(world: World, eq: Equity): number {
   return eventMultiplier(world, scope, { indexId: eq.id });
 }
 
+export function computeEventAdjustedFundamental(world: World, eq: Equity): number {
+  return computeFundamental(world, eq) * equityEventMultiplier(world, eq);
+}
+
 export function recomputeEquityPrice(world: World, eq: Equity): void {
-  const rawFundamental = computeFundamental(world, eq);
   // News events apply as a final scalar on the per-tick fundamental — placed
   // here (after computeFundamental) rather than inside each *Fundamental
   // helper so the kick is felt fully and consistently across kinds, instead
   // of being cushioned by per-kind smoothing internals.
-  const fundamental = rawFundamental * equityEventMultiplier(world, eq);
-  // EMA blend — small smoothing so prices don't whip every tick
-  const blended = eq.price + SHARE_PRICE_SMOOTHING * (fundamental - eq.price);
-  // Add small per-tick noise scaled by current price so it's proportional
-  const noisy = blended * (1 + deterministicNoise(eq, world.tick));
+  const fundamental = computeEventAdjustedFundamental(world, eq);
+  const profile = priceDynamicsProfile(world, eq);
+  const mood = updateMarketMood(world, eq, fundamental, profile);
+  // EMA blend — per-kind smoothing so thin/local instruments can react faster
+  // than broad indices while still respecting their underlying fair value.
+  const target = fundamental * (1 + mood);
+  const blended = eq.price + profile.smoothing * (target - eq.price);
+  // Add small per-tick noise scaled by current price so it's proportional.
+  const noisy = blended * (1 + deterministicNoise(eq, world.tick, profile.noise));
   eq.prevPrice = eq.price;
   eq.price = clampSharePrice(eq, noisy);
   // Append history, capped
@@ -1266,32 +1385,44 @@ export function sellShares(
   return { ok: true, shares: exec.filled, cashFlow: immediateCashFlow, fee, realizedPnl, settlementJobId };
 }
 
-// Returns the maximum cash the equity's underlying can actually pay out to a
-// short seller right now. Used both to cap short opens and to expose the
-// real "max shortable" to the UI.
-export function maxShortableShares(world: World, eq: Equity): number {
-  if (eq.price <= 0) return 0;
-  let availableCash = 0;
-  if (eq.kind === "station") {
-    const market = world.markets[eq.underlyingId];
-    if (!market) return 0;
-    const target = market.treasuryTarget || 1;
-    const floor = -2 * target;
-    availableCash = Math.max(0, market.treasury - floor);
-  } else if (eq.kind === "syndicate") {
-    const synd = world.syndicates[eq.underlyingId];
-    if (!synd) return 0;
-    availableCash = Math.max(0, synd.treasury);
-  } else {
-    // C-1/C-2: commodity + basis. No underlying treasury — shorts are
-    // capped only by float and live ask depth (which the caller checks
-    // via previewBookCost). Aggregate agent stockWallet cash gives a
-    // conservative upper bound for the funding cap.
-    for (const t of Object.values(world.traders)) {
-      availableCash += t.stockState?.stockWallet ?? 0;
-    }
+// Shares available to borrow for a player short. This is deliberately about
+// the lendable float, not the underlying treasury. The short-sale cash comes
+// from whichever bid the player sells into; treasury only matters if a legacy
+// synthetic market-maker quote is still present, and those are removed before
+// player shorts execute.
+function maxBorrowableShortShares(world: World, eq: Equity): number {
+  if (eq.price <= 0 || eq.kind === "futures") return 0;
+  const currentShort = world.player?.positions?.[eq.id]?.kind === "short"
+    ? world.player.positions[eq.id].shares
+    : 0;
+  const floatCap = Math.floor(eq.sharesOutstanding * SHORT_BORROWABLE_FLOAT_FRACTION);
+  let lendable = 0;
+  let sawAgentInventory = false;
+  for (const t of Object.values(world.traders)) {
+    const shares = t.stockState?.positions[eq.id]?.shares ?? 0;
+    if (shares <= 0) continue;
+    sawAgentInventory = true;
+    lendable += shares * SHORT_LENDABLE_POSITION_FRACTION;
   }
-  return Math.floor(availableCash / eq.price);
+  const lendableCap = sawAgentInventory ? Math.floor(lendable) : floatCap;
+  return Math.max(0, Math.min(floatCap, lendableCap) - currentShort);
+}
+
+function bidDepthForShort(world: World, eq: Equity, excludedAgentId?: TraderId): number {
+  const book = world.orderBooks?.[eq.id];
+  if (!book) return 0;
+  let depth = 0;
+  for (const bid of book.bids) {
+    if (bid.agentId === excludedAgentId || bid.agentId === SYNTHETIC_MM_AGENT_ID) continue;
+    depth += Math.max(0, bid.qty);
+  }
+  return Math.floor(depth);
+}
+
+// Immediate short capacity: borrowable shares that can also be sold into the
+// live bid book right now. Used by UI quantity chips and suggestions.
+export function maxShortableShares(world: World, eq: Equity, shipId?: TraderId): number {
+  return Math.min(maxBorrowableShortShares(world, eq), bidDepthForShort(world, eq, shipId));
 }
 
 // Open or add to a short position. Borrows shares and immediately sells them
@@ -1306,26 +1437,29 @@ export function shortShares(world: World, equityId: EquityId, shares: number, sh
   if (current?.kind === "long") {
     return { ok: false, reason: `Currently long ${current.shares} ${eq.ticker}. Sell the long before shorting.` };
   }
-  // Borrow cap: by float and by what the underlying can actually fund.
-  // Without the funding cap, a player could "short" against a depleted
-  // treasury, receive 0 proceeds, and end up with a position they can never
-  // cover — the original bug we hit on a fresh-world Ç0-treasury syndicate.
-  const currentShort = current?.shares ?? 0;
-  const maxByFloat = Math.max(0, eq.sharesOutstanding - currentShort);
-  const maxByFunding = maxShortableShares(world, eq);
-  const maxShortable = Math.min(maxByFloat, maxByFunding);
-  if (maxShortable <= 0) {
-    return { ok: false, reason: `${eq.ticker}'s book is too thin to fund a short right now.` };
+  // Legacy saves may still carry synthetic-MM quotes. Player shorts now rely
+  // on agent bids only, so strip stale MM bids before checking liquidity.
+  cancelAgentOrders(world, equityId, SYNTHETIC_MM_AGENT_ID);
+
+  const borrowable = maxBorrowableShortShares(world, eq);
+  if (borrowable <= 0) {
+    return { ok: false, reason: `${eq.ticker}'s lendable share pool is fully used right now.` };
   }
-  if (shares > maxShortable) {
-    return { ok: false, reason: `Only ${maxShortable} shares fundable at this quote.` };
+  if (shares > borrowable) {
+    return { ok: false, reason: `Only ${borrowable} ${eq.ticker} shares are available to borrow right now.` };
+  }
+
+  const preview = previewBookCost(world, eq, "ask", shares, ship!.id);
+  if (preview.fillable < shares) {
+    if (preview.fillable <= 0) {
+      return { ok: false, reason: `${eq.ticker} has no live bids to take a short sale right now.` };
+    }
+    return { ok: false, reason: `Only ${preview.fillable} ${eq.ticker} shares can be sold into live bids right now.` };
   }
 
   // Short aggresses against the bid side of the book (we're selling short).
-  // Per-fill cash flow already ran inside executeAgainstBook; for MM buyers
-  // the treasury was drawn (with haircut), for agent buyers the agent's
-  // funds were debited. Here we credit the player by the nominal sum minus
-  // broker fee.
+  // The buyer's stockWallet funds the fill through executeAgainstBook. Here
+  // we credit the player by the nominal fill sum minus broker fee.
   const exec = executeAgainstBook(world, eq, "ask", shares, ship!.id);
   if (!exec.ok) return { ok: false, reason: exec.reason };
   const realized = exec.totalCash;
@@ -1834,15 +1968,16 @@ function drawShareCashFlow(world: World, eq: Equity, amount: number): number {
 export function tickStockMarket(world: World): void {
   if (Object.keys(world.equities).length === 0) return;   // no market initialized
 
-  // Phase 1 order-book step: age old MM quotes, post fresh ones for each
-  // equity, then match any crossing limit orders. In Phase 1 only the
-  // synthetic MM posts limit orders (player trades are market orders that
-  // execute at trade-time, not on tick boundaries), so matchBook is mostly
-  // a no-op here — but keeping it ensures any future limit-order agents
-  // settle every tick.
-  // Agents step first (staggered by id hash so all 73 don't fire on the
-  // same tick). Their orders join whatever's left in the book from prior
-  // ticks (TTL=8 means a posted order persists ~2 decision cycles).
+  // Expire old agent quotes before anyone refreshes. Previously TTL was set
+  // but never decremented after the synthetic-MM phase was removed, which
+  // let stale quotes linger if an agent stopped trading.
+  for (const eq of Object.values(world.equities)) {
+    ageOrders(ensureOrderBook(world, eq.id));
+  }
+
+  // Agent order-book step. Agents run first, staggered by id hash so the
+  // whole market does not re-quote on the same tick. Their orders join
+  // whatever is left in the book from prior ticks.
   stepStockAgents(world);
   for (const eq of Object.values(world.equities)) {
     const matched = matchBook(ensureOrderBook(world, eq.id), world.tick);

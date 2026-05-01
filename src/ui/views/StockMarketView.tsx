@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { MdArrowDropDown, MdArrowDropUp, MdRemove } from "react-icons/md";
 import {
   AreaSeries,
@@ -35,6 +36,7 @@ import {
   unrealizedPnl,
   type PlayerLimitView,
 } from "../../sim/stock";
+import { listStockExchangeHints, type StockExchangeHint } from "../../sim/stock/suggestions";
 import { goodArtUrl, headerArtUrl, shipArtUrl, stationArtUrl, stationKind, stationKindLabel, stationScale, stationScaleLabel, stationSubtype, stationSubtypeLabel } from "../art";
 import { SortableHeaderButton, SortableRows, SortableTh } from "../components/SortableTable";
 import "./StockMarketView.css";
@@ -65,9 +67,7 @@ export function StockMarketView() {
   const world = useStore((s) => s.world);
   const selected = useStore((s) => s.selectedEquity);
   const select = useStore((s) => s.selectEquity);
-  const buyShares = useStore((s) => s.buyShares);
   const sellShares = useStore((s) => s.sellShares);
-  const shortShares = useStore((s) => s.shortShares);
   const coverShares = useStore((s) => s.coverShares);
   const abandonPosition = useStore((s) => s.abandonPosition);
   const setStopLoss = useStore((s) => s.setStopLoss);
@@ -96,6 +96,20 @@ export function StockMarketView() {
     ? selected
     : tapeRows.reachable[0]?.equity.id ?? rows[0]?.equity.id ?? null;
   const detail = selectedId ? rows.find(r => r.equity.id === selectedId) ?? null : null;
+  const exchangeHints = useMemo(() => listStockExchangeHints(world, playerShipId, rows.length), [world, playerShipId, rows, tickEpoch]);
+  const hintByEquity = useMemo(() => {
+    const map = new Map<string, StockExchangeHint>();
+    for (const hint of exchangeHints) map.set(hint.equityId, hint);
+    return map;
+  }, [exchangeHints]);
+  const selectedHint = detail ? hintByEquity.get(detail.equity.id) ?? null : null;
+  const guidedTradeEnabled = useStore((s) => s.stockGuideEnabled);
+  const setStockGuideEnabled = useStore((s) => s.setStockGuideEnabled);
+  const topTradeHint = exchangeHints.find(h => h.action !== "watch" && h.executable) ?? null;
+  const activeTradeHint = guidedTradeEnabled ? topTradeHint : null;
+  const activeSelectedHint = activeTradeHint && detail?.equity.id === activeTradeHint.equityId
+    ? activeTradeHint
+    : null;
 
   const docked = !!playerShip && playerShip.state === "idle";
   const cash = playerShip?.funds ?? 0;
@@ -132,15 +146,21 @@ export function StockMarketView() {
             rows={rows}
             tapeRows={tapeRows}
             selectedId={selectedId}
+            activeHint={activeTradeHint}
+            bestHint={topTradeHint}
+            guideEnabled={guidedTradeEnabled}
+            onGuideToggle={() => setStockGuideEnabled(!guidedTradeEnabled)}
             onSelect={select}
           />
           <PnoPanel
             world={world}
             positions={positions}
             trades={trades}
+            hints={exchangeHints}
             shipId={playerShipId}
             cash={cash}
             docked={docked}
+            activeHint={activeTradeHint}
             onSelectEquity={select}
             onSell={(eqId, qty) => sellShares(eqId, qty)}
             onCover={(eqId, qty) => coverShares(eqId, qty)}
@@ -164,6 +184,11 @@ export function StockMarketView() {
               world={world}
               shipId={playerShipId}
               docked={docked}
+              hint={activeSelectedHint}
+              selectedHint={selectedHint}
+              activeHint={activeTradeHint}
+              guideEnabled={guidedTradeEnabled}
+              onGuideToggle={() => setStockGuideEnabled(!guidedTradeEnabled)}
             />
           ) : (
             <div className="stocks-detail-empty dim">No listed equities.</div>
@@ -175,6 +200,100 @@ export function StockMarketView() {
 }
 
 // --- new shell components ----------------------------------------------
+
+const STOCK_GUIDE_TOOLTIP_WIDTH = 280;
+const STOCK_GUIDE_TOOLTIP_MARGIN = 12;
+const STOCK_GUIDE_TOOLTIP_GAP = 10;
+
+function StockGuidanceMarker({ tip, label = "Guided trade", onClick }: {
+  tip: string;
+  label?: string;
+  onClick?: () => void;
+}) {
+  const dotRef = useRef<HTMLSpanElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+
+  const show = () => {
+    const el = dotRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    let left = rect.left;
+    if (left + STOCK_GUIDE_TOOLTIP_WIDTH > window.innerWidth - STOCK_GUIDE_TOOLTIP_MARGIN) {
+      left = window.innerWidth - STOCK_GUIDE_TOOLTIP_MARGIN - STOCK_GUIDE_TOOLTIP_WIDTH;
+    }
+    if (left < STOCK_GUIDE_TOOLTIP_MARGIN) left = STOCK_GUIDE_TOOLTIP_MARGIN;
+    setPos({ left, top: rect.top - STOCK_GUIDE_TOOLTIP_GAP });
+  };
+  const hide = () => setPos(null);
+  const activate = () => {
+    if (!onClick) return;
+    onClick();
+    hide();
+  };
+
+  return (
+    <span
+      className={`stock-guidance-marker ${onClick ? "clickable" : ""}`}
+      onMouseEnter={show}
+      onMouseLeave={hide}
+      onFocus={show}
+      onBlur={hide}
+      onClick={(event) => {
+        if (!onClick) return;
+        event.preventDefault();
+        event.stopPropagation();
+        activate();
+      }}
+      onKeyDown={(event) => {
+        if (!onClick) return;
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        event.stopPropagation();
+        activate();
+      }}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : -1}
+    >
+      <span className="stock-guidance-marker-dot" ref={dotRef} />
+      {pos && createPortal(
+        <span
+          className="stock-guidance-tooltip"
+          role="tooltip"
+          style={{ left: `${pos.left}px`, top: `${pos.top}px` }}
+        >
+          <span className="stock-guidance-tooltip-label">{label}</span>
+          {tip}
+        </span>,
+        document.body,
+      )}
+    </span>
+  );
+}
+
+function StockGuidanceCell({ guided, hintText, label, onPingClick, className = "", style, children }: {
+  guided: boolean;
+  hintText: string;
+  label?: string;
+  onPingClick?: () => void;
+  className?: string;
+  style?: CSSProperties;
+  children: ReactNode;
+}) {
+  return (
+    <span className={`stock-guidance-cell ${className}`} style={style}>
+      {guided && <StockGuidanceMarker tip={hintText} label={label} onClick={onPingClick} />}
+      {children}
+    </span>
+  );
+}
+
+function isShareOrderHint(hint: StockExchangeHint | null): hint is StockExchangeHint & { action: "buy" | "sell" | "short" } {
+  return hint?.action === "buy" || hint?.action === "sell" || hint?.action === "short";
+}
+
+function isOpenFuturesHint(hint: StockExchangeHint | null): hint is StockExchangeHint & { action: "open_long_future" | "open_short_future" } {
+  return hint?.action === "open_long_future" || hint?.action === "open_short_future";
+}
 
 import type { StockKindFilter as KindFilter } from "../viewTabs";
 const KIND_FILTERS: KindFilter[] = ["all", "station", "syndicate", "commodity", "basis", "futures", "index"];
@@ -188,10 +307,14 @@ const KIND_FILTER_LABEL: Record<KindFilter, string> = {
   index: "Indices",
 };
 
-function EquitySelector({ rows, tapeRows, selectedId, onSelect }: {
+function EquitySelector({ rows, tapeRows, selectedId, activeHint, bestHint, guideEnabled, onGuideToggle, onSelect }: {
   rows: EquityRow[];
   tapeRows: { reachable: EquityRow[]; far: EquityRow[] };
   selectedId: string | null;
+  activeHint: StockExchangeHint | null;
+  bestHint: StockExchangeHint | null;
+  guideEnabled: boolean;
+  onGuideToggle: () => void;
   onSelect: (eqId: string) => void;
 }) {
   void rows;
@@ -228,8 +351,9 @@ function EquitySelector({ rows, tapeRows, selectedId, onSelect }: {
                 <button
                   key={kf}
                   type="button"
-                  className={`bridge-tab ${kindFilter === kf ? "active" : ""}`}
+                  className={`bridge-tab ${kindFilter === kf ? "active" : ""} ${activeHint?.equityKind === kf ? "has-suggestion" : ""}`}
                   onClick={() => setKindFilter(kf)}
+                  title={activeHint?.equityKind === kf ? `Show ${activeHint.ticker}` : undefined}
                 >
                   {KIND_FILTER_LABEL[kf]} <span className="bridge-tab-count">{counts[kf]}</span>
                 </button>
@@ -243,17 +367,37 @@ function EquitySelector({ rows, tapeRows, selectedId, onSelect }: {
             </div>
             <div className="stocks-selector-list">
               {sortedReachable.map(r => (
-                <SelectorRow key={r.equity.id} row={r} selected={r.equity.id === selectedId} onSelect={onSelect} />
+                <SelectorRow
+                  key={r.equity.id}
+                  row={r}
+                  selected={r.equity.id === selectedId}
+                  activeHint={activeHint}
+                  onSelect={onSelect}
+                />
               ))}
               {sortedFar.length > 0 && (
                 <>
                   <div className="stocks-selector-divider">Out of range</div>
                   {sortedFar.map(r => (
-                    <SelectorRow key={r.equity.id} row={r} selected={r.equity.id === selectedId} onSelect={onSelect} farRow />
+                    <SelectorRow
+                      key={r.equity.id}
+                      row={r}
+                      selected={r.equity.id === selectedId}
+                      activeHint={activeHint}
+                      onSelect={onSelect}
+                      farRow
+                    />
                   ))}
                 </>
               )}
             </div>
+            <StockHintChin
+              hint={bestHint}
+              guided={activeHint != null && bestHint != null && activeHint.equityId === bestHint.equityId && activeHint.action === bestHint.action}
+              guideEnabled={guideEnabled}
+              onGuideToggle={onGuideToggle}
+              emptyText="No actionable exchange trade right now."
+            />
           </section>
         );
       }}
@@ -261,22 +405,29 @@ function EquitySelector({ rows, tapeRows, selectedId, onSelect }: {
   );
 }
 
-function SelectorRow({ row, selected, onSelect, farRow = false }: {
+function SelectorRow({ row, selected, activeHint, onSelect, farRow = false }: {
   row: EquityRow;
   selected: boolean;
+  activeHint: StockExchangeHint | null;
   onSelect: (eqId: string) => void;
   farRow?: boolean;
 }) {
   const eq = row.equity;
   const tone = row.changePct > 0.0005 ? "up" : row.changePct < -0.0005 ? "down" : "flat";
   const ownedTone = row.position?.kind === "long" ? "owned" : row.position?.kind === "short" ? "shorted" : "";
+  const isGuidedTicker = activeHint?.equityId === eq.id;
   return (
     <button
       type="button"
       className={`stocks-selector-row ${selected ? "selected" : ""} ${tone} ${ownedTone} ${farRow ? "far" : ""}`}
       onClick={() => onSelect(eq.id)}
     >
-      <span className="ticker mono">{eq.ticker}</span>
+      <StockGuidanceCell
+        guided={isGuidedTicker}
+        hintText={activeHint ? `Open ${activeHint.ticker} to ${activeHint.actionLabel.toLowerCase()}.` : ""}
+      >
+        <span className="ticker mono">{eq.ticker}</span>
+      </StockGuidanceCell>
       <span className="stocks-selector-name">
         <span className="name">{eq.name}</span>
         <span className="kind dim">{KIND_LABEL[eq.kind].toLowerCase()}</span>
@@ -293,9 +444,11 @@ function PnoPanel(props: {
   world: World;
   positions: StockPosition[];
   trades: TradeRecord[];
+  hints: StockExchangeHint[];
   shipId?: string;
   cash: number;
   docked: boolean;
+  activeHint: StockExchangeHint | null;
   onSelectEquity: (eqId: string) => void;
   onSell: (eqId: string, qty: number) => void;
   onCover: (eqId: string, qty: number) => void;
@@ -310,13 +463,17 @@ function PnoPanel(props: {
   // Both lists are cheap (small array iteration).
   const limits = listPlayerLimits(props.world, props.shipId);
   const futures = listPlayerFutures(props.world);
+  const insightHints = props.hints.filter(h => h.action !== "watch");
+  const guidePositions = props.activeHint?.action === "cover";
+  const guideFutures = props.activeHint?.action === "close_future";
 
   return (
     <section className="stocks-shell-panel stocks-pno">
       <div className="bridge-card-tabs stocks-pno-tabs">
         <button
-          className={`bridge-tab ${tab === "positions" ? "active" : ""}`}
+          className={`bridge-tab ${tab === "positions" ? "active" : ""} ${guidePositions ? "has-suggestion" : ""}`}
           onClick={() => setTab("positions")}
+          title={guidePositions ? `Close ${props.activeHint?.ticker} from positions` : undefined}
         >
           Positions <span className="bridge-tab-count">{props.positions.length}</span>
         </button>
@@ -327,8 +484,9 @@ function PnoPanel(props: {
           Orders <span className="bridge-tab-count">{limits.length}</span>
         </button>
         <button
-          className={`bridge-tab ${tab === "futures" ? "active" : ""}`}
+          className={`bridge-tab ${tab === "futures" ? "active" : ""} ${guideFutures ? "has-suggestion" : ""}`}
           onClick={() => setTab("futures")}
+          title={guideFutures ? `Close ${props.activeHint?.ticker} futures` : undefined}
         >
           Futures <span className="bridge-tab-count">{futures.length}</span>
         </button>
@@ -337,6 +495,12 @@ function PnoPanel(props: {
           onClick={() => setTab("history")}
         >
           History <span className="bridge-tab-count">{props.trades.length}</span>
+        </button>
+        <button
+          className={`bridge-tab ${tab === "insights" ? "active" : ""}`}
+          onClick={() => setTab("insights")}
+        >
+          Insights <span className="bridge-tab-count">{insightHints.length}</span>
         </button>
       </div>
       <div className="stocks-pno-body">
@@ -347,6 +511,7 @@ function PnoPanel(props: {
             shipId={props.shipId}
             cash={props.cash}
             docked={props.docked}
+            activeHint={props.activeHint}
             onSelectEquity={props.onSelectEquity}
             onSell={props.onSell}
             onCover={props.onCover}
@@ -359,10 +524,13 @@ function PnoPanel(props: {
           <OrdersAccordion world={props.world} limits={limits} onSelectEquity={props.onSelectEquity} />
         )}
         {tab === "futures" && (
-          <FuturesPositionsList world={props.world} futures={futures} docked={props.docked} onSelectEquity={props.onSelectEquity} />
+          <FuturesPositionsList world={props.world} futures={futures} docked={props.docked} activeHint={props.activeHint} onSelectEquity={props.onSelectEquity} />
         )}
         {tab === "history" && (
           <TradesList trades={props.trades} onSelect={props.onSelectEquity} />
+        )}
+        {tab === "insights" && (
+          <InsightsList hints={insightHints} activeHint={props.activeHint} onSelect={props.onSelectEquity} />
         )}
       </div>
     </section>
@@ -377,6 +545,7 @@ function PositionsAccordion(props: {
   shipId?: string;
   cash: number;
   docked: boolean;
+  activeHint: StockExchangeHint | null;
   onSelectEquity: (eqId: string) => void;
   onSell: (eqId: string, qty: number) => void;
   onCover: (eqId: string, qty: number) => void;
@@ -421,6 +590,7 @@ function PositionsAccordion(props: {
                 shipId={props.shipId}
                 cash={props.cash}
                 docked={props.docked}
+                activeHint={props.activeHint}
                 isOpen={isOpen}
                 onToggle={() => {
                   setExpandedId(isOpen ? null : pos.equityId);
@@ -447,6 +617,7 @@ function PositionAccordionItem(props: {
   shipId?: string;
   cash: number;
   docked: boolean;
+  activeHint: StockExchangeHint | null;
   isOpen: boolean;
   onToggle: () => void;
   onSell: (qty: number) => void;
@@ -481,6 +652,18 @@ function PositionAccordionItem(props: {
   const [closePrice, setClosePrice] = useState<number>(mark);
   const [stopPrice, setStopPrice] = useState<string>(pos.stopLoss?.toFixed(2) ?? "");
   const [takePrice, setTakePrice] = useState<string>(pos.takeProfit?.toFixed(2) ?? "");
+  const coverHint = props.activeHint?.action === "cover" && props.activeHint.equityId === eq.id && pos.kind === "short"
+    ? props.activeHint
+    : null;
+  const suggestedCloseQty = coverHint?.suggestedUnits != null
+    ? Math.max(1, Math.min(pos.shares, Math.floor(coverHint.suggestedUnits)))
+    : null;
+  const closeQtyNeedsGuide = props.isOpen && suggestedCloseQty != null && Math.round(closeQty) !== suggestedCloseQty;
+  const closeReadyForGuide = props.isOpen
+    && coverHint?.executable === true
+    && props.docked
+    && closeQty > 0
+    && (suggestedCloseQty == null || Math.round(closeQty) === suggestedCloseQty);
 
   const placeLimitClose = () => {
     if (pos.kind === "long") placeLimitSellAction(eq.id, closeQty, closePrice);
@@ -490,7 +673,12 @@ function PositionAccordionItem(props: {
   return (
     <div className={`stocks-accordion-item ${props.isOpen ? "open" : ""} ${pos.kind}`}>
       <button type="button" className="stocks-accordion-summary" onClick={props.onToggle}>
-        <span className="ticker mono">{eq.ticker}</span>
+        <StockGuidanceCell
+          guided={!!coverHint && !props.isOpen}
+          hintText={`Open ${eq.ticker}'s short position controls.`}
+        >
+          <span className="ticker mono">{eq.ticker}</span>
+        </StockGuidanceCell>
         <span className="kind-pill mono">{pos.kind === "long" ? "LONG" : "SHORT"}</span>
         <span className="numeric mono">{Math.round(pos.shares)} sh</span>
         <span className="numeric mono dim">@ Ç{fmtPrice(pos.avgEntryPrice)}</span>
@@ -512,11 +700,18 @@ function PositionAccordionItem(props: {
 
           <section className="trade-helper-section">
             <div className="stocks-position-row close">
-              <label className="stocks-position-field">
-                <span>Qty</span>
-                <input type="number" min={1} max={pos.shares} value={closeQty}
-                  onChange={e => setCloseQty(Math.max(1, Math.min(pos.shares, Math.floor(Number(e.target.value) || 0))))} />
-              </label>
+              <StockGuidanceCell
+                guided={closeQtyNeedsGuide}
+                hintText={suggestedCloseQty != null ? `Set cover quantity to ${suggestedCloseQty.toLocaleString()} sh.` : ""}
+                onPingClick={() => suggestedCloseQty != null && setCloseQty(suggestedCloseQty)}
+                className="field"
+              >
+                <label className="stocks-position-field">
+                  <span>Qty</span>
+                  <input type="number" min={1} max={pos.shares} value={closeQty}
+                    onChange={e => setCloseQty(Math.max(1, Math.min(pos.shares, Math.floor(Number(e.target.value) || 0))))} />
+                </label>
+              </StockGuidanceCell>
               <label className="stocks-position-field">
                 <span>Limit price</span>
                 <input type="number" step="0.01" value={closePrice.toFixed(2)}
@@ -530,13 +725,19 @@ function PositionAccordionItem(props: {
               >
                 Place limit
               </button>
-              <button
-                className="btn-action primary"
-                disabled={!props.docked || pos.shares <= 0}
-                onClick={() => (pos.kind === "long" ? props.onSell(pos.shares) : props.onCover(pos.shares))}
+              <StockGuidanceCell
+                guided={closeReadyForGuide}
+                hintText={coverHint ? `Execute ${coverHint.actionLabel.toLowerCase()}.` : ""}
+                onPingClick={() => (pos.kind === "long" ? props.onSell(closeQty) : props.onCover(closeQty))}
               >
-                {pos.kind === "long" ? "Sell all" : "Cover all"}
-              </button>
+                <button
+                  className="btn-action primary"
+                  disabled={!props.docked || closeQty <= 0}
+                  onClick={() => (pos.kind === "long" ? props.onSell(closeQty) : props.onCover(closeQty))}
+              >
+                  {pos.kind === "long" ? "Sell qty" : "Cover qty"}
+                </button>
+              </StockGuidanceCell>
             </div>
             <div className="stocks-position-quick-row">
               <div className="stocks-position-quick-group">
@@ -832,11 +1033,16 @@ function OrderAccordionItem({ world, order, isOpen, onToggle, onCancel, onAdjust
 
 // --- info column (right) -----------------------------------------------
 
-function InfoColumn({ row, world, shipId, docked }: {
+function InfoColumn({ row, world, shipId, docked, hint, selectedHint, activeHint, guideEnabled, onGuideToggle }: {
   row: EquityRow;
   world: World;
   shipId?: string;
   docked: boolean;
+  hint: StockExchangeHint | null;
+  selectedHint: StockExchangeHint | null;
+  activeHint: StockExchangeHint | null;
+  guideEnabled: boolean;
+  onGuideToggle: () => void;
 }) {
   const eq = row.equity;
   const access = exchangeAccess(world, eq, shipId);
@@ -872,11 +1078,77 @@ function InfoColumn({ row, world, shipId, docked }: {
         </div>
 
         {eq.kind === "futures"
-          ? <FuturesOrderForm equity={eq} world={world} docked={docked} access={access} />
-          : <UnifiedOrderForm equity={eq} world={world} docked={docked} access={access} />}
+          ? <FuturesOrderForm equity={eq} world={world} docked={docked} access={access} hint={hint} />
+          : <UnifiedOrderForm equity={eq} world={world} docked={docked} access={access} hint={hint} />}
       </div>
+      <StockHintChin
+        hint={selectedHint}
+        guided={activeHint != null && selectedHint != null && activeHint.equityId === selectedHint.equityId && activeHint.action === selectedHint.action}
+        guideEnabled={guideEnabled}
+        onGuideToggle={onGuideToggle}
+        showEnabledState={false}
+        emptyText="No exchange hint for this listing."
+      />
     </section>
   );
+}
+
+function StockHintChin({ hint, guided, guideEnabled, onGuideToggle, emptyText, showEnabledState = true }: {
+  hint: StockExchangeHint | null;
+  guided: boolean;
+  guideEnabled: boolean;
+  onGuideToggle: () => void;
+  emptyText: string;
+  showEnabledState?: boolean;
+}) {
+  const meta = hint
+    ? [
+      `edge ${fmtPct(hint.edgePct)}`,
+      hint.suggestedLimitPrice != null ? `limit Ç${fmtPrice(hint.suggestedLimitPrice)}` : null,
+      hint.workingOrderUnits != null
+        ? `working ${Math.round(hint.workingOrderUnits).toLocaleString()} ${hint.unitLabel ?? "sh"}${hint.workingOrderLimitPrice != null ? ` @ Ç${fmtPrice(hint.workingOrderLimitPrice)}` : ""}`
+        : null,
+    ].filter(Boolean).join(" · ")
+    : emptyText;
+  const title = hint?.executable === false
+    ? hint.blockReason ?? hint.reason
+    : hint?.reason ?? emptyText;
+
+  return (
+    <button
+      type="button"
+      className={`stocks-hint-chin ${hint ? hint.action : "empty"} ${guided ? "guided" : ""} ${showEnabledState && guideEnabled ? "enabled" : ""} ${hint?.executable === false ? "blocked" : ""}`}
+      aria-pressed={guideEnabled}
+      onClick={onGuideToggle}
+      title={title}
+    >
+      {hint ? (
+        <>
+          <span className={`stocks-hint-chin-action ${hint.action}`}>{compactHintActionLabel(hint)}</span>
+          <span className="stocks-hint-chin-reason">{hint.reason}</span>
+          <span className="stocks-hint-chin-meta">{meta}</span>
+        </>
+      ) : (
+        <span className="stocks-hint-chin-empty dim">{emptyText}</span>
+      )}
+    </button>
+  );
+}
+
+function compactHintActionLabel(hint: StockExchangeHint): string {
+  const units = hint.suggestedUnits != null
+    ? ` ${Math.max(1, Math.floor(hint.suggestedUnits)).toLocaleString()}`
+    : "";
+  switch (hint.action) {
+    case "buy": return `BUY${units} ${hint.ticker}`;
+    case "sell": return `SELL${units} ${hint.ticker}`;
+    case "short": return `SHORT${units} ${hint.ticker}`;
+    case "cover": return `COVER${units} ${hint.ticker}`;
+    case "open_long_future": return `LONG${units} ${hint.ticker}`;
+    case "open_short_future": return `SHORT${units} ${hint.ticker}`;
+    case "close_future": return `CLOSE${units} ${hint.ticker}`;
+    case "watch": return `WATCH ${hint.ticker}`;
+  }
 }
 
 function KpiPanel({ row, world }: { row: EquityRow; world: World }) {
@@ -929,11 +1201,12 @@ function FleetStat({ label, value }: { label: string; value: string }) {
 // Spot = limit at the current eq.price (still goes into the book; the
 // matching engine fills it immediately if there's a crossing counterparty,
 // or rests it otherwise).
-function UnifiedOrderForm({ equity, world, docked, access }: {
+function UnifiedOrderForm({ equity, world, docked, access, hint }: {
   equity: Equity;
   world: World;
   docked: boolean;
   access: { ok: boolean; reason: string };
+  hint: StockExchangeHint | null;
 }) {
   const placeLimitBuy = useStore(s => s.placeLimitBuy);
   const placeLimitSell = useStore(s => s.placeLimitSell);
@@ -945,12 +1218,27 @@ function UnifiedOrderForm({ equity, world, docked, access }: {
   const [price, setPrice] = useState<number>(equity.price);
 
   const lastEqRef = useRef(equity.id);
+  const lastAppliedHintRef = useRef("");
   useEffect(() => {
     if (lastEqRef.current !== equity.id) {
       lastEqRef.current = equity.id;
       setPrice(equity.price);
+      lastAppliedHintRef.current = "";
     }
   }, [equity.id, equity.price]);
+
+  useEffect(() => {
+    if (!hint || hint.equityId !== equity.id) return;
+    const key = `${hint.equityId}:${hint.action}:${hint.suggestedUnits ?? ""}:${hint.suggestedLimitPrice ?? ""}`;
+    if (lastAppliedHintRef.current === key) return;
+    if (hint.action === "buy") setSide("buy");
+    else if (hint.action === "sell") setSide("sell");
+    else if (hint.action === "short") setSide("short");
+    else return;
+    if (hint.suggestedUnits != null) setQty(Math.max(1, Math.floor(hint.suggestedUnits)));
+    setPrice(hint.suggestedLimitPrice ?? equity.price);
+    lastAppliedHintRef.current = key;
+  }, [equity.id, equity.price, hint]);
 
   const playerShipId = world.player?.shipIds[0];
   const ship = playerShipId ? world.traders[playerShipId] : null;
@@ -963,8 +1251,25 @@ function UnifiedOrderForm({ equity, world, docked, access }: {
   // of what I might buy here" feel.
   const maxByFunds = ship && mark > 0 ? Math.floor(ship.funds / (mark * (1 + BROKER_FEE_RATE))) : 0;
   const heldQty = position?.kind === "long" ? position.shares : 0;
-  const shortableQty = maxShortableShares(world, equity);
+  const shortableQty = maxShortableShares(world, equity, playerShipId);
   const sideMax = side === "buy" ? maxByFunds : side === "sell" ? heldQty : shortableQty;
+  const guidedAction = isShareOrderHint(hint) && hint.equityId === equity.id ? hint.action : null;
+  const suggestedQty = guidedAction && hint?.suggestedUnits != null
+    ? Math.max(1, Math.floor(hint.suggestedUnits))
+    : null;
+  const suggestedLimitPrice = guidedAction && guidedAction !== "short"
+    ? hint?.suggestedLimitPrice ?? equity.price
+    : null;
+  const qtyNeedsGuide = suggestedQty != null && Math.round(qty) !== suggestedQty;
+  const priceNeedsGuide = suggestedLimitPrice != null && Math.abs(price - suggestedLimitPrice) > 0.005;
+  const readyForGuidedSubmit = guidedAction != null
+    && hint?.executable === true
+    && docked
+    && access.ok
+    && side === guidedAction
+    && qty > 0
+    && (suggestedQty == null || Math.round(qty) === suggestedQty)
+    && (suggestedLimitPrice == null || (price > 0 && Math.abs(price - suggestedLimitPrice) <= 0.005));
 
   const total = qty * price;
   const fee = total * BROKER_FEE_RATE;
@@ -990,22 +1295,45 @@ function UnifiedOrderForm({ equity, world, docked, access }: {
     <section className="trade-helper-section stocks-order-form">
       <div className="exchange-section-title">Place order</div>
       <div className="stocks-order-side">
-        <button className={`stocks-order-side-btn buy ${side === "buy" ? "active" : ""}`} onClick={() => setSide("buy")}>Buy</button>
-        <button className={`stocks-order-side-btn sell ${side === "sell" ? "active" : ""}`} onClick={() => setSide("sell")}>Sell</button>
-        <button className={`stocks-order-side-btn short ${side === "short" ? "active" : ""}`} onClick={() => setSide("short")}>Short</button>
+        {(["buy", "sell", "short"] as Side[]).map(sideName => (
+          <StockGuidanceCell
+            key={sideName}
+            guided={guidedAction === sideName && side !== sideName}
+            hintText={`Choose ${sideName === "buy" ? "buy" : sideName === "sell" ? "sell" : "short"} for ${equity.ticker}.`}
+            onPingClick={() => setSide(sideName)}
+          >
+            <button className={`stocks-order-side-btn ${sideName} ${side === sideName ? "active" : ""}`} onClick={() => setSide(sideName)}>
+              {sideName === "buy" ? "Buy" : sideName === "sell" ? "Sell" : "Short"}
+            </button>
+          </StockGuidanceCell>
+        ))}
       </div>
       <div className="stocks-order-fields">
-        <label>
-          <span>Qty</span>
-          <input type="number" min={1} value={qty}
-            onChange={e => setQty(Math.max(1, Math.floor(Number(e.target.value) || 0)))} />
-        </label>
-        <label>
-          <span>Price</span>
-          <input type="number" step="0.01" value={price.toFixed(2)}
-            onChange={e => setPrice(Math.max(0.01, Number(e.target.value) || 0))}
-            disabled={side === "short"} />
-        </label>
+        <StockGuidanceCell
+          guided={qtyNeedsGuide}
+          hintText={suggestedQty != null ? `Set quantity to ${suggestedQty.toLocaleString()} sh.` : ""}
+          onPingClick={() => suggestedQty != null && setQty(suggestedQty)}
+          className="field"
+        >
+          <label>
+            <span>Qty</span>
+            <input type="number" min={1} value={qty}
+              onChange={e => setQty(Math.max(1, Math.floor(Number(e.target.value) || 0)))} />
+          </label>
+        </StockGuidanceCell>
+        <StockGuidanceCell
+          guided={priceNeedsGuide}
+          hintText={suggestedLimitPrice != null ? `Set limit price to Ç${fmtPrice(suggestedLimitPrice)}.` : ""}
+          onPingClick={() => suggestedLimitPrice != null && setPrice(suggestedLimitPrice)}
+          className="field"
+        >
+          <label>
+            <span>Price</span>
+            <input type="number" step="0.01" value={price.toFixed(2)}
+              onChange={e => setPrice(Math.max(0.01, Number(e.target.value) || 0))}
+              disabled={side === "short"} />
+          </label>
+        </StockGuidanceCell>
         <button className="stocks-order-spot" onClick={() => setPrice(equity.price)} disabled={side === "short"}>
           Use spot
         </button>
@@ -1041,13 +1369,20 @@ function UnifiedOrderForm({ equity, world, docked, access }: {
         </div>
       </div>
       <div className="stocks-order-summary dim">{summary}</div>
-      <button
-        className="btn-action primary stocks-order-submit"
-        disabled={!docked || !access.ok || qty <= 0 || (side !== "short" && price <= 0)}
-        onClick={submit}
+      <StockGuidanceCell
+        guided={readyForGuidedSubmit}
+        hintText={hint ? `Execute ${hint.actionLabel.toLowerCase()}.` : ""}
+        onPingClick={submit}
+        className="full"
       >
-        Place {side === "buy" ? "Buy" : side === "sell" ? "Sell" : "Short"} Order
-      </button>
+        <button
+          className="btn-action primary stocks-order-submit"
+          disabled={!docked || !access.ok || qty <= 0 || (side !== "short" && price <= 0)}
+          onClick={submit}
+        >
+          Place {side === "buy" ? "Buy" : side === "sell" ? "Sell" : "Short"} Order
+        </button>
+      </StockGuidanceCell>
       {!docked && <div className="stocks-warning dim">Equity trades only execute while docked.</div>}
       {!access.ok && <div className="stocks-warning dim">{access.reason}</div>}
     </section>
@@ -1058,15 +1393,17 @@ function UnifiedOrderForm({ equity, world, docked, access }: {
 // futures API; margin reservation + fee shown up front. Limit orders for
 // futures aren't surfaced yet — uses a market open against the existing
 // agent quotes.
-function FuturesOrderForm({ equity, world, docked, access }: {
+function FuturesOrderForm({ equity, world, docked, access, hint }: {
   equity: Equity;
   world: World;
   docked: boolean;
   access: { ok: boolean; reason: string };
+  hint: StockExchangeHint | null;
 }) {
   const openLongFuture = useStore(s => s.openLongFuture);
   const openShortFuture = useStore(s => s.openShortFuture);
   const [count, setCount] = useState<number>(1);
+  const lastAppliedHintRef = useRef("");
   // The +N chips behave as "set to N" on the first click and as
   // "add N to current" thereafter — labels switch from "N" to "+N"
   // accordingly. Reset whenever the user changes count by another
@@ -1077,6 +1414,16 @@ function FuturesOrderForm({ equity, world, docked, access }: {
   const playerShipId = world.player?.shipIds[0];
   const ship = playerShipId ? world.traders[playerShipId] : null;
   const existing = world.player?.futures?.[equity.id];
+  const hintKey = hint && hint.equityId === equity.id
+    && (hint.action === "open_long_future" || hint.action === "open_short_future")
+    ? `${hint.equityId}:${hint.action}:${hint.suggestedUnits ?? ""}`
+    : "";
+  useEffect(() => {
+    if (!hintKey || !hint || lastAppliedHintRef.current === hintKey) return;
+    if (hint.suggestedUnits != null) setCount(Math.max(1, Math.floor(hint.suggestedUnits)));
+    setIncrementMode(false);
+    lastAppliedHintRef.current = hintKey;
+  }, [hintKey, hint]);
   if (!c) return null;
   const spot = world.equities[c.underlyingEquityId]?.price ?? equity.price;
   const notional = c.contractSize * spot * count;
@@ -1106,20 +1453,40 @@ function FuturesOrderForm({ equity, world, docked, access }: {
       : null;
   const longBlock = blockReason ?? flipBlocked("long");
   const shortBlock = blockReason ?? flipBlocked("short");
+  const guidedFutureHint = isOpenFuturesHint(hint) && hint.equityId === equity.id ? hint : null;
+  const guidedFutureAction = guidedFutureHint?.action ?? null;
+  const suggestedCount = guidedFutureHint?.suggestedUnits != null
+    ? Math.max(1, Math.floor(guidedFutureHint.suggestedUnits))
+    : null;
+  const countNeedsGuide = suggestedCount != null && count !== suggestedCount;
+  const longReadyForGuide = guidedFutureAction === "open_long_future" && !longBlock && count > 0 && !countNeedsGuide;
+  const shortReadyForGuide = guidedFutureAction === "open_short_future" && !shortBlock && count > 0 && !countNeedsGuide;
 
   return (
     <section className="trade-helper-section stocks-order-form">
       <div className="exchange-section-title">Open futures position</div>
 
       <div className="stocks-order-fields">
-        <label style={{ gridColumn: "1 / span 3" }}>
-          <span>Contracts</span>
-          <input type="number" min={1} value={count}
-            onChange={e => {
-              setCount(Math.max(1, Math.floor(Number(e.target.value) || 0)));
-              setIncrementMode(false);
-            }} />
-        </label>
+        <StockGuidanceCell
+          guided={countNeedsGuide}
+          hintText={suggestedCount != null ? `Set contracts to ${suggestedCount.toLocaleString()} ct.` : ""}
+          onPingClick={() => {
+            if (suggestedCount == null) return;
+            setCount(suggestedCount);
+            setIncrementMode(false);
+          }}
+          className="field"
+          style={{ gridColumn: "1 / span 3" }}
+        >
+          <label>
+            <span>Contracts</span>
+            <input type="number" min={1} value={count}
+              onChange={e => {
+                setCount(Math.max(1, Math.floor(Number(e.target.value) || 0)));
+                setIncrementMode(false);
+              }} />
+          </label>
+        </StockGuidanceCell>
       </div>
 
       <div className="stocks-position-quick-row stocks-quick-row-flat">
@@ -1164,22 +1531,34 @@ function FuturesOrderForm({ equity, world, docked, access }: {
       </dl>
 
       <div className="stocks-order-side" style={{ marginTop: 8, gridTemplateColumns: "1fr 1fr" }}>
-        <button
-          className="stocks-order-side-btn buy"
-          disabled={longBlock != null}
-          title={longBlock ?? undefined}
-          onClick={() => openLongFuture(equity.id, count)}
+        <StockGuidanceCell
+          guided={longReadyForGuide}
+          hintText={hint ? `Execute ${hint.actionLabel.toLowerCase()}.` : ""}
+          onPingClick={() => openLongFuture(equity.id, count)}
         >
-          Open Long · Ç{Math.round(total).toLocaleString()}
-        </button>
-        <button
-          className="stocks-order-side-btn short"
-          disabled={shortBlock != null}
-          title={shortBlock ?? undefined}
-          onClick={() => openShortFuture(equity.id, count)}
+          <button
+            className="stocks-order-side-btn buy"
+            disabled={longBlock != null}
+            title={longBlock ?? undefined}
+            onClick={() => openLongFuture(equity.id, count)}
+          >
+            Open Long · Ç{Math.round(total).toLocaleString()}
+          </button>
+        </StockGuidanceCell>
+        <StockGuidanceCell
+          guided={shortReadyForGuide}
+          hintText={hint ? `Execute ${hint.actionLabel.toLowerCase()}.` : ""}
+          onPingClick={() => openShortFuture(equity.id, count)}
         >
-          Open Short · Ç{Math.round(total).toLocaleString()}
-        </button>
+          <button
+            className="stocks-order-side-btn short"
+            disabled={shortBlock != null}
+            title={shortBlock ?? undefined}
+            onClick={() => openShortFuture(equity.id, count)}
+          >
+            Open Short · Ç{Math.round(total).toLocaleString()}
+          </button>
+        </StockGuidanceCell>
       </div>
 
       {existing && (
@@ -1315,7 +1694,7 @@ function CompanyPane({ row, world, shipId, cash, docked, hasOpposite, hasLong, o
   ));
   const maxShort = hasLong || !access.ok ? 0 : Math.max(0, Math.min(
     eq.sharesOutstanding - (pos?.shares ?? 0),
-    maxShortableShares(world, eq),
+    maxShortableShares(world, eq, shipId),
   ));
 
   return (
@@ -1852,10 +2231,11 @@ function PositionRowFragment({ pos, eq, pnl, pnlClass, isFocused, cash, docked, 
 // expand-to-show-details body. Expanded body has margin posted, expiry
 // countdown, delivery station, physical-ready indicator, and a Close
 // button.
-function FuturesPositionsList({ world, futures, docked, onSelectEquity }: {
+function FuturesPositionsList({ world, futures, docked, activeHint, onSelectEquity }: {
   world: World;
   futures: FuturesPosition[];
   docked: boolean;
+  activeHint: StockExchangeHint | null;
   onSelectEquity: (eqId: string) => void;
 }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -1903,6 +2283,7 @@ function FuturesPositionsList({ world, futures, docked, onSelectEquity }: {
                 contract={c}
                 position={fp}
                 docked={docked}
+                activeHint={activeHint}
                 isOpen={isOpen}
                 onToggle={() => {
                   setExpandedId(isOpen ? null : fp.contractId);
@@ -1917,12 +2298,13 @@ function FuturesPositionsList({ world, futures, docked, onSelectEquity }: {
   );
 }
 
-function FuturesAccordionItem({ world, equity, contract, position, docked, isOpen, onToggle }: {
+function FuturesAccordionItem({ world, equity, contract, position, docked, activeHint, isOpen, onToggle }: {
   world: World;
   equity: Equity;
   contract: FuturesContract;
   position: FuturesPosition;
   docked: boolean;
+  activeHint: StockExchangeHint | null;
   isOpen: boolean;
   onToggle: () => void;
 }) {
@@ -1940,11 +2322,17 @@ function FuturesAccordionItem({ world, equity, contract, position, docked, isOpe
   const canDeliver = ship ? canDeliverPhysical(world, contract, position, ship) : false;
   const deliveryName = world.locations[contract.deliveryStation]?.name ?? contract.deliveryStation;
   const ageTicks = world.tick - position.openedAt;
+  const closeHint = activeHint?.action === "close_future" && activeHint.equityId === equity.id ? activeHint : null;
 
   return (
     <div className={`stocks-accordion-item ${isOpen ? "open" : ""} ${position.side}`}>
       <button type="button" className="stocks-accordion-summary" onClick={onToggle}>
-        <span className="ticker mono">{equity.ticker}</span>
+        <StockGuidanceCell
+          guided={!!closeHint && !isOpen}
+          hintText={`Open ${equity.ticker}'s futures controls.`}
+        >
+          <span className="ticker mono">{equity.ticker}</span>
+        </StockGuidanceCell>
         <span className="kind-pill mono">{position.side === "long" ? "LONG" : "SHORT"}</span>
         <span className="numeric mono">{position.contracts} ct</span>
         <span className="numeric mono dim">Ç{fmtPrice(spot)}</span>
@@ -1977,13 +2365,19 @@ function FuturesAccordionItem({ world, equity, contract, position, docked, isOpe
 
           <section className="trade-helper-section">
             <div className="stocks-position-row close">
-              <button
-                className="btn-action primary"
-                disabled={!docked || position.contracts <= 0}
-                onClick={() => closeFuture(position.contractId)}
+              <StockGuidanceCell
+                guided={!!closeHint && isOpen && closeHint.executable && docked && position.contracts > 0}
+                hintText={closeHint ? `Execute ${closeHint.actionLabel.toLowerCase()}.` : ""}
+                onPingClick={() => closeFuture(position.contractId)}
               >
-                Close all ({position.contracts})
-              </button>
+                <button
+                  className="btn-action primary"
+                  disabled={!docked || position.contracts <= 0}
+                  onClick={() => closeFuture(position.contractId)}
+                >
+                  Close all ({position.contracts})
+                </button>
+              </StockGuidanceCell>
             </div>
           </section>
         </div>
@@ -2040,6 +2434,70 @@ function TradesList({ trades, onSelect }: { trades: TradeRecord[]; onSelect: (eq
                       {tr.realizedPnl != null ? (
                         `${tr.realizedPnl >= 0 ? "+" : ""}Ç${Math.round(tr.realizedPnl).toLocaleString()}`
                       ) : <span className="dim">—</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </SortableRows>
+    </div>
+  );
+}
+
+function InsightsList({ hints, activeHint, onSelect }: {
+  hints: StockExchangeHint[];
+  activeHint: StockExchangeHint | null;
+  onSelect: (eqId: string) => void;
+}) {
+  if (hints.length === 0) {
+    return <div className="stocks-detail-empty dim">No trade insights right now.</div>;
+  }
+  return (
+    <div className="stocks-insights-list">
+      <SortableRows
+        rows={hints}
+        columns={[
+          { id: "score", label: "score", getValue: hint => hint.score, defaultDirection: "desc" },
+          { id: "signal", label: "signal", getValue: hint => `${hint.action}:${hint.ticker}` },
+          { id: "edge", label: "edge", getValue: hint => hint.edgePct, defaultDirection: "desc" },
+          { id: "limit", label: "limit", getValue: hint => hint.suggestedLimitPrice ?? null, defaultDirection: "desc" },
+          { id: "status", label: "status", getValue: hint => hint.executable ? 1 : 0, defaultDirection: "desc" },
+          { id: "reason", label: "reason", getValue: hint => hint.reason },
+        ]}
+      >
+        {(sortedHints, sort) => (
+          <table className="stocks-insights-table">
+            <thead>
+              <tr>
+                <SortableTh sort={sort} columnId="score">Score</SortableTh>
+                <SortableTh sort={sort} columnId="signal">Signal</SortableTh>
+                <SortableTh sort={sort} columnId="edge">Edge</SortableTh>
+                <SortableTh sort={sort} columnId="limit">Limit</SortableTh>
+                <SortableTh sort={sort} columnId="status">Status</SortableTh>
+                <SortableTh sort={sort} columnId="reason">Reason</SortableTh>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedHints.map(hint => {
+                const guided = activeHint?.equityId === hint.equityId && activeHint.action === hint.action;
+                return (
+                  <tr
+                    key={`${hint.equityId}:${hint.action}`}
+                    className={`${guided ? "guided" : ""} ${hint.executable ? "ready" : "blocked"}`}
+                    onClick={() => onSelect(hint.equityId)}
+                    title={hint.executable ? hint.reason : hint.blockReason ?? hint.reason}
+                  >
+                    <td className="mono dim">{hint.score.toFixed(2)}</td>
+                    <td><span className={`stocks-hint-chin-action ${hint.action}`}>{compactHintActionLabel(hint)}</span></td>
+                    <td className={`mono ${hint.edgePct >= 0 ? "stock-pnl-up" : "stock-pnl-down"}`}>{fmtPct(hint.edgePct)}</td>
+                    <td className="mono dim">{hint.suggestedLimitPrice != null ? `Ç${fmtPrice(hint.suggestedLimitPrice)}` : "—"}</td>
+                    <td className={`stocks-insight-status ${hint.executable ? "ready" : "blocked"}`}>
+                      {hint.executable ? "Ready" : "Blocked"}
+                    </td>
+                    <td className="stocks-insight-reason">
+                      {hint.executable ? hint.reason : hint.blockReason ?? hint.reason}
                     </td>
                   </tr>
                 );

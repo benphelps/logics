@@ -134,6 +134,7 @@ interface UiState {
   pnoTab: PnoTab;
   atlasSheetTab: AtlasSheetTab;
   stockKindFilter: StockKindFilter;
+  stockGuideEnabled: boolean;
   lastError: string | null;
   // Toast queue — populated when tickWorld() returns spawned news events.
   // The toast component drains entries via dismissNewsToast as they auto-fade.
@@ -155,6 +156,7 @@ interface UiState {
   setPnoTab: (t: PnoTab) => void;
   setAtlasSheetTab: (t: AtlasSheetTab) => void;
   setStockKindFilter: (t: StockKindFilter) => void;
+  setStockGuideEnabled: (enabled: boolean) => void;
   selectLocation: (id: LocationId | null) => void;
   selectGood: (id: GoodId | null) => void;
   selectTrader: (id: TraderId | null) => void;
@@ -216,6 +218,7 @@ export const useStore = create<UiState>((set, get) => {
       pnoTab: tabs.pnoTab,
       atlasSheetTab: tabs.atlasSheetTab,
       stockKindFilter: tabs.stockKindFilter,
+      stockGuideEnabled: tabs.stockGuideEnabled,
       lastError: null,
     });
   };
@@ -239,6 +242,7 @@ export const useStore = create<UiState>((set, get) => {
     pnoTab: state.pnoTab,
     atlasSheetTab: state.atlasSheetTab,
     stockKindFilter: state.stockKindFilter,
+    stockGuideEnabled: state.stockGuideEnabled,
   });
 
   const persistCurrentGame = (updates: Partial<Pick<UiState, "lastError" | "speed">> = {}, bumpEpoch = true, immediate = false) => {
@@ -282,6 +286,7 @@ export const useStore = create<UiState>((set, get) => {
     pnoTab: initialGame.viewTabs?.pnoTab ?? DEFAULT_VIEW_TABS.pnoTab,
     atlasSheetTab: initialGame.viewTabs?.atlasSheetTab ?? DEFAULT_VIEW_TABS.atlasSheetTab,
     stockKindFilter: initialGame.viewTabs?.stockKindFilter ?? DEFAULT_VIEW_TABS.stockKindFilter,
+    stockGuideEnabled: initialGame.viewTabs?.stockGuideEnabled ?? DEFAULT_VIEW_TABS.stockGuideEnabled,
     lastError: null,
     newsToasts: [],
 
@@ -365,6 +370,7 @@ export const useStore = create<UiState>((set, get) => {
     setPnoTab: (t) => { set({ pnoTab: t }); persistCurrentGame({}, false); },
     setAtlasSheetTab: (t) => { set({ atlasSheetTab: t }); persistCurrentGame({}, false); },
     setStockKindFilter: (t) => { set({ stockKindFilter: t }); persistCurrentGame({}, false); },
+    setStockGuideEnabled: (enabled) => { set({ stockGuideEnabled: enabled }); persistCurrentGame({}, false, true); },
     selectLocation: (id) => set({ selectedLocation: id }),
     selectGood: (id) => set({ selectedGood: id }),
     selectTrader: (id) => set({ selectedTrader: id }),

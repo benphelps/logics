@@ -340,8 +340,8 @@
 
 .atlas-sheet-tabs .bridge-tab {
   display: flex;
-  flex: 1 1 0;
-  min-width: 0;
+  flex: 1 0 max-content;
+  min-width: var(--bridge-tab-min-width, 92px);
   justify-content: center;
 }
 
