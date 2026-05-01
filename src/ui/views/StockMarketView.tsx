@@ -42,6 +42,19 @@ import { goodArtUrl, shipArtUrl, stationArtUrl, stationKind, stationKindLabel, s
 import { SortableHeaderButton, SortableRows, SortableTh } from "../components/SortableTable";
 import "./StockMarketView.css";
 
+// Resolve which player ship is currently the trading agent. The TopBar
+// ship-picker writes `selectedTrader` into the store; if it points at one
+// of the player's ships, that's our pick — otherwise we fall back to the
+// first ship in the fleet so an unset picker still works (single-ship
+// players, fresh worlds, etc.).
+function useSelectedPlayerShipId(world: World): string | undefined {
+  const selected = useStore(s => s.selectedTrader);
+  if (!world.player) return undefined;
+  const ids = world.player.shipIds;
+  if (selected && ids.includes(selected)) return selected;
+  return ids[0];
+}
+
 interface EquityRow {
   equity: Equity;
   kindLabel: string;
@@ -1358,9 +1371,9 @@ function UnifiedOrderForm({ equity, world, docked, access, hint, hintApplyKey = 
     lastAppliedHintRef.current = key;
   }, [equity.id, equity.price, hint, hintApplyKey]);
 
-  const playerShipId = world.player?.shipIds[0];
+  const playerShipId = useSelectedPlayerShipId(world);
   const ship = playerShipId ? world.traders[playerShipId] : null;
-  const position = world.player?.positions?.[equity.id];
+  const position = ship?.stockPositions?.[equity.id];
   const mark = equity.price;
 
   // Per-side max qty for the % chips. For buy/short we estimate by funds /
@@ -1530,9 +1543,9 @@ function FuturesOrderForm({ equity, world, docked, access, hint, hintApplyKey = 
   // "set" interaction.
   const [incrementMode, setIncrementMode] = useState(false);
   const c = world.contracts?.[equity.id];
-  const playerShipId = world.player?.shipIds[0];
+  const playerShipId = useSelectedPlayerShipId(world);
   const ship = playerShipId ? world.traders[playerShipId] : null;
-  const existing = world.player?.futures?.[equity.id];
+  const existing = ship?.futures?.[equity.id];
   const hintKey = hint && hint.equityId === equity.id
     && (hint.action === "open_long_future" || hint.action === "open_short_future")
     ? `${hint.equityId}:${hint.action}:${hint.suggestedUnits ?? ""}:${hintApplyKey}`
@@ -2436,7 +2449,7 @@ function FuturesAccordionItem({ world, equity, contract, position, docked, activ
   const tone = pnl > 0 ? "good" : pnl < 0 ? "bad" : "";
   const ttx = Math.max(0, contract.expiryTick - world.tick);
   const notional = contract.contractSize * spot * position.contracts;
-  const playerShipId = world.player?.shipIds[0];
+  const playerShipId = useSelectedPlayerShipId(world);
   const ship = playerShipId ? world.traders[playerShipId] : null;
   const canDeliver = ship ? canDeliverPhysical(world, contract, position, ship) : false;
   const deliveryName = world.locations[contract.deliveryStation]?.name ?? contract.deliveryStation;
@@ -3278,8 +3291,10 @@ function LimitOrderPanel({ equity, world, docked, access }: { equity: Equity; wo
   const [qty, setQty] = useState<number>(10);
   const [price, setPrice] = useState<number>(equity.price);
 
-  // Find player's open limits for this equity.
-  const ship = world.player ? world.traders[world.player.shipIds[0]] : null;
+  // Find the selected ship's open limits for this equity. Each player ship
+  // has its own working orders, so the picker dictates which set we view.
+  const playerShipId = useSelectedPlayerShipId(world);
+  const ship = playerShipId ? world.traders[playerShipId] : null;
   const book = world.orderBooks?.[equity.id];
   const playerOrders = ship && book
     ? [...book.bids, ...book.asks].filter(o => o.agentId === ship.id)
