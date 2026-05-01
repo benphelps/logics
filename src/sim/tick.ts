@@ -4,7 +4,9 @@ import { stepTraders, type TraderEvent } from "./traders";
 import { applyIdlePerks, chargeMaintenance, chargeNpcWealthCarry, consumptionDemand, productionScale, tickTreasuries } from "./economy";
 import { expireJobs, generateJobs, type JobExpiryEvent } from "./jobs";
 import { expireHires, generateHires } from "./hires";
+import { replenishUnlockedUpgrades } from "./milestones";
 import { tickStockMarket } from "./stock";
+import { runPlayerStockAutopilot } from "./stock/playerAutopilot";
 import { getNewsPool, tickNewsEvents } from "./news";
 import type { ActiveNewsEvent } from "./news/types";
 
@@ -95,6 +97,7 @@ export function tickWorld(world: World): TickReport {
   // Stock market: recompute share prices from underlying signals (treasury
   // health for stations, fleet wealth for syndicates). Pays quarterly
   // dividends to player shareholders.
+  runPlayerStockAutopilot(world);
   tickStockMarket(world);
 
   // Job board housekeeping. Expire first (so the board has room), then post.
@@ -104,6 +107,10 @@ export function tickWorld(world: World): TickReport {
   // Crew hire offers — same expire-then-post pattern.
   const hiresExpired = expireHires(world);
   const hiresPosted = generateHires(world);
+
+  // Milestone-gated upgrade stocking. Idempotent — only seeds tier stock
+  // once per (station, upgrade), so post-purchase stays at 0 forever.
+  replenishUnlockedUpgrades(world);
 
   world.tick += 1;
   return {

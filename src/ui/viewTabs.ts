@@ -6,7 +6,7 @@ export type FleetTab = "cargo" | "upgrades" | "crew" | "contracts";
 export type CommodityTab = "all" | "food" | "raw" | "intermediate" | "luxury" | "fuel" | "advanced" | "upgrade";
 export type PnoTab = "positions" | "orders" | "futures" | "history" | "insights";
 export type AtlasSheetTab = "systems" | "ships" | "news";
-export type StockKindFilter = "all" | "station" | "syndicate" | "commodity" | "basis" | "futures" | "index";
+export type StockKindFilter = "all" | "positions" | "station" | "syndicate" | "commodity" | "basis" | "futures" | "index";
 
 export interface ViewTabs {
   fleetTab: FleetTab;
@@ -30,7 +30,7 @@ const FLEET_TABS: readonly FleetTab[] = ["cargo", "upgrades", "crew", "contracts
 const COMMODITY_TABS: readonly CommodityTab[] = ["all", "food", "raw", "intermediate", "luxury", "fuel", "advanced", "upgrade"];
 const PNO_TABS: readonly PnoTab[] = ["positions", "orders", "futures", "history", "insights"];
 const ATLAS_SHEET_TABS: readonly AtlasSheetTab[] = ["systems", "ships", "news"];
-const STOCK_KIND_FILTERS: readonly StockKindFilter[] = ["all", "station", "syndicate", "commodity", "basis", "futures", "index"];
+const STOCK_KIND_FILTERS: readonly StockKindFilter[] = ["all", "positions", "station", "syndicate", "commodity", "basis", "futures", "index"];
 
 export function normalizeViewTabs(input: unknown): ViewTabs {
   if (typeof input !== "object" || input === null) return { ...DEFAULT_VIEW_TABS };

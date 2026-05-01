@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { createWorld } from "./world";
 import { computeEventAdjustedFundamental, listEquities, placeLimitSell } from "./stock";
+import { runPlayerStockAutopilot } from "./stock/playerAutopilot";
 import { getStockExchangeHint, listStockExchangeHints } from "./stock/suggestions";
+import type { CrewMember, Trader } from "./types";
 
 function prepareWorld() {
   const w = createWorld();
@@ -14,6 +16,29 @@ function prepareWorld() {
     eq.prevPrice = fair;
   }
   return w;
+}
+
+function crew(role: CrewMember["role"]): CrewMember {
+  return {
+    id: `test-${role}`,
+    role,
+    name: `Test ${role}`,
+    tier: 1,
+    hireCost: 0,
+    wagePerTick: 0,
+    modifiers: {},
+    sex: "nonbinary",
+    age: "adult",
+    race: "human",
+  };
+}
+
+function assignStockAutopilotCrew(ship: Trader, includeNavigator = true): void {
+  ship.crew = {
+    ...(ship.crew ?? {}),
+    captain: crew("captain"),
+    ...(includeNavigator ? { navigator: crew("navigator") } : {}),
+  };
 }
 
 describe("stock exchange suggestions", () => {
@@ -112,5 +137,38 @@ describe("stock exchange suggestions", () => {
     expect(hint?.kind).toBe("open_long_future");
     expect(hint?.action).toBe("open_long_future");
     expect(hint?.unitLabel).toBe("ct");
+  });
+
+  it("does not run player stock autopilot without a navigator", () => {
+    const w = prepareWorld();
+    const ship = w.traders[w.player!.shipIds[0]];
+    assignStockAutopilotCrew(ship, false);
+    ship.pilot = "auto";
+    const eq = listEquities(w).find(e => e.kind === "commodity")!;
+    const fair = computeEventAdjustedFundamental(w, eq);
+    eq.price = fair * 0.8;
+
+    const actions = runPlayerStockAutopilot(w);
+
+    expect(actions).toHaveLength(0);
+    expect(w.orderBooks?.[eq.id]?.bids.some(o => o.agentId === ship.id)).toBe(false);
+  });
+
+  it("places player stock autopilot limit orders from navigator-backed hints", () => {
+    const w = prepareWorld();
+    const ship = w.traders[w.player!.shipIds[0]];
+    assignStockAutopilotCrew(ship);
+    ship.pilot = "auto";
+    w.player!.manualActionCount = 7;
+    const eq = listEquities(w).find(e => e.kind === "commodity")!;
+    const fair = computeEventAdjustedFundamental(w, eq);
+    eq.price = fair * 0.8;
+
+    const actions = runPlayerStockAutopilot(w, 1);
+
+    expect(actions).toHaveLength(1);
+    expect(actions[0]).toMatchObject({ shipId: ship.id, equityId: eq.id, action: "buy", ok: true });
+    expect(w.orderBooks?.[eq.id]?.bids.some(o => o.agentId === ship.id)).toBe(true);
+    expect(w.player!.manualActionCount).toBe(7);
   });
 });

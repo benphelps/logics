@@ -60,6 +60,7 @@ export function TopBar() {
   const gameKind = useStore((s) => s.gameKind);
   const saveSlots = useStore((s) => s.saveSlots);
   const saveStatus = useStore((s) => s.saveStatus);
+  const saveError = useStore((s) => s.saveError);
   const world = useStore((s) => s.world);
   useStore((s) => s.tickEpoch);
 
@@ -107,8 +108,13 @@ export function TopBar() {
                     <span className="topbar-menu-kicker">Current Game</span>
                     <strong>{gameName}</strong>
                   </div>
-                  <span className={`topbar-save-status ${saveStatus}`}>{storageLabel}</span>
+                  <span className={`topbar-save-status ${saveStatus}`} title={saveError ?? undefined}>{storageLabel}</span>
                 </header>
+                {saveError && (
+                  <div className="topbar-save-error-detail">
+                    {saveError}
+                  </div>
+                )}
 
                 <div className="topbar-menu-metrics mono">
                   <Stat label="Tick" value={tick.toLocaleString()} />

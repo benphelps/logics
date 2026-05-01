@@ -26,6 +26,7 @@ import {
   setStopLoss,
   setTakeProfit,
   shortShares,
+  tickStockMarket,
   totalUnrealizedPnl,
   SHARE_PRICE_CEILING_MULT,
   SHARE_PRICE_FLOOR_MULT,
@@ -38,6 +39,9 @@ import {
   SYNDICATE_WEALTH_MULT_MAX,
 } from "./stock";
 import { exchangeLossForgiveness } from "./jobs";
+import { placeLimitOrder as placeBookLimitOrder } from "./stock/orderbook";
+import { SYNTHETIC_MM_AGENT_ID } from "./stock/market-maker";
+import { unlockAllMilestonesForTests } from "./milestones";
 
 describe("stock market — initialization", () => {
   it("createWorld initializes a stock market with stations and syndicates", () => {
@@ -262,6 +266,7 @@ describe("stock market — player trading", () => {
 
   it("exchange relay collects station-equity settlements immediately", () => {
     const w = createWorld();
+    unlockAllMilestonesForTests(w);
     const ship = w.traders[w.player!.shipIds[0]];
     ship.funds = 1_000_000;
     w.markets.haven.stock.upg_systems_exchange_2 = 1;
@@ -744,6 +749,25 @@ describe("stock market — Phase 4 player limit orders", () => {
     expect(limits.find(o => o.orderId === r.orderId)).toBeDefined();
   });
 
+  it("does not record trade history for unfilled limit order placement", () => {
+    const w = createWorld();
+    const ship = w.traders[w.player!.shipIds[0]];
+    ship.funds = 1_000_000;
+    const eq = listEquities(w).find(e => e.kind === "syndicate")!;
+    w.player!.trades = [];
+
+    const buy = placeLimitBuy(w, eq.id, 10, eq.price * 0.5);
+    expect(buy.ok).toBe(true);
+    expect(listTradeRecords(w)).toHaveLength(0);
+
+    w.player!.positions = {
+      [eq.id]: { equityId: eq.id, kind: "long", shares: 10, avgEntryPrice: eq.price, openedAt: w.tick },
+    };
+    const sell = placeLimitSell(w, eq.id, 5, eq.price * 2);
+    expect(sell.ok).toBe(true);
+    expect(listTradeRecords(w)).toHaveLength(0);
+  });
+
   it("placeLimitBuy fails when funds insufficient", () => {
     const w = createWorld();
     const ship = w.traders[w.player!.shipIds[0]];
@@ -824,6 +848,76 @@ describe("stock market — Phase 4 player limit orders", () => {
     expect(pos).toBeDefined();
     expect(pos!.kind).toBe("long");
     expect(pos!.shares).toBeGreaterThan(0);
+  });
+
+  it("filled buy limits record actual fill cost in trade history", () => {
+    const w = createWorld();
+    const ship = w.traders[w.player!.shipIds[0]];
+    ship.funds = 1_000_000;
+    const eq = listEquities(w).find(e => e.kind === "syndicate")!;
+    const askPrice = eq.price * 0.9;
+    const limitPrice = eq.price;
+    w.orderBooks![eq.id] = { equityId: eq.id, bids: [], asks: [] };
+    w.player!.trades = [];
+
+    placeBookLimitOrder(w, {
+      equityId: eq.id,
+      side: "ask",
+      qty: 10,
+      limitPrice: askPrice,
+      agentId: SYNTHETIC_MM_AGENT_ID,
+    });
+    const fundsBefore = ship.funds;
+    const place = placeLimitBuy(w, eq.id, 10, limitPrice);
+    expect(place.ok).toBe(true);
+    expect(listTradeRecords(w)).toHaveLength(0);
+
+    tickStockMarket(w);
+
+    const trades = listTradeRecords(w);
+    const expectedCash = 10 * askPrice;
+    const expectedFee = expectedCash * BROKER_FEE_RATE;
+    expect(trades).toHaveLength(1);
+    expect(trades[0].action).toBe("open_long");
+    expect(trades[0].cashFlow).toBeCloseTo(-(expectedCash + expectedFee), 5);
+    expect(trades[0].fee).toBeCloseTo(expectedFee, 5);
+    expect(ship.funds).toBeCloseTo(fundsBefore - expectedCash - expectedFee, 5);
+  });
+
+  it("filled sell limits record realized profit and loss in trade history", () => {
+    const w = createWorld();
+    const ship = w.traders[w.player!.shipIds[0]];
+    ship.funds = 1_000_000;
+    const eq = listEquities(w).find(e => e.kind === "syndicate")!;
+    const bidPrice = eq.price * 1.2;
+    const entryPrice = eq.price * 0.8;
+    w.orderBooks![eq.id] = { equityId: eq.id, bids: [], asks: [] };
+    w.player!.positions = {
+      [eq.id]: { equityId: eq.id, kind: "long", shares: 10, avgEntryPrice: entryPrice, openedAt: w.tick },
+    };
+    w.player!.trades = [];
+
+    placeBookLimitOrder(w, {
+      equityId: eq.id,
+      side: "bid",
+      qty: 5,
+      limitPrice: bidPrice,
+      agentId: SYNTHETIC_MM_AGENT_ID,
+    });
+    const place = placeLimitSell(w, eq.id, 5, eq.price);
+    expect(place.ok).toBe(true);
+    expect(listTradeRecords(w)).toHaveLength(0);
+
+    tickStockMarket(w);
+
+    const trades = listTradeRecords(w);
+    const expectedGross = 5 * bidPrice;
+    const expectedFee = expectedGross * BROKER_FEE_RATE;
+    const expectedNet = expectedGross - expectedFee;
+    expect(trades).toHaveLength(1);
+    expect(trades[0].action).toBe("close_long");
+    expect(trades[0].cashFlow).toBeCloseTo(expectedNet, 5);
+    expect(trades[0].realizedPnl).toBeCloseTo(expectedNet - 5 * entryPrice, 5);
   });
 
   it("listPlayerLimits returns only the player's resting orders", () => {

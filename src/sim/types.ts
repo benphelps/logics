@@ -53,6 +53,12 @@ export type LaneMap = Record<LocationId, Record<LocationId, number>>;
 export interface MarketState {
   stock: Record<GoodId, number>;
   prices: Record<GoodId, number>;
+  // Tracks which milestone-gated upgrades have been "delivered" to this
+  // station's shelves yet. Set the first time the tier unlocks AND a delivery
+  // pass runs; never reset, so once the player buys the one-shot the stock
+  // stays at 0 instead of being re-seeded by every tick. Optional for
+  // back-compat; readers default to {}.
+  upgradesUnlocked?: Record<GoodId, boolean>;
   // Local "city wallet" — every buy from this market deposits, every sell
   // withdraws. Replenished per tick from the abstract local economy
   // (residents earning + spending money outside the trader system) up to
@@ -284,6 +290,11 @@ export interface Player {
   reservedFutures?: Record<EquityId, number>;
   // C-3 — open futures positions, keyed by contract id.
   futures?: Record<EquityId, FuturesPosition>;
+  // Career-wide manual-action counter. Drives milestone unlocks for crew
+  // offers + market upgrade tiers (see src/sim/milestones.ts). Persisted
+  // per-save, so a new ship inherits the parent player's progress. Optional
+  // for back-compat with older saves; readers default to 0.
+  manualActionCount?: number;
 }
 
 export type PositionKind = "long" | "short";
@@ -520,6 +531,8 @@ export interface BookTrade {
   equityId: EquityId;
   qty: number;
   price: number;        // the resting order's limit price (taker pays the resting maker's quote)
+  buyerLimitPrice?: number;
+  sellerLimitPrice?: number;
   buyer: AgentId;
   seller: AgentId;
   takerSide: OrderSide; // which side aggressed

@@ -49,6 +49,7 @@ import type { NewsScope } from "./news/types";
 import { createTradeJob, exchangeLossForgiveness } from "./jobs";
 import { pushNote } from "./log";
 import { ageOrders, cancelAgentOrders, cancelOrder as cancelBookOrder, ensureOrderBook, executeMarketOrder, placeLimitOrder as placeBookLimit, simulateMarketOrder, matchBook } from "./stock/orderbook";
+import { incrementManualActions } from "./milestones";
 import { SYNTHETIC_MM_AGENT_ID } from "./stock/market-maker";
 import { applyAgentFill, seedAgentPositions, stepStockAgents, warmUpBook } from "./stock/agents";
 import {
@@ -802,7 +803,12 @@ export function recomputeEquityPrice(world: World, eq: Equity): void {
   eq.price = clampSharePrice(eq, noisy);
   // Append history, capped
   if (!eq.history) eq.history = [];
-  eq.history.push({ tick: world.tick, price: eq.price });
+  const lastHistory = eq.history[eq.history.length - 1];
+  if (lastHistory?.tick === world.tick) {
+    lastHistory.price = eq.price;
+  } else {
+    eq.history.push({ tick: world.tick, price: eq.price });
+  }
   if (eq.history.length > SHARE_PRICE_HISTORY_MAX) {
     eq.history.splice(0, eq.history.length - SHARE_PRICE_HISTORY_MAX);
   }
@@ -1156,8 +1162,8 @@ function settleAllNonPlayerSides(world: World, eq: Equity, trades: BookTrade[], 
 // Phase 4: when a player limit order fills inside matchBook, the player
 // side needs its own bookkeeping (settleNonPlayerTradeSides skips the
 // player). Buys: position grows by fill qty (funds were debited at
-// placement, no further funds change). Sells: ship.funds credited net of
-// fee, position shrinks, reservedShares decremented.
+// placement; price improvement is refunded on fill). Sells: ship.funds
+// credited net of fee, position shrinks, reservedShares decremented.
 function settlePlayerLimitFills(world: World, eq: Equity, trades: BookTrade[]): void {
   const player = world.player;
   if (!player) return;
@@ -1167,9 +1173,12 @@ function settlePlayerLimitFills(world: World, eq: Equity, trades: BookTrade[]): 
   for (const trade of trades) {
     if (playerShipIds.has(trade.buyer)) {
       // Player limit BUY filled. Funds were already debited (gross + fee).
-      // Just update the position with weighted-average entry price.
+      // Update the position with weighted-average entry price, refund any
+      // price improvement versus the reserved limit, and record the actual
+      // fill economics in the trade ledger.
       const ship = world.traders[trade.buyer];
       const cur = positions[eq.id];
+      const action: TradeAction = cur?.kind === "long" ? "add_long" : "open_long";
       if (cur?.kind === "long") {
         const totalShares = cur.shares + trade.qty;
         cur.avgEntryPrice = (cur.avgEntryPrice * cur.shares + trade.price * trade.qty) / totalShares;
@@ -1179,27 +1188,30 @@ function settlePlayerLimitFills(world: World, eq: Equity, trades: BookTrade[]): 
           equityId: eq.id, kind: "long", shares: trade.qty, avgEntryPrice: trade.price, openedAt: world.tick,
         };
       }
-      // Limit-order fee was already pre-paid at placement. Refund the
-      // unused-fee delta if the actual fill price was below the limit.
       if (ship) {
-        const limitPriceUsed = trade.price; // resting limit's price
-        // Nothing to do here — the buyer paid (limit_price × (1+fee)) at
-        // placement; the leftover funds for unfilled qty stay reserved
-        // until cancel/expire.
-        void limitPriceUsed;
+        const reservedPrice = trade.buyerLimitPrice ?? trade.price;
+        const reservedTotal = trade.qty * reservedPrice * (1 + BROKER_FEE_RATE);
+        const actualTotal = trade.qty * trade.price * (1 + BROKER_FEE_RATE);
+        ship.funds += Math.max(0, reservedTotal - actualTotal);
       }
-      recordTrade(world, player, eq, "open_long", trade.qty, trade.price, 0, 0);
+      const actualGross = trade.qty * trade.price;
+      const fee = actualGross * BROKER_FEE_RATE;
+      recordTrade(world, player, eq, action, trade.qty, trade.price, fee, -(actualGross + fee));
     } else if (playerShipIds.has(trade.seller)) {
       // Player limit SELL filled. Credit ship.funds (gross − fee), shrink
       // position, decrement reservedShares.
       const ship = world.traders[trade.seller];
+      const gross = trade.qty * trade.price;
+      const fee = gross * BROKER_FEE_RATE;
+      const net = gross - fee;
       if (ship) {
-        const gross = trade.qty * trade.price;
-        const fee = gross * BROKER_FEE_RATE;
-        ship.funds += gross - fee;
+        ship.funds += net;
       }
       const cur = positions[eq.id];
+      let realizedPnl: number | undefined;
       if (cur?.kind === "long") {
+        const basis = cur.avgEntryPrice * trade.qty;
+        realizedPnl = net - basis;
         cur.shares -= trade.qty;
         if (cur.shares <= 0.0001) delete positions[eq.id];
       }
@@ -1207,7 +1219,7 @@ function settlePlayerLimitFills(world: World, eq: Equity, trades: BookTrade[]): 
       if (player.reservedShares) {
         player.reservedShares[eq.id] = Math.max(0, reserved - trade.qty);
       }
-      recordTrade(world, player, eq, "close_long", trade.qty, trade.price, trade.qty * trade.price * BROKER_FEE_RATE, trade.qty * trade.price * (1 - BROKER_FEE_RATE));
+      recordTrade(world, player, eq, "close_long", trade.qty, trade.price, fee, net, realizedPnl);
     }
   }
 }
@@ -1331,6 +1343,7 @@ export function buyShares(world: World, equityId: EquityId, shares: number, ship
     current.shares = totalShares;
     recordTrade(world, player, eq, "add_long", exec.filled, exec.weightedAvgPrice, fee, -total);
   }
+  incrementManualActions(world);
   return { ok: true, shares: exec.filled, cashFlow: -total, fee };
 }
 
@@ -1382,6 +1395,8 @@ export function sellShares(
   current.shares -= exec.filled;
   if (current.shares <= 0.0001) delete positions[equityId];
   recordTrade(world, player, eq, "close_long", exec.filled, exec.weightedAvgPrice, fee, immediateCashFlow, realizedPnl, trigger);
+  // Auto-fired stop-loss / take-profit don't count as manual play.
+  if (!trigger) incrementManualActions(world);
   return { ok: true, shares: exec.filled, cashFlow: immediateCashFlow, fee, realizedPnl, settlementJobId };
 }
 
@@ -1482,6 +1497,7 @@ export function shortShares(world: World, equityId: EquityId, shares: number, sh
     current.shares = totalShares;
     recordTrade(world, player, eq, "add_short", exec.filled, exec.weightedAvgPrice, fee, net);
   }
+  incrementManualActions(world);
   return { ok: true, shares: exec.filled, cashFlow: net, fee };
 }
 
@@ -1542,6 +1558,8 @@ export function coverShares(
   current.shares -= exec.filled;
   if (current.shares <= 0.0001) delete positions[equityId];
   recordTrade(world, player, eq, "cover_short", exec.filled, exec.weightedAvgPrice, fee, immediateCashFlow, realizedPnl, trigger);
+  // Auto-fired stop-loss / take-profit don't count as manual play.
+  if (!trigger) incrementManualActions(world);
   return { ok: true, shares: exec.filled, cashFlow: immediateCashFlow, fee, realizedPnl, settlementJobId };
 }
 
@@ -1607,6 +1625,7 @@ export function placeLimitBuy(
   const order = placeBookLimit(world, {
     equityId: eq.id, side: "bid", qty: shares, limitPrice, agentId: ship.id,
   });
+  incrementManualActions(world);
   return { ok: true, orderId: order.id, reservedFunds };
 }
 
@@ -1645,6 +1664,7 @@ export function placeLimitSell(
   const order = placeBookLimit(world, {
     equityId: eq.id, side: "ask", qty: shares, limitPrice, agentId: ship.id,
   });
+  incrementManualActions(world);
   return { ok: true, orderId: order.id, reservedShares: shares };
 }
 

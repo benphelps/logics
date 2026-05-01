@@ -123,6 +123,7 @@ interface UiState {
   gameKind: SaveGameKind;
   saveSlots: SaveSlotSummary[];
   saveStatus: SaveStatus;
+  saveError: string | null;
   selectedTab: Tab;
   selectedLocation: LocationId | null;
   selectedGood: GoodId | null;
@@ -208,6 +209,7 @@ export const useStore = create<UiState>((set, get) => {
       gameKind: session.gameKind,
       saveSlots: session.saveSlots,
       saveStatus: session.saveStatus,
+      saveError: session.saveError,
       speed: 0,
       tickEpoch: get().tickEpoch + 1,
       selectedLocation: null,
@@ -233,6 +235,7 @@ export const useStore = create<UiState>((set, get) => {
       gameKind: saved.gameKind,
       saveSlots: saved.saveSlots,
       saveStatus: saved.saveStatus,
+      saveError: saved.saveError,
     });
   };
 
@@ -276,6 +279,7 @@ export const useStore = create<UiState>((set, get) => {
     gameKind: initialGame.gameKind,
     saveSlots: initialGame.saveSlots,
     saveStatus: initialGame.saveStatus,
+    saveError: initialGame.saveError,
     selectedTab: "player",
     selectedLocation: null,
     selectedGood: null,
@@ -333,6 +337,7 @@ export const useStore = create<UiState>((set, get) => {
         gameKind: saved.gameKind,
         saveSlots: saved.saveSlots,
         saveStatus: saved.saveStatus,
+        saveError: saved.saveError,
         tickEpoch: current.tickEpoch + 1,
         speed: 0,
         selectedLocation: null,
@@ -352,7 +357,7 @@ export const useStore = create<UiState>((set, get) => {
       clearPendingAutosave();
       const session = loadGameSlot(id);
       if (!session) {
-        set({ lastError: "Save slot no longer exists.", saveStatus: "error" });
+        set({ lastError: "Save slot no longer exists.", saveStatus: "error", saveError: "Save slot no longer exists." });
         return;
       }
       applyLoadedGame(session);
@@ -361,8 +366,9 @@ export const useStore = create<UiState>((set, get) => {
     loadDeveloperState: () => {
       clearPendingAutosave();
       const slots = get().saveSlots;
-      const name = nextSaveName(slots, "Developer State");
-      applyLoadedGame(createGameSlot(name, "developer", createDeveloperWorld()));
+      const existingDev = slots.find(slot => slot.kind === "developer") ?? null;
+      const name = existingDev?.name ?? nextSaveName(slots, "Developer State");
+      applyLoadedGame(saveGameSlot(existingDev?.id ?? null, name, "developer", createDeveloperWorld()));
     },
     selectTab: (t) => set({ selectedTab: t }),
     setFleetTab: (t) => { set({ fleetTab: t }); persistCurrentGame({}, false); },

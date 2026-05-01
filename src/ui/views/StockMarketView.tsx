@@ -15,6 +15,7 @@ import {
 } from "lightweight-charts";
 import { useStore } from "../store";
 import type { BookTrade, Equity, EquityKind, FuturesContract, FuturesPosition, Order, OrderBook, StockPosition, TradeRecord, World } from "../../sim/types";
+import { hasCrew } from "../../sim/crew";
 import { canDeliverPhysical, listPlayerFutures, unrealizedFuturesPnl } from "../../sim/stock/futures";
 import {
   BROKER_FEE_RATE,
@@ -47,6 +48,8 @@ interface EquityRow {
   changePct: number;
   ratioToAnchor: number;
   position: StockPosition | null;
+  futuresPosition: FuturesPosition | null;
+  hasPosition: boolean;
   unrealized: number;
   lastDividendPerShare: number;
   ticksUntilDividend: number;
@@ -91,20 +94,25 @@ export function StockMarketView() {
     ? world.traders[selectedTrader] ?? playerShipIds.map(id => world.traders[id]).find(Boolean) ?? null
     : playerShipIds.map(id => world.traders[id]).find(Boolean) ?? null;
   const playerShipId = playerShip?.id;
+  const stockGuidanceUnlocked = playerShip ? hasCrew(playerShip, "navigator") : false;
   const tapeRows = useMemo(() => splitRowsByAccess(world, rows, playerShipId), [world, rows, playerShipId]);
   const selectedId = selected && rows.some(r => r.equity.id === selected)
     ? selected
     : tapeRows.reachable[0]?.equity.id ?? rows[0]?.equity.id ?? null;
   const detail = selectedId ? rows.find(r => r.equity.id === selectedId) ?? null : null;
-  const exchangeHints = useMemo(() => listStockExchangeHints(world, playerShipId, rows.length), [world, playerShipId, rows, tickEpoch]);
+  const exchangeHints = useMemo(
+    () => stockGuidanceUnlocked ? listStockExchangeHints(world, playerShipId, rows.length) : [],
+    [world, playerShipId, rows, tickEpoch, stockGuidanceUnlocked],
+  );
   const hintByEquity = useMemo(() => {
     const map = new Map<string, StockExchangeHint>();
     for (const hint of exchangeHints) map.set(hint.equityId, hint);
     return map;
   }, [exchangeHints]);
   const selectedHint = detail ? hintByEquity.get(detail.equity.id) ?? null : null;
-  const guidedTradeEnabled = useStore((s) => s.stockGuideEnabled);
+  const stockGuideEnabled = useStore((s) => s.stockGuideEnabled);
   const setStockGuideEnabled = useStore((s) => s.setStockGuideEnabled);
+  const guidedTradeEnabled = stockGuidanceUnlocked && stockGuideEnabled;
   const topTradeHint = exchangeHints.find(h => h.action !== "watch" && h.executable) ?? null;
   const activeTradeHint = guidedTradeEnabled ? topTradeHint : null;
   const activeSelectedHint = activeTradeHint && detail?.equity.id === activeTradeHint.equityId
@@ -129,6 +137,12 @@ export function StockMarketView() {
     }
   }, [focusedPositionId, positions]);
 
+  useEffect(() => {
+    if (!stockGuidanceUnlocked && stockGuideEnabled) {
+      setStockGuideEnabled(false);
+    }
+  }, [stockGuidanceUnlocked, stockGuideEnabled, setStockGuideEnabled]);
+
   void activePanel; void setActivePanel; void focusedPositionId; void setFocusedPositionId;
   void detailArtUrl; void unrealizedTotal; void longCount; void shortCount;
 
@@ -149,7 +163,8 @@ export function StockMarketView() {
             activeHint={activeTradeHint}
             bestHint={topTradeHint}
             guideEnabled={guidedTradeEnabled}
-            onGuideToggle={() => setStockGuideEnabled(!guidedTradeEnabled)}
+            emptyText={stockGuidanceUnlocked ? "No actionable exchange trade right now." : "Hire a navigator for exchange insights."}
+            onGuideToggle={() => stockGuidanceUnlocked && setStockGuideEnabled(!stockGuideEnabled)}
             onSelect={select}
           />
           <PnoPanel
@@ -157,6 +172,7 @@ export function StockMarketView() {
             positions={positions}
             trades={trades}
             hints={exchangeHints}
+            insightsEmptyText={stockGuidanceUnlocked ? "No trade insights right now." : "Hire a navigator for exchange insights."}
             shipId={playerShipId}
             cash={cash}
             docked={docked}
@@ -188,6 +204,7 @@ export function StockMarketView() {
               selectedHint={selectedHint}
               activeHint={activeTradeHint}
               guideEnabled={guidedTradeEnabled}
+              emptyText={stockGuidanceUnlocked ? "No listing insights" : "Hire a navigator for listing insights."}
             />
           ) : (
             <div className="stocks-detail-empty dim">No listed equities.</div>
@@ -295,9 +312,10 @@ function isOpenFuturesHint(hint: StockExchangeHint | null): hint is StockExchang
 }
 
 import type { StockKindFilter as KindFilter } from "../viewTabs";
-const KIND_FILTERS: KindFilter[] = ["all", "station", "syndicate", "commodity", "basis", "futures", "index"];
+const KIND_FILTERS: KindFilter[] = ["all", "positions", "station", "syndicate", "commodity", "basis", "futures", "index"];
 const KIND_FILTER_LABEL: Record<KindFilter, string> = {
   all: "All",
+  positions: "Positions",
   station: "Stations",
   syndicate: "Syndicates",
   commodity: "Commodities",
@@ -306,29 +324,35 @@ const KIND_FILTER_LABEL: Record<KindFilter, string> = {
   index: "Indices",
 };
 
-function EquitySelector({ rows, tapeRows, selectedId, activeHint, bestHint, guideEnabled, onGuideToggle, onSelect }: {
+function EquitySelector({ rows, tapeRows, selectedId, activeHint, bestHint, guideEnabled, emptyText, onGuideToggle, onSelect }: {
   rows: EquityRow[];
   tapeRows: { reachable: EquityRow[]; far: EquityRow[] };
   selectedId: string | null;
   activeHint: StockExchangeHint | null;
   bestHint: StockExchangeHint | null;
   guideEnabled: boolean;
+  emptyText: string;
   onGuideToggle: () => void;
   onSelect: (eqId: string) => void;
 }) {
-  void rows;
   const kindFilter = useStore((s) => s.stockKindFilter);
   const setKindFilter = useStore((s) => s.setStockKindFilter);
-  const filterRow = (r: EquityRow) => kindFilter === "all" || r.equity.kind === kindFilter;
+  const filterRow = (r: EquityRow) => kindFilter === "all"
+    || (kindFilter === "positions" ? r.hasPosition : r.equity.kind === kindFilter);
   const reachable = tapeRows.reachable.filter(filterRow);
   const far = tapeRows.far.filter(filterRow);
   const sortableRows = [...reachable, ...far];
   // Counts for the tab bar — same kindFilter applied to the unfiltered total.
-  const counts: Record<KindFilter, number> = { all: 0, station: 0, syndicate: 0, commodity: 0, basis: 0, futures: 0, index: 0 };
+  const counts: Record<KindFilter, number> = { all: 0, positions: 0, station: 0, syndicate: 0, commodity: 0, basis: 0, futures: 0, index: 0 };
   for (const r of [...tapeRows.reachable, ...tapeRows.far]) {
     counts.all++;
+    if (r.hasPosition) counts.positions++;
     counts[r.equity.kind]++;
   }
+  const activeHintRow = activeHint ? rows.find(r => r.equity.id === activeHint.equityId) ?? null : null;
+  const tabHasActiveHint = (kf: KindFilter) => !!activeHint && (
+    kf === "positions" ? !!activeHintRow?.hasPosition : kf !== "all" && activeHint.equityKind === kf
+  );
   return (
     <SortableRows
       rows={sortableRows}
@@ -346,13 +370,13 @@ function EquitySelector({ rows, tapeRows, selectedId, activeHint, bestHint, guid
         return (
           <section className="stocks-shell-panel stocks-selector">
             <div className="bridge-card-tabs stocks-pno-tabs">
-              {KIND_FILTERS.map(kf => counts[kf] > 0 && (
+              {KIND_FILTERS.map(kf => (kf === "positions" || counts[kf] > 0) && (
                 <button
                   key={kf}
                   type="button"
-                  className={`bridge-tab ${kindFilter === kf ? "active" : ""} ${activeHint?.equityKind === kf ? "has-suggestion" : ""}`}
+                  className={`bridge-tab ${kindFilter === kf ? "active" : ""} ${tabHasActiveHint(kf) ? "has-suggestion" : ""}`}
                   onClick={() => setKindFilter(kf)}
-                  title={activeHint?.equityKind === kf ? `Show ${activeHint.ticker}` : undefined}
+                  title={activeHint && tabHasActiveHint(kf) ? `Show ${activeHint.ticker}` : undefined}
                 >
                   {KIND_FILTER_LABEL[kf]} <span className="bridge-tab-count">{counts[kf]}</span>
                 </button>
@@ -365,6 +389,11 @@ function EquitySelector({ rows, tapeRows, selectedId, activeHint, bestHint, guid
               <SortableHeaderButton sort={sort} columnId="change" className="numeric">Δ</SortableHeaderButton>
             </div>
             <div className="stocks-selector-list">
+              {sortedRows.length === 0 && (
+                <div className="stocks-detail-empty dim">
+                  {kindFilter === "positions" ? "No open listing positions." : "No listings in this tab."}
+                </div>
+              )}
               {sortedReachable.map(r => (
                 <SelectorRow
                   key={r.equity.id}
@@ -396,7 +425,7 @@ function EquitySelector({ rows, tapeRows, selectedId, activeHint, bestHint, guid
               guideEnabled={guideEnabled}
               marqueeOverflow
               onGuideToggle={onGuideToggle}
-              emptyText="No actionable exchange trade right now."
+              emptyText={emptyText}
             />
           </section>
         );
@@ -445,6 +474,7 @@ function PnoPanel(props: {
   positions: StockPosition[];
   trades: TradeRecord[];
   hints: StockExchangeHint[];
+  insightsEmptyText: string;
   shipId?: string;
   cash: number;
   docked: boolean;
@@ -530,7 +560,7 @@ function PnoPanel(props: {
           <TradesList trades={props.trades} onSelect={props.onSelectEquity} />
         )}
         {tab === "insights" && (
-          <InsightsList hints={insightHints} activeHint={props.activeHint} onSelect={props.onSelectEquity} />
+          <InsightsList hints={insightHints} activeHint={props.activeHint} onSelect={props.onSelectEquity} emptyText={props.insightsEmptyText} />
         )}
       </div>
     </section>
@@ -1033,7 +1063,7 @@ function OrderAccordionItem({ world, order, isOpen, onToggle, onCancel, onAdjust
 
 // --- info column (right) -----------------------------------------------
 
-function InfoColumn({ row, world, shipId, docked, hint, selectedHint, activeHint, guideEnabled }: {
+function InfoColumn({ row, world, shipId, docked, hint, selectedHint, activeHint, guideEnabled, emptyText }: {
   row: EquityRow;
   world: World;
   shipId?: string;
@@ -1042,6 +1072,7 @@ function InfoColumn({ row, world, shipId, docked, hint, selectedHint, activeHint
   selectedHint: StockExchangeHint | null;
   activeHint: StockExchangeHint | null;
   guideEnabled: boolean;
+  emptyText: string;
 }) {
   const eq = row.equity;
   const access = exchangeAccess(world, eq, shipId);
@@ -1102,7 +1133,7 @@ function InfoColumn({ row, world, shipId, docked, hint, selectedHint, activeHint
         marqueeOverflow
         onApplyHint={applySelectedHint}
         showEnabledState={false}
-        emptyText="No listing insights"
+        emptyText={emptyText}
       />
     </section>
   );
@@ -2534,13 +2565,14 @@ function TradesList({ trades, onSelect }: { trades: TradeRecord[]; onSelect: (eq
   );
 }
 
-function InsightsList({ hints, activeHint, onSelect }: {
+function InsightsList({ hints, activeHint, onSelect, emptyText }: {
   hints: StockExchangeHint[];
   activeHint: StockExchangeHint | null;
   onSelect: (eqId: string) => void;
+  emptyText: string;
 }) {
   if (hints.length === 0) {
-    return <div className="stocks-detail-empty dim">No trade insights right now.</div>;
+    return <div className="stocks-detail-empty dim">{emptyText}</div>;
   }
   return (
     <div className="stocks-insights-list">
@@ -2751,6 +2783,17 @@ function HealthBar({ value, label }: { value: number; label: string }) {
   );
 }
 
+function normalizeSparklineHistory(history: { tick: number; price: number }[]): { tick: number; price: number }[] {
+  const byTick = new Map<number, number>();
+  for (const point of history) {
+    if (!Number.isFinite(point.tick) || !Number.isFinite(point.price)) continue;
+    byTick.set(point.tick, point.price);
+  }
+  return [...byTick.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([tick, price]) => ({ tick, price }));
+}
+
 // Two-panel chart powered by lightweight-charts: price area on top +
 // volume histogram pinned to the bottom of the same canvas. Position
 // reference lines (avg entry, stop-loss, take-profit) ride along the
@@ -2886,7 +2929,7 @@ function Sparkline({ equity, position }: { equity: Equity; position: StockPositi
     const price = priceSeriesRef.current;
     const volume = volumeSeriesRef.current;
     if (!price || !volume) return;
-    const points = history.slice(-200);
+    const points = normalizeSparklineHistory(history.slice(-200));
     if (points.length < 2) {
       price.setData([]);
       volume.setData([]);
@@ -3369,9 +3412,11 @@ function equityArtUrl(world: World, eq: Equity): string | null {
 
 function buildRows(world: World): EquityRow[] {
   const positions = world.player?.positions ?? {};
+  const futuresPositions = world.player?.futures ?? {};
   return listEquities(world).map(eq => {
     const ratioToAnchor = eq.anchorPrice > 0 ? eq.price / eq.anchorPrice : 0;
     const position = positions[eq.id] ?? null;
+    const futuresPosition = futuresPositions[eq.id] ?? null;
     const unrealized = position ? unrealizedPnl(world, position) : 0;
     const lastDividendPerShare = eq.lastDividend?.perShare ?? 0;
     const ticksUntilDividend = (DIVIDEND_INTERVAL - (world.tick % DIVIDEND_INTERVAL)) % DIVIDEND_INTERVAL || DIVIDEND_INTERVAL;
@@ -3402,6 +3447,8 @@ function buildRows(world: World): EquityRow[] {
       changePct: priceChangePct(eq),
       ratioToAnchor,
       position,
+      futuresPosition,
+      hasPosition: !!position || !!futuresPosition,
       unrealized,
       lastDividendPerShare,
       ticksUntilDividend,
@@ -3409,9 +3456,6 @@ function buildRows(world: World): EquityRow[] {
       underlyingHealthLabel,
     };
   }).sort((a, b) => {
-    const aHas = a.position ? 1 : 0;
-    const bHas = b.position ? 1 : 0;
-    if (aHas !== bHas) return bHas - aHas;
     return Math.abs(b.changePct) - Math.abs(a.changePct) || a.equity.name.localeCompare(b.equity.name);
   });
 }
