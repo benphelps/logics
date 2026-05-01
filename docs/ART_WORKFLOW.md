@@ -62,7 +62,7 @@ Avoid: text, logos, signage, UI, characters, close-up cockpit, huge planet, over
 
 ## Ship Art Generation API
 
-The dev / production server exposes an OpenAI-backed image-gen
+The dev / production server exposes a multi-provider image-gen
 endpoint for ship art at `/api/ship-art/generate`. The body shape:
 
 ```json
@@ -73,17 +73,34 @@ endpoint for ship art at `/api/ship-art/generate`. The body shape:
   "traits": ["self-piloted", "ai-navigator", ...],
   "flavor": "(optional) blueprint flavor string",
   "size": "1024x1024 | 1024x1536 | 1536x1024",
-  "quality": "low | medium | high"
+  "quality": "low | medium | high",
+  "provider": "openai | gemini"
 }
 ```
 
 The server builds a class-tuned prompt from `server/ship-art.ts`'s
 `CLASS_PROMPTS` / `FAMILY_FALLBACK_PROMPTS` / `TRAIT_PROMPTS` blocks.
 Each successful generation persists to `.logics-cache/ship-art/`
-keyed by class + family + traits hash; subsequent calls with the
-same key can either reuse the cached entry or generate a fresh one.
+keyed by provider + class + family + traits hash; subsequent calls
+with the same key can either reuse the cached entry or generate a
+fresh one.
 
-`GET /api/ship-art/options` returns the allowed enums.
+### Providers
+
+- `openai` (default) — `gpt-image-1.5`, takes our pixel sizes
+  directly. Requires `OPENAI_API_KEY`. Override the model with
+  `SHIP_ART_OPENAI_MODEL`.
+- `gemini` — Google Imagen 4 (`imagen-4.0-generate-001`) via the
+  Generative Language `:predict` endpoint. Requires `GEMINI_API_KEY`
+  (falls back to `GOOGLE_API_KEY`). Override the model with
+  `SHIP_ART_GEMINI_MODEL`. Sizes map to Imagen aspect ratios:
+  `1024x1024 → 1:1`, `1024x1536 → 9:16`, `1536x1024 → 16:9`.
+
+Switch the global default with `SHIP_ART_PROVIDER=gemini` (or
+`openai`); per-request `provider` always wins.
+
+`GET /api/ship-art/options` returns the allowed enums + the active
+default provider.
 `GET /api/ship-art/cache` lists every persisted entry.
 `GET /api/ship-art/image/:id` streams the bytes.
 `GET /api/ship-art/status/:id` returns the generation status.

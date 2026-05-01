@@ -29,6 +29,8 @@ export type ShipArtTrait =
   | "fuel-efficient"
   | "rapid-unload";
 
+export type ImageProvider = "openai" | "gemini";
+
 interface ShipArtRequest {
   class?: string;
   family?: string;
@@ -37,6 +39,7 @@ interface ShipArtRequest {
   flavor?: string;
   size?: string;
   quality?: string;
+  provider?: string;
 }
 
 interface NormalizedShipArtInput {
@@ -47,6 +50,7 @@ interface NormalizedShipArtInput {
   flavor?: string;
   size: ImageSize;
   quality: Quality;
+  provider: ImageProvider;
 }
 
 interface ShipArtCacheEntry {
@@ -60,6 +64,7 @@ interface ShipArtCacheEntry {
   createdAt: string;
   updatedAt: string;
   model: string;
+  provider: ImageProvider;
   size: string;
   quality: string;
   promptVersion: number;
@@ -77,14 +82,24 @@ interface OpenAIImageResponse {
   data?: Array<{ b64_json?: string; url?: string }>;
 }
 
+interface GeminiImageResponse {
+  // Imagen "predict" shape: { predictions: [{ bytesBase64Encoded, mimeType }] }
+  predictions?: Array<{
+    bytesBase64Encoded?: string;
+    mimeType?: string;
+  }>;
+}
+
 const CACHE_VERSION = 1;
 const CACHE_ROOT = resolve(process.cwd(), process.env.SHIP_ART_CACHE_DIR ?? ".logics-cache/ship-art");
 const CACHE_INDEX_PATH = join(CACHE_ROOT, "index.json");
 const IMAGE_DIR = join(CACHE_ROOT, "images");
-const DEFAULT_MODEL = process.env.SHIP_ART_IMAGE_MODEL ?? "gpt-image-1.5";
+const DEFAULT_OPENAI_MODEL = process.env.SHIP_ART_OPENAI_MODEL ?? process.env.SHIP_ART_IMAGE_MODEL ?? "gpt-image-1.5";
+const DEFAULT_GEMINI_MODEL = process.env.SHIP_ART_GEMINI_MODEL ?? "imagen-4.0-generate-001";
 const DEFAULT_OUTPUT_FORMAT = process.env.SHIP_ART_IMAGE_FORMAT ?? "webp";
 const DEFAULT_QUALITY: Quality = "low";
 const DEFAULT_SIZE: ImageSize = "1536x1024";
+const DEFAULT_PROVIDER: ImageProvider = (process.env.SHIP_ART_PROVIDER === "gemini" ? "gemini" : "openai");
 const PROMPT_VERSION = 1;
 
 const QUALITIES: Quality[] = ["low", "medium", "high"];
@@ -92,6 +107,17 @@ const SIZES: ImageSize[] = ["1024x1024", "1024x1536", "1536x1024"];
 const CLASSES: ShipArtClass[] = ["freighter", "courier", "hauler", "cruiser", "exotic"];
 const FAMILIES: ShipArtFamily[] = [...CLASSES, "scout", "tanker"];
 const TRAITS: ShipArtTrait[] = ["self-piloted", "ai-navigator", "extra-slot", "fuel-efficient", "rapid-unload"];
+const PROVIDERS: ImageProvider[] = ["openai", "gemini"];
+
+// Maps our pixel sizes to the closest Imagen aspect ratio. Imagen
+// doesn't accept arbitrary pixel dimensions — it picks a preset
+// aspect ratio at a fixed render resolution. Square and 3:2 / 2:3
+// cover the three sizes we already accept for OpenAI.
+const GEMINI_ASPECT_BY_SIZE: Record<ImageSize, string> = {
+  "1024x1024": "1:1",
+  "1024x1536": "9:16",
+  "1536x1024": "16:9",
+};
 
 let cacheMutationQueue = Promise.resolve();
 
@@ -205,7 +231,16 @@ export async function handleShipArtRequest(req: IncomingMessage, res: ServerResp
   }
 
   if (req.method === "GET" && url.pathname === "/api/ship-art/options") {
-    sendJson(res, 200, { classes: CLASSES, families: FAMILIES, traits: TRAITS, qualities: QUALITIES, sizes: SIZES, promptVersion: PROMPT_VERSION });
+    sendJson(res, 200, {
+      classes: CLASSES,
+      families: FAMILIES,
+      traits: TRAITS,
+      qualities: QUALITIES,
+      sizes: SIZES,
+      providers: PROVIDERS,
+      defaultProvider: DEFAULT_PROVIDER,
+      promptVersion: PROMPT_VERSION,
+    });
     return true;
   }
 
@@ -237,6 +272,7 @@ export async function handleShipArtRequest(req: IncomingMessage, res: ServerResp
 
 async function generateShipArt(input: NormalizedShipArtInput) {
   const prompt = buildShipArtPrompt(input);
+  const model = modelFor(input.provider);
   const id = randomUUID();
   const now = new Date().toISOString();
   const entry: ShipArtCacheEntry = {
@@ -247,7 +283,8 @@ async function generateShipArt(input: NormalizedShipArtInput) {
     traits: input.traits,
     createdAt: now,
     updatedAt: now,
-    model: DEFAULT_MODEL,
+    model,
+    provider: input.provider,
     size: input.size,
     quality: input.quality,
     promptVersion: PROMPT_VERSION,
@@ -257,7 +294,7 @@ async function generateShipArt(input: NormalizedShipArtInput) {
   await mutateCache((cache) => { cache.entries.push(entry); });
 
   try {
-    const image = await generateImage(getApiKey(), prompt, input);
+    const image = await generateImage(prompt, input);
     const ext = extensionFor(image.mimeType);
     const fileName = `${id}${ext}`;
     await ensureCacheDirs();
@@ -288,6 +325,10 @@ async function generateShipArt(input: NormalizedShipArtInput) {
   }
 }
 
+function modelFor(provider: ImageProvider): string {
+  return provider === "gemini" ? DEFAULT_GEMINI_MODEL : DEFAULT_OPENAI_MODEL;
+}
+
 function buildShipArtPrompt(input: NormalizedShipArtInput): string {
   const block = CLASS_PROMPTS[input.class] ?? FAMILY_FALLBACK_PROMPTS[input.family as keyof typeof FAMILY_FALLBACK_PROMPTS];
   if (!block) throw new ShipArtRequestError(400, `No prompt block for class ${input.class} / family ${input.family}.`);
@@ -311,21 +352,41 @@ function buildShipArtPrompt(input: NormalizedShipArtInput): string {
   ].filter(Boolean).join("\n");
 }
 
-function getApiKey(): string {
+function getOpenAIApiKey(): string {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    throw new ShipArtRequestError(503, "OPENAI_API_KEY is required to generate ship art.");
+    throw new ShipArtRequestError(503, "OPENAI_API_KEY is required to generate ship art via OpenAI.");
   }
   return apiKey;
 }
 
+function getGeminiApiKey(): string {
+  const apiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY;
+  if (!apiKey) {
+    throw new ShipArtRequestError(503, "GEMINI_API_KEY (or GOOGLE_API_KEY) is required to generate ship art via Gemini.");
+  }
+  return apiKey;
+}
+
+// Provider-aware dispatch. Each provider returns the same shape so the
+// caller doesn't have to care which API ran the generation.
 async function generateImage(
+  prompt: string,
+  input: Pick<NormalizedShipArtInput, "size" | "quality" | "provider">,
+): Promise<{ bytes: Buffer; mimeType: string }> {
+  if (input.provider === "gemini") {
+    return generateImageGemini(getGeminiApiKey(), prompt, input);
+  }
+  return generateImageOpenAI(getOpenAIApiKey(), prompt, input);
+}
+
+async function generateImageOpenAI(
   apiKey: string,
   prompt: string,
   input: Pick<NormalizedShipArtInput, "size" | "quality">,
 ): Promise<{ bytes: Buffer; mimeType: string }> {
   const payload = {
-    model: DEFAULT_MODEL,
+    model: DEFAULT_OPENAI_MODEL,
     prompt,
     n: 1,
     size: input.size,
@@ -357,6 +418,61 @@ async function generateImage(
   throw new Error("OpenAI image response did not include image data.");
 }
 
+async function generateImageGemini(
+  apiKey: string,
+  prompt: string,
+  input: Pick<NormalizedShipArtInput, "size">,
+): Promise<{ bytes: Buffer; mimeType: string }> {
+  // Imagen "predict" endpoint. Imagen doesn't take arbitrary pixel
+  // dimensions — pick the closest aspectRatio preset for our three
+  // OpenAI sizes so the rest of the pipeline (cache key, layout) keeps
+  // working unchanged. Passes the API key via the x-goog-api-key
+  // header rather than ?key= so secrets don't end up in any request
+  // logs vite happens to keep.
+  const aspectRatio = GEMINI_ASPECT_BY_SIZE[input.size] ?? "1:1";
+  const requestedMime = imagenMime(DEFAULT_OUTPUT_FORMAT);
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(DEFAULT_GEMINI_MODEL)}:predict`;
+  const payload = {
+    instances: [{ prompt }],
+    parameters: {
+      sampleCount: 1,
+      aspectRatio,
+      outputMimeType: requestedMime,
+    },
+  };
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "x-goog-api-key": apiKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`Gemini Imagen generation failed (${response.status}): ${detail.slice(0, 600)}`);
+  }
+  const json = await response.json() as GeminiImageResponse;
+  const prediction = json.predictions?.[0];
+  if (!prediction?.bytesBase64Encoded) {
+    throw new Error("Gemini Imagen response did not include image data.");
+  }
+  return {
+    bytes: Buffer.from(prediction.bytesBase64Encoded, "base64"),
+    mimeType: prediction.mimeType ?? requestedMime,
+  };
+}
+
+// Imagen accepts only image/png and image/jpeg as outputMimeType.
+// Map our "webp" default to png so we still get a usable image; the
+// cache writer reads the response's actual mimeType when stamping
+// the file extension, so the file stays correct on disk.
+function imagenMime(format: string): string {
+  if (format === "jpg" || format === "jpeg") return "image/jpeg";
+  if (format === "png") return "image/png";
+  return "image/png";
+}
+
 function parseShipArtInput(body: ShipArtRequest): NormalizedShipArtInput {
   const cls = requireOneOf(body.class, CLASSES, "class");
   // Family defaults to the class itself when absent — keeps the
@@ -374,7 +490,10 @@ function parseShipArtInput(body: ShipArtRequest): NormalizedShipArtInput {
   const flavor = optionalText(body.flavor, 240);
   const size = body.size && SIZES.includes(body.size as ImageSize) ? body.size as ImageSize : DEFAULT_SIZE;
   const quality = body.quality && QUALITIES.includes(body.quality as Quality) ? body.quality as Quality : DEFAULT_QUALITY;
-  return { class: cls, family, traits, name, flavor, size, quality };
+  const provider = body.provider && (PROVIDERS as readonly string[]).includes(body.provider)
+    ? body.provider as ImageProvider
+    : DEFAULT_PROVIDER;
+  return { class: cls, family, traits, name, flavor, size, quality, provider };
 }
 
 function requireOneOf<T extends string>(value: unknown, allowed: readonly T[], label: string): T {
@@ -402,6 +521,7 @@ function optionalText(value: unknown, maxLength: number): string | undefined {
 
 function poolKey(input: NormalizedShipArtInput): string {
   return [
+    input.provider,
     input.class,
     input.family,
     [...input.traits].sort().join(","),
@@ -423,6 +543,7 @@ function toClientEntry(entry: ShipArtCacheEntry) {
     createdAt: entry.createdAt,
     updatedAt: entry.updatedAt,
     model: entry.model,
+    provider: entry.provider,
     size: entry.size,
     quality: entry.quality,
     promptVersion: entry.promptVersion,
