@@ -2552,7 +2552,6 @@ button.upgrade-remove-pill {
 /* Cargo: cap at ~5 rows tall (~300px), scroll past that. Lives inside the
    ship card alongside other panels, so a hard cap keeps it bounded. */
 .cargo-table-zone {
-  max-height: 300px;
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -4549,4 +4548,3 @@ button.upgrade-remove-pill {
 .mini-sparkline.tone-down .mini-sparkline-area {
   fill: var(--bad-bg);
 }
-
