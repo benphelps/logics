@@ -106,7 +106,7 @@ export function MarketsView() {
               <span><span className="market-dot upgrade" /> upgrade module</span>
             </div>
           </div>
-          <div className="commodity-scroll">
+          <div className="commodity-scroll" data-scroll-key={`markets:commodities:${activeCategory}`}>
             <SortableRows
               rows={rows}
               columns={[
@@ -192,6 +192,7 @@ export function MarketsView() {
         <aside
           className={`commodity-detail ${selected ? "market-info-card" : ""}`}
           style={selected ? artCardStyle(goodArtUrl(world, selected.good.id)) : undefined}
+          data-scroll-key={selected ? `markets:detail:${selected.good.id}` : "markets:detail:empty"}
         >
           {selected && (
             <>

@@ -639,7 +639,7 @@ function ShipLogCard({ ship }: { ship: Trader }) {
       {ordered.length === 0 ? (
         <p className="ship-log-empty dim">No actions yet. Buy, sell, refuel, travel, or accept a contract — they'll all show up here.</p>
       ) : (
-        <ol className="ship-log-list">
+        <ol className="ship-log-list" data-scroll-key={`fleet:${ship.id}:log`}>
           {ordered.map((e, i) => (
             <li key={`${e.tick}-${i}`} className={`ship-log-entry ${e.tone ? `tone-${e.tone}` : ""}`}>
               <span className="ship-log-tick mono dim">t{e.tick}</span>
@@ -866,7 +866,7 @@ function InfoPanelFrame({ eyebrow, title, badge, meta, metaClassName = "", child
         </div>
       </div>
 
-      <div className="info-panel-scroll">
+      <div className="info-panel-scroll" data-scroll-key={`fleet:info:${eyebrow}:${title}`}>
         {children}
       </div>
     </div>
@@ -1626,7 +1626,7 @@ function StationExchangeCard({ ship, world, loc, target, hintText, cueText, sele
           Contracts <span className="bridge-tab-count">{localContractCount}</span>
         </button>
       </div>
-      <div className={`exchange-card-tab-body ${inTransit ? "transit-preview-content" : ""}`}>
+      <div className={`exchange-card-tab-body ${inTransit ? "transit-preview-content" : ""}`} data-scroll-key={`fleet:${ship.id}:exchange:${tab}`}>
         {tab === "markets" && (
           <MarketTableBody
             ship={ship}
@@ -2832,7 +2832,7 @@ function CargoTab({ ship, world, loc, groups, inTransit, target, hintText, cueTe
   const manualActions = ship.pilot !== "auto";
 
   return (
-    <div className="cargo-table-zone">
+    <div className="cargo-table-zone" data-scroll-key={`fleet:${ship.id}:cargo`}>
       <SortableRows
         rows={groups}
         columns={[
@@ -3442,7 +3442,7 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
         </div>
         {quickTravelTab}
       </header>
-      <div className="travel-table-zone">
+      <div className="travel-table-zone" data-scroll-key={`fleet:${ship.id}:travel`}>
         <SortableRows
           rows={neighborDests}
           columns={[

@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { CrewMember, CrewRole, EquityId, World, LocationId, GoodId, JobId, TraderId, UpgradeSlot } from "../sim/types";
+import type { CrewMember, CrewRole, Equity, EquityId, Job, World, LocationId, GoodId, JobId, Trader, TraderId, UpgradeSlot } from "../sim/types";
 import type { ActiveNewsEvent } from "../sim/news/types";
 import { createStartingWorld } from "../sim/start";
 import { tickWorld } from "../sim/tick";
@@ -34,11 +34,22 @@ import {
   type SaveStatus,
 } from "./saveGames";
 
-export type Tab = "player" | "markets" | "locations" | "stocks";
 export type Speed = 0 | 1 | 4 | 16;
 
-import { DEFAULT_VIEW_TABS, type AtlasSheetTab, type CommodityTab, type FleetTab, type PnoTab, type StockKindFilter, type ViewTabs } from "./viewTabs";
-export type { AtlasSheetTab, FleetTab, CommodityTab, PnoTab, StockKindFilter, ViewTabs };
+import {
+  DEFAULT_VIEW_TABS,
+  type AtlasSheetTab,
+  type CommodityTab,
+  type FleetTab,
+  type MainViewTab,
+  type PanelScrollPosition,
+  type PanelScrollPositions,
+  type PnoTab,
+  type StockKindFilter,
+  type ViewTabs,
+} from "./viewTabs";
+export type Tab = MainViewTab;
+export type { AtlasSheetTab, FleetTab, CommodityTab, PanelScrollPosition, PanelScrollPositions, PnoTab, StockKindFilter, ViewTabs };
 
 const initialGame = loadInitialGame(() => createStartingWorld());
 const AUTOSAVE_THROTTLE_MS = 2_000;
@@ -80,6 +91,101 @@ function devCrew(role: CrewRole, name: string, tier: number, modifiers: CrewMemb
   };
 }
 
+function sortedEquities(world: World, kind: Equity["kind"]): Equity[] {
+  return Object.values(world.equities)
+    .filter(eq => eq.kind === kind)
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function devContractDestination(world: World, origin: LocationId): LocationId {
+  const partsConsumer = Object.values(world.locations)
+    .filter(loc => loc.id !== origin && loc.consumes.some(entry => entry.good === "parts"))
+    .sort((a, b) => a.name.localeCompare(b.name))[0];
+  if (partsConsumer) return partsConsumer.id;
+  return Object.keys(world.locations).find(id => id !== origin) ?? origin;
+}
+
+function seedDeveloperCargo(world: World, ship: Trader): void {
+  ship.cargo = [
+    { good: "parts", qty: 8, source: ship.location, unitPrice: world.goods.parts?.basePrice ?? 35, purchasedAt: world.tick },
+    { good: "grain", qty: 18, source: ship.location, unitPrice: world.goods.grain?.basePrice ?? 8, purchasedAt: world.tick },
+    { good: "polymer", qty: 12, source: ship.location, unitPrice: world.goods.polymer?.basePrice ?? 6, purchasedAt: world.tick },
+    { good: "electronics", qty: 4, source: ship.location, unitPrice: world.goods.electronics?.basePrice ?? 80, purchasedAt: world.tick },
+    { good: "upg_engine_2", qty: 1, source: ship.location, unitPrice: world.goods.upg_engine_2?.basePrice ?? 30_000, purchasedAt: world.tick },
+  ];
+  ship.unloadingCargo = undefined;
+}
+
+function seedDeveloperContract(world: World, ship: Trader): void {
+  const destination = devContractDestination(world, ship.location);
+  const id = `j_dev_${world.nextJobId++}`;
+  const job: Job = {
+    id,
+    kind: "shortage",
+    tier: "medium",
+    good: "parts",
+    qty: 14,
+    destination,
+    reward: 8_400,
+    penalty: 2_100,
+    postedTick: world.tick,
+    expiresAt: world.tick + 500,
+    acceptedBy: ship.id,
+    delivered: 0,
+  };
+  world.jobs[id] = job;
+}
+
+function seedDeveloperPositions(world: World, ship: Trader): void {
+  if (!world.player) return;
+  const station = sortedEquities(world, "station")[0];
+  const syndicate = sortedEquities(world, "syndicate")[0];
+  const commodity = sortedEquities(world, "commodity").find(eq => eq.underlyingId === "grain")
+    ?? sortedEquities(world, "commodity")[0];
+
+  world.player.positions = {};
+  if (station) {
+    world.player.positions[station.id] = {
+      equityId: station.id,
+      kind: "long",
+      shares: 24,
+      avgEntryPrice: station.price * 0.92,
+      openedAt: Math.max(0, world.tick - 42),
+      stopLoss: station.price * 0.86,
+      takeProfit: station.price * 1.18,
+    };
+  }
+  if (commodity) {
+    world.player.positions[commodity.id] = {
+      equityId: commodity.id,
+      kind: "long",
+      shares: 40,
+      avgEntryPrice: commodity.price * 1.08,
+      openedAt: Math.max(0, world.tick - 27),
+      stopLoss: commodity.price * 0.9,
+      takeProfit: commodity.price * 1.16,
+    };
+  }
+  if (syndicate) {
+    world.player.positions[syndicate.id] = {
+      equityId: syndicate.id,
+      kind: "short",
+      shares: 12,
+      avgEntryPrice: syndicate.price * 1.12,
+      openedAt: Math.max(0, world.tick - 18),
+      stopLoss: syndicate.price * 1.2,
+      takeProfit: syndicate.price * 0.88,
+    };
+  }
+
+  const contract = Object.values(world.contracts ?? {})
+    .filter(c => c.goodId === "grain" && world.tick < c.expiryTick)
+    .sort((a, b) => a.expiryTick - b.expiryTick)[0];
+  if (contract) {
+    simOpenLongFuture(world, contract.id, 2, ship.id);
+  }
+}
+
 function createDeveloperWorld(): World {
   const world = createStartingWorld({ startingFunds: 250_000 });
   const ship = playerShip(world);
@@ -111,6 +217,9 @@ function createDeveloperWorld(): World {
   recomputeShipStats(ship);
   ship.currentFuel = { good: "plasma", qty: ship.fuelCapacity };
   ship.maintenanceDebt = 0;
+  seedDeveloperCargo(world, ship);
+  seedDeveloperContract(world, ship);
+  seedDeveloperPositions(world, ship);
   return world;
 }
 
@@ -136,6 +245,7 @@ interface UiState {
   atlasSheetTab: AtlasSheetTab;
   stockKindFilter: StockKindFilter;
   stockGuideEnabled: boolean;
+  panelScrollPositions: PanelScrollPositions;
   lastError: string | null;
   // Toast queue — populated when tickWorld() returns spawned news events.
   // The toast component drains entries via dismissNewsToast as they auto-fade.
@@ -158,6 +268,7 @@ interface UiState {
   setAtlasSheetTab: (t: AtlasSheetTab) => void;
   setStockKindFilter: (t: StockKindFilter) => void;
   setStockGuideEnabled: (enabled: boolean) => void;
+  setPanelScrollPosition: (key: string, position: PanelScrollPosition) => void;
   selectLocation: (id: LocationId | null) => void;
   selectGood: (id: GoodId | null) => void;
   selectTrader: (id: TraderId | null) => void;
@@ -202,6 +313,7 @@ export const useStore = create<UiState>((set, get) => {
   const applyLoadedGame = (session: LoadedGameSession) => {
     clearPendingAutosave();
     const tabs = session.viewTabs ?? DEFAULT_VIEW_TABS;
+    const scrollPositions = session.panelScrollPositions ?? {};
     set({
       world: session.world,
       activeSaveId: session.activeSaveId,
@@ -221,13 +333,21 @@ export const useStore = create<UiState>((set, get) => {
       atlasSheetTab: tabs.atlasSheetTab,
       stockKindFilter: tabs.stockKindFilter,
       stockGuideEnabled: tabs.stockGuideEnabled,
+      panelScrollPositions: { ...scrollPositions },
       lastError: null,
     });
   };
 
   const writeCurrentSave = () => {
     const current = get();
-    const saved = saveGameSlot(current.activeSaveId, current.gameName, current.gameKind, current.world, currentViewTabs(current));
+    const saved = saveGameSlot(
+      current.activeSaveId,
+      current.gameName,
+      current.gameKind,
+      current.world,
+      currentViewTabs(current),
+      current.panelScrollPositions,
+    );
     lastAutosaveAt = Date.now();
     set({
       activeSaveId: saved.activeSaveId,
@@ -250,10 +370,12 @@ export const useStore = create<UiState>((set, get) => {
 
   const persistCurrentGame = (updates: Partial<Pick<UiState, "lastError" | "speed">> = {}, bumpEpoch = true, immediate = false) => {
     const current = get();
-    set({
-      tickEpoch: current.tickEpoch + (bumpEpoch ? 1 : 0),
-      ...updates,
-    });
+    if (bumpEpoch || Object.keys(updates).length > 0) {
+      set({
+        tickEpoch: current.tickEpoch + (bumpEpoch ? 1 : 0),
+        ...updates,
+      });
+    }
 
     if (immediate) {
       clearPendingAutosave();
@@ -291,6 +413,7 @@ export const useStore = create<UiState>((set, get) => {
     atlasSheetTab: initialGame.viewTabs?.atlasSheetTab ?? DEFAULT_VIEW_TABS.atlasSheetTab,
     stockKindFilter: initialGame.viewTabs?.stockKindFilter ?? DEFAULT_VIEW_TABS.stockKindFilter,
     stockGuideEnabled: initialGame.viewTabs?.stockGuideEnabled ?? DEFAULT_VIEW_TABS.stockGuideEnabled,
+    panelScrollPositions: { ...(initialGame.panelScrollPositions ?? {}) },
     lastError: null,
     newsToasts: [],
 
@@ -343,6 +466,7 @@ export const useStore = create<UiState>((set, get) => {
         selectedLocation: null,
         selectedGood: null,
         selectedTrader: null,
+        panelScrollPositions: {},
         lastError: null,
       });
     },
@@ -377,6 +501,16 @@ export const useStore = create<UiState>((set, get) => {
     setAtlasSheetTab: (t) => { set({ atlasSheetTab: t }); persistCurrentGame({}, false); },
     setStockKindFilter: (t) => { set({ stockKindFilter: t }); persistCurrentGame({}, false); },
     setStockGuideEnabled: (enabled) => { set({ stockGuideEnabled: enabled }); persistCurrentGame({}, false, true); },
+    setPanelScrollPosition: (key, position) => {
+      if (!key) return;
+      const top = Number.isFinite(position.top) ? Math.max(0, Math.round(position.top)) : 0;
+      const left = Number.isFinite(position.left) ? Math.max(0, Math.round(position.left)) : 0;
+      const current = get().panelScrollPositions;
+      const existing = current[key];
+      if (existing?.top === top && existing.left === left) return;
+      set({ panelScrollPositions: { ...current, [key]: { top, left } } });
+      persistCurrentGame({}, false);
+    },
     selectLocation: (id) => set({ selectedLocation: id }),
     selectGood: (id) => set({ selectedGood: id }),
     selectTrader: (id) => set({ selectedTrader: id }),

@@ -4,7 +4,7 @@ import { warmUpBook } from "../sim/stock/agents";
 import { deriveCrewIdentity } from "../sim/crewIdentity";
 import { createNewsEventsState } from "../sim/news/tick";
 import type { ActiveNewsEvent, NewsTarget, RecentNewsEvent } from "../sim/news/types";
-import { normalizeViewTabs, type ViewTabs } from "./viewTabs";
+import { normalizePanelScrollPositions, normalizeViewTabs, type PanelScrollPositions, type ViewTabs } from "./viewTabs";
 
 const SAVE_REGISTRY_KEY = "logics.saveGames.v1";
 const SAVE_VERSION = 1;
@@ -35,6 +35,7 @@ interface PersistedSaveGame extends SaveSlotSummary {
   // Optional so older saves load cleanly — the store falls back to
   // defaults when missing.
   viewTabs?: ViewTabs;
+  panelScrollPositions?: PanelScrollPositions;
 }
 
 interface SaveRegistry {
@@ -52,6 +53,7 @@ export interface LoadedGameSession {
   saveStatus: SaveStatus;
   saveError: string | null;
   viewTabs?: ViewTabs;
+  panelScrollPositions?: PanelScrollPositions;
 }
 
 function browserStorage(): Storage | null {
@@ -131,6 +133,7 @@ function compactPersistedSave(save: PersistedSaveGame): PersistedSaveGame {
     ...save,
     world: compactWorldForSave(save.world),
     viewTabs: save.viewTabs ? normalizeViewTabs(save.viewTabs) : undefined,
+    panelScrollPositions: save.panelScrollPositions ? normalizePanelScrollPositions(save.panelScrollPositions) : undefined,
   };
 }
 
@@ -270,7 +273,7 @@ function describeSaveError(error: unknown, registry: SaveRegistry, payloadChars:
 function writeRegistry(registry: SaveRegistry): SaveWriteResult {
   const storage = browserStorage();
   if (!storage) return { status: "unavailable", error: "Browser localStorage is unavailable." };
-  let payload = "";
+  let payload: string;
   try {
     payload = JSON.stringify(registry);
   } catch (error) {
@@ -324,7 +327,15 @@ export function nextSaveName(slots: SaveSlotSummary[], base: string): string {
   return `${base} ${Date.now().toString(36)}`;
 }
 
-function makeSave(id: string, name: string, kind: SaveGameKind, world: World, createdAt = Date.now(), viewTabs?: ViewTabs): PersistedSaveGame {
+function makeSave(
+  id: string,
+  name: string,
+  kind: SaveGameKind,
+  world: World,
+  createdAt = Date.now(),
+  viewTabs?: ViewTabs,
+  panelScrollPositions?: PanelScrollPositions,
+): PersistedSaveGame {
   const now = Date.now();
   return {
     version: SAVE_VERSION,
@@ -336,6 +347,7 @@ function makeSave(id: string, name: string, kind: SaveGameKind, world: World, cr
     updatedAt: now,
     world: compactWorldForSave(world),
     viewTabs,
+    panelScrollPositions: panelScrollPositions ? normalizePanelScrollPositions(panelScrollPositions) : undefined,
   };
 }
 
@@ -349,6 +361,7 @@ function loadedFromSave(save: PersistedSaveGame, registry: SaveRegistry, write: 
     saveStatus: write.status,
     saveError: write.error,
     viewTabs: save.viewTabs ? normalizeViewTabs(save.viewTabs) : undefined,
+    panelScrollPositions: save.panelScrollPositions ? normalizePanelScrollPositions(save.panelScrollPositions) : undefined,
   };
 }
 
@@ -377,7 +390,14 @@ export function loadInitialGame(createFallbackWorld: () => World): LoadedGameSes
   return loadedFromSave(save, next, write);
 }
 
-export function saveGameSlot(id: string | null, name: string, kind: SaveGameKind, world: World, viewTabs?: ViewTabs): LoadedGameSession {
+export function saveGameSlot(
+  id: string | null,
+  name: string,
+  kind: SaveGameKind,
+  world: World,
+  viewTabs?: ViewTabs,
+  panelScrollPositions?: PanelScrollPositions,
+): LoadedGameSession {
   const registry = readRegistry();
   if (!registry) {
     return {
@@ -389,12 +409,13 @@ export function saveGameSlot(id: string | null, name: string, kind: SaveGameKind
       saveStatus: browserStorage() ? "error" : "unavailable",
       saveError: browserStorage() ? "Could not read save registry from localStorage." : "Browser localStorage is unavailable.",
       viewTabs,
+      panelScrollPositions,
     };
   }
 
   const saveId = id ?? createSaveId(kind === "developer" ? "dev" : "game");
   const existing = registry.saves.find(save => save.id === saveId);
-  const save = makeSave(saveId, name, kind, world, existing?.createdAt, viewTabs);
+  const save = makeSave(saveId, name, kind, world, existing?.createdAt, viewTabs, panelScrollPositions);
   const compactedExisting = registry.saves
     .map(compactPersistedSave)
     .filter(item => kind !== "developer" || item.kind !== "developer" || item.id === saveId);

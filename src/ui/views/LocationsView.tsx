@@ -159,7 +159,7 @@ export function LocationsView() {
               </button>
             </div>
 
-            <div className="atlas-table-scroll">
+            <div className="atlas-table-scroll" data-scroll-key={`atlas:sheet:${sheetTab}`}>
               {sheetTab === "systems" && (
                 <SystemsTable
                   rows={sheetRows}
@@ -776,7 +776,7 @@ function DetailPanel(props: {
         <span className={`atlas-kind atlas-kind-${kind}`}>{kindLabel(kind)}</span>
       </div>
 
-      <div className="atlas-detail-body">
+      <div className="atlas-detail-body" data-scroll-key={`atlas:detail:${loc.id}`}>
         <div className="atlas-tags">
           {loc.traits.faction && <span className="atlas-tag faction">{loc.traits.faction}</span>}
           {loc.traits.tags.map(tag => <span key={tag} className="atlas-tag">{tag}</span>)}

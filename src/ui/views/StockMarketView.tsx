@@ -388,7 +388,7 @@ function EquitySelector({ rows, tapeRows, selectedId, activeHint, bestHint, guid
               <SortableHeaderButton sort={sort} columnId="price" className="numeric">Price</SortableHeaderButton>
               <SortableHeaderButton sort={sort} columnId="change" className="numeric">Δ</SortableHeaderButton>
             </div>
-            <div className="stocks-selector-list">
+            <div className="stocks-selector-list" data-scroll-key={`exchange:selector:${kindFilter}`}>
               {sortedRows.length === 0 && (
                 <div className="stocks-detail-empty dim">
                   {kindFilter === "positions" ? "No open listing positions." : "No listings in this tab."}
@@ -533,7 +533,7 @@ function PnoPanel(props: {
           Insights <span className="bridge-tab-count">{insightHints.length}</span>
         </button>
       </div>
-      <div className="stocks-pno-body">
+      <div className="stocks-pno-body" data-scroll-key={`exchange:pno:${tab}`}>
         {tab === "positions" && (
           <PositionsAccordion
             world={props.world}
@@ -599,7 +599,7 @@ function PositionsAccordion(props: {
       ]}
     >
       {(sortedPositions, sort) => (
-        <div className="stocks-pno-list">
+        <div className="stocks-pno-list" data-scroll-key="exchange:pno:positions:list">
           <div className="stocks-pno-header positions">
             <SortableHeaderButton sort={sort} columnId="ticker">Ticker</SortableHeaderButton>
             <SortableHeaderButton sort={sort} columnId="side">Side</SortableHeaderButton>
@@ -951,7 +951,7 @@ function OrdersAccordion({ world, limits, onSelectEquity }: {
       ]}
     >
       {(sortedLimits, sort) => (
-        <div className="stocks-pno-list">
+        <div className="stocks-pno-list" data-scroll-key="exchange:pno:orders:list">
           <div className="stocks-pno-header orders">
             <SortableHeaderButton sort={sort} columnId="ticker">Ticker</SortableHeaderButton>
             <SortableHeaderButton sort={sort} columnId="side">Side</SortableHeaderButton>
@@ -1106,7 +1106,7 @@ function InfoColumn({ row, world, shipId, docked, hint, selectedHint, activeHint
         </div>
       </div>
 
-      <div className="stocks-info-body">
+      <div className="stocks-info-body" data-scroll-key={`exchange:info:${eq.id}`}>
         <Sparkline equity={eq} position={row.position} />
 
         <div className="stocks-info-row">
@@ -2185,7 +2185,7 @@ function PositionsPanel({ positions, world, shipId, focusedId, cash, docked, onS
   const focused = focusedId ? positions.find(p => p.equityId === focusedId) ?? null : null;
   const list = focused ? [focused] : positions;
   return (
-    <div className="stocks-positions-list">
+    <div className="stocks-positions-list" data-scroll-key="exchange:pno:positions:table">
       <SortableRows
         rows={list}
         columns={[
@@ -2381,7 +2381,7 @@ function FuturesPositionsList({ world, futures, docked, activeHint, onSelectEqui
       ]}
     >
       {(sortedFutures, sort) => (
-        <div className="stocks-pno-list">
+        <div className="stocks-pno-list" data-scroll-key="exchange:pno:futures:list">
           <div className="stocks-pno-header positions">
             <SortableHeaderButton sort={sort} columnId="ticker">Ticker</SortableHeaderButton>
             <SortableHeaderButton sort={sort} columnId="side">Side</SortableHeaderButton>
@@ -2510,7 +2510,7 @@ function TradesList({ trades, onSelect }: { trades: TradeRecord[]; onSelect: (eq
     return <div className="stocks-detail-empty dim">No trades yet.</div>;
   }
   return (
-    <div className="stocks-trades-list">
+    <div className="stocks-trades-list" data-scroll-key="exchange:pno:history:list">
       <SortableRows
         rows={trades}
         columns={[
@@ -2575,7 +2575,7 @@ function InsightsList({ hints, activeHint, onSelect, emptyText }: {
     return <div className="stocks-detail-empty dim">{emptyText}</div>;
   }
   return (
-    <div className="stocks-insights-list">
+    <div className="stocks-insights-list" data-scroll-key="exchange:pno:insights:list">
       <SortableRows
         rows={hints}
         columns={[

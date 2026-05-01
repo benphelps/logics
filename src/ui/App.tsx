@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { useStore } from "./store";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import { useStore, type Tab } from "./store";
 import { useTickDriver } from "./useTickDriver";
 import { TopBar } from "./components/TopBar";
 import { BridgeTabScroller } from "./components/BridgeTabScroller";
@@ -17,6 +17,7 @@ export function App() {
   useEffect(() => { void loadNewsPool(); }, []);
   const tab = useStore((s) => s.selectedTab);
   const saveCurrentGame = useStore((s) => s.saveCurrentGame);
+  usePanelScrollMemory(tab);
 
   useEffect(() => {
     const flushSave = () => saveCurrentGame();
@@ -48,6 +49,72 @@ export function App() {
       <BridgeTabScroller />
     </div>
   );
+}
+
+const PANEL_SCROLL_SELECTOR = "[data-scroll-key]";
+
+function usePanelScrollMemory(tab: Tab) {
+  const setPanelScrollPosition = useStore((s) => s.setPanelScrollPosition);
+  const activeSaveId = useStore((s) => s.activeSaveId);
+  const restoreFrameRef = useRef<number | null>(null);
+
+  const restorePanelScrollPositions = useCallback(() => {
+    if (restoreFrameRef.current != null) window.cancelAnimationFrame(restoreFrameRef.current);
+    restoreFrameRef.current = window.requestAnimationFrame(() => {
+      restoreFrameRef.current = null;
+      const positions = useStore.getState().panelScrollPositions;
+      const panels = document.querySelectorAll<HTMLElement>(PANEL_SCROLL_SELECTOR);
+      for (const panel of panels) {
+        const key = panel.dataset.scrollKey;
+        const position = key ? positions[key] : undefined;
+        if (!position) continue;
+        const top = Math.min(position.top, Math.max(0, panel.scrollHeight - panel.clientHeight));
+        const left = Math.min(position.left, Math.max(0, panel.scrollWidth - panel.clientWidth));
+        if (panel.scrollTop !== top) panel.scrollTop = top;
+        if (panel.scrollLeft !== left) panel.scrollLeft = left;
+      }
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    restorePanelScrollPositions();
+    return () => {
+      if (restoreFrameRef.current != null) {
+        window.cancelAnimationFrame(restoreFrameRef.current);
+        restoreFrameRef.current = null;
+      }
+    };
+  }, [activeSaveId, tab, restorePanelScrollPositions]);
+
+  useEffect(() => {
+    const handleScroll = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      const key = target.dataset.scrollKey;
+      if (!key) return;
+      setPanelScrollPosition(key, { top: target.scrollTop, left: target.scrollLeft });
+    };
+
+    document.addEventListener("scroll", handleScroll, true);
+    const root = document.querySelector(".app") ?? document.body;
+    const observer = new MutationObserver(restorePanelScrollPositions);
+    observer.observe(root, {
+      attributes: true,
+      attributeFilter: ["data-scroll-key"],
+      childList: true,
+      subtree: true,
+    });
+    restorePanelScrollPositions();
+
+    return () => {
+      document.removeEventListener("scroll", handleScroll, true);
+      observer.disconnect();
+      if (restoreFrameRef.current != null) {
+        window.cancelAnimationFrame(restoreFrameRef.current);
+        restoreFrameRef.current = null;
+      }
+    };
+  }, [restorePanelScrollPositions, setPanelScrollPosition]);
 }
 
 function useHeaderArtCursorPan() {
