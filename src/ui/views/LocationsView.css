@@ -146,12 +146,12 @@
   overflow: hidden;
 }
 
-/* Left column: map (top) + tabbed sheet (bottom). Map is dialed back
-   to ~75% of its previous height so the sheet has more room for rows;
-   resulting ratio is 1.575fr : 1.875fr (≈46/54). */
+/* Left column: map (top) + tabbed sheet (bottom) — split 50/50 so the
+   map's bottom edge lines up with the player/stocks two-card split in
+   the same column slot. */
 .atlas-side {
   display: grid;
-  grid-template-rows: 1.575fr 1.875fr;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
   gap: 14px;
   min-width: 0;
   min-height: 0;
@@ -226,6 +226,182 @@
    reads at a glance. */
 .atlas-market-line.short > span:last-child { color: var(--bad); }
 .atlas-market-line.surplus > span:last-child { color: var(--good); }
+
+/* Exchange quote inside the detail panel — mirrors the
+   .station-exchange-* layout from the fleet view, scoped here so the
+   atlas detail body doesn't depend on the player view's stylesheet. */
+.atlas-detail-body .station-exchange-quote {
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+}
+
+.atlas-detail-body .station-exchange-quote-left {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+
+.atlas-detail-body .station-exchange-ticker {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--atlas-line);
+  padding: 2px 7px;
+  border-radius: 3px;
+}
+
+.atlas-detail-body .station-exchange-price {
+  font-size: 14px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.atlas-detail-body .station-exchange-delta {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.atlas-detail-body .station-exchange-spark.mini-sparkline {
+  display: block;
+  width: 100%;
+  height: 36px;
+  margin-top: 2px;
+}
+
+.atlas-detail-body .station-basis-list {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.atlas-detail-body .station-basis-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--atlas-line);
+  border-radius: 3px;
+  font-size: 10.5px;
+}
+
+/* Production / consumption flow chips. Exports lean green, imports
+   lean red so the export/import balance reads at a glance. */
+.atlas-flow-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.atlas-flow-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--atlas-line);
+  font-size: 10.5px;
+}
+
+.atlas-flow-pill.export .atlas-flow-pill-rate { color: var(--good); }
+.atlas-flow-pill.import .atlas-flow-pill-rate { color: var(--bad); }
+
+.atlas-flow-pill-rate {
+  font-variant-numeric: tabular-nums;
+}
+
+.atlas-flow-pill-name {
+  color: var(--text-dim);
+}
+
+/* Crew offer roster: small role pills with role name + count. */
+.atlas-role-list {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.atlas-role-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 7px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--atlas-line);
+  border-radius: 3px;
+  font-size: 10.5px;
+  color: var(--text-dim);
+}
+
+.atlas-role-pill-label {
+  text-transform: capitalize;
+  letter-spacing: 0.02em;
+}
+
+/* Active news rows inside the detail body — compact tone-dot + headline. */
+.atlas-detail-news {
+  display: grid;
+  gap: 3px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.atlas-detail-news-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.atlas-detail-news-tone {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-dim);
+}
+
+.atlas-detail-news.tone-good .atlas-detail-news-tone { background: var(--good); }
+.atlas-detail-news.tone-bad  .atlas-detail-news-tone { background: var(--bad); }
+.atlas-detail-news.tone-warn .atlas-detail-news-tone { background: var(--warn); }
+.atlas-detail-news.tone-info .atlas-detail-news-tone { background: var(--accent); }
+
+.atlas-detail-news-cat {
+  flex: 1 1 auto;
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-faint);
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.atlas-detail-news-ticks {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.atlas-detail-news-headline {
+  color: var(--text);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
 
 .atlas-info-card .atlas-kind,
 .atlas-info-card .atlas-tag {
@@ -377,7 +553,11 @@
   top: 0;
   z-index: 2;
   background: var(--atlas-surface-soft);
-  border-top: 1px solid var(--atlas-line);
+  /* Inset 1px shadow paints the divider INSIDE the th's own box so it
+     stays flush against the tab strip when sticky — `border-top` would
+     paint in the th's outer-edge slot and leak the lighter parent
+     surface through, reading as a transparent gap. */
+  box-shadow: inset 0 1px 0 var(--atlas-line);
   color: var(--text-faint);
   font-size: 11px;
   font-weight: 750;
@@ -401,17 +581,17 @@
   background: rgba(79, 182, 255, 0.07);
 }
 
-.atlas-sheet-table tbody tr.active {
-  box-shadow: inset 3px 0 0 var(--accent);
-}
-
-/* Systems tab columns. */
-.atlas-sheet-table .col-station { width: 180px; }
-.atlas-sheet-table .col-kind { width: 84px; }
-.atlas-sheet-table .col-activity { width: 90px; }
-.atlas-sheet-table .col-jobs { width: 56px; }
-.atlas-sheet-table .col-pressure { width: 130px; }
-.atlas-sheet-table .col-focus { width: 110px; }
+/* Systems tab columns — exchange signals (Δ%, treasury) and logistics
+   (crew/upgrade/ship/job counts) bracket the pressure summary. */
+.atlas-sheet-table-systems { min-width: 720px; }
+.atlas-sheet-table-systems .col-station { width: 160px; }
+.atlas-sheet-table-systems .col-delta { width: 70px; }
+.atlas-sheet-table-systems .col-treasury { width: 70px; }
+.atlas-sheet-table-systems .col-hires { width: 50px; }
+.atlas-sheet-table-systems .col-upgrades { width: 52px; }
+.atlas-sheet-table-systems .col-ships { width: 76px; }
+.atlas-sheet-table-systems .col-jobs { width: 50px; }
+.atlas-sheet-table-systems .col-pressure { width: 110px; }
 
 /* Ships tab columns. */
 .atlas-sheet-table .col-ship { width: 130px; }
@@ -575,7 +755,7 @@
   top: 0;
   z-index: 2;
   background: var(--atlas-surface-soft);
-  border-top: 1px solid var(--atlas-line);
+  box-shadow: inset 0 1px 0 var(--atlas-line);
   color: var(--text-faint);
   font-size: 11px;
   font-weight: 750;
@@ -597,10 +777,6 @@
 .atlas-station-table tbody tr:hover,
 .atlas-station-table tbody tr.active {
   background: rgba(79, 182, 255, 0.07);
-}
-
-.atlas-station-table tbody tr.active {
-  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .atlas-station-cell {
@@ -765,8 +941,19 @@
   fill: #0d1116;
 }
 
+/* Starfield — small SVG circles seeded deterministically across a
+   3x-MAP area so panning never reveals an empty edge. Kept dim so the
+   data layer (nodes + lanes) reads first. */
+.atlas-stars circle {
+  fill: rgba(218, 230, 255, 0.32);
+}
+
+.atlas-stars circle.dim {
+  fill: rgba(218, 230, 255, 0.14);
+}
+
 .atlas-gridlines line {
-  stroke: rgba(255, 255, 255, 0.035);
+  stroke: rgba(255, 255, 255, 0.022);
   stroke-width: 1;
   vector-effect: non-scaling-stroke;
 }
@@ -776,16 +963,42 @@
   stroke: rgba(130, 164, 190, 0.20);
   stroke-width: 1.2;
   vector-effect: non-scaling-stroke;
-  transition: stroke 120ms ease;
+  transition: stroke 120ms ease, stroke-width 120ms ease;
 }
 
 .atlas-link.traffic {
-  stroke: rgba(151, 193, 151, 0.65);
+  stroke: rgba(151, 193, 151, 0.55);
   stroke-width: 1.6;
 }
 
-.atlas-link:hover {
-  stroke: rgba(220, 235, 250, 0.65);
+.atlas-link.long {
+  stroke-dasharray: 4 5;
+}
+
+.atlas-link:hover,
+.atlas-link.hovered {
+  stroke: rgba(220, 235, 250, 0.78);
+  stroke-width: 2;
+}
+
+.atlas-lane-arrow {
+  fill: rgba(151, 193, 151, 0.55);
+  stroke: rgba(15, 19, 23, 0.6);
+  stroke-width: 0.5;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.atlas-lane-distance {
+  fill: rgba(218, 230, 250, 0.85);
+  font-size: 9px;
+  font-family: var(--mono);
+  text-anchor: middle;
+  dominant-baseline: central;
+  paint-order: stroke;
+  stroke: rgba(8, 12, 16, 0.85);
+  stroke-width: 3;
+  pointer-events: none;
 }
 
 .atlas-node {
@@ -793,28 +1006,34 @@
   outline: none;
 }
 
-.atlas-node-glow {
-  fill: url("#atlasGlow");
-  opacity: 0.28;
-}
-
+/* Clean filled circle. Stroke carries faction (subtle 1px tint).
+   No glow halo, no drop shadow, no pulse — sharp dots like an
+   academic star plot. */
 .atlas-node-core {
   fill: currentColor;
-  stroke: rgba(255, 255, 255, 0.60);
+  stroke: var(--node-faction-stroke, rgba(255, 255, 255, 0.42));
   stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  transition: stroke 120ms ease, stroke-width 120ms ease;
 }
 
 .atlas-node:hover .atlas-node-core,
 .atlas-node:focus-visible .atlas-node-core {
-  stroke: white;
-  stroke-width: 2;
+  stroke: rgba(255, 255, 255, 0.95);
+  stroke-width: 1.5;
 }
+
+/* Faction → 1px stroke tint on the core. Two factions in the world
+   right now (League, Outerguild); independent stays neutral white. */
+.atlas-node-faction-league .atlas-node-core { --node-faction-stroke: rgba(118, 199, 255, 0.55); }
+.atlas-node-faction-outerguild .atlas-node-core { --node-faction-stroke: rgba(240, 163, 90, 0.55); }
+.atlas-node-faction-independent .atlas-node-core { --node-faction-stroke: rgba(220, 230, 240, 0.32); }
 
 .atlas-node-ring {
   fill: none;
-  stroke: currentColor;
-  stroke-width: 2.5;
-  opacity: 0.9;
+  stroke: rgba(255, 255, 255, 0.85);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
 }
 
 .atlas-player-route line {
@@ -852,6 +1071,24 @@
   stroke: rgba(20, 26, 32, 0.95);
 }
 
+/* Direction-aware chevron used for non-player transit ships. Same
+   palette as the transit circle they replace so the map keeps a
+   consistent ship vocabulary, just with heading information. */
+.atlas-ship-marker {
+  fill: var(--atlas-hub);
+  stroke: rgba(20, 26, 32, 0.95);
+  stroke-width: 0.6;
+  vector-effect: non-scaling-stroke;
+}
+
+.atlas-ship:hover .atlas-ship-marker {
+  fill: white;
+}
+
+.atlas-ship.selected .atlas-ship-marker {
+  fill: var(--accent);
+}
+
 .atlas-ship:hover circle {
   fill: white;
 }
@@ -875,26 +1112,107 @@
   top: 0;
   pointer-events: none;
   display: grid;
-  gap: 1px;
-  padding: 6px 8px;
-  background: rgba(10, 14, 18, 0.92);
+  gap: 4px;
+  min-width: 168px;
+  max-width: 240px;
+  padding: 8px 10px 9px;
+  background: rgba(10, 14, 18, 0.94);
   border: 1px solid var(--atlas-line);
-  border-radius: 4px;
+  border-radius: 5px;
   font-size: 11px;
   z-index: 4;
-  white-space: nowrap;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
+}
+
+.atlas-tooltip-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.atlas-tooltip-thumb {
+  width: 36px;
+  height: 36px;
+  border-radius: 4px;
+  background-position: center;
+  background-size: cover;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  flex: 0 0 auto;
+}
+
+.atlas-tooltip-title-block {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
 }
 
 .atlas-tooltip-title {
   font-weight: 700;
   color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .atlas-tooltip-sub {
   font-size: 10px;
   color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+
+.atlas-tooltip-rows {
+  display: grid;
+  gap: 2px;
+  margin-top: 2px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 10.5px;
+}
+
+.atlas-tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--text-dim);
+}
+
+.atlas-tooltip-row > span:last-child {
+  color: var(--text);
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.atlas-tooltip-row .good { color: var(--good); }
+.atlas-tooltip-row .bad { color: var(--bad); }
+.atlas-tooltip-row .warn { color: var(--warn); }
+
+/* Kind icon inline with the meta sub-line. Sized to the meta text and
+   tinted by the kind class so it reads as a visual category cue
+   without competing with the headline. */
+.atlas-tooltip-icon {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 4px;
+  vertical-align: -2px;
+}
+
+.atlas-tip-kind-icon {
+  width: 12px;
+  height: 12px;
+}
+
+.atlas-tip-kind-hub      { color: var(--atlas-hub); }
+.atlas-tip-kind-mining   { color: var(--atlas-mining); }
+.atlas-tip-kind-agri     { color: var(--atlas-agri); }
+.atlas-tip-kind-frontier { color: var(--atlas-frontier); }
+.atlas-tip-kind-research { color: var(--atlas-research); }
+.atlas-tip-kind-station  { color: var(--text-faint); }
 
 /* Traffic accordion — each entry is a clickable summary row that
    expands to show pilot/cargo/funds/etc. Single-row-open behavior is

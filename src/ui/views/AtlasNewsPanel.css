@@ -27,6 +27,18 @@
   overflow: hidden;
 }
 
+.atlas-news-row.clickable {
+  cursor: pointer;
+  transition: background 110ms ease, border-color 110ms ease;
+}
+
+.atlas-news-row.clickable:hover,
+.atlas-news-row.clickable:focus-visible {
+  background: #181f27;
+  border-color: rgba(255, 255, 255, 0.14);
+  outline: none;
+}
+
 /* Eyebrow row: tone dot + category + time-remaining chip on the right.
    Headline gets its own line below for legibility. */
 .atlas-news-eyebrow {

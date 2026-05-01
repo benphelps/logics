@@ -1,10 +1,14 @@
-import { useMemo, useRef, useState, type CSSProperties } from "react";
-import { GiCargoCrate } from "react-icons/gi";
+import { useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import type { IconType } from "react-icons";
+import { GiAtom, GiCampfire, GiMining, GiSpaceship, GiTrade, GiWheat } from "react-icons/gi";
 import { useStore } from "../store";
 import { reachableNeighbors, routeDistance, routeSegments } from "../../sim/geometry";
-import { netProductionRate } from "../../sim/locations";
-import type { LocationDef, LocationId, Trader, TraderId, World } from "../../sim/types";
-import { headerArtUrl, stationArtUrl } from "../art";
+import type { Equity, LocationDef, LocationId, Trader, TraderId, World } from "../../sim/types";
+import { listHiresAt } from "../../sim/hires";
+import { isUpgradeGood } from "../../sim/upgrades";
+import { parseBasisUnderlying, priceChangePct } from "../../sim/stock";
+import { stationArtUrl } from "../art";
+import { MiniSparkline } from "../components/MiniSparkline";
 import { SortableRows, SortableTh } from "../components/SortableTable";
 import { AtlasNewsPanel } from "./AtlasNewsPanel";
 import "./LocationsView.css";
@@ -75,6 +79,16 @@ interface StationSheetRow {
   kind: StationKind;
   counts: ReturnType<typeof stationCounts>;
   pressure: StationPressure;
+  exchange: StationExchangeSnapshot;
+  hires: number;
+  upgrades: number;
+}
+
+interface StationExchangeSnapshot {
+  equity: Equity | null;
+  changePct: number;
+  treasuryRatio: number;
+  netTradeFlow: number;
 }
 
 export function LocationsView() {
@@ -112,12 +126,6 @@ export function LocationsView() {
       <div className="atlas-grid">
         <aside className="atlas-side">
           <section className="atlas-map-panel">
-            <div className="atlas-panel-head compact art-panel-head" style={artCardStyle(headerArtUrl("sectorMap"))}>
-              <div>
-                <span className="atlas-panel-label">Sector Inset</span>
-                <span className="dim">Plotted trade routes; click nodes or rows to inspect</span>
-              </div>
-            </div>
             <SectorMap
               world={world}
               projected={projected}
@@ -175,7 +183,7 @@ export function LocationsView() {
                   onSelectLocation={selectLocation}
                 />
               )}
-              {sheetTab === "news" && <AtlasNewsPanel world={world} />}
+              {sheetTab === "news" && <AtlasNewsPanel world={world} onSelectLocation={selectLocation} />}
             </div>
           </section>
         </aside>
@@ -203,6 +211,17 @@ export function LocationsView() {
 
 function artCardStyle(url: string): CSSProperties {
   return { "--card-art": `url("${url}")` } as CSSProperties;
+}
+
+interface HoverTipRow { label: string; value: string; tone?: "good" | "bad" | "warn" }
+interface HoverTip {
+  px: number;
+  py: number;
+  title: string;
+  meta?: string;
+  art?: string;
+  rows?: HoverTipRow[];
+  icon?: ReactNode;
 }
 
 function SectorMap({
@@ -238,14 +257,11 @@ function SectorMap({
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [vbox, setVbox] = useState({ x: 0, y: 0, w: MAP_W, h: MAP_H });
   const dragRef = useRef<{ sx: number; sy: number; vx: number; vy: number; moved: boolean } | null>(null);
-  const [hover, setHover] = useState<{
-    label: string;
-    sub: string;
-    px: number;
-    py: number;
-  } | null>(null);
+  const [hover, setHover] = useState<HoverTip | null>(null);
+  const [hoveredLane, setHoveredLane] = useState<string | null>(null);
 
   const peakLaneTraffic = Math.max(1, ...Array.from(laneTraffic.values()).map(t => t.count));
+  const stars = useMemo(() => buildStarField(), []);
 
   const applyZoom = (clientX: number, clientY: number, factor: number) => {
     const svg = svgRef.current;
@@ -292,11 +308,11 @@ function SectorMap({
   // committing — so a 5px drag-and-release doesn't accidentally select.
   const wasDrag = () => dragRef.current?.moved === true;
 
-  const showTip = (e: React.MouseEvent, label: string, sub: string) => {
+  const showTip = (e: React.MouseEvent, tip: Omit<HoverTip, "px" | "py">) => {
     const wrap = wrapRef.current;
     if (!wrap) return;
     const rect = wrap.getBoundingClientRect();
-    setHover({ label, sub, px: e.clientX - rect.left, py: e.clientY - rect.top });
+    setHover({ ...tip, px: e.clientX - rect.left, py: e.clientY - rect.top });
   };
   const moveTip = (e: React.MouseEvent) => {
     if (!hover) return;
@@ -305,7 +321,7 @@ function SectorMap({
     const rect = wrap.getBoundingClientRect();
     setHover({ ...hover, px: e.clientX - rect.left, py: e.clientY - rect.top });
   };
-  const hideTip = () => setHover(null);
+  const hideTip = () => { setHover(null); setHoveredLane(null); };
 
   const playerOrigin = playerLocation ? projectedById.get(playerLocation) ?? null : null;
   const playerDest = playerDestination ? projectedById.get(playerDestination) ?? null : null;
@@ -325,13 +341,12 @@ function SectorMap({
         onMouseLeave={() => { releaseDrag(); hideTip(); }}
         onDoubleClick={onDoubleClick}
       >
-        <defs>
-          <radialGradient id="atlasGlow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="rgba(255,255,255,0.35)" />
-            <stop offset="100%" stopColor="rgba(255,255,255,0)" />
-          </radialGradient>
-        </defs>
         <rect className="atlas-map-bg" x={-MAP_W} y={-MAP_H} width={MAP_W * 3} height={MAP_H * 3} />
+        <g className="atlas-stars">
+          {stars.map((s, i) => (
+            <circle key={i} cx={s.x} cy={s.y} r={s.r} className={s.dim ? "dim" : undefined} />
+          ))}
+        </g>
         <g className="atlas-gridlines">
           {[0.25, 0.5, 0.75].map(v => (
             <g key={v}>
@@ -345,20 +360,69 @@ function SectorMap({
             const a = projectedById.get(link.a);
             const b = projectedById.get(link.b);
             if (!a || !b) return null;
-            const traffic = laneTraffic.get(laneKey(link.a, link.b));
-            const intensity = traffic ? Math.min(1, 0.2 + (traffic.count / peakLaneTraffic) * 0.8) : 0.2;
+            const key = laneKey(link.a, link.b);
+            const traffic = laneTraffic.get(key);
+            const intensity = traffic ? Math.min(1, 0.2 + (traffic.count / peakLaneTraffic) * 0.8) : 0.22;
+            const isLong = link.dist > 90;
+            const isHovered = hoveredLane === key;
+            const cls = [
+              "atlas-link",
+              traffic && traffic.count > 0 ? "traffic" : null,
+              isLong ? "long" : null,
+              isHovered ? "hovered" : null,
+            ].filter(Boolean).join(" ");
             return (
               <line
-                key={`${link.a}-${link.b}`}
-                className={traffic && traffic.count > 0 ? "atlas-link traffic" : "atlas-link"}
+                key={key}
+                className={cls}
                 x1={a.x}
                 y1={a.y}
                 x2={b.x}
                 y2={b.y}
                 style={{ opacity: intensity }}
-                onMouseEnter={(e) => showTip(e, `${a.loc.name} ↔ ${b.loc.name}`, traffic && traffic.count > 0 ? `${traffic.count} ship${traffic.count === 1 ? "" : "s"} in transit` : "no traffic")}
+                onMouseEnter={(e) => {
+                  setHoveredLane(key);
+                  showTip(e, buildLaneTip(world, a, b, link.dist, traffic));
+                }}
                 onMouseMove={moveTip}
                 onMouseLeave={hideTip}
+              />
+            );
+          })}
+        </g>
+        {hoveredLane && (() => {
+          // Inline distance label for the lane the cursor is over —
+          // only shown on hover so the map doesn't fight the eye.
+          const link = links.find(l => laneKey(l.a, l.b) === hoveredLane);
+          if (!link) return null;
+          const a = projectedById.get(link.a);
+          const b = projectedById.get(link.b);
+          if (!a || !b) return null;
+          const mx = (a.x + b.x) / 2;
+          const my = (a.y + b.y) / 2;
+          return (
+            <text className="atlas-lane-distance" x={mx} y={my}>{link.dist.toFixed(0)}u</text>
+          );
+        })()}
+        {/* Direction arrows on lanes that have transit traffic — small
+            chevron at the lane midpoint pointing toward the busier end. */}
+        <g className="atlas-lane-arrows">
+          {links.map(link => {
+            const traffic = laneTraffic.get(laneKey(link.a, link.b));
+            if (!traffic || traffic.count === 0) return null;
+            const a = projectedById.get(link.a);
+            const b = projectedById.get(link.b);
+            if (!a || !b) return null;
+            // Direction is set by the most-recent transit ship's heading.
+            const heading = arrowHeading(world, traffic);
+            if (!heading) return null;
+            const fromP = heading === "ab" ? a : b;
+            const toP = heading === "ab" ? b : a;
+            return (
+              <polygon
+                key={`arrow-${laneKey(link.a, link.b)}`}
+                className="atlas-lane-arrow"
+                points={chevronPoints(fromP, toP)}
               />
             );
           })}
@@ -369,28 +433,32 @@ function SectorMap({
           </g>
         )}
         <g className="atlas-nodes">
-          {projected.map(p => (
-            <g
-              key={p.loc.id}
-              className={`atlas-node atlas-node-${p.kind} ${selectedId === p.loc.id ? "selected" : ""}`}
-              role="button"
-              tabIndex={0}
-              onClick={() => { if (!wasDrag()) onSelect(p.loc.id); }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  onSelect(p.loc.id);
-                }
-              }}
-              onMouseEnter={(e) => showTip(e, p.loc.name, `${kindLabel(p.kind)} · ${formatPopulation(p.loc.population)} pop`)}
-              onMouseMove={moveTip}
-              onMouseLeave={hideTip}
-            >
-              <circle className="atlas-node-glow" cx={p.x} cy={p.y} r={p.r * 3.4} />
-              <circle className="atlas-node-core" cx={p.x} cy={p.y} r={p.r} />
-              {selectedId === p.loc.id && <circle className="atlas-node-ring" cx={p.x} cy={p.y} r={p.r + 9} />}
-            </g>
-          ))}
+          {projected.map(p => {
+            const factionKey = factionClassKey(p.loc.traits.faction);
+            return (
+              <g
+                key={p.loc.id}
+                className={`atlas-node atlas-node-${p.kind} atlas-node-faction-${factionKey} ${selectedId === p.loc.id ? "selected" : ""}`}
+                role="button"
+                tabIndex={0}
+                onClick={() => { if (!wasDrag()) onSelect(p.loc.id); }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onSelect(p.loc.id);
+                  }
+                }}
+                onMouseEnter={(e) => showTip(e, buildStationTip(world, p))}
+                onMouseMove={moveTip}
+                onMouseLeave={hideTip}
+              >
+                <circle className="atlas-node-core" cx={p.x} cy={p.y} r={p.r} />
+                {selectedId === p.loc.id && (
+                  <circle className="atlas-node-ring" cx={p.x} cy={p.y} r={p.r + 5} />
+                )}
+              </g>
+            );
+          })}
         </g>
         <g className="atlas-ships">
           {ships.map(ship => {
@@ -404,13 +472,7 @@ function SectorMap({
                   e.stopPropagation();
                   onSelectTrader(ship.id);
                 }}
-                onMouseEnter={(e) => {
-                  const dst = ship.destination ? world.locations[ship.destination]?.name ?? "—" : null;
-                  const sub = ship.isTransit
-                    ? `transit → ${dst} · ETA ${ship.trader.ticksRemaining}t`
-                    : `docked at ${world.locations[ship.origin]?.name ?? "—"}`;
-                  showTip(e, ship.trader.name, sub);
-                }}
+                onMouseEnter={(e) => showTip(e, buildShipTip(world, ship))}
                 onMouseMove={moveTip}
                 onMouseLeave={hideTip}
               >
@@ -419,8 +481,17 @@ function SectorMap({
                     className="atlas-player-marker"
                     d={`M ${ship.x} ${ship.y - 9} L ${ship.x + 9} ${ship.y} L ${ship.x} ${ship.y + 9} L ${ship.x - 9} ${ship.y} Z`}
                   />
+                ) : ship.isTransit ? (
+                  <ShipChevron
+                    x={ship.x}
+                    y={ship.y}
+                    fromX={projectedById.get(ship.origin)?.x ?? ship.x}
+                    fromY={projectedById.get(ship.origin)?.y ?? ship.y}
+                    toX={ship.destination ? projectedById.get(ship.destination)?.x ?? ship.x : ship.x}
+                    toY={ship.destination ? projectedById.get(ship.destination)?.y ?? ship.y : ship.y}
+                  />
                 ) : (
-                  <circle cx={ship.x} cy={ship.y} r={ship.isTransit ? 3.4 : 2.6} />
+                  <circle cx={ship.x} cy={ship.y} r={2.6} />
                 )}
                 {isSelected && <circle className="atlas-ship-ring" cx={ship.x} cy={ship.y} r={11} />}
               </g>
@@ -429,13 +500,225 @@ function SectorMap({
         </g>
       </svg>
       {hover && (
-        <div className="atlas-tooltip" style={{ transform: `translate(${hover.px + 12}px, ${hover.py + 12}px)` }}>
-          <div className="atlas-tooltip-title">{hover.label}</div>
-          <div className="atlas-tooltip-sub dim">{hover.sub}</div>
+        <div className="atlas-tooltip" style={{ transform: `translate(${hover.px + 14}px, ${hover.py + 14}px)` }}>
+          <div className="atlas-tooltip-head">
+            {hover.art && (
+              <span className="atlas-tooltip-thumb" style={{ backgroundImage: `url("${hover.art}")` }} />
+            )}
+            <span className="atlas-tooltip-title-block">
+              <span className="atlas-tooltip-title">{hover.title}</span>
+              {hover.meta && (
+                <span className="atlas-tooltip-sub">
+                  {hover.icon && <span className="atlas-tooltip-icon">{hover.icon}</span>}
+                  {hover.meta}
+                </span>
+              )}
+            </span>
+          </div>
+          {hover.rows && hover.rows.length > 0 && (
+            <div className="atlas-tooltip-rows">
+              {hover.rows.map((r, i) => (
+                <div key={i} className="atlas-tooltip-row">
+                  <span>{r.label}</span>
+                  <span className={r.tone ?? ""}>{r.value}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
   );
+}
+
+// --- map background helpers ---------------------------------------------
+
+interface StarSeed { x: number; y: number; r: number; dim: boolean }
+function buildStarField(): StarSeed[] {
+  // Deterministic — same starfield every render so the dust never
+  // shimmers between ticks. 3x area so panning never finds an edge.
+  const rng = mulberry32(0xa75a5);
+  const out: StarSeed[] = [];
+  const N = 260;
+  for (let i = 0; i < N; i++) {
+    out.push({
+      x: -MAP_W + rng() * (MAP_W * 3),
+      y: -MAP_H + rng() * (MAP_H * 3),
+      r: 0.35 + rng() * 0.9,
+      dim: rng() < 0.55,
+    });
+  }
+  return out;
+}
+
+function mulberry32(seed: number): () => number {
+  let a = seed | 0;
+  return () => {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function factionClassKey(faction: string | undefined): string {
+  if (!faction) return "independent";
+  return faction.toLowerCase().replace(/[^a-z]/g, "");
+}
+
+// --- lane direction arrow ------------------------------------------------
+
+function arrowHeading(world: World, traffic: LaneTraffic): "ab" | "ba" | null {
+  // Look at the most recent ship on the lane to set the chevron direction
+  // (which leg of the lane is "outbound"). Stable enough for a glance cue
+  // since multi-tick journeys keep the same direction the whole way.
+  const t = world.traders[traffic.ships[traffic.ships.length - 1]];
+  if (!t || t.state !== "transit" || !t.destination) return null;
+  return t.location < t.destination ? "ab" : "ba";
+}
+
+function chevronPoints(from: ProjectedLocation, to: ProjectedLocation): string {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len;
+  const uy = dy / len;
+  const mx = (from.x + to.x) / 2;
+  const my = (from.y + to.y) / 2;
+  const tip = 5;
+  const back = 4;
+  const wing = 3.4;
+  // Arrow points toward `to`. Tip ahead of midpoint; wings behind the
+  // midpoint perpendicular to the lane.
+  const tipX = mx + ux * tip;
+  const tipY = my + uy * tip;
+  const baseX = mx - ux * back;
+  const baseY = my - uy * back;
+  const px = -uy;
+  const py = ux;
+  return [
+    `${tipX.toFixed(2)},${tipY.toFixed(2)}`,
+    `${(baseX + px * wing).toFixed(2)},${(baseY + py * wing).toFixed(2)}`,
+    `${(baseX - px * wing).toFixed(2)},${(baseY - py * wing).toFixed(2)}`,
+  ].join(" ");
+}
+
+function ShipChevron({ x, y, fromX, fromY, toX, toY }: {
+  x: number; y: number; fromX: number; fromY: number; toX: number; toY: number;
+}) {
+  // Render the transit ship as a chevron oriented along its lane so the
+  // direction of motion reads at a glance, not just the position.
+  const dx = toX - fromX;
+  const dy = toY - fromY;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len;
+  const uy = dy / len;
+  const px = -uy;
+  const py = ux;
+  const ahead = 4.4;
+  const behind = 3.2;
+  const wing = 2.6;
+  const tipX = x + ux * ahead;
+  const tipY = y + uy * ahead;
+  const baseX = x - ux * behind;
+  const baseY = y - uy * behind;
+  const points = [
+    `${tipX.toFixed(2)},${tipY.toFixed(2)}`,
+    `${(baseX + px * wing).toFixed(2)},${(baseY + py * wing).toFixed(2)}`,
+    `${(baseX - px * wing).toFixed(2)},${(baseY - py * wing).toFixed(2)}`,
+  ].join(" ");
+  return <polygon className="atlas-ship-marker" points={points} />;
+}
+
+// --- tooltip builders ---------------------------------------------------
+
+function buildStationTip(world: World, p: ProjectedLocation): Omit<HoverTip, "px" | "py"> {
+  const counts = stationCounts(world, p.loc.id);
+  const pressure = stationPressure(world, p.loc);
+  const faction = p.loc.traits.faction ?? "Independent";
+  const KindIcon = kindIcon(p.kind);
+  const rows: HoverTipRow[] = [
+    { label: "population", value: formatPopulation(p.loc.population) },
+    { label: "tech", value: `L${p.loc.traits.techLevel}` },
+    { label: "ships", value: `${counts.docked + counts.inbound}` },
+    { label: "contracts", value: `${counts.jobs}` },
+  ];
+  if (pressure.short > 0 || pressure.surplus > 0) {
+    rows.push({
+      label: "pressure",
+      value: pressure.tone === "short" ? `short ${pressure.focusGood}` : `surplus ${pressure.focusGood}`,
+      tone: pressure.tone === "short" ? "bad" : "good",
+    });
+  }
+  return {
+    title: p.loc.name,
+    meta: `${kindLabel(p.kind)} · ${faction}`,
+    art: stationArtUrl(p.loc),
+    icon: <KindIcon className={`atlas-tip-kind-icon atlas-tip-kind-${p.kind}`} aria-hidden="true" />,
+    rows,
+  };
+}
+
+function kindIcon(kind: StationKind): IconType {
+  switch (kind) {
+    case "hub":      return GiTrade;
+    case "mining":   return GiMining;
+    case "agri":     return GiWheat;
+    case "frontier": return GiCampfire;
+    case "research": return GiAtom;
+    default:         return GiSpaceship;
+  }
+}
+
+function buildLaneTip(
+  world: World,
+  a: ProjectedLocation,
+  b: ProjectedLocation,
+  dist: number,
+  traffic: LaneTraffic | undefined,
+): Omit<HoverTip, "px" | "py"> {
+  const rows: HoverTipRow[] = [
+    { label: "distance", value: `${dist.toFixed(0)}u` },
+    { label: "traffic", value: traffic ? `${traffic.count} ship${traffic.count === 1 ? "" : "s"}` : "none", tone: traffic && traffic.count > 0 ? "good" : undefined },
+  ];
+  if (traffic && traffic.ships.length > 0) {
+    const names = traffic.ships
+      .map(id => world.traders[id]?.name)
+      .filter((n): n is string => Boolean(n))
+      .slice(0, 2);
+    if (names.length > 0) {
+      const more = traffic.ships.length - names.length;
+      rows.push({ label: "in transit", value: `${names.join(", ")}${more > 0 ? ` +${more}` : ""}` });
+    }
+  }
+  return {
+    title: `${a.loc.name} ↔ ${b.loc.name}`,
+    meta: `Lane`,
+    rows,
+  };
+}
+
+function buildShipTip(world: World, ship: ShipMarker): Omit<HoverTip, "px" | "py"> {
+  const t = ship.trader;
+  const dst = ship.destination ? world.locations[ship.destination]?.name ?? "—" : null;
+  const cargoQty = t.cargo.reduce((s, l) => s + l.qty, 0);
+  const here = world.locations[ship.origin]?.name ?? "—";
+  const rows: HoverTipRow[] = [];
+  if (ship.isTransit && dst) {
+    rows.push({ label: "from", value: here });
+    rows.push({ label: "to", value: dst });
+    rows.push({ label: "ETA", value: `${t.ticksRemaining}t` });
+  } else {
+    rows.push({ label: "docked", value: here });
+  }
+  rows.push({ label: "cargo", value: `${cargoQty.toFixed(0)} / ${t.capacity}` });
+  rows.push({ label: "pilot", value: t.pilot });
+  return {
+    title: t.name,
+    meta: `${ship.isPlayer ? "Player · " : ""}${ship.isTransit ? "transit" : "docked"}`,
+    rows,
+  };
 }
 
 // Stable key for an unordered lane between two locations.
@@ -521,14 +804,10 @@ function buildLaneTraffic(world: World): Map<string, LaneTraffic> {
   return map;
 }
 
-// Detail panel for the focused station — uses the same fleet-card
-// patterns as the stock info column: art-backed panel head, KPI grid,
-// trade-helper-section blocks separated by tight section titles.
-// Systems sheet — trimmed columns focused on actionable trade signals.
-// Drops the old Profile (tech/pop) and Goods stack (which clutter the
-// row without driving decisions) and merges the four-cell pressure
-// breakout into a single Pressure column with short/surplus counts +
-// average price skew.
+// Systems sheet — exchange + logistics signals side by side. Class and
+// focus columns dropped; replaced with equity Δ% and treasury health from
+// the exchange, plus crew offers and upgrade-good counts from station
+// logistics. Pressure remains as the trade-side market-stock summary.
 function SystemsTable(props: {
   rows: StationSheetRow[];
   selectedId: LocationId | null;
@@ -539,37 +818,48 @@ function SystemsTable(props: {
       rows={props.rows}
       columns={[
         { id: "station", label: "station", getValue: row => row.loc.name },
-        { id: "class", label: "class", getValue: row => kindLabel(row.kind) },
+        { id: "delta", label: "delta", getValue: row => row.exchange.equity ? row.exchange.changePct : null, defaultDirection: "desc" },
+        { id: "treasury", label: "treasury", getValue: row => row.exchange.treasuryRatio, defaultDirection: "desc" },
+        { id: "hires", label: "hires", getValue: row => row.hires, defaultDirection: "desc" },
+        { id: "upgrades", label: "upgrades", getValue: row => row.upgrades, defaultDirection: "desc" },
         { id: "ships", label: "ships", getValue: row => row.counts.docked + row.counts.inbound, defaultDirection: "desc" },
         { id: "jobs", label: "jobs", getValue: row => row.counts.jobs, defaultDirection: "desc" },
         { id: "pressure", label: "pressure", getValue: row => (row.pressure.short + row.pressure.surplus) * 1000 + row.pressure.avgSkew, defaultDirection: "desc" },
-        { id: "focus", label: "focus", getValue: row => row.pressure.focusGood },
       ]}
     >
       {(sortedRows, sort) => (
-        <table className="atlas-sheet-table">
+        <table className="atlas-sheet-table atlas-sheet-table-systems">
           <colgroup>
             <col className="col-station" />
-            <col className="col-kind" />
-            <col className="col-activity" />
+            <col className="col-delta" />
+            <col className="col-treasury" />
+            <col className="col-hires" />
+            <col className="col-upgrades" />
+            <col className="col-ships" />
             <col className="col-jobs" />
             <col className="col-pressure" />
-            <col className="col-focus" />
           </colgroup>
           <thead>
             <tr>
               <SortableTh sort={sort} columnId="station">Station</SortableTh>
-              <SortableTh sort={sort} columnId="class">Class</SortableTh>
+              <SortableTh sort={sort} columnId="delta" className="numeric">Δ%</SortableTh>
+              <SortableTh sort={sort} columnId="treasury" className="numeric">Treasury</SortableTh>
+              <SortableTh sort={sort} columnId="hires" className="numeric">Crew</SortableTh>
+              <SortableTh sort={sort} columnId="upgrades" className="numeric">Upg</SortableTh>
               <SortableTh sort={sort} columnId="ships" className="numeric">Ships</SortableTh>
               <SortableTh sort={sort} columnId="jobs" className="numeric">Jobs</SortableTh>
               <SortableTh sort={sort} columnId="pressure">Pressure</SortableTh>
-              <SortableTh sort={sort} columnId="focus">Focus</SortableTh>
             </tr>
           </thead>
           <tbody>
             {sortedRows.map(row => {
               const selectedRow = props.selectedId === row.loc.id;
               const totalShips = row.counts.docked + row.counts.inbound;
+              const eq = row.exchange.equity;
+              const deltaPct = eq ? row.exchange.changePct * 100 : null;
+              const deltaTone = deltaPct == null ? "dim" : deltaPct > 0.05 ? "good" : deltaPct < -0.05 ? "bad" : "dim";
+              const treasuryPct = row.exchange.treasuryRatio * 100;
+              const treasuryTone = treasuryPct >= 70 ? "good" : treasuryPct < 35 ? "bad" : "dim";
               return (
                 <tr
                   key={row.loc.id}
@@ -585,7 +875,24 @@ function SystemsTable(props: {
                       </span>
                     </span>
                   </td>
-                  <td><span className={`atlas-kind atlas-kind-${row.kind}`}>{kindLabel(row.kind)}</span></td>
+                  <td className="numeric mono">
+                    {eq ? (
+                      <span className={deltaTone}>
+                        {deltaPct! > 0 ? "+" : ""}{deltaPct!.toFixed(2)}%
+                      </span>
+                    ) : (
+                      <span className="dim">—</span>
+                    )}
+                  </td>
+                  <td className="numeric mono">
+                    <span className={treasuryTone}>{Math.round(treasuryPct)}%</span>
+                  </td>
+                  <td className="numeric mono">
+                    <span className={row.hires > 0 ? "" : "dim"}>{row.hires}</span>
+                  </td>
+                  <td className="numeric mono">
+                    <span className={row.upgrades > 0 ? "" : "dim"}>{row.upgrades}</span>
+                  </td>
                   <td className="numeric mono">
                     <span className={totalShips > 0 ? "" : "dim"}>{totalShips}</span>
                     <span className="atlas-cell-sub dim">{row.counts.docked}d + {row.counts.inbound}i</span>
@@ -606,9 +913,6 @@ function SystemsTable(props: {
                         <span className="dim">balanced</span>
                       )}
                     </span>
-                  </td>
-                  <td>
-                    <span className={`atlas-focus ${row.pressure.tone}`}>{row.pressure.focusGood}</span>
                   </td>
                 </tr>
               );
@@ -763,6 +1067,31 @@ function DetailPanel(props: {
     ...inbound.map(s => ({ marker: s, status: "inbound" as const })),
   ].sort((a, b) => a.marker.trader.name.localeCompare(b.marker.trader.name));
 
+  const exchange = stationExchangeSnapshot(world, loc);
+  const localBasis = Object.values(world.equities)
+    .filter(e => {
+      if (e.kind !== "basis") return false;
+      const parts = parseBasisUnderlying(e.underlyingId);
+      return parts?.locationId === loc.id;
+    })
+    .sort((a, b) => Math.abs(b.price - b.anchorPrice) - Math.abs(a.price - a.anchorPrice))
+    .slice(0, 4);
+  const localFutures = Object.values(world.contracts ?? {})
+    .filter(c => c.deliveryStation === loc.id)
+    .sort((a, b) => a.expiryTick - b.expiryTick);
+  const sparkPoints = (exchange.equity?.history ?? []).map(h => h.price);
+  const lastDiv = exchange.equity?.lastDividend;
+  const ticksSinceDiv = lastDiv ? Math.max(0, world.tick - lastDiv.tick) : null;
+  const changeTone = exchange.changePct > 0.0005 ? "good" : exchange.changePct < -0.0005 ? "bad" : "";
+
+  const hires = listHiresAt(world, loc.id);
+  const hireRoles: Record<string, number> = {};
+  for (const h of hires) hireRoles[h.role] = (hireRoles[h.role] ?? 0) + 1;
+
+  const upgradeStock = upgradeStockAt(world, loc.id);
+  const flowEntries = stationFlowEntries(world, loc).slice(0, 6);
+  const stationNews = newsForLocation(world, loc.id);
+
   return (
     <>
       <div
@@ -789,7 +1118,118 @@ function DetailPanel(props: {
           <DetailStat label="docked" value={counts.docked.toLocaleString()} />
           <DetailStat label="inbound" value={counts.inbound.toLocaleString()} />
           <DetailStat label="contracts" value={counts.jobs.toLocaleString()} />
+          <DetailStat label="treasury" value={`${Math.round(exchange.treasuryRatio * 100)}%`} />
+          <DetailStat label="net trade" value={fmtSignedFlow(exchange.netTradeFlow)} />
         </dl>
+
+        {exchange.equity && (
+          <section className="trade-helper-section">
+            <div className="exchange-section-title">Exchange</div>
+            <div className="trade-helper-line station-exchange-quote">
+              <span className="station-exchange-quote-left">
+                <span className="station-exchange-ticker">{exchange.equity.ticker}</span>
+                <span className="mono station-exchange-price">Ç{exchange.equity.price.toFixed(2)}</span>
+              </span>
+              <span className={`station-exchange-delta mono ${changeTone}`}>
+                {exchange.changePct > 0 ? "+" : ""}{(exchange.changePct * 100).toFixed(2)}%
+              </span>
+            </div>
+            {sparkPoints.length > 1 && (
+              <MiniSparkline points={sparkPoints} className="station-exchange-spark" />
+            )}
+            {lastDiv && (
+              <div className="trade-helper-line">
+                <span>Last dividend</span>
+                <span className="mono">Ç{lastDiv.perShare.toFixed(2)} / share · {ticksSinceDiv}t ago</span>
+              </div>
+            )}
+            {localBasis.length > 0 && (
+              <div className="trade-helper-line">
+                <span>Basis spreads</span>
+                <span className="station-basis-list">
+                  {localBasis.map(b => {
+                    const spread = b.price - b.anchorPrice;
+                    const tone = spread > 0.001 ? "good" : spread < -0.001 ? "bad" : "";
+                    return (
+                      <span key={b.id} className="station-basis-chip">
+                        <span className="mono">{b.ticker}</span>
+                        <span className={`mono ${tone}`}>{spread > 0 ? "+" : ""}Ç{spread.toFixed(2)}</span>
+                      </span>
+                    );
+                  })}
+                </span>
+              </div>
+            )}
+            {localFutures.length > 0 && (
+              <div className="trade-helper-line">
+                <span>Futures delivery</span>
+                <span className="mono">
+                  {localFutures.length} contract{localFutures.length === 1 ? "" : "s"}
+                  {localFutures[0] && (
+                    <> · next {Math.max(0, localFutures[0].expiryTick - world.tick)}t</>
+                  )}
+                </span>
+              </div>
+            )}
+          </section>
+        )}
+
+        {flowEntries.length > 0 && (
+          <section className="trade-helper-section">
+            <div className="exchange-section-title">Production flow</div>
+            <div className="atlas-flow-pills">
+              {flowEntries.map(entry => (
+                <span key={`${entry.kind}-${entry.good}`} className={`atlas-flow-pill ${entry.kind}`}>
+                  <span className="atlas-flow-pill-rate mono">{entry.kind === "export" ? "+" : "−"}{entry.rate.toFixed(1)}/t</span>
+                  <span className="atlas-flow-pill-name">{world.goods[entry.good]?.name ?? entry.good}</span>
+                </span>
+              ))}
+            </div>
+          </section>
+        )}
+
+        <section className="trade-helper-section">
+          <div className="exchange-section-title">Crew offers</div>
+          {hires.length === 0 ? (
+            <div className="trade-helper-line muted"><span>Hires</span><span className="dim">no postings</span></div>
+          ) : (
+            <>
+              <div className="trade-helper-line">
+                <span>Available</span>
+                <span className="atlas-role-list">
+                  {(["captain", "navigator", "mechanic"] as const).map(role => {
+                    const n = hireRoles[role] ?? 0;
+                    if (n === 0) return null;
+                    return (
+                      <span key={role} className="atlas-role-pill">
+                        <span className="atlas-role-pill-label">{role}</span>
+                        <span className="mono">{n}</span>
+                      </span>
+                    );
+                  })}
+                </span>
+              </div>
+              <div className="trade-helper-line">
+                <span>Cheapest</span>
+                <span className="mono">Ç{Math.min(...hires.map(h => h.hireCost)).toLocaleString()}</span>
+              </div>
+            </>
+          )}
+        </section>
+
+        <section className="trade-helper-section">
+          <div className="exchange-section-title">Upgrades in stock</div>
+          {upgradeStock.length === 0 ? (
+            <div className="trade-helper-line muted"><span>Stock</span><span className="dim">none on shelves</span></div>
+          ) : (
+            upgradeStock.slice(0, 6).map(row => (
+              <div key={row.good} className="trade-helper-line">
+                <span>{row.name}</span>
+                <span className="mono">×{Math.floor(row.qty)} <span className="dim">· Ç{row.price.toFixed(0)}</span></span>
+              </div>
+            ))
+          )}
+        </section>
 
         <section className="trade-helper-section">
           <div className="exchange-section-title">Market pressure</div>
@@ -808,6 +1248,22 @@ function DetailPanel(props: {
           )}
         </section>
 
+        {stationNews.length > 0 && (
+          <section className="trade-helper-section">
+            <div className="exchange-section-title">Active events</div>
+            {stationNews.map(ev => (
+              <div key={ev.uid} className={`atlas-detail-news tone-${ev.tone}`}>
+                <div className="atlas-detail-news-head">
+                  <span className="atlas-detail-news-tone" aria-hidden />
+                  <span className="atlas-detail-news-cat">{ev.category}</span>
+                  <span className="atlas-detail-news-ticks mono">{Math.max(0, ev.expiresAt - world.tick)}t</span>
+                </div>
+                <div className="atlas-detail-news-headline">{ev.headline}</div>
+              </div>
+            ))}
+          </section>
+        )}
+
         <section className="trade-helper-section">
           <div className="exchange-section-title">Traffic</div>
           {trafficShips.length === 0 ? (
@@ -824,6 +1280,57 @@ function DetailPanel(props: {
       </div>
     </>
   );
+}
+
+interface FlowEntry { kind: "export" | "import"; good: string; rate: number }
+
+function stationFlowEntries(world: World, loc: LocationDef): FlowEntry[] {
+  const out: FlowEntry[] = [];
+  for (const p of loc.produces) {
+    const consumed = loc.consumes.find(c => c.good === p.good)?.ratePerTick ?? 0;
+    const net = p.ratePerTick - consumed;
+    if (net > 0.001) out.push({ kind: "export", good: p.good, rate: net });
+  }
+  for (const c of loc.consumes) {
+    const produced = loc.produces.find(p => p.good === c.good)?.ratePerTick ?? 0;
+    const net = c.ratePerTick - produced;
+    if (net > 0.001) out.push({ kind: "import", good: c.good, rate: net });
+  }
+  void world;
+  return out.sort((a, b) => b.rate - a.rate);
+}
+
+interface UpgradeStockRow { good: string; name: string; qty: number; price: number }
+
+function upgradeStockAt(world: World, locId: LocationId): UpgradeStockRow[] {
+  const market = world.markets[locId];
+  if (!market) return [];
+  const out: UpgradeStockRow[] = [];
+  for (const good of Object.keys(market.stock)) {
+    if (!isUpgradeGood(good)) continue;
+    const qty = market.stock[good] ?? 0;
+    if (qty < 1) continue;
+    const def = world.goods[good];
+    out.push({
+      good,
+      name: def?.name ?? good,
+      qty,
+      price: market.prices[good] ?? def?.basePrice ?? 0,
+    });
+  }
+  return out.sort((a, b) => b.qty - a.qty);
+}
+
+function newsForLocation(world: World, locId: LocationId) {
+  const active = world.newsEvents?.active ?? [];
+  return active.filter(ev =>
+    ev.effects.some(eff => eff.target.kind === "location" && eff.target.id === locId),
+  );
+}
+
+function fmtSignedFlow(flow: number): string {
+  if (Math.abs(flow) < 0.05) return "0";
+  return `${flow > 0 ? "+" : ""}${flow.toFixed(1)}`;
 }
 
 function DetailStat({ label, value }: { label: string; value: string }) {
@@ -887,24 +1394,6 @@ function TrafficList(props: {
   );
 }
 
-function FlowText({ world, loc, goods }: { world: World; loc: LocationDef; goods: string[] }) {
-  const visible = goods.slice(0, 3);
-  return (
-    <span className="atlas-flow-text">
-      {visible.map(good => {
-        const rate = netProductionRate(loc, good);
-        return (
-          <span key={good} title={`${world.goods[good]?.name ?? good} ${rate >= 0 ? "+" : ""}${rate.toFixed(1)}/t`}>
-            <GiCargoCrate className="atlas-icon" aria-hidden="true" focusable="false" />
-            {world.goods[good]?.name ?? good}
-          </span>
-        );
-      })}
-      {goods.length > visible.length && <span className="dim">+{goods.length - visible.length}</span>}
-    </span>
-  );
-}
-
 function stationCounts(world: World, id: LocationId) {
   const traders = Object.values(world.traders);
   return {
@@ -959,11 +1448,39 @@ function buildSheetRows(world: World, locations: LocationDef[]): StationSheetRow
     kind: stationKind(loc),
     counts: stationCounts(world, loc.id),
     pressure: stationPressure(world, loc),
+    exchange: stationExchangeSnapshot(world, loc),
+    hires: listHiresAt(world, loc.id).length,
+    upgrades: countUpgradesInStock(world, loc.id),
   })).sort((a, b) => {
     const pressureRank = Number(b.pressure.tone === "short") - Number(a.pressure.tone === "short");
     return pressureRank
       || stationSort(a.loc, b.loc);
   });
+}
+
+function stationExchangeSnapshot(world: World, loc: LocationDef): StationExchangeSnapshot {
+  const equity = Object.values(world.equities)
+    .find(e => e.kind === "station" && e.underlyingId === loc.id) ?? null;
+  const market = world.markets[loc.id];
+  const treasuryTarget = Math.max(1, market?.treasuryTarget ?? 0);
+  const treasuryRatio = market ? (market.treasury ?? 0) / treasuryTarget : 0;
+  return {
+    equity,
+    changePct: equity ? priceChangePct(equity) : 0,
+    treasuryRatio,
+    netTradeFlow: market?.netTradeFlow ?? 0,
+  };
+}
+
+function countUpgradesInStock(world: World, locId: LocationId): number {
+  const market = world.markets[locId];
+  if (!market) return 0;
+  let count = 0;
+  for (const good of Object.keys(market.stock)) {
+    if (!isUpgradeGood(good)) continue;
+    if ((market.stock[good] ?? 0) >= 1) count += 1;
+  }
+  return count;
 }
 
 function projectLocations(locations: LocationDef[]): ProjectedLocation[] {
