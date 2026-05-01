@@ -244,7 +244,7 @@ export async function seedCachedHeadshot(rawInput: HeadshotSeedInput) {
   };
 }
 
-async function handleHeadshotRequest(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
+export async function handleHeadshotRequest(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
   const url = new URL(req.url ?? "/", "http://localhost");
   if (!url.pathname.startsWith("/api/headshots")) return false;
 

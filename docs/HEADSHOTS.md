@@ -54,9 +54,22 @@ Useful options:
 
 The CLI only seeds pooled role/race/sex/age portraits. Bespoke `clothing` portraits are created through the allocation API because they are always unique and pending.
 
+## Production
+
+The browser calls `/api/headshots/*`, so production must run the Node server, not a static-only Vite/Caddy server. Build and start it with:
+
+```bash
+npm run build
+npm start
+```
+
+`npm start` serves the built `dist/` files and the headshot API from the same origin. Set `PORT` when the host provides one, and set `OPENAI_API_KEY` for new image generation.
+
+If the deploy host auto-detects Vite and creates a static Caddy server, override the runtime start command to `npm start`; static hosting alone cannot serve `/api/headshots/*`. For persistent generated portraits, mount a writable volume and set `HEADSHOT_CACHE_DIR` to that path. Without a persistent cache, generated images are lost on restart.
+
 ## API
 
-All endpoints are served by the Vite dev/preview middleware.
+All endpoints are served by the Vite dev/preview middleware locally and by the production Node server after `npm start`.
 
 - `GET /api/headshots/options`: returns roles, races, sexes, age bands, source sizes, qualities, and prompt version.
 - `GET /api/headshots/cache`: returns cached entries. Optional query filters: `role`, `race`, `sex`, `age`.
