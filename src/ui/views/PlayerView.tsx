@@ -37,6 +37,7 @@ import { goodArtUrl, jobArtUrl, shipArtUrl, stationArtUrl, stationKind, stationK
 import { useBlueprintArtImageUrl, useShipArtImageUrl } from "../shipArtApi";
 import { SortableRows, SortableTh } from "../components/SortableTable";
 import { MiniSparkline } from "../components/MiniSparkline";
+import { BuyShipModal } from "../components/BuyShipModal";
 import "./PlayerView.css";
 
 const SHOW_DEV_SHIP_PLAN_PANEL = false;
@@ -554,13 +555,12 @@ function DockedView({ ship, world, loc, guidedPlan, hint, target, hintText, cueT
   const pinnedMarketGoods = new Set<GoodId>();
   const pinnedCargoGoods = new Set<GoodId>();
   const pinnedStations = new Set<LocationId>();
+  const pinnedBlueprintIds = new Set<string>();
   for (const pinned of pinnedFocuses) {
     if (pinned.kind === "station") pinnedStations.add(pinned.loc);
     else if (pinned.kind === "good" && pinned.source === "cargo") pinnedCargoGoods.add(pinned.good);
     else if (pinned.kind === "good") pinnedMarketGoods.add(pinned.good);
-    // ship-blueprint pins don't drive cargo/market highlighting; they
-    // only affect which row gets the "active" treatment in the
-    // shipyard table, which the table component handles itself.
+    else if (pinned.kind === "ship-blueprint") pinnedBlueprintIds.add(pinned.blueprintId);
   }
 
   const pulseClass = suggestionPulse === 0
@@ -600,6 +600,8 @@ function DockedView({ ship, world, loc, guidedPlan, hint, target, hintText, cueT
             cueText={cueText}
             selectedGood={activeFocus?.kind === "good" && activeFocus.source === "market" ? activeFocus.good : null}
             pinnedGoods={pinnedMarketGoods}
+            selectedBlueprintId={activeFocus?.kind === "ship-blueprint" ? activeFocus.blueprintId : null}
+            pinnedBlueprintIds={pinnedBlueprintIds}
             inTransit={inTransit}
             onSelectGood={(good) => togglePinnedFocus({ kind: "good", good, source: "market" })}
             onHoverGood={(good) => {
@@ -1590,7 +1592,7 @@ function shouldGuardDepartureForSuggestions(world: World, target: HintTarget, de
   return hasLocalSuggestedAction || suggestedDifferentDestination;
 }
 
-function StationExchangeCard({ ship, world, loc, target, hintText, cueText, selectedGood, pinnedGoods, inTransit, onSelectGood, onHoverGood, onSelectBlueprint, onHoverBlueprint }: {
+function StationExchangeCard({ ship, world, loc, target, hintText, cueText, selectedGood, pinnedGoods, selectedBlueprintId, pinnedBlueprintIds, inTransit, onSelectGood, onHoverGood, onSelectBlueprint, onHoverBlueprint }: {
   ship: Trader;
   world: World;
   loc: LocationDef;
@@ -1599,6 +1601,8 @@ function StationExchangeCard({ ship, world, loc, target, hintText, cueText, sele
   cueText: CueTextMap;
   selectedGood: GoodId | null;
   pinnedGoods: Set<GoodId>;
+  selectedBlueprintId: string | null;
+  pinnedBlueprintIds: Set<string>;
   inTransit: boolean;
   onSelectGood: (good: GoodId) => void;
   onHoverGood: (good: GoodId | null) => void;
@@ -1673,6 +1677,8 @@ function StationExchangeCard({ ship, world, loc, target, hintText, cueText, sele
               loc={loc}
               blueprints={blueprints}
               interactionLocked={inTransit}
+              selectedBlueprintId={selectedBlueprintId}
+              pinnedBlueprintIds={pinnedBlueprintIds}
               onSelectBlueprint={onSelectBlueprint}
               onHoverBlueprint={onHoverBlueprint}
             />
@@ -2820,16 +2826,18 @@ function ShipUpgradesTab({ ship }: { ship: Trader }) {
 // Hovering a row sets the active info focus to that blueprint so the
 // info panel switches to the dedicated ship-info content. Clicking the
 // row pins it (exact same toggle-pin behaviour as goods rows).
-function ShipyardMarketBody({ ship, loc, blueprints, interactionLocked, onSelectBlueprint, onHoverBlueprint }: {
+function ShipyardMarketBody({ ship, loc, blueprints, interactionLocked, selectedBlueprintId, pinnedBlueprintIds, onSelectBlueprint, onHoverBlueprint }: {
   ship: Trader;
   world: World;
   loc: LocationDef;
   blueprints: ShipBlueprint[];
   interactionLocked: boolean;
+  selectedBlueprintId: string | null;
+  pinnedBlueprintIds: Set<string>;
   onSelectBlueprint: (id: string) => void;
   onHoverBlueprint: (id: string | null) => void;
 }) {
-  const purchaseShip = useStore(s => s.purchaseShip);
+  const [buyTargetId, setBuyTargetId] = useState<string | null>(null);
   // The buying ship is the one this fleet card already represents — by
   // construction it must be docked here for the card to render at all.
   const canBuy = !interactionLocked && ship.state === "idle" && ship.location === loc.id;
@@ -2899,16 +2907,27 @@ function ShipyardMarketBody({ ship, loc, blueprints, interactionLocked, onSelect
                 const blockedReason = !affordable
                   ? `Need Ç${bp.price.toLocaleString()}, have Ç${Math.floor(ship.funds).toLocaleString()}.`
                   : "";
+                const pinned = pinnedBlueprintIds.has(bp.id);
                 return (
                   <tr
                     key={bp.id}
                     className="shipyard-market-row"
-                    onMouseEnter={() => onHoverBlueprint(bp.id)}
-                    onMouseLeave={() => onHoverBlueprint(null)}
-                    onClick={() => onSelectBlueprint(bp.id)}
+                    aria-selected={selectedBlueprintId === bp.id}
                   >
                     <td>
-                      <span className="shipyard-row-name">{bp.name}</span>
+                      <button
+                        type="button"
+                        className="row-title-with-pin info-focus-trigger"
+                        aria-pressed={pinned}
+                        onMouseEnter={() => onHoverBlueprint(bp.id)}
+                        onMouseLeave={() => onHoverBlueprint(null)}
+                        onFocus={() => onHoverBlueprint(bp.id)}
+                        onBlur={() => onHoverBlueprint(null)}
+                        onClick={() => onSelectBlueprint(bp.id)}
+                      >
+                        <span className="shipyard-row-name">{bp.name}</span>
+                        {pinned && <MdPushPin className="ui-icon row-pin-icon" aria-hidden="true" focusable="false" />}
+                      </button>
                       {bp.traits.length > 0 && (
                         <span className="shipyard-row-trait dim"> · {bp.traits.length} trait{bp.traits.length === 1 ? "" : "s"}</span>
                       )}
@@ -2927,11 +2946,9 @@ function ShipyardMarketBody({ ship, loc, blueprints, interactionLocked, onSelect
                           className="btn-action btn-buy-ship"
                           disabled={!affordable}
                           title={blockedReason}
-                          onClick={(event) => {
-                            event.stopPropagation();
+                          onClick={() => {
                             if (!affordable) return;
-                            if (!confirm(`Buy ${bp.name} (${bp.classLabel}) for Ç${bp.price.toLocaleString()}?\nFunds will be debited from ${ship.name}.`)) return;
-                            purchaseShip(bp.id);
+                            setBuyTargetId(bp.id);
                           }}
                         >
                           Buy
@@ -2945,6 +2962,12 @@ function ShipyardMarketBody({ ship, loc, blueprints, interactionLocked, onSelect
           </table>
         )}
       </SortableRows>
+      <BuyShipModal
+        open={buyTargetId !== null}
+        blueprint={buyTargetId ? blueprints.find(bp => bp.id === buyTargetId) ?? null : null}
+        buyer={ship}
+        onClose={() => setBuyTargetId(null)}
+      />
     </div>
   );
 }
@@ -2969,7 +2992,7 @@ function blueprintArtUrl(world: World, blueprintId: string, fallbackShip: Trader
 // — eyebrow / title / meta line, KPI grid, themed sections — but with
 // blueprint-shaped data plus a Buy CTA.
 function ShipBlueprintInfoContent({ ship, world, blueprintId }: { ship: Trader; world: World; blueprintId: string }) {
-  const purchaseShip = useStore(s => s.purchaseShip);
+  const [buyOpen, setBuyOpen] = useState(false);
   const found = findBlueprintEverywhere(world, blueprintId);
   if (!found) {
     return (
@@ -3060,14 +3083,19 @@ function ShipBlueprintInfoContent({ ship, world, blueprintId }: { ship: Trader; 
           title={buyDisabledReason}
           onClick={() => {
             if (!dockedHere || !affordable) return;
-            if (!confirm(`Buy ${bp.name} (${bp.classLabel}) for Ç${bp.price.toLocaleString()}?\nFunds will be debited from ${ship.name}.`)) return;
-            purchaseShip(bp.id);
+            setBuyOpen(true);
           }}
         >
           Buy for Ç{bp.price.toLocaleString()}
         </button>
         {buyDisabledReason && <div className="dim shipyard-buy-blocked">{buyDisabledReason}</div>}
       </div>
+      <BuyShipModal
+        open={buyOpen}
+        blueprint={bp}
+        buyer={ship}
+        onClose={() => setBuyOpen(false)}
+      />
     </InfoPanelFrame>
   );
 }

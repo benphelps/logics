@@ -1,0 +1,187 @@
+.ui-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background:
+    radial-gradient(ellipse at center, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0.78) 100%),
+    rgba(13, 17, 22, 0.55);
+  backdrop-filter: blur(2px);
+  animation: ui-modal-backdrop-in 140ms ease-out;
+}
+
+.ui-modal-dialog {
+  width: min(440px, 100%);
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  box-shadow:
+    0 24px 80px rgba(0, 0, 0, 0.6),
+    0 1px 0 rgba(255, 255, 255, 0.04) inset;
+  outline: none;
+  animation: ui-modal-dialog-in 160ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.ui-modal-head {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  display: grid;
+  gap: 2px;
+  /* Mimics the .art-panel-head splash: a vertical fade that ramps to
+     near-opaque at the bottom edge, plus a horizontal darkening that
+     leaves a faint accent-blue wash in the middle for visual lift. No
+     image plate — just gradient layers on the dialog's bg. */
+  background-image:
+    linear-gradient(to bottom, rgba(13, 17, 22, 0.05) 0%, rgba(13, 17, 22, 0.55) 78%, rgba(13, 17, 22, 0.85) 100%),
+    linear-gradient(90deg, rgba(13, 17, 22, 0.55), rgba(31, 111, 168, 0.18) 50%, rgba(13, 17, 22, 0.55)),
+    radial-gradient(ellipse 110% 80% at 50% -20%, rgba(118, 199, 255, 0.18), rgba(118, 199, 255, 0) 60%);
+  background-position: center center, center center, center top;
+  background-repeat: no-repeat;
+  background-size: 100% 100%, 100% 100%, 100% 100%;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
+}
+
+.ui-modal-eyebrow {
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  line-height: 1;
+}
+
+/* Selector scoped under .ui-modal-head so it beats .app-main h2's
+   (0,1,1) specificity — otherwise the global rule's uppercase / dim
+   color / 14px size leak through and the modal title looks like a
+   second eyebrow instead of a proper title. */
+.ui-modal-head .ui-modal-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 650;
+  color: var(--text);
+  line-height: 1;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.ui-modal-body {
+  padding: 14px;
+  overflow-y: auto;
+  font-size: 12.5px;
+  color: var(--text);
+  display: grid;
+  gap: 10px;
+}
+
+.ui-modal-footer {
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.ui-modal-footer .ui-modal-btn,
+.ui-modal-btn {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.ui-modal-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: var(--border-strong);
+}
+
+.ui-modal-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ui-modal-btn.primary {
+  background: rgba(31, 111, 168, 0.55);
+  border-color: rgba(118, 199, 255, 0.45);
+  color: white;
+}
+
+.ui-modal-btn.primary:hover:not(:disabled) {
+  background: rgba(40, 130, 195, 0.7);
+  border-color: rgba(140, 213, 255, 0.6);
+}
+
+.ui-modal-btn.danger {
+  background: rgba(248, 113, 113, 0.18);
+  border-color: rgba(248, 113, 113, 0.4);
+  color: var(--bad);
+}
+
+.ui-modal-input {
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  background: var(--bg-1);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 13px;
+}
+
+.ui-modal-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(79, 182, 255, 0.18);
+}
+
+.ui-modal-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.ui-modal-line .dim {
+  color: var(--text-dim);
+}
+
+.ui-modal-section {
+  display: grid;
+  gap: 6px;
+}
+
+.ui-modal-section-title {
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.ui-modal-error {
+  font-size: 11.5px;
+  color: var(--bad);
+}
+
+@keyframes ui-modal-backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes ui-modal-dialog-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}

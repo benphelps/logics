@@ -262,7 +262,12 @@ function completeDeveloperCharters(world: World): void {
 }
 
 function createDeveloperWorld(): World {
-  const world = createStartingWorld({ startingFunds: 250_000 });
+  // Re-seed every time the dev state is created so the layout / lane
+  // network / shipyard placements / NPC fleet / news pool re-roll on
+  // each "Load Developer State" click. Production saves still use the
+  // fixed DEFAULT_STARTING_WORLD.seed for determinism.
+  const seed = Math.floor(Math.random() * 0x7fffffff);
+  const world = createStartingWorld({ startingFunds: 250_000, seed });
   const ship = playerShip(world);
   if (!ship) return world;
 
@@ -382,7 +387,14 @@ interface UiState {
   // it must be docked at the same shipyard. Funds are debited from
   // that ship's wallet and the new ship is added to player.shipIds,
   // docked at the same yard with its own empty wallet.
-  purchaseShip: (blueprintId: string) => void;
+  // Returns the new ship's id on success (so the caller can immediately
+  // open a rename dialog or focus the freshly-bought ship), or null on
+  // failure (lastError is also persisted in that case).
+  purchaseShip: (blueprintId: string) => TraderId | null;
+  // Rename an existing ship in the player's fleet. No-op if the ship
+  // doesn't exist or isn't owned by the player. Empty/whitespace-only
+  // names are ignored — caller should validate before invoking.
+  renameShip: (shipId: TraderId, name: string) => void;
   dismissNewsToast: (uid: string) => void;
 }
 
@@ -769,7 +781,7 @@ export const useStore = create<UiState>((set, get) => {
       const buyerId = selectedPlayerShipId(w, get().selectedTrader);
       if (!buyerId) {
         persistCurrentGame({ lastError: "No buying ship available." });
-        return;
+        return null;
       }
       const r = simPurchaseShip(w, blueprintId, buyerId);
       if (r.ok) {
@@ -777,9 +789,20 @@ export const useStore = create<UiState>((set, get) => {
         // the freshly-bought ship and can immediately outfit it.
         set({ selectedTrader: r.shipId });
         persistCurrentGame({ lastError: null });
-      } else {
-        persistCurrentGame({ lastError: r.reason });
+        return r.shipId;
       }
+      persistCurrentGame({ lastError: r.reason });
+      return null;
+    },
+    renameShip: (shipId, name) => {
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      const w = get().world;
+      const ship = w.traders[shipId];
+      if (!ship) return;
+      if (!w.player?.shipIds.includes(shipId)) return;
+      ship.name = trimmed.slice(0, 32);
+      persistCurrentGame({ lastError: null });
     },
   };
 });

@@ -3437,6 +3437,19 @@ button.upgrade-remove-pill {
 .jobs-table .col-action {
   width: 100px;
 }
+.shipyard-market-table .col-action {
+  width: 110px;
+}
+
+/* The shipyard "Buy" cell holds a single short label (no count badge),
+   so override .btn-action's default left-aligned space-between so the
+   label is centered. Width is set explicitly (overriding .btn-action's
+   108px) and combined with .btn-action.btn-buy-ship for specificity to
+   beat the base rule that comes later in the file. */
+.btn-action.btn-buy-ship {
+  width: 80px;
+  justify-content: center;
+}
 .jobs-table .col-num {
   width: 54px;
 }

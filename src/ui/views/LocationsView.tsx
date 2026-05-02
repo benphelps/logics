@@ -3,10 +3,11 @@ import type { IconType } from "react-icons";
 import { GiAnvil, GiAtom, GiCampfire, GiMining, GiSpaceship, GiTrade, GiWheat } from "react-icons/gi";
 import { useStore } from "../store";
 import { findRoutePath, pathDistance, reachableNeighbors, routeDistance, routeSegments } from "../../sim/geometry";
-import type { Equity, LocationDef, LocationId, Trader, TraderId, World } from "../../sim/types";
+import type { Equity, LocationDef, LocationId, ShipBlueprint, Trader, TraderId, World } from "../../sim/types";
 import { listHiresAt } from "../../sim/hires";
 import { listShipyardInventory } from "../../sim/shipyards";
 import { useBlueprintArtImageUrl } from "../shipArtApi";
+import { BuyShipModal } from "../components/BuyShipModal";
 import { isUpgradeGood, upgradeDef } from "../../sim/upgrades";
 import { parseBasisUnderlying, priceChangePct } from "../../sim/stock";
 import { activeFuelType } from "../../sim/traders";
@@ -1451,14 +1452,9 @@ function fmtCredits(amount: number): string {
 // debits the docked player ship's wallet.
 function ShipyardMarketSection({ world, loc }: { world: World; loc: LocationDef }) {
   const blueprints = listShipyardInventory(world, loc.id);
-  const purchaseShip = useStore(s => s.purchaseShip);
   const selectedTraderId = useStore(s => s.selectedTrader);
   const [openId, setOpenId] = useState<string | null>(null);
-  // Only one accordion item is open at a time, so we can lift the
-  // ship-art lookup to the parent and key it on the focused
-  // blueprint. The rest of the inventory stays text-only.
-  const openBlueprint = openId ? blueprints.find(bp => bp.id === openId) ?? null : null;
-  const openArt = useBlueprintArtImageUrl(openBlueprint);
+  const [buyTargetId, setBuyTargetId] = useState<string | null>(null);
 
   const playerShipIds = world.player?.shipIds ?? [];
   // The "buying ship" is the picker selection if it's a player ship
@@ -1467,8 +1463,8 @@ function ShipyardMarketSection({ world, loc }: { world: World; loc: LocationDef 
   const dockedHere = playerShipIds
     .map(id => world.traders[id])
     .filter((t): t is Trader => Boolean(t) && t.state === "idle" && t.location === loc.id);
-  const preferred = selectedTraderId && dockedHere.find(t => t.id === selectedTraderId);
-  const buyer = preferred ?? dockedHere[0] ?? null;
+  const preferred = selectedTraderId ? dockedHere.find(t => t.id === selectedTraderId) : undefined;
+  const buyer: Trader | null = preferred ?? dockedHere[0] ?? null;
 
   return (
     <section className="trade-helper-section atlas-shipyard-section">
@@ -1486,99 +1482,130 @@ function ShipyardMarketSection({ world, loc }: { world: World; loc: LocationDef 
             </span>
           </div>
           <div className="atlas-shipyard-list">
-            {blueprints.map(bp => {
-              const isOpen = openId === bp.id;
-              const canAfford = buyer ? buyer.funds >= bp.price : false;
-              const blockedReason = !buyer
-                ? "Dock one of your ships at this shipyard to buy."
-                : !canAfford
-                  ? `${buyer.name} needs Ç${bp.price.toLocaleString()}, has Ç${Math.floor(buyer.funds).toLocaleString()}.`
-                  : "";
-              return (
-                <div key={bp.id} className={`atlas-shipyard-item ${isOpen ? "open" : ""}`}>
-                  <button
-                    type="button"
-                    className="atlas-shipyard-summary"
-                    onClick={() => setOpenId(isOpen ? null : bp.id)}
-                  >
-                    <span className={`atlas-shipyard-class atlas-shipyard-class-${bp.class}`}>{bp.classLabel}</span>
-                    <span className="atlas-shipyard-name">{bp.name}</span>
-                    <span className="atlas-shipyard-price mono">{fmtCredits(bp.price)}</span>
-                  </button>
-                  {isOpen && (
-                    <div className="atlas-shipyard-body">
-                      {openArt.imageUrl && (
-                        <div
-                          className="atlas-shipyard-hero"
-                          role="img"
-                          aria-label={`${bp.name} ${bp.classLabel} hero art`}
-                          style={{ backgroundImage: `url("${openArt.imageUrl}")` }}
-                        />
-                      )}
-                      <div className="atlas-shipyard-flavor dim">{bp.flavor}</div>
-                      <dl className="trade-helper-grid atlas-shipyard-stats">
-                        <DetailStat label="cargo" value={`${bp.baseCapacity}`} />
-                        <DetailStat label="speed" value={`${bp.baseSpeed.toFixed(2)}`} />
-                        <DetailStat label="fuel" value={`${bp.baseFuelCapacity}`} />
-                        <DetailStat label="hull" value={`${bp.baseHull}`} />
-                        <DetailStat label="weapons" value={`${bp.baseWeaponPower}`} />
-                        <DetailStat label="fuel type" value={world.goods[bp.fuelType]?.name ?? bp.fuelType} />
-                      </dl>
-                      {Object.keys(bp.preInstalled).length > 0 && (
-                        <div className="trade-helper-line">
-                          <span>Pre-installed</span>
-                          <span className="atlas-shipyard-upgrade-list">
-                            {Object.values(bp.preInstalled).map(good => {
-                              if (!good) return null;
-                              const def = upgradeDef(good);
-                              return (
-                                <span key={good} className="atlas-shipyard-upgrade-chip" title={def?.description ?? def?.name ?? good}>
-                                  {def?.name ?? good}
-                                </span>
-                              );
-                            })}
-                          </span>
-                        </div>
-                      )}
-                      {bp.traits.length > 0 && (
-                        <div className="trade-helper-line">
-                          <span>Traits</span>
-                          <span className="atlas-shipyard-trait-list">
-                            {bp.traits.map(trait => (
-                              <span key={trait} className="atlas-shipyard-trait-chip" title={traitDescription(trait)}>
-                                {traitLabel(trait)}
-                              </span>
-                            ))}
-                          </span>
-                        </div>
-                      )}
-                      <div className="atlas-shipyard-buy-row">
-                        <button
-                          type="button"
-                          className="atlas-shipyard-buy primary"
-                          disabled={!buyer || !canAfford}
-                          title={blockedReason}
-                          onClick={() => {
-                            if (!buyer || !canAfford) return;
-                            if (!confirm(`Buy ${bp.name} (${bp.classLabel}) for Ç${bp.price.toLocaleString()}?\nFunds will be debited from ${buyer.name}.`)) return;
-                            purchaseShip(bp.id);
-                          }}
-                        >
-                          Buy for Ç{bp.price.toLocaleString()}
-                        </button>
-                        {!canAfford && buyer && (
-                          <span className="atlas-shipyard-blocked dim">need Ç{(bp.price - buyer.funds).toLocaleString()} more</span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+            {blueprints.map(bp => (
+              <ShipyardBlueprintRow
+                key={bp.id}
+                world={world}
+                bp={bp}
+                buyer={buyer}
+                isOpen={openId === bp.id}
+                onToggle={() => setOpenId(openId === bp.id ? null : bp.id)}
+                onPurchase={() => setBuyTargetId(bp.id)}
+              />
+            ))}
           </div>
         </>
       )}
+      <BuyShipModal
+        open={buyTargetId !== null}
+        blueprint={buyTargetId ? blueprints.find(bp => bp.id === buyTargetId) ?? null : null}
+        buyer={buyer}
+        onClose={() => setBuyTargetId(null)}
+      />
     </section>
+  );
+}
+
+// Per-blueprint row. Owns its own ship-art lookup so the AI image is
+// available collapsed (visible as a thin strip behind the summary) and
+// expanded (visible as the body's splash). The cache in
+// /api/ship-art/for-ship dedupes by blueprint poolKey, so repeated
+// renders don't re-generate.
+function ShipyardBlueprintRow({
+  world,
+  bp,
+  buyer,
+  isOpen,
+  onToggle,
+  onPurchase,
+}: {
+  world: World;
+  bp: ShipBlueprint;
+  buyer: Trader | null;
+  isOpen: boolean;
+  onToggle: () => void;
+  onPurchase: () => void;
+}) {
+  const art = useBlueprintArtImageUrl(bp);
+  const canAfford = buyer ? buyer.funds >= bp.price : false;
+  const blockedReason = !buyer
+    ? "Dock one of your ships at this shipyard to buy."
+    : !canAfford
+      ? `${buyer.name} needs Ç${bp.price.toLocaleString()}, has Ç${Math.floor(buyer.funds).toLocaleString()}.`
+      : "";
+  return (
+    <div
+      className={`atlas-shipyard-item ${isOpen ? "open" : ""} ${art.imageUrl ? "has-art" : ""}`}
+      style={art.imageUrl ? artCardStyle(art.imageUrl) : undefined}
+    >
+      <button
+        type="button"
+        className="atlas-shipyard-summary"
+        onClick={onToggle}
+      >
+        <span className={`atlas-shipyard-class atlas-shipyard-class-${bp.class}`}>{bp.classLabel}</span>
+        <span className="atlas-shipyard-name">{bp.name}</span>
+        <span className="atlas-shipyard-price mono">{fmtCredits(bp.price)}</span>
+      </button>
+      {isOpen && (
+        <div className={`atlas-shipyard-body ${art.imageUrl ? "has-art" : ""}`}>
+          <div className="atlas-shipyard-flavor dim">{bp.flavor}</div>
+          <dl className="trade-helper-grid atlas-shipyard-stats">
+            <DetailStat label="cargo" value={`${bp.baseCapacity}`} />
+            <DetailStat label="speed" value={`${bp.baseSpeed.toFixed(2)}`} />
+            <DetailStat label="fuel" value={`${bp.baseFuelCapacity}`} />
+            <DetailStat label="hull" value={`${bp.baseHull}`} />
+            <DetailStat label="weapons" value={`${bp.baseWeaponPower}`} />
+            <DetailStat label="fuel type" value={world.goods[bp.fuelType]?.name ?? bp.fuelType} />
+          </dl>
+          {Object.keys(bp.preInstalled).length > 0 && (
+            <div className="trade-helper-line">
+              <span>Pre-installed</span>
+              <span className="atlas-shipyard-upgrade-list">
+                {Object.values(bp.preInstalled).map(good => {
+                  if (!good) return null;
+                  const def = upgradeDef(good);
+                  return (
+                    <span key={good} className="atlas-shipyard-upgrade-chip" title={def?.description ?? def?.name ?? good}>
+                      {def?.name ?? good}
+                    </span>
+                  );
+                })}
+              </span>
+            </div>
+          )}
+          {bp.traits.length > 0 && (
+            <div className="trade-helper-line">
+              <span>Traits</span>
+              <span className="atlas-shipyard-trait-list">
+                {bp.traits.map(trait => (
+                  <span key={trait} className="atlas-shipyard-trait-chip" title={traitDescription(trait)}>
+                    {traitLabel(trait)}
+                  </span>
+                ))}
+              </span>
+            </div>
+          )}
+          <div className="atlas-shipyard-buy-row">
+            <button
+              type="button"
+              className="atlas-shipyard-buy primary"
+              disabled={!buyer || !canAfford}
+              title={blockedReason}
+              onClick={() => {
+                if (!buyer || !canAfford) return;
+                onPurchase();
+              }}
+            >
+              Buy for Ç{bp.price.toLocaleString()}
+            </button>
+            {!canAfford && buyer && (
+              <span className="atlas-shipyard-blocked dim">need Ç{(bp.price - buyer.funds).toLocaleString()} more</span>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

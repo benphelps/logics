@@ -1434,11 +1434,65 @@
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.025);
   border: 1px solid transparent;
+  overflow: hidden;
+}
+
+/* Has-art rows render transparent so the ::before splash (closed) and
+   the body splash (open) carry the bg paint without a flat color
+   bleeding through. */
+.atlas-shipyard-item.has-art,
+.atlas-shipyard-item.has-art.open {
+  background: transparent;
 }
 
 .atlas-shipyard-item.open {
   background: rgba(212, 216, 223, 0.06);
   border-color: rgba(212, 216, 223, 0.18);
+}
+
+/* Art splash: AI-generated blueprint art (via /api/ship-art/for-ship)
+   sits as a backdrop behind the summary row, with a darkening
+   gradient stack so the row text stays legible. The image rides on a
+   ::before pseudo *scoped to the summary* so the image scaling/crop
+   is identical whether the item is closed or open (otherwise the
+   pseudo on the parent would resize when the body expands and the
+   summary's slice of the image would shift). Blur kicks in on hover
+   (any state) and stays on whenever the row is open. --card-art is
+   set inline by artCardStyle(imageUrl). The open body keeps its own
+   .atlas-shipyard-body.has-art splash for the lower content area. */
+.atlas-shipyard-item.has-art {
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.85), 0 0 1px rgba(0, 0, 0, 0.92);
+}
+
+.atlas-shipyard-item.has-art .atlas-shipyard-summary {
+  position: relative;
+  isolation: isolate;
+}
+
+.atlas-shipyard-item.has-art .atlas-shipyard-summary::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    linear-gradient(to bottom, rgba(13, 17, 22, 0.34) 0%, rgba(13, 17, 22, 0.78) 70%, rgba(13, 17, 22, 0.94) 100%),
+    linear-gradient(90deg, rgba(13, 17, 22, 0.74), rgba(13, 17, 22, 0.42) 55%, rgba(13, 17, 22, 0.78)),
+    var(--card-art);
+  background-position: center center, center center, center 28%;
+  background-repeat: no-repeat;
+  background-size: 100% 100%, 100% 100%, cover;
+  border-radius: inherit;
+  transition: filter 220ms ease;
+  pointer-events: none;
+}
+
+.atlas-shipyard-item.has-art:hover .atlas-shipyard-summary::before,
+.atlas-shipyard-item.has-art.open .atlas-shipyard-summary::before {
+  filter: blur(8px);
+}
+
+.atlas-shipyard-item.has-art .dim {
+  color: var(--text);
 }
 
 .atlas-shipyard-summary {
@@ -1458,6 +1512,12 @@
 
 .atlas-shipyard-summary:hover {
   background: rgba(255, 255, 255, 0.03);
+}
+
+/* The summary's own white hover wash conflicts with the blurred art
+   reveal, so kill it on has-art rows (both closed and open). */
+.atlas-shipyard-item.has-art .atlas-shipyard-summary:hover {
+  background: transparent;
 }
 
 .atlas-shipyard-class {
@@ -1501,17 +1561,27 @@
   border-top: 1px solid var(--atlas-line);
 }
 
-/* Hero image inside the expanded blueprint body. The image is
-   AI-generated per blueprint via /api/ship-art/for-ship; until it
-   lands the slot stays empty rather than flashing a placeholder. */
-.atlas-shipyard-hero {
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  border-radius: 4px;
-  background-position: center;
-  background-size: cover;
-  border: 1px solid var(--atlas-line);
-  margin-bottom: 2px;
+/* Open-state splash: when the AI ship art is loaded for this
+   blueprint, the body div uses the image as its backdrop with a
+   vertical+horizontal darkening gradient layered on top so the flavor
+   line / stat grid / chips stay readable. Mirrors .art-panel-head.
+   --card-art is set inline by artCardStyle(imageUrl) on the parent
+   .atlas-shipyard-item, and inherits down here. */
+.atlas-shipyard-body.has-art {
+  background-image:
+    linear-gradient(to bottom, rgba(13, 17, 22, 0.34) 0%, rgba(13, 17, 22, 0.82) 72%, rgba(13, 17, 22, 0.94) 100%),
+    linear-gradient(90deg, rgba(13, 17, 22, 0.74), rgba(13, 17, 22, 0.46) 55%, rgba(13, 17, 22, 0.78)),
+    var(--card-art);
+  background-position: center center, center center, center 30%;
+  background-repeat: no-repeat;
+  background-size: 100% 100%, 100% 100%, cover;
+  background-clip: padding-box;
+  min-height: 180px;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.85), 0 0 1px rgba(0, 0, 0, 0.92);
+}
+
+.atlas-shipyard-body.has-art .dim {
+  color: var(--text);
 }
 
 .atlas-shipyard-flavor {
