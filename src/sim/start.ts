@@ -16,8 +16,8 @@ export interface StartingWorldOptions {
 
 export const DEFAULT_STARTING_WORLD = {
   seed: 20260427,
-  locationCount: 48,
-  traderCount: 72,
+  locationCount: 50,
+  traderCount: 100,
   ageTicks: 90,
 } as const;
 
