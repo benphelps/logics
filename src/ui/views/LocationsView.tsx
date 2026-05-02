@@ -652,7 +652,7 @@ function SectorMap({
                     className="atlas-crosshair-coord"
                     text={`x ${formatAtlasCoord(hoveredStation.loc.position.x)}`}
                     cx={hoveredStation.x}
-                    cy={vbox.y + hudFontSize * 1.4}
+                    cy={vbox.y + vbox.h - hudFontSize * 1.4}
                     fontSize={hudFontSize}
                   />
                   <TextBadge

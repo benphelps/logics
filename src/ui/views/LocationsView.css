@@ -1090,10 +1090,11 @@
 
 /* Crosshair coord readouts use the TextBadge wrapper. Border weight
    matches the crosshair line stroke (0.9px) so the badge reads as
-   the line wrapping around the readout. */
-.atlas-text-badge.atlas-crosshair-coord .atlas-text-badge-label { fill: var(--atlas-hub); }
+   the line wrapping around the readout. White text + border matches
+   the white crosshair lines; player-station crosshair stays gold. */
+.atlas-text-badge.atlas-crosshair-coord .atlas-text-badge-label { fill: rgba(255, 255, 255, 0.95); }
 .atlas-text-badge.atlas-crosshair-coord .atlas-text-badge-bg {
-  stroke: var(--atlas-hub);
+  stroke: rgba(255, 255, 255, 0.55);
   stroke-width: 0.9;
 }
 .atlas-crosshair.player .atlas-text-badge.atlas-crosshair-coord .atlas-text-badge-label { fill: var(--atlas-player); }
