@@ -22,6 +22,7 @@ import { fireCrew, hireCrew, recomputeShipStats } from "../sim/crew";
 import { deriveCrewIdentity } from "../sim/crewIdentity";
 import { MILESTONES, replenishUnlockedUpgrades } from "../sim/milestones";
 import { releaseCrewHeadshots } from "./headshots";
+import { flushHistoryFromWorld, hydrateHistoryRings } from "./historyDb";
 import { abandonPosition, adjustPlayerLimit, buyShares, cancelPlayerLimit, coverShares, placeLimitBuy, placeLimitSell, sellShares, setStopLoss, setTakeProfit, shortShares } from "../sim/stock";
 import { openLongFuture as simOpenLongFuture, openShortFuture as simOpenShortFuture, closeFuture as simCloseFuture } from "../sim/stock/futures";
 import { purchaseShip as simPurchaseShip } from "../sim/shipyards";
@@ -447,6 +448,18 @@ interface UiState {
 }
 
 export const useStore = create<UiState>((set, get) => {
+  // Reload history rings from IndexedDB after any load (initial,
+  // slot-load, new-game, dev-state). Save snapshots strip Equity.history,
+  // Equity.recentTrades, and Trader.log entirely; this fills them back in
+  // up to the runtime caps so charts and the T&S tape work immediately.
+  // Bumps tickEpoch on completion so memoized chart components re-read.
+  const kickoffHistoryHydration = (world: World): void => {
+    void flushHistoryFromWorld(world)
+      .then(() => hydrateHistoryRings(world))
+      .then(() => set({ tickEpoch: get().tickEpoch + 1 }))
+      .catch((err) => { console.warn("[logics] history hydrate failed", err); });
+  };
+
   const applyLoadedGame = (session: LoadedGameSession) => {
     clearPendingAutosave();
     const tabs = session.viewTabs ?? DEFAULT_VIEW_TABS;
@@ -475,6 +488,7 @@ export const useStore = create<UiState>((set, get) => {
       panelScrollPositions: { ...scrollPositions },
       lastError: null,
     });
+    kickoffHistoryHydration(session.world);
   };
 
   const writeCurrentSave = () => {
@@ -640,6 +654,7 @@ export const useStore = create<UiState>((set, get) => {
           panelScrollPositions: {},
           lastError: null,
         });
+        kickoffHistoryHydration(world);
       }
       set({ pendingNewGame: null });
     },
@@ -895,4 +910,14 @@ declare global {
 
 if (typeof window !== "undefined" && import.meta.env.DEV) {
   window.__LOGICS_CAPTURE_STORE__ = useStore;
+}
+
+// Kick off history hydration for the world that was loaded during module
+// init (loadInitialGame ran before the store factory). applyLoadedGame
+// handles every other load path; this catches the cold start.
+if (typeof window !== "undefined") {
+  void flushHistoryFromWorld(initialGame.world)
+    .then(() => hydrateHistoryRings(initialGame.world))
+    .then(() => useStore.setState({ tickEpoch: useStore.getState().tickEpoch + 1 }))
+    .catch((err) => { console.warn("[logics] history hydrate failed", err); });
 }

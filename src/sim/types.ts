@@ -580,6 +580,11 @@ export interface Job {
 }
 
 export interface World {
+  // Stable per-world identifier, generated at world creation. Used to
+  // partition IndexedDB rows for chart history / trades / ship logs so
+  // multiple saves don't collide. Required for new worlds; loaders mint
+  // one for any save that predates this field.
+  gameId: string;
   tick: number;
   goods: Record<GoodId, Good>;
   locations: Record<LocationId, LocationDef>;

@@ -67,6 +67,7 @@ export function createWorld(opts?: {
   }
 
   const world: World = {
+    gameId: createGameId(),
     tick: 0, goods, locations, markets, lanes, traders, player,
     jobs: {}, nextJobId: 1, hires: {}, nextHireId: 1,
     equities: {}, syndicates: opts?.syndicates ?? {},
@@ -74,4 +75,8 @@ export function createWorld(opts?: {
   };
   ensureStockMarket(world);
   return world;
+}
+
+export function createGameId(): string {
+  return `world-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }

@@ -1,16 +1,15 @@
 import type { CrewMember, Hire, World } from "../sim/types";
 import { ensureStockMarket } from "../sim/stock";
 import { warmUpBook } from "../sim/stock/agents";
+import { createGameId } from "../sim/world";
 import { deriveCrewIdentity } from "../sim/crewIdentity";
 import { createNewsEventsState } from "../sim/news/tick";
 import type { ActiveNewsEvent, NewsTarget, RecentNewsEvent } from "../sim/news/types";
+import { deleteGame as deleteGameHistory, flushHistoryFromWorld } from "./historyDb";
 import { normalizePanelScrollPositions, normalizeViewTabs, type PanelScrollPositions, type ViewTabs } from "./viewTabs";
 
 const SAVE_REGISTRY_KEY = "logics.saveGames.v1";
 const SAVE_VERSION = 1;
-const SAVE_EQUITY_HISTORY_MAX = 80;
-const SAVE_RECENT_TRADES_MAX = 12;
-const SAVE_TRADER_LOG_MAX = 12;
 
 export type SaveGameKind = "standard" | "developer";
 export type SaveStatus = "saved" | "unavailable" | "error";
@@ -95,31 +94,22 @@ function cloneWorld(world: World): World {
   return JSON.parse(JSON.stringify(world)) as World;
 }
 
-// Compact a world before serializing to localStorage. With C-1..C-6 the
-// universe lists 80+ equities and each one keeps a recentTrades buffer,
-// a price history capped at SHARE_PRICE_HISTORY_MAX, and an order book
-// of agent quotes. Across multiple save slots that can blow past the
-// ~5 MB localStorage origin quota, at which point setItem throws and
-// the save silently fails.
+// Compact a world before serializing to localStorage. With 80+ equities
+// each carrying a recentTrades buffer, a price history, and an order book
+// of agent quotes, multiple save slots blow past the ~5 MB localStorage
+// origin quota and setItem throws.
 //
-// Strip only the things rebuilt within a few ticks of running:
-//   - Order book entries with a TTL — agent quotes that re-post on a
-//     4-tick cadence. Player limit orders (no TTL) survive untouched.
-//   - Recent time-and-sales prints trimmed aggressively. The tape is useful
-//     immediately after reload, but full 100-print buffers across 100+ listings
-//     dominate localStorage.
-//   - Price history and trader logs trimmed to the most recent entries.
-// Keep:
-//   - Player trade ledger (capped at TRADE_LEDGER_MAX in the sim).
+// The save snapshot is a "current state only" view — anything regenerated
+// from gameplay or stored elsewhere is stripped:
+//   - equity.history / equity.recentTrades / trader.log live in IndexedDB
+//     (see historyDb.ts), partitioned by world.gameId. Strip them entirely.
+//   - Order book TTL entries are agent quotes that re-post in a few ticks.
+//     Player limit orders (no TTL) survive untouched.
 function compactWorldForSave(world: World): World {
   const w = cloneWorld(world);
   for (const eq of Object.values(w.equities ?? {})) {
-    if (eq.history && eq.history.length > SAVE_EQUITY_HISTORY_MAX) {
-      eq.history = eq.history.slice(-SAVE_EQUITY_HISTORY_MAX);
-    }
-    if (eq.recentTrades && eq.recentTrades.length > SAVE_RECENT_TRADES_MAX) {
-      eq.recentTrades = eq.recentTrades.slice(-SAVE_RECENT_TRADES_MAX);
-    }
+    eq.history = [];
+    eq.recentTrades = [];
   }
   if (w.orderBooks) {
     for (const book of Object.values(w.orderBooks)) {
@@ -128,7 +118,7 @@ function compactWorldForSave(world: World): World {
     }
   }
   for (const t of Object.values(w.traders)) {
-    if (t.log && t.log.length > SAVE_TRADER_LOG_MAX) t.log = t.log.slice(-SAVE_TRADER_LOG_MAX);
+    t.log = [];
   }
   return w;
 }
@@ -148,6 +138,7 @@ function compactPersistedSave(save: PersistedSaveGame): PersistedSaveGame {
 // initialized lazily inside `tickTreasuries`, so just the stock market
 // + portfolio shape need explicit backfill.
 function migrateLoadedWorld(world: World): World {
+  if (!world.gameId) world.gameId = createGameId();
   if (!world.equities) world.equities = {};
   if (!world.syndicates) world.syndicates = {};
   ensureStockMarket(world);
@@ -386,9 +377,19 @@ function makeSave(
   };
 }
 
-function loadedFromSave(save: PersistedSaveGame, registry: SaveRegistry, write: SaveWriteResult): LoadedGameSession {
+// `liveWorld`, when provided, overrides the cloned-from-snapshot world. Save
+// paths pass the original (still-mutating) world so the store keeps the
+// reference it was already using and the in-memory history rings survive
+// the save round-trip. Load paths omit it and get a fresh stripped clone
+// the caller hydrates from IndexedDB.
+function loadedFromSave(
+  save: PersistedSaveGame,
+  registry: SaveRegistry,
+  write: SaveWriteResult,
+  liveWorld?: World,
+): LoadedGameSession {
   return {
-    world: migrateLoadedWorld(cloneWorld(save.world)),
+    world: liveWorld ?? migrateLoadedWorld(cloneWorld(save.world)),
     activeSaveId: save.id,
     gameName: save.name,
     gameKind: save.kind,
@@ -423,7 +424,9 @@ export function loadInitialGame(createFallbackWorld: () => World): LoadedGameSes
   const save = makeSave(createSaveId(), "Voyager", "standard", world);
   const next: SaveRegistry = { version: SAVE_VERSION, activeId: save.id, saves: [save] };
   const write = writeRegistry(next);
-  return { ...loadedFromSave(save, next, write), isFreshStart: true };
+  // Fresh world with populated rings — pass live so the caller has chart
+  // data immediately without waiting for an IDB hydrate round-trip.
+  return { ...loadedFromSave(save, next, write, world), isFreshStart: true };
 }
 
 export function saveGameSlot(
@@ -449,6 +452,12 @@ export function saveGameSlot(
     };
   }
 
+  // Flush in-memory history rings (Equity.history, Equity.recentTrades,
+  // Trader.log) into IndexedDB before we strip them from the snapshot.
+  // Fire-and-forget — localStorage is the source of truth for what loads,
+  // and the chart layer falls back gracefully when IDB lags by a tick.
+  void flushHistoryFromWorld(world);
+
   const saveId = id ?? createSaveId(kind === "developer" ? "dev" : "game");
   const existing = registry.saves.find(save => save.id === saveId);
   const save = makeSave(saveId, name, kind, world, existing?.createdAt, viewTabs, panelScrollPositions);
@@ -460,7 +469,10 @@ export function saveGameSlot(
     : [...compactedExisting, save];
   const next: SaveRegistry = { version: SAVE_VERSION, activeId: saveId, saves };
   const write = writeRegistry(next);
-  return loadedFromSave(save, next, write);
+  // Pass the live world so the in-memory history rings (which we just flushed
+  // to IDB) survive the save round-trip. Without this, the caller would
+  // receive the stripped snapshot and lose chart history until the next tick.
+  return loadedFromSave(save, next, write, world);
 }
 
 export function createGameSlot(name: string, kind: SaveGameKind, world: World): LoadedGameSession {
@@ -492,6 +504,12 @@ export function deleteGameSlot(id: string, createFallbackWorld: () => World): Lo
     };
   }
 
+  const removed = registry.saves.find(save => save.id === id);
+  // Cascade-delete the slot's IndexedDB rows (chart history, trades, ship
+  // log). Fire-and-forget — the registry write is what makes the slot
+  // "gone" from the user's perspective; IDB cleanup just reclaims space.
+  if (removed?.world.gameId) void deleteGameHistory(removed.world.gameId);
+
   const saves = registry.saves.filter(save => save.id !== id).map(compactPersistedSave);
   const active = saves.find(save => save.id === registry.activeId) ?? saves[0];
   if (active) {
@@ -504,5 +522,6 @@ export function deleteGameSlot(id: string, createFallbackWorld: () => World): Lo
   const save = makeSave(createSaveId(), "Voyager", "standard", world);
   const next: SaveRegistry = { version: SAVE_VERSION, activeId: save.id, saves: [save] };
   const write = writeRegistry(next);
-  return loadedFromSave(save, next, write);
+  // Fresh world after deleting the only save — same reasoning as above.
+  return loadedFromSave(save, next, write, world);
 }

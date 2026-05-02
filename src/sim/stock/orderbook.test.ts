@@ -17,6 +17,7 @@ import type { World } from "../types";
 // books / id counter.
 function mkWorld(tick = 0): World {
   return {
+    gameId: "test",
     tick,
     goods: {} as never,
     locations: {} as never,

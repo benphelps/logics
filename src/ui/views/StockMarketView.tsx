@@ -10,10 +10,12 @@ import {
   type IChartApi,
   type IPriceLine,
   type ISeriesApi,
+  type LogicalRange,
   type Time,
   type UTCTimestamp,
 } from "lightweight-charts";
 import { useStore } from "../store";
+import { getHistoryWindow } from "../historyDb";
 import type { BookTrade, Equity, EquityKind, FuturesContract, FuturesPosition, Order, OrderBook, StockPosition, TradeRecord, World } from "../../sim/types";
 import { hasCrew } from "../../sim/crew";
 import { canDeliverPhysical, listPlayerFutures, unrealizedFuturesPnl } from "../../sim/stock/futures";
@@ -2827,7 +2829,23 @@ function Sparkline({ equity, position }: { equity: Equity; position: StockPositi
   // so the data effect re-fires with a fresh full setData.
   const [layoutGen, setLayoutGen] = useState(0);
 
-  const history = equity.history ?? [];
+  const gameId = useStore(s => s.world.gameId);
+
+  // Lazy backfill: older samples pulled from IndexedDB and prepended to the
+  // ring's view of history. Resets on equity switch. The chart's data set
+  // is the concatenation `[...backfilled, ...equity.history]` so the user
+  // can pan back beyond the in-memory ring's 150-sample cap.
+  const [backfilled, setBackfilled] = useState<{ tick: number; price: number }[]>([]);
+  const fetchingRef = useRef<boolean>(false);
+  const exhaustedRef = useRef<boolean>(false);
+  const lastBackfilledLenRef = useRef<number>(0);
+  // Mirror of `backfilled` accessible from async subscribers without going
+  // through React state (which lags the next render). Kept in sync with
+  // setBackfilled below.
+  const backfilledRef = useRef<{ tick: number; price: number }[]>([]);
+
+  const ringHistory = equity.history ?? [];
+  const history = backfilled.length > 0 ? [...backfilled, ...ringHistory] : ringHistory;
   const trades = equity.recentTrades ?? [];
 
   // Build the chart once the container has an actual measurable width.
@@ -2929,10 +2947,11 @@ function Sparkline({ equity, position }: { equity: Equity; position: StockPositi
   // (Array.push), so we track length + the last price as effect deps.
   // Each tick we append via series.update() so the user's pan/zoom and
   // crosshair position survive — full setData would reset interactions.
-  // Full setData only happens on equity switch (different ticker) or
-  // when the latest tick rewinds (sim reset/scrub backward).
+  // Full setData happens on equity switch, backward scrub, OR a lazy-
+  // backfill prepend (older samples landed from IDB).
   const histLen = history.length;
   const tradesLen = trades.length;
+  const backfilledLen = backfilled.length;
   const lastPrice = history.length > 0 ? history[history.length - 1].price : 0;
   const lastTick = history.length > 0 ? history[history.length - 1].tick : -1;
   const lastSeenTickRef = useRef<number>(-1);
@@ -2942,21 +2961,23 @@ function Sparkline({ equity, position }: { equity: Equity; position: StockPositi
     const price = priceSeriesRef.current;
     const volume = volumeSeriesRef.current;
     if (!price || !volume) return;
-    const points = normalizeSparklineHistory(history.slice(-200));
+    const points = normalizeSparklineHistory(history);
     if (points.length < 2) {
       price.setData([]);
       volume.setData([]);
       lastSeenTickRef.current = -1;
       lastSeenEquityRef.current = equity.id;
       lastLayoutGenRef.current = layoutGen;
+      lastBackfilledLenRef.current = backfilledLen;
       return;
     }
 
     const equityChanged = lastSeenEquityRef.current !== equity.id;
     const layoutSettled = lastLayoutGenRef.current !== layoutGen;
+    const backfilledGrew = backfilledLen > lastBackfilledLenRef.current;
     const seen = lastSeenTickRef.current;
     const newest = points[points.length - 1].tick;
-    const canAppend = !equityChanged && !layoutSettled && seen >= 0 && newest >= seen;
+    const canAppend = !equityChanged && !layoutSettled && !backfilledGrew && seen >= 0 && newest >= seen;
 
     // Build per-tick volume map once — used by both append and full reset.
     const buyVol: Record<number, number> = {};
@@ -2984,6 +3005,22 @@ function Sparkline({ equity, position }: { equity: Equity; position: StockPositi
         price.update({ time: p.tick as UTCTimestamp, value: p.price });
         volume.update(volumeBar(p));
       }
+    } else if (backfilledGrew && !equityChanged && !layoutSettled) {
+      // Lazy backfill: older samples just landed at the left of the data
+      // set. Capture the user's current visible logical range, do a full
+      // setData, then shift the range right by however many bars we
+      // prepended so the same ticks stay under the user's eye.
+      const ts = chartRef.current?.timeScale();
+      const prevRange = ts?.getVisibleLogicalRange() ?? null;
+      const addedCount = backfilledLen - lastBackfilledLenRef.current;
+      price.setData(points.map(p => ({ time: p.tick as UTCTimestamp, value: p.price })));
+      volume.setData(points.map(volumeBar));
+      if (ts && prevRange && addedCount > 0) {
+        ts.setVisibleLogicalRange({
+          from: prevRange.from + addedCount,
+          to: prevRange.to + addedCount,
+        });
+      }
     } else {
       // Equity switch or backward scrub — full reset and re-fit so the
       // user gets the new ticker centered. Pan/zoom on the new chart
@@ -2995,8 +3032,71 @@ function Sparkline({ equity, position }: { equity: Equity; position: StockPositi
     lastSeenTickRef.current = newest;
     lastSeenEquityRef.current = equity.id;
     lastLayoutGenRef.current = layoutGen;
+    lastBackfilledLenRef.current = backfilledLen;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [equity.id, histLen, tradesLen, lastPrice, lastTick, layoutGen]);
+  }, [equity.id, histLen, tradesLen, lastPrice, lastTick, layoutGen, backfilledLen]);
+
+  // Reset backfill state on equity switch and on game change. We do this
+  // in an effect rather than during render because the chart's data effect
+  // also keys on equity.id and will full-setData with empty backfill on the
+  // same render — so the brief stale-state window is invisible to the user.
+  useEffect(() => {
+    setBackfilled([]);
+    backfilledRef.current = [];
+    fetchingRef.current = false;
+    exhaustedRef.current = false;
+    lastBackfilledLenRef.current = 0;
+  }, [equity.id, gameId]);
+
+  // Lazy backfill: subscribe to visible-range changes; when the user pans
+  // close to the left edge of the loaded data and we still have older
+  // samples in IndexedDB, fetch a chunk and prepend. The data effect above
+  // re-runs (via backfilledLen dep) and shifts the visible range to keep
+  // the same ticks under the user's eye. Stops once IDB returns empty for
+  // the next chunk (exhausted = beginning of recorded history).
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || !gameId) return;
+    const ts = chart.timeScale();
+    const handler = (range: LogicalRange | null) => {
+      if (!range) return;
+      if (fetchingRef.current || exhaustedRef.current) return;
+      // Trigger when the user is within ~5 bars of the left edge.
+      if (range.from > 5) return;
+      // Read from the synchronous ref rather than backfilled state — state
+      // lags by a render and after a successful fetch there's a brief
+      // window where the new chunk isn't reflected in the closure yet.
+      const earliest = backfilledRef.current[0]?.tick ?? equity.history?.[0]?.tick;
+      if (earliest == null || earliest <= 0) {
+        exhaustedRef.current = true;
+        return;
+      }
+      fetchingRef.current = true;
+      const upTo = earliest - 1;
+      const from = Math.max(0, upTo - 500);
+      void getHistoryWindow(gameId, equity.id, from, upTo)
+        .then(samples => {
+          fetchingRef.current = false;
+          if (samples.length === 0) {
+            exhaustedRef.current = true;
+            return;
+          }
+          const chunk = samples.map(s => ({ tick: s.tick, price: s.price }));
+          setBackfilled(prev => {
+            const next = [...chunk, ...prev];
+            backfilledRef.current = next;
+            return next;
+          });
+        })
+        .catch(err => {
+          fetchingRef.current = false;
+          console.warn("[logics] lazy backfill failed", err);
+        });
+    };
+    ts.subscribeVisibleLogicalRangeChange(handler);
+    return () => ts.unsubscribeVisibleLogicalRangeChange(handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [equity.id, gameId, layoutGen, backfilledLen]);
 
   // Position lines (avg entry / SL / TP). Re-create on every position
   // change rather than tracking individual line refs — there are at most
