@@ -469,22 +469,50 @@ function SectorMap({
       >
         <rect className="atlas-map-bg" x={-MAP_W} y={-MAP_H} width={MAP_W * 3} height={MAP_H * 3} />
         <g className="atlas-gridlines">
-          {/* Atlas-style minor + major grid: even five-cell ticks for the
-              minor sub-grid and a quarter-grid as the major axis lines.
-              Both are subtle so the data layer reads first. */}
-          {Array.from({ length: 9 }, (_, i) => i + 1).map(i => (
-            <line key={`gx-${i}`} className="atlas-gridline-minor" x1={MAP_W * (i / 10)} y1={0} x2={MAP_W * (i / 10)} y2={MAP_H} />
-          ))}
-          {Array.from({ length: 9 }, (_, i) => i + 1).map(i => (
-            <line key={`gy-${i}`} className="atlas-gridline-minor" x1={0} y1={MAP_H * (i / 10)} x2={MAP_W} y2={MAP_H * (i / 10)} />
-          ))}
-          {[0.25, 0.5, 0.75].map(v => (
-            <g key={`maj-${v}`}>
-              <line className="atlas-gridline-major" x1={MAP_W * v} y1={0} x2={MAP_W * v} y2={MAP_H} />
-              <line className="atlas-gridline-major" x1={0} y1={MAP_H * v} x2={MAP_W} y2={MAP_H * v} />
-            </g>
-          ))}
-          {/* Map border frames the atlas page. */}
+          {/* Grid stops are computed against the current vbox so the
+              lines extend to the visible canvas at any zoom or pan
+              level — the universe-bounded frame still sits inside as
+              an indicator of the original gen window. Step values
+              match the legacy 10-cell minor / 4-cell major rhythm. */}
+          {(() => {
+            const minorStepX = MAP_W / 10;
+            const minorStepY = MAP_H / 10;
+            const majorStepX = MAP_W / 4;
+            const majorStepY = MAP_H / 4;
+            const stops = (start: number, end: number, step: number): number[] => {
+              const out: number[] = [];
+              const first = Math.floor(start / step) * step;
+              for (let v = first; v <= end + step * 0.5; v += step) out.push(v);
+              return out;
+            };
+            const x1 = vbox.x;
+            const x2 = vbox.x + vbox.w;
+            const y1 = vbox.y;
+            const y2 = vbox.y + vbox.h;
+            const minorXs = stops(x1, x2, minorStepX);
+            const minorYs = stops(y1, y2, minorStepY);
+            const majorXs = stops(x1, x2, majorStepX);
+            const majorYs = stops(y1, y2, majorStepY);
+            return (
+              <>
+                {minorXs.map(x => (
+                  <line key={`mnx-${x}`} className="atlas-gridline-minor" x1={x} y1={y1} x2={x} y2={y2} />
+                ))}
+                {minorYs.map(y => (
+                  <line key={`mny-${y}`} className="atlas-gridline-minor" x1={x1} y1={y} x2={x2} y2={y} />
+                ))}
+                {majorXs.map(x => (
+                  <line key={`mjx-${x}`} className="atlas-gridline-major" x1={x} y1={y1} x2={x} y2={y2} />
+                ))}
+                {majorYs.map(y => (
+                  <line key={`mjy-${y}`} className="atlas-gridline-major" x1={x1} y1={y} x2={x2} y2={y} />
+                ))}
+              </>
+            );
+          })()}
+          {/* Universe boundary: marks the original gen window. The grid
+              extends past it; the frame stays where it always was so
+              the player has a visible "edge of settled space" anchor. */}
           <rect className="atlas-map-frame" x={0} y={0} width={MAP_W} height={MAP_H} />
         </g>
       </svg>
@@ -570,38 +598,59 @@ function SectorMap({
             />
           );
         })()}
-        {hoveredStation && (
-          <g className={`atlas-crosshair ${hoveredStation.loc.id === playerLocation ? "player" : ""}`} pointerEvents="none">
-            <line
-              className="atlas-crosshair-line"
-              x1={hoveredStation.x}
-              y1={vbox.y}
-              x2={hoveredStation.x}
-              y2={vbox.y + vbox.h}
-            />
-            <line
-              className="atlas-crosshair-line"
-              x1={vbox.x}
-              y1={hoveredStation.y}
-              x2={vbox.x + vbox.w}
-              y2={hoveredStation.y}
-            />
-            <TextBadge
-              className="atlas-crosshair-coord"
-              text={`x ${formatAtlasCoord(hoveredStation.loc.position.x)}`}
-              cx={hoveredStation.x}
-              cy={vbox.y + hudFontSize * 1.4}
-              fontSize={hudFontSize}
-            />
-            <TextBadge
-              className="atlas-crosshair-coord"
-              text={`y ${formatAtlasCoord(hoveredStation.loc.position.y)}`}
-              cx={vbox.x + hudFontSize * 2.6}
-              cy={hoveredStation.y}
-              fontSize={hudFontSize}
-            />
-          </g>
-        )}
+        {(() => {
+          // Selected-station crosshair stays on always (dim), hover
+          // overlays a brighter version. When the cursor is over the
+          // selected station, the hover variant alone reads — render
+          // them in order so the hover style wins at the same lines.
+          const selectedProj = selectedId ? projectedById.get(selectedId) ?? null : null;
+          const showSelected = selectedProj && (!hoveredStation || hoveredStation.loc.id !== selectedProj.loc.id);
+          return (
+            <>
+              {showSelected && selectedProj && (
+                <g
+                  className={`atlas-crosshair selected ${selectedProj.loc.id === playerLocation ? "player" : ""}`}
+                  pointerEvents="none"
+                >
+                  <line className="atlas-crosshair-line" x1={selectedProj.x} y1={vbox.y} x2={selectedProj.x} y2={vbox.y + vbox.h} />
+                  <line className="atlas-crosshair-line" x1={vbox.x} y1={selectedProj.y} x2={vbox.x + vbox.w} y2={selectedProj.y} />
+                </g>
+              )}
+              {hoveredStation && (
+                <g className={`atlas-crosshair ${hoveredStation.loc.id === playerLocation ? "player" : ""}`} pointerEvents="none">
+                  <line
+                    className="atlas-crosshair-line"
+                    x1={hoveredStation.x}
+                    y1={vbox.y}
+                    x2={hoveredStation.x}
+                    y2={vbox.y + vbox.h}
+                  />
+                  <line
+                    className="atlas-crosshair-line"
+                    x1={vbox.x}
+                    y1={hoveredStation.y}
+                    x2={vbox.x + vbox.w}
+                    y2={hoveredStation.y}
+                  />
+                  <TextBadge
+                    className="atlas-crosshair-coord"
+                    text={`x ${formatAtlasCoord(hoveredStation.loc.position.x)}`}
+                    cx={hoveredStation.x}
+                    cy={vbox.y + hudFontSize * 1.4}
+                    fontSize={hudFontSize}
+                  />
+                  <TextBadge
+                    className="atlas-crosshair-coord"
+                    text={`y ${formatAtlasCoord(hoveredStation.loc.position.y)}`}
+                    cx={vbox.x + hudFontSize * 2.6}
+                    cy={hoveredStation.y}
+                    fontSize={hudFontSize}
+                  />
+                </g>
+              )}
+            </>
+          );
+        })()}
         {/* Lane-midpoint direction arrows were dropped here — the
             transit-ship chevrons themselves show heading now that
             sub-tick smoothing makes them glide along the lane. */}

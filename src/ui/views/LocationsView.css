@@ -1064,16 +1064,28 @@
    left edges. Player-station hovers swap the colour for the gold
    "you are here" tone. */
 .atlas-crosshair-line {
-  stroke: var(--atlas-hub);
-  stroke-opacity: 0.62;
+  stroke: rgba(255, 255, 255, 1);
+  stroke-opacity: 0.55;
   stroke-width: 0.9;
   stroke-dasharray: 5 4;
   vector-effect: non-scaling-stroke;
 }
 
+/* Selected-station crosshair always renders, but quiet — present so the
+   eye keeps a thread to the active station, not so loud it competes
+   with hovered stations or the data layer. The hover style above wins
+   on whichever station the cursor is over. */
+.atlas-crosshair.selected .atlas-crosshair-line {
+  stroke-opacity: 0.18;
+}
+
 .atlas-crosshair.player .atlas-crosshair-line {
   stroke: var(--atlas-player);
   stroke-opacity: 0.85;
+}
+.atlas-crosshair.selected.player .atlas-crosshair-line {
+  stroke: var(--atlas-player);
+  stroke-opacity: 0.30;
 }
 
 /* Crosshair coord readouts use the TextBadge wrapper. Border weight
@@ -2047,8 +2059,11 @@
   font-weight: 700;
   letter-spacing: 0.04em;
   font-variant-numeric: tabular-nums;
-  color: rgba(255, 255, 255, 0.95);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+  /* Dark text on the pastel accent fills — readable across all the
+     syndicate accents without per-color luminance branching. The light
+     shadow lifts the glyphs off the segment a touch. */
+  color: rgba(0, 0, 0, 0.78);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.22);
 }
 
 .atlas-stat-grid {
