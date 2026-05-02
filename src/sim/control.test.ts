@@ -4,6 +4,7 @@ import { tickN } from "./tick";
 import {
   bumpPlayerReputation,
   effectiveToll,
+  FLIP_HOLD_TICKS,
   FOREIGN_DOCK_TOLL,
   isOwnTerritory,
   nudgeStationControl,
@@ -107,10 +108,15 @@ describe("syndicate control invariants", () => {
     }
   });
 
-  it("LocationTraits.faction stays synced with the dominant control share", { timeout: TEST_TIMEOUT_MS }, () => {
+  it("LocationTraits.faction lags the dominant share by the flip-hold threshold but eventually catches up", { timeout: TEST_TIMEOUT_MS }, () => {
     const world = freshWorld(SEEDS[2]);
     tickN(world, TICKS_LONG);
     if (!world.control) throw new Error("no control state");
+    // After a long run with hysteresis, every station whose dominant
+    // syndicate is *not* the stamped faction must currently be in
+    // challenger transition (i.e. it became dominant within the last
+    // FLIP_HOLD_TICKS window and the flip hasn't fired yet).
+    const challenges = world.controlChallenge ?? {};
     for (const [locId, m] of Object.entries(world.control)) {
       let dominantId: SyndicateId | null = null;
       let dominantShare = 0;
@@ -118,7 +124,11 @@ describe("syndicate control invariants", () => {
         if (m[k] > dominantShare) { dominantShare = m[k]; dominantId = k; }
       }
       const loc = world.locations[locId];
-      expect(loc.traits.faction, `${locId}`).toBe(dominantId);
+      if (loc.traits.faction === dominantId) continue;
+      const ch = challenges[locId];
+      expect(ch, `${locId}: dominant != faction but no challenger entry`).toBeDefined();
+      expect(ch!.syndicateId, `${locId}: challenger should match the dominant`).toBe(dominantId);
+      expect(ch!.ticksHeld, `${locId}: challenger should still be under threshold`).toBeLessThan(FLIP_HOLD_TICKS);
     }
   });
 
@@ -214,8 +224,11 @@ describe("control mechanics: focused activity", () => {
     for (let i = 0; i < TRADES; i++) {
       nudgeStationControl(world, targetId, rival!.id, CREDITS_PER_TRADE * PLAYER_TRADE_PER_CREDIT);
     }
-    // Run a few ticks so applyFactionFlips re-syncs traits.faction.
-    tickN(world, 4);
+    // Use tickControl directly past the sustained-dominance threshold
+    // — calling tickN here would let NPC traffic at the same station
+    // contest the freshly-built lead and the test would be flaky on
+    // exactly which tick the flip lands.
+    for (let i = 0; i < FLIP_HOLD_TICKS + 1; i++) tickControl(world);
 
     expect(world.locations[targetId].traits.faction, `station should have flipped from ${initialOwner} to ${rival!.id}`).toBe(rival!.id);
     expect(world.control![targetId][rival!.id]).toBeGreaterThan(0.5);
@@ -355,11 +368,11 @@ describe("control mechanics: focused activity", () => {
     expect(effectiveToll(world, foreignId, true)).toBe(0);
   });
 
-  // Station flip via tickControl emits a news event with paired effects:
-  // a positive share-price bump for the seizing syndicate and a matching
-  // negative for the previous owner. The toast pipeline picks these up
-  // through tickWorld's newsSpawned aggregation.
-  it("tickControl emits a flip news event when dominance changes", () => {
+  // Station flip via tickControl is gated on sustained dominance — a
+  // rival has to hold the lead for FLIP_HOLD_TICKS consecutive ticks
+  // before the faction stamp changes. The news event fires only at the
+  // moment of the actual transfer, with paired share-price effects.
+  it("tickControl waits for FLIP_HOLD_TICKS before emitting a flip news event", () => {
     const world = affiliatedWorld(SEEDS[0]);
     const target = Object.values(world.locations).find(loc => loc.traits.faction);
     expect(target).toBeDefined();
@@ -368,22 +381,58 @@ describe("control mechanics: focused activity", () => {
     const rival = Object.values(world.syndicates).find(s => s.id !== ownerId);
     expect(rival).toBeDefined();
 
-    // Force a flip: rival now dominant.
     world.control![targetId] = { [ownerId]: 0.4, [rival!.id]: 0.6 };
-    const report = tickControl(world);
 
+    // Up to but not at the threshold: faction stays stable, no events.
+    for (let i = 0; i < FLIP_HOLD_TICKS - 1; i++) {
+      const r = tickControl(world);
+      expect(r.spawnedNews).toHaveLength(0);
+    }
+    expect(world.locations[targetId].traits.faction).toBe(ownerId);
+    expect(world.controlChallenge?.[targetId]?.syndicateId).toBe(rival!.id);
+
+    // The threshold tick fires the flip + emits the news event.
+    const report = tickControl(world);
     expect(report.spawnedNews).toHaveLength(1);
     const ev = report.spawnedNews[0];
     expect(ev.templateId).toBe("station_flip");
     expect(ev.headline).toContain(rival!.name);
     expect(ev.headline).toContain(target!.name);
-    // Expect a positive effect on the rival, negative on the prior owner.
     const positive = ev.effects.find(e => e.direction === 1);
     const negative = ev.effects.find(e => e.direction === -1);
     expect(positive?.target.id).toBe(rival!.id);
     expect(negative?.target.id).toBe(ownerId);
-    // Faction should now be flipped on the live world.
     expect(world.locations[targetId].traits.faction).toBe(rival!.id);
+    // Challenger entry cleared after the flip.
+    expect(world.controlChallenge?.[targetId]).toBeUndefined();
+  });
+
+  it("a challenger that loses the lead before the threshold doesn't trigger a flip", () => {
+    const world = affiliatedWorld(SEEDS[0]);
+    const target = Object.values(world.locations).find(loc => loc.traits.faction);
+    expect(target).toBeDefined();
+    const targetId: LocationId = target!.id;
+    const ownerId = target!.traits.faction!;
+    const rival = Object.values(world.syndicates).find(s => s.id !== ownerId);
+    expect(rival).toBeDefined();
+
+    // Rival takes a small lead for half the hold window.
+    world.control![targetId] = { [ownerId]: 0.45, [rival!.id]: 0.55 };
+    for (let i = 0; i < Math.floor(FLIP_HOLD_TICKS / 2); i++) tickControl(world);
+    expect(world.controlChallenge?.[targetId]?.syndicateId).toBe(rival!.id);
+
+    // Owner reasserts dominance — challenger entry must clear.
+    world.control![targetId] = { [ownerId]: 0.6, [rival!.id]: 0.4 };
+    const r = tickControl(world);
+    expect(r.spawnedNews).toHaveLength(0);
+    expect(world.controlChallenge?.[targetId]).toBeUndefined();
+    expect(world.locations[targetId].traits.faction).toBe(ownerId);
+
+    // Even after holding it back to the rival again for half a window,
+    // the count restarts from scratch — no flip yet.
+    world.control![targetId] = { [ownerId]: 0.45, [rival!.id]: 0.55 };
+    for (let i = 0; i < Math.floor(FLIP_HOLD_TICKS / 2); i++) tickControl(world);
+    expect(world.locations[targetId].traits.faction).toBe(ownerId);
   });
 
   it("tickControl emits no flip event when dominance is unchanged", () => {
@@ -408,9 +457,11 @@ describe("control mechanics: focused activity", () => {
     expect(rival).toBeDefined();
 
     world.control![targetId] = { [ownerId]: 0.45, [rival!.id]: 0.55 };
-    // First tick syncs the faction stamp to the new dominant.
-    tickControl(world);
     const snapshot = JSON.stringify(world.control![targetId]);
+    // 200 ticks is well past FLIP_HOLD_TICKS, so the rival completes
+    // its sustained-dominance challenge and the faction stamp ends up
+    // on them; the underlying control shares stay identical because no
+    // activity is happening.
     for (let i = 0; i < 200; i++) tickControl(world);
 
     expect(JSON.stringify(world.control![targetId])).toBe(snapshot);

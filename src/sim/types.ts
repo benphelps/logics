@@ -617,6 +617,15 @@ export interface World {
   // first paint after a tick that nudged control does. Optional; readers
   // default to 0.
   controlVersion?: number;
+  // Pending flip state per station. When a syndicate becomes dominant
+  // at a station whose faction stamp it doesn't yet hold, control.ts
+  // starts counting consecutive ticks of sustained dominance here.
+  // Once ticksHeld crosses FLIP_HOLD_TICKS, the faction flips and the
+  // entry is cleared. Cleared also when the previous owner reasserts
+  // or a different rival takes the lead — flipping requires sustained,
+  // unbroken dominance, not just one strong tick. Optional; absent
+  // entry == no challenge in progress.
+  controlChallenge?: Record<LocationId, { syndicateId: SyndicateId; ticksHeld: number }>;
   // Shipyard inventory — blueprints currently for sale at each shipyard
   // station. Ticked alongside hires/jobs (expire-then-post). Optional for
   // back-compat; old saves load with empty inventories that fill in

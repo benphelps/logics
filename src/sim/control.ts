@@ -27,6 +27,14 @@ export const PLAYER_TRADE_PER_CREDIT = 6e-5;
 // above 0 to add a slow consolidation pressure.
 const DECAY_PER_TICK = 0;
 
+// Consecutive ticks a rival must hold the dominant share before a
+// station's faction actually flips. Provides hysteresis — a momentary
+// burst of activity that pokes a rival above 50% won't snap the
+// territory away from its long-running owner. The challenger has to
+// sustain the lead. Reset when the previous owner reasserts dominance
+// or a different rival overtakes the current challenger.
+export const FLIP_HOLD_TICKS = 30;
+
 // Below this share, the entry drops out of the per-station map
 // entirely. Keeps the control records compact and prevents long-tail
 // noise from accumulating after a flip.
@@ -167,31 +175,66 @@ function applyDecay(world: World): boolean {
 }
 
 // Sync each station's recorded faction stamp with whoever's actually
-// dominant in the control map, and emit a news event for any flip
-// (seizing syndicate gains, previous owner loses) so the toast pipeline
-// surfaces it. Returns the spawned events so the caller can fold them
-// into the tick report.
+// dominant in the control map. Flips require sustained dominance —
+// a rival who tops 50% has to hold the lead for FLIP_HOLD_TICKS
+// consecutive ticks before the faction stamp changes hands. We track
+// per-station challenger state in world.controlChallenge: ticksHeld
+// counts up while the dominant != faction; resets when the owner
+// reasserts or a different rival overtakes the current challenger.
+// News events fire only at the moment of the actual flip.
 function applyFactionFlips(world: World): { changed: boolean; spawned: ActiveNewsEvent[] } {
   if (!world.control) return { changed: false, spawned: [] };
+  if (!world.controlChallenge) world.controlChallenge = {};
+  const challenges = world.controlChallenge;
   let changed = false;
   const spawned: ActiveNewsEvent[] = [];
+
   for (const locId in world.control) {
     const loc = world.locations[locId];
     if (!loc) continue;
     const { id: dominantId } = dominantOf(world.control[locId]);
-    if (!dominantId) continue;
+    if (!dominantId) {
+      if (challenges[locId]) delete challenges[locId];
+      continue;
+    }
+
     const previous = loc.traits.faction;
-    if (previous !== dominantId) {
+
+    // First-time stamp on a station that had no faction yet: settle
+    // immediately (no incumbent to defend against). Mostly hits old
+    // saves and post-gen worlds where the seed populated control with
+    // an entry but the loc.traits.faction got lost.
+    if (!previous) {
       loc.traits.faction = dominantId;
       changed = true;
-      // First-time stamp (no previous owner — happens with old saves
-      // that didn't have a faction set) doesn't merit a news event.
-      if (previous) {
-        const ev = makeFlipEvent(world, locId, previous, dominantId);
-        if (ev) {
-          spawned.push(ev);
-          if (world.newsEvents) world.newsEvents.active.push(ev);
-        }
+      delete challenges[locId];
+      continue;
+    }
+
+    if (previous === dominantId) {
+      // Owner is still dominant — no challenge in progress.
+      if (challenges[locId]) delete challenges[locId];
+      continue;
+    }
+
+    // Different syndicate is dominant. Tick the challenger or start a
+    // fresh count when the lead changes hands.
+    const existing = challenges[locId];
+    if (existing && existing.syndicateId === dominantId) {
+      existing.ticksHeld += 1;
+    } else {
+      challenges[locId] = { syndicateId: dominantId, ticksHeld: 1 };
+    }
+
+    const challenger = challenges[locId];
+    if (challenger.ticksHeld >= FLIP_HOLD_TICKS) {
+      loc.traits.faction = dominantId;
+      changed = true;
+      delete challenges[locId];
+      const ev = makeFlipEvent(world, locId, previous, dominantId);
+      if (ev) {
+        spawned.push(ev);
+        if (world.newsEvents) world.newsEvents.active.push(ev);
       }
     }
   }
@@ -330,5 +373,6 @@ export function seedControlFromFactions(world: World): void {
     control[loc.id] = { [owner]: 1.0 };
   }
   world.control = control;
+  world.controlChallenge = {};
   world.controlVersion = (world.controlVersion ?? 0) + 1;
 }
