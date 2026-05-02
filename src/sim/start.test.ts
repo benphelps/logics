@@ -1,9 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_STARTING_WORLD, choosePlayerStart, createStartingWorld } from "./start";
 import { generateWorld } from "./gen/world";
 import { reachableNeighbors, routeCount } from "./geometry";
 
 describe("playable starting world", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("uses the expanded generated universe defaults", () => {
     const world = createStartingWorld();
     expect(Object.keys(world.locations).length).toBe(DEFAULT_STARTING_WORLD.locationCount);
@@ -12,6 +16,15 @@ describe("playable starting world", () => {
     expect(routeCount(world)).toBeGreaterThan(DEFAULT_STARTING_WORLD.locationCount - 1);
     const ship = world.traders[world.player!.shipIds[0]];
     expect(reachableNeighbors(world, ship.location).length).toBeGreaterThan(0);
+  });
+
+  it("rerolls the generated universe when no seed is provided", () => {
+    vi.spyOn(Math, "random")
+      .mockReturnValueOnce(0.1)
+      .mockReturnValueOnce(0.9);
+    const a = createStartingWorld({ locationCount: 8, traderCount: 4, ageTicks: 0 });
+    const b = createStartingWorld({ locationCount: 8, traderCount: 4, ageTicks: 0 });
+    expect(Object.keys(a.locations)).not.toEqual(Object.keys(b.locations));
   });
 
   it("ages the economy before the player ship is inserted", () => {

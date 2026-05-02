@@ -15,11 +15,14 @@ export interface StartingWorldOptions {
 }
 
 export const DEFAULT_STARTING_WORLD = {
-  seed: 20260427,
   locationCount: 50,
   traderCount: 100,
   ageTicks: 90,
 } as const;
+
+export function randomStartingWorldSeed(): number {
+  return Math.floor(Math.random() * 0x1_0000_0000);
+}
 
 function centralityScore(world: World, id: LocationId): number {
   const loc = world.locations[id];
@@ -43,7 +46,7 @@ export function choosePlayerStart(world: World): LocationId {
 export function createStartingWorld(opts: StartingWorldOptions = {}): World {
   const locationCount = opts.locationCount ?? DEFAULT_STARTING_WORLD.locationCount;
   const world = generateWorld({
-    seed: opts.seed ?? DEFAULT_STARTING_WORLD.seed,
+    seed: opts.seed ?? randomStartingWorldSeed(),
     locationCount,
     traderCount: opts.traderCount ?? DEFAULT_STARTING_WORLD.traderCount,
     mapRadius: opts.mapRadius,
