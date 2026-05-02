@@ -53,18 +53,20 @@ const SHIPYARD_MIN_SEPARATION = 4.5;
 // a fraction of mapRadius so it scales with world size, and tuned so
 // the projected atlas always has visible space between station glyphs
 // (no overlap, room for docked-ship dots, room for lane endpoints).
-const CLUSTER_MIN_SEPARATION_FACTOR = 0.06;
+const CLUSTER_MIN_SEPARATION_FACTOR = 0.12;
 
 // Cluster offset by archetype, expressed as a fraction of mapRadius. Each
 // non-outpost station is placed at an isotropic offset from its parent
 // outpost drawn from this range — small for trade-hubs (orbit the seat),
-// far for frontier-outposts (the cluster's rim).
+// far for frontier-outposts (the cluster's rim). Ranges are spread out
+// to keep inner/middle/outer rings layered: trade-hubs sit close in,
+// mining/agri/research fill the middle ring, frontier sits on the rim.
 const CLUSTER_OFFSET: Partial<Record<ArchetypeName, [number, number]>> = {
-  "trade-hub":         [0.06, 0.20],
-  "mining-belt":       [0.10, 0.32],
-  "agricultural-ring": [0.10, 0.32],
-  "frontier-outpost":  [0.22, 0.55],
-  "research-station":  [0.10, 0.30],
+  "trade-hub":         [0.12, 0.25],
+  "mining-belt":       [0.22, 0.42],
+  "agricultural-ring": [0.22, 0.42],
+  "frontier-outpost":  [0.40, 0.70],
+  "research-station":  [0.22, 0.42],
 };
 
 // At least one shipyard per world (so the player always has somewhere to
@@ -155,15 +157,16 @@ function placeArchetype(
 // Place a syndicate outpost. Inner-disc bias plus a min-separation pass
 // keeps the seats of power spread apart, so the clusters that grow
 // around them don't immediately overlap. The minimum separation scales
-// with the number of outposts — five seats in a 30-radius disc need
-// ~12 units between them; eight need ~9.
+// with the number of outposts; the constant is tuned wide enough that
+// each cluster's outer-ring stations (frontier, ~0.7 of mapRadius
+// from the seat) don't crash into neighbouring clusters.
 function placeOutpost(
   rng: Rng,
   mapRadius: number,
   totalOutposts: number,
   placed: Position[],
 ): Position {
-  const minSep = totalOutposts > 1 ? mapRadius * (1.6 / Math.sqrt(totalOutposts)) : 0;
+  const minSep = totalOutposts > 1 ? mapRadius * (2.4 / Math.sqrt(totalOutposts)) : 0;
   let best: { pos: Position; minDist: number } | null = null;
   for (let attempt = 0; attempt < 48; attempt++) {
     const candidate = randomPosition(rng, "syndicate-outpost", mapRadius);
@@ -337,15 +340,23 @@ export function generateWorld(opts: GenerateWorldOptions): World {
   }
 
   // Pass 2: place every remaining station. Shipyards keep their isolated
-  // rim placement; everything else clusters around a randomly-chosen
-  // parent outpost so each syndicate's territory grows organically.
+  // rim placement; everything else attaches to a parent outpost. Picks
+  // the LEAST-BUSY outpost rather than a random one — uniform random
+  // assignment lets some clusters get 12 stations while others get 4,
+  // which is what produced the dense pile-ups in the centre.
+  const parentLoad = outpostSeeds.map(() => 0);
   for (let i = cursor; i < archetypes.length; i++) {
     const archetype = archetypes[i];
     let position: Position;
     if (archetype === "shipyard" || outpostSeeds.length === 0) {
       position = placeArchetype(rng, archetype, mapRadius, locations);
     } else {
-      const parent = outpostSeeds[Math.floor(rng() * outpostSeeds.length)];
+      let pickIdx = 0;
+      for (let p = 1; p < outpostSeeds.length; p++) {
+        if (parentLoad[p] < parentLoad[pickIdx]) pickIdx = p;
+      }
+      parentLoad[pickIdx] += 1;
+      const parent = outpostSeeds[pickIdx];
       position = placeNearOutpost(rng, archetype, mapRadius, parent.position, locations);
     }
     const { name, id } = generateName(rng, archetype, usedIds);
