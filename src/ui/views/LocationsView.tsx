@@ -258,6 +258,27 @@ export function LocationsView() {
 // across — the current leg's destination first, then any waypoints
 // queued on the trader's routePlan. Returned as null when the ship
 // is idle so the map only highlights actively-pursued routes.
+// Shortest distance from point (px, py) to the line segment a→b.
+// Used by the atlas's lane-hover detection so we can pick the lane the
+// cursor is actually closest to, even when multiple lane hit zones
+// would otherwise overlap.
+function perpDistanceToSegment(
+  px: number, py: number,
+  ax: number, ay: number,
+  bx: number, by: number,
+): number {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.hypot(px - ax, py - ay);
+  let t = ((px - ax) * dx + (py - ay) * dy) / lenSq;
+  if (t < 0) t = 0;
+  else if (t > 1) t = 1;
+  const cx = ax + t * dx;
+  const cy = ay + t * dy;
+  return Math.hypot(px - cx, py - cy);
+}
+
 function buildActiveRoute(ship: Trader | null): LocationId[] | null {
   if (!ship || ship.state !== "transit" || !ship.destination) return null;
   const out: LocationId[] = [ship.destination];
@@ -399,15 +420,44 @@ function SectorMap({
     dragRef.current = { sx: e.clientX, sy: e.clientY, vx: vbox.x, vy: vbox.y, moved: false };
   };
   const onMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
-    const drag = dragRef.current;
-    if (!drag) return;
     const svg = svgRef.current;
     if (!svg) return;
     const rect = svg.getBoundingClientRect();
-    const dx = ((e.clientX - drag.sx) / rect.width) * vbox.w;
-    const dy = ((e.clientY - drag.sy) / rect.height) * vbox.h;
-    if (Math.abs(e.clientX - drag.sx) + Math.abs(e.clientY - drag.sy) > 3) drag.moved = true;
-    setVbox({ x: drag.vx - dx, y: drag.vy - dy, w: vbox.w, h: vbox.h });
+    const drag = dragRef.current;
+    if (drag) {
+      const dx = ((e.clientX - drag.sx) / rect.width) * vbox.w;
+      const dy = ((e.clientY - drag.sy) / rect.height) * vbox.h;
+      if (Math.abs(e.clientX - drag.sx) + Math.abs(e.clientY - drag.sy) > 3) drag.moved = true;
+      setVbox({ x: drag.vx - dx, y: drag.vy - dy, w: vbox.w, h: vbox.h });
+      return;
+    }
+    // Lane-hover detection: walk every visible lane and pick the one
+    // whose perpendicular distance to the cursor is smallest, within a
+    // small highlight band. Replaces per-line SVG hit-targets so
+    // overlapping lanes can't both light up — only the closest wins.
+    const px = vbox.x + ((e.clientX - rect.left) / rect.width) * vbox.w;
+    const py = vbox.y + ((e.clientY - rect.top) / rect.height) * vbox.h;
+    const HIGHLIGHT_BAND = vbox.w * 0.014; // ~14px screen-equiv at default zoom
+    let bestKey: string | null = null;
+    let bestDist = HIGHLIGHT_BAND;
+    let bestLink: AtlasLink | null = null;
+    for (const link of orderedLinks) {
+      const a = projectedById.get(link.a);
+      const b = projectedById.get(link.b);
+      if (!a || !b) continue;
+      const d = perpDistanceToSegment(px, py, a.x, a.y, b.x, b.y);
+      if (d < bestDist) { bestDist = d; bestKey = laneKey(link.a, link.b); bestLink = link; }
+    }
+    if (bestKey !== hoveredLane) {
+      if (bestKey && bestLink) {
+        const a = projectedById.get(bestLink.a)!;
+        const b = projectedById.get(bestLink.b)!;
+        onLaneEnter(bestKey, a, b, bestLink.dist, laneTraffic.get(bestKey));
+      } else if (hoveredLane) {
+        setHoveredLane(null);
+        setHover(null);
+      }
+    }
   };
   const releaseDrag = () => { dragRef.current = null; };
   const onDoubleClick = () => setVbox({ x: 0, y: 0, w: MAP_W, h: MAP_H });
@@ -547,8 +597,6 @@ function SectorMap({
           laneTraffic={laneTraffic}
           peakLaneTraffic={peakLaneTraffic}
           hoveredLane={hoveredLane}
-          onEnter={onLaneEnter}
-          onLeave={hideTip}
         />
         {previewedRoute && previewedRoute.length >= 2 && (
           <g className="atlas-preview-route">
@@ -964,15 +1012,18 @@ interface LanesLayerProps {
   laneTraffic: Map<string, LaneTraffic>;
   peakLaneTraffic: number;
   hoveredLane: string | null;
-  onEnter: (key: string, a: ProjectedLocation, b: ProjectedLocation, dist: number, traffic: LaneTraffic | undefined) => void;
-  onLeave: () => void;
 }
 
+// Lane render-only. Hover detection lives on the parent SVG's
+// mousemove handler, which walks every lane and picks the one whose
+// perpendicular distance to the cursor is smallest — overlapping lanes
+// can't both highlight at once. Per-line SVG hit-zones were removed
+// for the same reason.
 const LanesLayer = memo(function LanesLayer({
-  orderedLinks, projectedById, laneTraffic, peakLaneTraffic, hoveredLane, onEnter, onLeave,
+  orderedLinks, projectedById, laneTraffic, peakLaneTraffic, hoveredLane,
 }: LanesLayerProps) {
   return (
-    <g className="atlas-lanes">
+    <g className="atlas-lanes" pointerEvents="none">
       {orderedLinks.map(link => {
         const a = projectedById.get(link.a);
         const b = projectedById.get(link.b);
@@ -990,13 +1041,10 @@ const LanesLayer = memo(function LanesLayer({
           <g
             key={key}
             className={cls}
-            onMouseEnter={() => onEnter(key, a, b, link.dist, traffic)}
-            onMouseLeave={onLeave}
             style={{ "--lane-traffic-intensity": intensity } as CSSProperties}
           >
             <line className="atlas-lane-outline" x1={a.x} y1={a.y} x2={b.x} y2={b.y} />
             <line className="atlas-lane-inner" x1={a.x} y1={a.y} x2={b.x} y2={b.y} />
-            <line className="atlas-lane-hit" x1={a.x} y1={a.y} x2={b.x} y2={b.y} />
           </g>
         );
       })}
