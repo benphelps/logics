@@ -1,8 +1,26 @@
-import type { EquityId, GoodId, Job, JobId, JobTier, LocationId, TradeAction, Trader, TraderId, World } from "./types";
+import type { EquityId, GoodId, Job, JobId, JobTier, LocationId, SyndicateId, TradeAction, Trader, TraderId, World } from "./types";
 import { pushJobAbandoned, pushJobAccepted, pushJobCompleted, pushJobExpired } from "./log";
+import { bumpPlayerReputation, nudgeStationControl } from "./control";
 import { contractRewardFraction } from "./crew";
 import { eventMultiplier } from "./news/modifier";
 import { incrementManualActions } from "./milestones";
+
+// Reputation + control payouts for completing a syndicate-posted job.
+// Tier-scaled: high-tier jobs are worth more on both axes than low. Rep
+// numbers chosen so a focused player can max rep with one syndicate in
+// ~10 high or ~30 low completions; control bumps are smaller per-job
+// than the dock/trade nudges (jobs are bursts, not steady traffic).
+const REP_PER_JOB: Record<JobTier, number> = { low: 0.03, medium: 0.06, high: 0.10 };
+const CONTROL_PER_JOB: Record<JobTier, number> = { low: 0.005, medium: 0.012, high: 0.025 };
+
+// Resolve which syndicate (if any) is offering a job at the given
+// station. Independent stations (shipyards, unfactioned stations) get
+// no postedBy stamp.
+function jobPostedBy(world: World, locId: LocationId): SyndicateId | undefined {
+  const f = world.locations[locId]?.traits.faction;
+  if (!f || !world.syndicates[f]) return undefined;
+  return f;
+}
 
 // Fold the trader's contractRewardBonus modifier into the base reward, then
 // apply any active news-event multiplier on contract rewards (per-destination).
@@ -312,6 +330,7 @@ export function generateJobs(world: World): Job[] {
       expiresAt: world.tick + EXPIRY_TICKS_BY_TIER[candidate.tier],
       acceptedBy: null,
       delivered: 0,
+      postedBy: jobPostedBy(world, candidate.location),
     };
     world.jobs[job.id] = job;
     index.add(`shortage|${candidate.location}|${candidate.good}`);
@@ -333,6 +352,7 @@ export function generateJobs(world: World): Job[] {
       acceptedBy: null,
       delivered: 0,
       rescueTarget: candidate.rescueTarget,
+      postedBy: jobPostedBy(world, candidate.location),
     };
     world.jobs[job.id] = job;
     index.add(`rescue|${candidate.location}|${candidate.good}`);
@@ -480,6 +500,14 @@ export function creditJobOnDelivery(
     if (job.delivered >= job.qty) {
       const reward = ship ? rewardWithBonus(world, ship, job) : job.reward;
       if (ship) ship.funds += reward;
+      // Syndicate-tagged jobs: full delivery earns the player rep with
+      // the offering syndicate and nudges the destination's control
+      // toward them. Untagged jobs (shipyards / unfactioned stations)
+      // pay only the credit reward.
+      if (job.postedBy) {
+        bumpPlayerReputation(world, job.postedBy, REP_PER_JOB[job.tier]);
+        nudgeStationControl(world, job.destination, job.postedBy, CONTROL_PER_JOB[job.tier]);
+      }
       const ev = { jobId: job.id, tier: job.tier, reward, partial: false, delivered: job.delivered };
       if (ship) pushJobCompleted(world, ship, ev, job);
       events.push(ev);

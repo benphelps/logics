@@ -801,6 +801,20 @@ function LocalJobRow({ job, world, ship, suggested, hintText, showAction, intera
               rescue
             </span>
           )}
+          {job.postedBy && (() => {
+            const synd = world.syndicates[job.postedBy];
+            if (!synd) return null;
+            const accent = synd.accentHex ?? "#9bb6c8";
+            return (
+              <span
+                className="job-syndicate-tag"
+                style={{ borderColor: accent, color: accent } as CSSProperties}
+                title={`Posted by ${synd.name} — completion earns reputation + control`}
+              >
+                {synd.name}
+              </span>
+            );
+          })()}
         </span>
       </td>
       <td className="dim mono">{remote ? `to ${dst}` : "here"}</td>

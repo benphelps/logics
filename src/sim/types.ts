@@ -571,6 +571,12 @@ export interface Job {
   delivered: number;        // running tally of delivered qty (for partial deliveries)
   rescueTarget?: TraderId;  // for rescue jobs only — informational
   trade?: TradeJobMeta;     // for exchange settlement jobs only
+  // The syndicate that owns the destination station — set at job-gen
+  // for shortage/rescue jobs at faction-stamped stations. On full
+  // delivery, the player earns reputation + nudges the station's
+  // control toward this syndicate. Independent stations (shipyards)
+  // omit the field entirely. Optional for back-compat with old saves.
+  postedBy?: SyndicateId;
 }
 
 export interface World {

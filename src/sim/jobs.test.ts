@@ -289,6 +289,72 @@ describe("jobs: accept / abandon / completion", () => {
   });
 });
 
+describe("jobs: syndicate-tagged contracts", () => {
+  it("generated shortage job at a faction-stamped station carries postedBy", () => {
+    const w = generateWorld({ seed: 11, locationCount: 20, traderCount: 20 });
+    // Pick any factioned station and crash a consumed-good market so a
+    // shortage gets posted there.
+    const factioned = Object.values(w.locations).find(l => l.traits.faction);
+    expect(factioned).toBeDefined();
+    const consumedGood = factioned!.consumes[0]?.good;
+    expect(consumedGood).toBeDefined();
+    w.markets[factioned!.id].stock[consumedGood!] = 0;
+    const posted = generateJobs(w);
+    const job = posted.find(j => j.destination === factioned!.id && j.good === consumedGood);
+    expect(job).toBeDefined();
+    expect(job!.postedBy).toBe(factioned!.traits.faction);
+  });
+
+  it("completing a tagged job credits player reputation + station control toward the offering syndicate", () => {
+    const w = generateWorld({ seed: 19, locationCount: 20, traderCount: 20 });
+    // Mint a player ship at any factioned station.
+    const factioned = Object.values(w.locations).find(l => l.traits.faction);
+    expect(factioned).toBeDefined();
+    const synd = factioned!.traits.faction!;
+    const ship = w.traders[Object.keys(w.traders)[0]];
+    ship.location = factioned!.id;
+    w.player = { funds: 0, shipIds: [ship.id] };
+
+    const jobId = "j-tagged";
+    w.jobs[jobId] = {
+      id: jobId, kind: "shortage", tier: "high", good: "grain", qty: 5,
+      destination: factioned!.id, reward: 1000, penalty: 250, postedTick: 0,
+      expiresAt: 999, acceptedBy: ship.id, delivered: 0,
+      postedBy: synd,
+    };
+    const repBefore = w.player.reputation?.[synd] ?? 0;
+    const controlBefore = w.control?.[factioned!.id]?.[synd] ?? 0;
+
+    creditJobOnDelivery(w, ship.id, factioned!.id, "grain", 5);
+
+    expect(w.player.reputation?.[synd] ?? 0).toBeGreaterThan(repBefore);
+    expect(w.control?.[factioned!.id]?.[synd] ?? 0).toBeGreaterThanOrEqual(controlBefore);
+    expect(w.jobs[jobId]).toBeUndefined();
+  });
+
+  it("untagged job (independent station / shipyard) credits reward only", () => {
+    const w = generateWorld({ seed: 23, locationCount: 20, traderCount: 20 });
+    const independent = Object.values(w.locations).find(l => !l.traits.faction);
+    expect(independent).toBeDefined();
+    const ship = w.traders[Object.keys(w.traders)[0]];
+    ship.location = independent!.id;
+    w.player = { funds: 0, shipIds: [ship.id] };
+    ship.funds = 0;
+
+    const jobId = "j-indie";
+    w.jobs[jobId] = {
+      id: jobId, kind: "shortage", tier: "low", good: "grain", qty: 3,
+      destination: independent!.id, reward: 200, penalty: 0, postedTick: 0,
+      expiresAt: 999, acceptedBy: ship.id, delivered: 0,
+      // postedBy intentionally omitted
+    };
+    creditJobOnDelivery(w, ship.id, independent!.id, "grain", 3);
+
+    expect(ship.funds).toBe(200);
+    expect(w.player.reputation ?? {}).toEqual({});
+  });
+});
+
 describe("jobs: visibility (location-gated shortages, broadcast rescues)", () => {
   it("listLocalShortageJobs returns only shortages at the given station", () => {
     const w = createWorld();
