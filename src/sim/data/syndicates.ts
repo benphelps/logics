@@ -73,15 +73,18 @@ export const SYNDICATE_NAMES = [
 ];
 
 // Accent colors. One per syndicate, drawn in order — keeps the atlas
-// readable when bubbles overlap. Tuned for the dark atlas vignette so
-// each tint stays visible against the parchment-grade backdrop.
+// readable when bubbles overlap. Heavily muted against the dark atlas
+// vignette: saturation ~0.45× and lightness ~0.60× of an original
+// vivid palette, so the control bar and bubble overlays read as dusty
+// ink rather than neon. Tuned so no per-surface brightness filter is
+// needed downstream — the source colour is the rendered colour.
 export const SYNDICATE_ACCENTS = [
-  "#76c7ff", // pale azure
-  "#f0a35a", // amber
-  "#9be7a4", // sage
-  "#e07ad6", // orchid
-  "#ffd166", // wheat
-  "#7be0d2", // teal
-  "#ff8a8a", // coral
-  "#b39ddb", // lilac
+  "#3e79a2", // azure
+  "#88623e", // amber
+  "#54945b", // sage
+  "#854b7f", // orchid
+  "#9b7e3b", // wheat
+  "#4b857d", // teal
+  "#ab4141", // coral
+  "#6a5988", // lilac
 ];

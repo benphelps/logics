@@ -2002,60 +2002,67 @@
   color: #9dd7ff;
 }
 
-/* Per-syndicate control breakdown bar. One flex container, one
-   segment per syndicate (width proportional to share). Bar fills the
-   detail panel width; segment colors come from inline style (each
-   syndicate's accentHex). Only the top two leaders' segments render a
-   percentage label — narrower slivers stay clean and reveal their
-   share via the title-attr tooltip on hover. */
-.atlas-control-bar {
+/* Per-syndicate control breakdown — a thin 4px coloured bar with a
+   row of labels underneath. Each segment is sized proportionally to
+   the syndicate's share; the legend cells below mirror those sizes
+   so each label sits roughly under its segment. Labels take the
+   syndicate accent as their text colour, which keeps them readable
+   on the dark panel without needing a halo or dimmed background. */
+.atlas-control-bar-wrap {
   display: flex;
-  width: 100%;
-  height: 14px;
-  /* Parent (.atlas-detail-body) is a column flex container — without
-     flex-shrink: 0 the bar would collapse to 2px under cross-axis
-     pressure. */
-  flex: 0 0 14px;
-  border-radius: 3px;
-  overflow: hidden;
-  border: 1px solid var(--atlas-line);
-  background: rgba(255, 255, 255, 0.02);
+  flex-direction: column;
+  gap: 3px;
   margin-top: 6px;
   margin-bottom: 4px;
 }
 
-.atlas-control-bar-segment {
+.atlas-control-bar {
   display: flex;
-  align-items: center;
-  justify-content: center;
+  width: 100%;
+  height: 4px;
+  /* Parent (.atlas-detail-body / fleet info card) is a column flex
+     container — without flex-shrink: 0 the bar would collapse under
+     cross-axis pressure. */
+  flex: 0 0 4px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.atlas-control-bar-segment {
+  display: block;
   height: 100%;
   min-width: 0;
   flex-shrink: 1;
   flex-basis: 0;
-  /* Segment width = flex-grow (set inline to share). Segments share
-     the bar proportionally; tiny slivers shrink rather than overflow.
-     Brightness drop on the accent makes white labels readable. */
-  filter: brightness(0.62) saturate(0.85);
+  /* Segment width = flex-grow (set inline to share). Accent comes via
+     --seg-color (also inline) — the syndicate palette is already
+     desaturated at source so no filter is needed here. */
+  background-color: var(--seg-color, #9bb6c8);
+}
+
+.atlas-control-bar-legend {
+  display: flex;
+  width: 100%;
+}
+
+.atlas-control-bar-legend-cell {
+  flex-shrink: 1;
+  flex-basis: 0;
+  min-width: 0;
   overflow: hidden;
   white-space: nowrap;
-  transition: filter 120ms ease;
+  text-overflow: ellipsis;
 }
 
-.atlas-control-bar-segment:hover {
-  filter: brightness(0.78) saturate(0.95);
+/* Contested legend: owner-name on the left, ticksHeld counter on the
+   right. Stable mode leaves the default left-aligned flow, which
+   reads as "leader, then runner-up" alongside the bar above. */
+.atlas-control-bar-legend-cell.owner {
+  text-align: left;
 }
-
-/* Contested battle bar — owner vs challenger split. Slightly taller
-   line + a faint outer glow so a station under transfer pressure
-   reads at a glance even when the panel is busy. */
-.atlas-control-bar.contested {
-  height: 18px;
-  flex: 0 0 18px;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 0 12px rgba(255, 255, 255, 0.04);
-}
-.atlas-control-bar.contested .atlas-control-bar-label {
-  font-size: 10px;
-  letter-spacing: 0.06em;
+.atlas-control-bar-legend-cell.challenger {
+  text-align: right;
 }
 
 .atlas-control-bar-label {
@@ -2063,11 +2070,9 @@
   font-weight: 700;
   letter-spacing: 0.04em;
   font-variant-numeric: tabular-nums;
-  /* Bright white labels with a soft drop shadow — segments are
-     darkened enough by the brightness filter that pure white reads
-     cleanly across all syndicate palettes. */
-  color: #fff;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
+  /* Label text inherits the syndicate accent — the palette is muted
+     enough to read against the dark panel surface. */
+  color: var(--seg-color, #cfd8e3);
 }
 
 .atlas-stat-grid {

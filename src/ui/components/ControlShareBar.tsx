@@ -1,19 +1,25 @@
-// Per-syndicate control breakdown bar — shared between the atlas
-// detail panel (LocationsView) and the fleet station-info card
-// (PlayerView). Two modes:
+// Per-syndicate control breakdown — shared between the atlas detail
+// panel (LocationsView) and the fleet station-info card (PlayerView).
+//
+// Layout: a thin 4px coloured bar with text labels in a separate row
+// underneath. Labels take their colour from the syndicate accent so
+// they never need to fight a saturated background for contrast.
+//
+// Two modes:
 //
 //   1) Active challenge — when world.controlChallenge[locId] exists,
-//      the station is in the middle of a transfer-battle. Renders a
-//      head-to-head split between the current owner and the rival who
-//      just took the lead. Width tracks ticksHeld / FLIP_HOLD_TICKS,
-//      with a mild pow(0.7) amplification so early ticks read as
-//      visible movement instead of an invisible 1/30 sliver.
+//      the station is mid transfer-battle. Bar renders a head-to-head
+//      split between the current owner and the rival who just took
+//      the lead; width tracks ticksHeld / FLIP_HOLD_TICKS, with a mild
+//      pow(0.7) amplification so early ticks read as visible movement
+//      instead of an invisible 1/30 sliver. Legend underneath: owner
+//      name on the left, ticksHeld counter on the right.
 //
-//   2) Stable — render the full multi-syndicate breakdown as a single
-//      horizontal bar. Hidden when only the dominant faction has any
-//      meaningful presence; the faction tag already conveys that.
+//   2) Stable — full multi-syndicate breakdown. Hidden when only the
+//      dominant faction has any meaningful presence; the faction tag
+//      already conveys that. Legend shows the top two leaders' shares.
 //
-// The CSS lives in LocationsView.css under the .atlas-control-bar
+// CSS lives in LocationsView.css under the .atlas-control-bar
 // selector — both views import that stylesheet so this stays
 // presentation-stable across consumers.
 
@@ -39,22 +45,34 @@ export function ControlShareBar({ world, locId }: { world: World; locId: Locatio
     const challengerAccent = challenger.accentHex ?? "#9bb6c8";
     return (
       <div
-        className="atlas-control-bar contested"
+        className="atlas-control-bar-wrap contested"
         role="img"
         aria-label={`Contested: ${challenger.name} ${challenge.ticksHeld}/${FLIP_HOLD_TICKS} ticks`}
         title={`${owner.name} defending vs ${challenger.name} — ${challenge.ticksHeld}/${FLIP_HOLD_TICKS}`}
       >
-        <div
-          className="atlas-control-bar-segment owner"
-          style={{ flexGrow: ownerWidth, backgroundColor: ownerAccent } as CSSProperties}
-        >
-          <span className="atlas-control-bar-label">{owner.name}</span>
+        <div className="atlas-control-bar contested">
+          <div
+            className="atlas-control-bar-segment owner"
+            style={{ flexGrow: ownerWidth, "--seg-color": ownerAccent } as CSSProperties}
+          />
+          <div
+            className="atlas-control-bar-segment challenger"
+            style={{ flexGrow: challengerWidth, "--seg-color": challengerAccent } as CSSProperties}
+          />
         </div>
-        <div
-          className="atlas-control-bar-segment challenger"
-          style={{ flexGrow: challengerWidth, backgroundColor: challengerAccent } as CSSProperties}
-        >
-          <span className="atlas-control-bar-label">{challenge.ticksHeld}/{FLIP_HOLD_TICKS}</span>
+        <div className="atlas-control-bar-legend">
+          <div
+            className="atlas-control-bar-legend-cell owner"
+            style={{ flexGrow: ownerWidth, "--seg-color": ownerAccent } as CSSProperties}
+          >
+            <span className="atlas-control-bar-label">{owner.name}</span>
+          </div>
+          <div
+            className="atlas-control-bar-legend-cell challenger"
+            style={{ flexGrow: challengerWidth, "--seg-color": challengerAccent } as CSSProperties}
+          >
+            <span className="atlas-control-bar-label">{challenge.ticksHeld}/{FLIP_HOLD_TICKS}</span>
+          </div>
         </div>
       </div>
     );
@@ -64,23 +82,39 @@ export function ControlShareBar({ world, locId }: { world: World; locId: Locatio
     .sort((a, b) => b[1] - a[1]);
   if (entries.length < 2) return null;
   return (
-    <div className="atlas-control-bar" role="img" aria-label="Syndicate control breakdown">
-      {entries.map(([syndId, share], i) => {
-        const synd = world.syndicates[syndId];
-        const accent = synd?.accentHex ?? "#9bb6c8";
-        const pct = Math.round(share * 100);
-        const showLabel = i < 2;
-        return (
-          <div
-            key={syndId}
-            className="atlas-control-bar-segment"
-            style={{ flexGrow: share, backgroundColor: accent } as CSSProperties}
-            title={`${synd?.name ?? syndId} ${pct}%`}
-          >
-            {showLabel && <span className="atlas-control-bar-label">{pct}%</span>}
-          </div>
-        );
-      })}
+    <div className="atlas-control-bar-wrap" role="img" aria-label="Syndicate control breakdown">
+      <div className="atlas-control-bar">
+        {entries.map(([syndId, share]) => {
+          const synd = world.syndicates[syndId];
+          const accent = synd?.accentHex ?? "#9bb6c8";
+          const pct = Math.round(share * 100);
+          return (
+            <div
+              key={syndId}
+              className="atlas-control-bar-segment"
+              style={{ flexGrow: share, "--seg-color": accent } as CSSProperties}
+              title={`${synd?.name ?? syndId} ${pct}%`}
+            />
+          );
+        })}
+      </div>
+      <div className="atlas-control-bar-legend">
+        {entries.map(([syndId, share], i) => {
+          const synd = world.syndicates[syndId];
+          const accent = synd?.accentHex ?? "#9bb6c8";
+          const pct = Math.round(share * 100);
+          const showLabel = i < 2;
+          return (
+            <div
+              key={syndId}
+              className="atlas-control-bar-legend-cell"
+              style={{ flexGrow: share, "--seg-color": accent } as CSSProperties}
+            >
+              {showLabel && <span className="atlas-control-bar-label">{pct}%</span>}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
