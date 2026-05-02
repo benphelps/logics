@@ -743,10 +743,12 @@ function factionLabel(world: World, factionId: string | undefined): string {
 
 // Per-syndicate control breakdown for the detail panel. Hidden when the
 // station has only the dominant faction with negligible others — the
-// faction tag already conveys that. Renders as a row of accent-coloured
-// chips listing each syndicate with its percentage share, sorted by
-// share descending so the dominant syndicate reads first.
-function ControlShareRow({ world, locId }: { world: World; locId: LocationId }) {
+// faction tag already conveys that. Renders as a single horizontal bar
+// where each syndicate's segment width is its share of the total; the
+// segment color is the syndicate's accent. Only the top two leaders
+// show their percentage label; smaller slivers stay clean (hover for
+// the full breakdown via the segment title).
+function ControlShareBar({ world, locId }: { world: World; locId: LocationId }) {
   const ctrl = world.control?.[locId];
   if (!ctrl) return null;
   const entries = Object.entries(ctrl)
@@ -754,19 +756,21 @@ function ControlShareRow({ world, locId }: { world: World; locId: LocationId }) 
     .sort((a, b) => b[1] - a[1]);
   if (entries.length < 2) return null;
   return (
-    <div className="atlas-control-row">
-      {entries.map(([syndId, share]) => {
+    <div className="atlas-control-bar" role="img" aria-label="Syndicate control breakdown">
+      {entries.map(([syndId, share], i) => {
         const synd = world.syndicates[syndId];
         const accent = synd?.accentHex ?? "#9bb6c8";
+        const pct = Math.round(share * 100);
+        const showLabel = i < 2;
         return (
-          <span
+          <div
             key={syndId}
-            className="atlas-control-chip"
-            style={{ borderColor: accent, color: accent } as CSSProperties}
+            className="atlas-control-bar-segment"
+            style={{ flexGrow: share, backgroundColor: accent } as CSSProperties}
+            title={`${synd?.name ?? syndId} ${pct}%`}
           >
-            <span className="atlas-control-chip-name">{synd?.name ?? syndId}</span>
-            <span className="atlas-control-chip-share">{Math.round(share * 100)}%</span>
-          </span>
+            {showLabel && <span className="atlas-control-bar-label">{pct}%</span>}
+          </div>
         );
       })}
     </div>
@@ -1665,7 +1669,7 @@ function DetailPanel(props: {
           {loc.traits.tags.map(tag => <span key={tag} className="atlas-tag">{tag}</span>)}
         </div>
 
-        <ControlShareRow world={world} locId={loc.id} />
+        <ControlShareBar world={world} locId={loc.id} />
 
         <dl className="trade-helper-grid station-info-grid">
           <DetailStat label="tech" value={`L${loc.traits.techLevel}`} />

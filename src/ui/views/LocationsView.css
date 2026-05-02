@@ -1990,39 +1990,54 @@
   color: #9dd7ff;
 }
 
-/* Per-syndicate control share chips. Sit beneath the .atlas-tags row
-   in the station detail panel and only render when the station is
-   contested (more than one syndicate above 2%). Accent border + text
-   come from inline style — one chip per active syndicate. */
-.atlas-control-row {
+/* Per-syndicate control breakdown bar. One flex container, one
+   segment per syndicate (width proportional to share). Bar fills the
+   detail panel width; segment colors come from inline style (each
+   syndicate's accentHex). Only the top two leaders' segments render a
+   percentage label — narrower slivers stay clean and reveal their
+   share via the title-attr tooltip on hover. */
+.atlas-control-bar {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: -2px;
-}
-
-.atlas-control-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 20px;
-  padding: 0 8px;
-  background: rgba(255, 255, 255, 0.03);
+  width: 100%;
+  height: 14px;
+  /* Parent (.atlas-detail-body) is a column flex container — without
+     flex-shrink: 0 the bar would collapse to 2px under cross-axis
+     pressure. */
+  flex: 0 0 14px;
+  border-radius: 3px;
+  overflow: hidden;
   border: 1px solid var(--atlas-line);
-  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.02);
+  margin-top: 6px;
+  margin-bottom: 4px;
+}
+
+.atlas-control-bar-segment {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-width: 0;
+  flex-shrink: 1;
+  flex-basis: 0;
+  /* Segment width = flex-grow (set inline to share). Segments share
+     the bar proportionally; tiny slivers shrink rather than overflow. */
+  overflow: hidden;
+  white-space: nowrap;
+  transition: filter 120ms ease;
+}
+
+.atlas-control-bar-segment:hover {
+  filter: brightness(1.15);
+}
+
+.atlas-control-bar-label {
   font-size: 9.5px;
-  font-weight: 650;
+  font-weight: 700;
   letter-spacing: 0.04em;
-}
-
-.atlas-control-chip-name {
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.atlas-control-chip-share {
   font-variant-numeric: tabular-nums;
-  opacity: 0.85;
+  color: rgba(255, 255, 255, 0.95);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
 }
 
 .atlas-stat-grid {
