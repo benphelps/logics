@@ -485,10 +485,18 @@ function SectorMap({
               for (let v = first; v <= end + step * 0.5; v += step) out.push(v);
               return out;
             };
-            const x1 = vbox.x;
-            const x2 = vbox.x + vbox.w;
-            const y1 = vbox.y;
-            const y2 = vbox.y + vbox.h;
+            // Generate stops + draw lines well past the viewBox — the
+            // SVG defaults to xMidYMid-meet which letterboxes the
+            // viewBox inside the element, so lines that span only
+            // [vbox.x..vbox.x+vbox.w] would clip at the inner edge of
+            // the letterbox. Extending by 4× lets the SVG's overflow:
+            // hidden clip at the actual canvas edge instead.
+            const padX = vbox.w * 4;
+            const padY = vbox.h * 4;
+            const x1 = vbox.x - padX;
+            const x2 = vbox.x + vbox.w + padX;
+            const y1 = vbox.y - padY;
+            const y2 = vbox.y + vbox.h + padY;
             const minorXs = stops(x1, x2, minorStepX);
             const minorYs = stops(y1, y2, minorStepY);
             const majorXs = stops(x1, x2, majorStepX);
@@ -510,10 +518,6 @@ function SectorMap({
               </>
             );
           })()}
-          {/* Universe boundary: marks the original gen window. The grid
-              extends past it; the frame stays where it always was so
-              the player has a visible "edge of settled space" anchor. */}
-          <rect className="atlas-map-frame" x={0} y={0} width={MAP_W} height={MAP_H} />
         </g>
       </svg>
       <svg
@@ -603,6 +607,18 @@ function SectorMap({
           // overlays a brighter version. When the cursor is over the
           // selected station, the hover variant alone reads — render
           // them in order so the hover style wins at the same lines.
+          //
+          // The SVG defaults to preserveAspectRatio="xMidYMid meet"
+          // which letterboxes the viewBox inside the element, so a
+          // line spanning [vbox.x, vbox.x + vbox.w] only covers the
+          // centered viewBox region. Extending the endpoints by a
+          // generous margin past the viewBox lets the SVG's own
+          // overflow:hidden clip the line at the actual element edge,
+          // which is what the player sees as "the canvas edge".
+          const xLeft = vbox.x - vbox.w * 4;
+          const xRight = vbox.x + vbox.w * 5;
+          const yTop = vbox.y - vbox.h * 4;
+          const yBot = vbox.y + vbox.h * 5;
           const selectedProj = selectedId ? projectedById.get(selectedId) ?? null : null;
           const showSelected = selectedProj && (!hoveredStation || hoveredStation.loc.id !== selectedProj.loc.id);
           return (
@@ -612,8 +628,8 @@ function SectorMap({
                   className={`atlas-crosshair selected ${selectedProj.loc.id === playerLocation ? "player" : ""}`}
                   pointerEvents="none"
                 >
-                  <line className="atlas-crosshair-line" x1={selectedProj.x} y1={vbox.y} x2={selectedProj.x} y2={vbox.y + vbox.h} />
-                  <line className="atlas-crosshair-line" x1={vbox.x} y1={selectedProj.y} x2={vbox.x + vbox.w} y2={selectedProj.y} />
+                  <line className="atlas-crosshair-line" x1={selectedProj.x} y1={yTop} x2={selectedProj.x} y2={yBot} />
+                  <line className="atlas-crosshair-line" x1={xLeft} y1={selectedProj.y} x2={xRight} y2={selectedProj.y} />
                 </g>
               )}
               {hoveredStation && (
@@ -621,15 +637,15 @@ function SectorMap({
                   <line
                     className="atlas-crosshair-line"
                     x1={hoveredStation.x}
-                    y1={vbox.y}
+                    y1={yTop}
                     x2={hoveredStation.x}
-                    y2={vbox.y + vbox.h}
+                    y2={yBot}
                   />
                   <line
                     className="atlas-crosshair-line"
-                    x1={vbox.x}
+                    x1={xLeft}
                     y1={hoveredStation.y}
-                    x2={vbox.x + vbox.w}
+                    x2={xRight}
                     y2={hoveredStation.y}
                   />
                   <TextBadge
