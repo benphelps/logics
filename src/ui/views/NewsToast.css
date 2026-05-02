@@ -1,14 +1,14 @@
 .news-toast-stack {
   position: fixed;
-  top: 20px;
-  left: 50%;
-  transform: translateX(-50%);
+  bottom: 20px;
+  right: 20px;
   display: flex;
   flex-direction: column;
   gap: 8px;
   z-index: 9999;
   pointer-events: none;
-  width: min(420px, calc(100vw - 40px));
+  width: min(380px, calc(100vw - 40px));
+  align-items: flex-end;
 }
 
 .news-toast {
@@ -87,6 +87,6 @@
 }
 
 @keyframes news-toast-in {
-  from { transform: translateY(-8px); opacity: 0; }
-  to   { transform: translateY(0);    opacity: 1; }
+  from { transform: translateY(8px); opacity: 0; }
+  to   { transform: translateY(0);   opacity: 1; }
 }

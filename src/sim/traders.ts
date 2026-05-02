@@ -13,11 +13,15 @@ import {
 } from "./economy";
 import { acceptJob, collectTradeJob, creditJobOnDelivery, type JobCompletionEvent } from "./jobs";
 import {
+  bumpPlayerReputation,
   creditActivity,
+  effectiveToll,
   NPC_DOCK_NUDGE,
   NPC_TRADE_PER_CREDIT,
   PLAYER_DOCK_NUDGE,
   PLAYER_TRADE_PER_CREDIT,
+  REP_PER_FOREIGN_CREDIT,
+  REP_PER_FOREIGN_DOCK,
   territoryBuyBonus,
   territorySellBonus,
   tollForArrival,
@@ -303,9 +307,18 @@ function settleUnloadedCargo(world: World, trader: Trader, lot: CargoLot, qty: n
   events.push({ trader: trader.id, kind: "sell", good: lot.good, qty, unitPrice: settlement.effectiveUnitPrice, to: trader.location });
   creditJobOnDelivery(world, trader.id, trader.location, lot.good, qty);
   // Selling cargo at a station counts as activity by the trader's
-  // syndicate — bumps territory control by trade volume.
-  const sellRate = isPlayerShip(world, trader) ? PLAYER_TRADE_PER_CREDIT : NPC_TRADE_PER_CREDIT;
+  // syndicate — bumps territory control by trade volume. Player sells
+  // at a foreign station also accrue reputation with that station's
+  // owner.
+  const isPlayer = isPlayerShip(world, trader);
+  const sellRate = isPlayer ? PLAYER_TRADE_PER_CREDIT : NPC_TRADE_PER_CREDIT;
   creditActivity(world, trader, trader.location, settlement.traderRevenue * sellRate);
+  if (isPlayer) {
+    const stationFaction = world.locations[trader.location]?.traits.faction;
+    if (stationFaction && stationFaction !== trader.syndicateId) {
+      bumpPlayerReputation(world, stationFaction, settlement.traderRevenue * REP_PER_FOREIGN_CREDIT);
+    }
+  }
 }
 
 function beginUnloadLots(world: World, trader: Trader, lots: CargoLot[], events: TraderEvent[]): void {
@@ -795,18 +808,37 @@ function arriveTrader(world: World, trader: Trader, dst: LocationId, events: Tra
 
 // Crossing toll on docking in foreign syndicate territory. Money flows
 // to the foreign syndicate's treasury (closing the loop, not creating a
-// sink). No-op for own-territory and independent stations. Player ships
-// get a log note so the player notices the deduction.
+// sink). No-op for own-territory and independent stations. The player's
+// reputation with the foreign syndicate discounts the fee — at full
+// reputation passage is free; the player still earns a small rep bump
+// per foreign dock so the system has an obvious progression curve.
 function chargeTerritoryToll(world: World, trader: Trader): void {
-  const { fee, toSyndicate } = tollForArrival(world, trader);
-  if (fee <= 0 || !toSyndicate) return;
+  const { fee: baseFee, toSyndicate } = tollForArrival(world, trader);
+  if (baseFee <= 0 || !toSyndicate) return;
+  const isPlayer = isPlayerShip(world, trader);
+  const fee = effectiveToll(world, toSyndicate, isPlayer);
+  if (isPlayer) {
+    // Foreign-territory dock — small reputation gain regardless of
+    // whether any toll was actually paid (rep=1 ships still earn a
+    // little, just much less because the dock's value is fixed).
+    bumpPlayerReputation(world, toSyndicate, REP_PER_FOREIGN_DOCK);
+  }
+  if (fee <= 0) {
+    if (isPlayer) {
+      const synd = world.syndicates[toSyndicate];
+      pushNote(world, trader, `Free passage at ${synd?.name ?? toSyndicate} — reputation maxed`, "info");
+    }
+    return;
+  }
   const taken = Math.min(fee, Math.max(0, trader.funds));
   if (taken <= 0) return;
   trader.funds -= taken;
   const synd = world.syndicates[toSyndicate];
   if (synd) synd.treasury = (synd.treasury ?? 0) + taken;
-  if (isPlayerShip(world, trader)) {
-    pushNote(world, trader, `Crossing toll Ç${taken.toFixed(0)} paid to ${synd?.name ?? toSyndicate}`, "warn");
+  if (isPlayer) {
+    const rep = world.player?.reputation?.[toSyndicate] ?? 0;
+    const repPct = Math.round(rep * 100);
+    pushNote(world, trader, `Crossing toll Ç${taken.toFixed(0)} paid to ${synd?.name ?? toSyndicate} (rep ${repPct}%)`, "warn");
   }
 }
 
@@ -1463,10 +1495,18 @@ export function buyAtLocation(world: World, trader: Trader, goodId: GoodId, qty:
   const events: TraderEvent[] = [{ trader: trader.id, kind: "buy", good: goodId, qty, unitPrice: price, from: trader.location }];
   for (const ev of events) pushTraderEvent(world, trader, ev);
   // Buying credits the source station with this trader's syndicate too —
-  // commerce of any kind extends the syndicate's reach.
+  // commerce of any kind extends the syndicate's reach. Player buys at
+  // a foreign station also accrue reputation with that station's owner.
   {
-    const buyRate = isPlayerShip(world, trader) ? PLAYER_TRADE_PER_CREDIT : NPC_TRADE_PER_CREDIT;
+    const isPlayer = isPlayerShip(world, trader);
+    const buyRate = isPlayer ? PLAYER_TRADE_PER_CREDIT : NPC_TRADE_PER_CREDIT;
     creditActivity(world, trader, trader.location, purchase.totalCost * buyRate);
+    if (isPlayer) {
+      const stationFaction = world.locations[trader.location]?.traits.faction;
+      if (stationFaction && stationFaction !== trader.syndicateId) {
+        bumpPlayerReputation(world, stationFaction, purchase.totalCost * REP_PER_FOREIGN_CREDIT);
+      }
+    }
   }
   if (isPlayerShip(world, trader)) incrementManualActions(world);
   return { ok: true, events };

@@ -369,6 +369,13 @@ export interface Player {
   // per-save, so a new ship inherits the parent player's progress. Optional
   // for back-compat with older saves; readers default to 0.
   manualActionCount?: number;
+  // Per-syndicate reputation in 0..1. Earned through foreign-territory
+  // activity (docks + trades); discounts crossing tolls — at 1.0 you pay
+  // nothing, at 0 you pay full freight. Own-syndicate reputation is
+  // implicit (tolls never apply there). Sparse: only foreign syndicates
+  // the player has interacted with appear. Optional for back-compat
+  // with old saves; readers default to 0 for any missing entry.
+  reputation?: Record<SyndicateId, number>;
 }
 
 export type PositionKind = "long" | "short";

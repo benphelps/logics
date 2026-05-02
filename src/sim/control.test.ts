@@ -2,12 +2,15 @@ import { describe, it, expect } from "vitest";
 import { createStartingWorld } from "./start";
 import { tickN } from "./tick";
 import {
+  bumpPlayerReputation,
+  effectiveToll,
   FOREIGN_DOCK_TOLL,
   isOwnTerritory,
   nudgeStationControl,
   NPC_TRADE_PER_CREDIT,
   OWN_TERRITORY_BUY_BONUS,
   OWN_TERRITORY_SELL_BONUS,
+  playerReputationWith,
   PLAYER_TRADE_PER_CREDIT,
   territoryBuyBonus,
   territorySellBonus,
@@ -304,6 +307,89 @@ describe("control mechanics: focused activity", () => {
     ship.location = foreign!.id;
     expect(territoryBuyBonus(world, ship)).toBe(0);
     expect(territorySellBonus(world, ship)).toBe(0);
+  });
+
+  // Player reputation: starts at 0 with all foreign syndicates, can be
+  // bumped up to 1.0, and effectiveToll scales the fee inversely with
+  // reputation. NPCs always pay the base fee regardless of player state.
+  it("playerReputationWith defaults to 0 for any syndicate", () => {
+    const world = affiliatedWorld(SEEDS[0]);
+    for (const synd of Object.values(world.syndicates)) {
+      expect(playerReputationWith(world, synd.id)).toBe(0);
+    }
+  });
+
+  it("bumpPlayerReputation clamps to 0..1", () => {
+    const world = affiliatedWorld(SEEDS[0]);
+    const someSynd = Object.keys(world.syndicates)[0];
+    bumpPlayerReputation(world, someSynd, 0.3);
+    expect(playerReputationWith(world, someSynd)).toBeCloseTo(0.3);
+    bumpPlayerReputation(world, someSynd, 5);
+    expect(playerReputationWith(world, someSynd)).toBe(1);
+    bumpPlayerReputation(world, someSynd, -10);
+    expect(playerReputationWith(world, someSynd)).toBe(0);
+  });
+
+  it("effectiveToll scales linearly with player reputation", () => {
+    const world = affiliatedWorld(SEEDS[0]);
+    const ship = world.traders[world.player!.shipIds[0]];
+    const foreign = Object.values(world.locations).find(
+      l => l.traits.faction && l.traits.faction !== ship.syndicateId,
+    );
+    expect(foreign).toBeDefined();
+    const foreignId = foreign!.traits.faction!;
+
+    expect(effectiveToll(world, foreignId, true)).toBe(FOREIGN_DOCK_TOLL);
+    bumpPlayerReputation(world, foreignId, 0.5);
+    expect(effectiveToll(world, foreignId, true)).toBeCloseTo(FOREIGN_DOCK_TOLL * 0.5);
+    bumpPlayerReputation(world, foreignId, 0.5);
+    expect(effectiveToll(world, foreignId, true)).toBe(0);
+  });
+
+  it("effectiveToll for NPCs ignores player reputation entirely", () => {
+    const world = affiliatedWorld(SEEDS[0]);
+    const foreignId = Object.keys(world.syndicates)[1];
+    bumpPlayerReputation(world, foreignId, 1);
+    // Player would pay nothing. NPCs always pay base.
+    expect(effectiveToll(world, foreignId, false)).toBe(FOREIGN_DOCK_TOLL);
+    expect(effectiveToll(world, foreignId, true)).toBe(0);
+  });
+
+  // Station flip via tickControl emits a news event with paired effects:
+  // a positive share-price bump for the seizing syndicate and a matching
+  // negative for the previous owner. The toast pipeline picks these up
+  // through tickWorld's newsSpawned aggregation.
+  it("tickControl emits a flip news event when dominance changes", () => {
+    const world = affiliatedWorld(SEEDS[0]);
+    const target = Object.values(world.locations).find(loc => loc.traits.faction);
+    expect(target).toBeDefined();
+    const targetId: LocationId = target!.id;
+    const ownerId = target!.traits.faction!;
+    const rival = Object.values(world.syndicates).find(s => s.id !== ownerId);
+    expect(rival).toBeDefined();
+
+    // Force a flip: rival now dominant.
+    world.control![targetId] = { [ownerId]: 0.4, [rival!.id]: 0.6 };
+    const report = tickControl(world);
+
+    expect(report.spawnedNews).toHaveLength(1);
+    const ev = report.spawnedNews[0];
+    expect(ev.templateId).toBe("station_flip");
+    expect(ev.headline).toContain(rival!.name);
+    expect(ev.headline).toContain(target!.name);
+    // Expect a positive effect on the rival, negative on the prior owner.
+    const positive = ev.effects.find(e => e.direction === 1);
+    const negative = ev.effects.find(e => e.direction === -1);
+    expect(positive?.target.id).toBe(rival!.id);
+    expect(negative?.target.id).toBe(ownerId);
+    // Faction should now be flipped on the live world.
+    expect(world.locations[targetId].traits.faction).toBe(rival!.id);
+  });
+
+  it("tickControl emits no flip event when dominance is unchanged", () => {
+    const world = affiliatedWorld(SEEDS[0]);
+    const report = tickControl(world);
+    expect(report.spawnedNews).toHaveLength(0);
   });
 
   // With decay zeroed, a station's control state should stay put when

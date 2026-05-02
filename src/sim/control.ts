@@ -1,4 +1,5 @@
 import type { LocationId, SyndicateId, Trader, World } from "./types";
+import type { ActiveNewsEvent, NewsEffect } from "./news/types";
 
 // --- tunables ------------------------------------------------------------
 // All in pre-normalize units. Each nudge() call applies the raw amount
@@ -50,6 +51,13 @@ export const FOREIGN_DOCK_TOLL = 150;
 // keeps the total fraction sane.
 export const OWN_TERRITORY_BUY_BONUS = 0.03;
 export const OWN_TERRITORY_SELL_BONUS = 0.03;
+
+// Reputation gains per foreign-territory event. Player-only; NPCs don't
+// accrue reputation. Tuned so a determined trader can earn full
+// reputation with one foreign syndicate over ~30-40 visits, with trade
+// volume contributing on top of pure dock count.
+export const REP_PER_FOREIGN_DOCK = 0.025;
+export const REP_PER_FOREIGN_CREDIT = 4e-6; // Ç1000 trade ≈ 0.004 rep
 
 // --- core mutations -----------------------------------------------------
 
@@ -159,31 +167,115 @@ function applyDecay(world: World): boolean {
 }
 
 // Sync each station's recorded faction stamp with whoever's actually
-// dominant in the control map. The atlas legend, station detail panels,
-// and CSS hooks all key off traits.faction, so flipping it here is what
-// makes the dominance change visible to the rest of the UI.
-function applyFactionFlips(world: World): boolean {
-  if (!world.control) return false;
-  let flipped = false;
+// dominant in the control map, and emit a news event for any flip
+// (seizing syndicate gains, previous owner loses) so the toast pipeline
+// surfaces it. Returns the spawned events so the caller can fold them
+// into the tick report.
+function applyFactionFlips(world: World): { changed: boolean; spawned: ActiveNewsEvent[] } {
+  if (!world.control) return { changed: false, spawned: [] };
+  let changed = false;
+  const spawned: ActiveNewsEvent[] = [];
   for (const locId in world.control) {
     const loc = world.locations[locId];
     if (!loc) continue;
     const { id: dominantId } = dominantOf(world.control[locId]);
     if (!dominantId) continue;
-    if (loc.traits.faction !== dominantId) {
+    const previous = loc.traits.faction;
+    if (previous !== dominantId) {
       loc.traits.faction = dominantId;
-      flipped = true;
+      changed = true;
+      // First-time stamp (no previous owner — happens with old saves
+      // that didn't have a faction set) doesn't merit a news event.
+      if (previous) {
+        const ev = makeFlipEvent(world, locId, previous, dominantId);
+        if (ev) {
+          spawned.push(ev);
+          if (world.newsEvents) world.newsEvents.active.push(ev);
+        }
+      }
     }
   }
-  return flipped;
+  return { changed, spawned };
+}
+
+// Build the news event for a station-flip: a short-duration buff to the
+// seizing syndicate's share-price signal and a matching debuff to the
+// previous owner's. The toast pipeline picks these up via tickWorld's
+// newsSpawned aggregation.
+function makeFlipEvent(
+  world: World,
+  locId: LocationId,
+  previousId: SyndicateId,
+  newId: SyndicateId,
+): ActiveNewsEvent | null {
+  const loc = world.locations[locId];
+  const newSynd = world.syndicates[newId];
+  const prevSynd = world.syndicates[previousId];
+  if (!loc || !newSynd || !prevSynd) return null;
+  const FLIP_DURATION = 8;
+  const FLIP_MAGNITUDE = 0.06;
+  const effects: NewsEffect[] = [
+    { scope: "share_price_syndicate", target: { kind: "syndicate", id: newId },      magnitude: FLIP_MAGNITUDE, direction: 1 },
+    { scope: "share_price_syndicate", target: { kind: "syndicate", id: previousId }, magnitude: FLIP_MAGNITUDE, direction: -1 },
+  ];
+  const id = world.newsEvents ? world.newsEvents.nextEventId++ : 1;
+  return {
+    uid: `flip-${id}`,
+    templateId: "station_flip",
+    spawnedAt: world.tick,
+    expiresAt: world.tick + FLIP_DURATION,
+    effects,
+    headline: `${newSynd.name} seizes ${loc.name}`,
+    body: `Operations transfer from ${prevSynd.name}. New docking arrangements at the station are already in effect.`,
+    category: "war",
+    tone: "warn",
+  };
+}
+
+export interface ControlTickReport {
+  spawnedNews: ActiveNewsEvent[];
 }
 
 // Per-tick housekeeping. Call once after trader events have been
-// processed for the tick, and before persisting/rendering.
-export function tickControl(world: World): void {
+// processed for the tick, and before persisting/rendering. Returns the
+// news events spawned by faction flips so tickWorld can fold them into
+// its tick report (and the toast pipeline can surface them).
+export function tickControl(world: World): ControlTickReport {
   let changed = applyDecay(world);
-  if (applyFactionFlips(world)) changed = true;
+  const flips = applyFactionFlips(world);
+  if (flips.changed) changed = true;
   if (changed) bumpVersion(world);
+  return { spawnedNews: flips.spawned };
+}
+
+// --- reputation ----------------------------------------------------------
+
+// Reputation read with sensible defaults. Returns 0 for any syndicate
+// the player has never interacted with — and the caller treats that as
+// "no discount, full toll".
+export function playerReputationWith(world: World, syndicateId: SyndicateId): number {
+  return world.player?.reputation?.[syndicateId] ?? 0;
+}
+
+// Bump player reputation with a syndicate by `amount`, clamped 0..1.
+// No-ops if there's no player or the syndicate doesn't exist. Caller
+// is responsible for gating to player-only events.
+export function bumpPlayerReputation(world: World, syndicateId: SyndicateId, amount: number): void {
+  if (!world.player || amount === 0) return;
+  if (!world.syndicates[syndicateId]) return;
+  if (!world.player.reputation) world.player.reputation = {};
+  const cur = world.player.reputation[syndicateId] ?? 0;
+  world.player.reputation[syndicateId] = Math.max(0, Math.min(1, cur + amount));
+}
+
+// Effective toll after reputation discount. Plain function — pure of
+// the trader's player-status (caller passes isPlayer when applicable).
+// At rep=1.0 the player pays nothing; at rep=0 they pay full freight.
+// NPCs always pay the base toll regardless of any player rep state.
+export function effectiveToll(world: World, syndicateId: SyndicateId, isPlayer: boolean): number {
+  if (!isPlayer) return FOREIGN_DOCK_TOLL;
+  const rep = playerReputationWith(world, syndicateId);
+  return Math.max(0, FOREIGN_DOCK_TOLL * (1 - rep));
 }
 
 // --- territory queries (used by toll + bonus call sites) ---------------

@@ -122,7 +122,9 @@ export function tickWorld(world: World): TickReport {
   // Syndicate territory bookkeeping. Decays non-dominant shares toward
   // the current leader at each station, then resyncs LocationTraits.faction
   // with whoever actually dominates so the atlas + UI follow control swings.
-  tickControl(world);
+  // Returns any news events spawned by station flips, which we fold into
+  // the tick report's newsSpawned so the toast pipeline picks them up.
+  const controlReport = tickControl(world);
 
   world.tick += 1;
   return {
@@ -133,7 +135,7 @@ export function tickWorld(world: World): TickReport {
     jobsExpired,
     hiresPosted,
     hiresExpired,
-    newsSpawned: newsReport.spawned,
+    newsSpawned: [...newsReport.spawned, ...controlReport.spawnedNews],
     newsExpired: newsReport.expired,
   };
 }
