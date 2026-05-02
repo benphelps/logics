@@ -280,11 +280,16 @@ export function buildSyndicates(world: World, count: number = 4, seed: number = 
       recentRevenue: 0,
     };
   }
-  // Assign NPCs round-robin to syndicates
+  // Assign NPCs round-robin to syndicates. Stamp the trader's
+  // syndicateId too so any caller using buildSyndicates as a fallback
+  // (hand-built test worlds, save migrations) gets the same faction
+  // wiring as a freshly-generated world.
   const ids = Object.keys(syndicates);
   for (let i = 0; i < npcIds.length; i++) {
     const synId = ids[i % ids.length];
     syndicates[synId].memberShipIds.push(npcIds[i]);
+    const trader = world.traders[npcIds[i]];
+    if (trader) trader.syndicateId = synId;
   }
   return syndicates;
 }

@@ -3,6 +3,7 @@ import { useStore, type Tab } from "./store";
 import { useTickDriver } from "./useTickDriver";
 import { TopBar } from "./components/TopBar";
 import { BridgeTabScroller } from "./components/BridgeTabScroller";
+import { NewGameModal } from "./components/NewGameModal";
 import { ChartersView } from "./views/ChartersView";
 import { MarketsView } from "./views/MarketsView";
 import { LocationsView } from "./views/LocationsView";
@@ -48,6 +49,7 @@ export function App() {
         </main>
       </div>
       <NewsToast />
+      <NewGameModal />
       <BridgeTabScroller />
     </div>
   );

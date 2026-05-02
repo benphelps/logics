@@ -3,7 +3,8 @@ import type { IconType } from "react-icons";
 import { GiAnvil, GiAtom, GiCampfire, GiMining, GiSpaceship, GiTrade, GiWheat } from "react-icons/gi";
 import { useStore } from "../store";
 import { findRoutePath, pathDistance, reachableNeighbors, routeDistance, routeSegments } from "../../sim/geometry";
-import type { Equity, LocationDef, LocationId, ShipBlueprint, Trader, TraderId, World } from "../../sim/types";
+import type { Equity, LocationDef, LocationId, ShipBlueprint, SyndicateId, Trader, TraderId, World } from "../../sim/types";
+import { buildControlBoundaries, type ControlSource } from "./controlField";
 import { listHiresAt } from "../../sim/hires";
 import { listShipyardInventory } from "../../sim/shipyards";
 import { useBlueprintArtImageUrl } from "../shipArtApi";
@@ -22,7 +23,7 @@ const MAP_W = 1000;
 const MAP_H = 620;
 const MAP_PAD = 48;
 
-type StationKind = "hub" | "mining" | "agri" | "frontier" | "research" | "shipyard" | "station";
+type StationKind = "hub" | "mining" | "agri" | "frontier" | "research" | "shipyard" | "outpost" | "station";
 type PressureTone = "short" | "surplus" | "";
 
 interface ProjectedLocation {
@@ -193,6 +194,7 @@ export function LocationsView() {
               {sheetTab === "systems" && (
                 <SystemsTable
                   rows={sheetRows}
+                  world={world}
                   selectedId={selected?.id ?? null}
                   onSelect={selectLocation}
                 />
@@ -258,7 +260,7 @@ interface HoverTip {
 
 // Render order for station kinds inside the legend. Independent
 // "station" sits last so the dominant kinds read first.
-const KIND_LEGEND_ORDER: StationKind[] = ["hub", "research", "shipyard", "mining", "agri", "frontier", "station"];
+const KIND_LEGEND_ORDER: StationKind[] = ["outpost", "hub", "research", "shipyard", "mining", "agri", "frontier", "station"];
 
 function SectorMap({
   world,
@@ -319,6 +321,18 @@ function SectorMap({
   };
 
   const peakLaneTraffic = Math.max(1, ...Array.from(laneTraffic.values()).map(t => t.count));
+
+  // Syndicate accent map — used by the control-bubble field, station
+  // border tints, and ship chevron tints. Keyed by SyndicateId so each
+  // layer can opt into the lookup. Recomputed only when world.syndicates
+  // changes (typically once per game).
+  const syndicateAccents = useMemo(() => {
+    const m = new Map<SyndicateId, string>();
+    for (const synd of Object.values(world.syndicates)) {
+      if (synd.accentHex) m.set(synd.id, synd.accentHex);
+    }
+    return m;
+  }, [world.syndicates]);
 
   // Lane render order drives the bridge illusion: shorter lanes draw
   // last so their paper-coloured outline erases the longer lane's ink
@@ -465,6 +479,12 @@ function SectorMap({
         onMouseLeave={() => { releaseDrag(); hideTip(); }}
         onDoubleClick={onDoubleClick}
       >
+        <ControlBubblesLayer
+          projected={projected}
+          syndicateAccents={syndicateAccents}
+          controlState={world.control}
+          controlVersion={world.controlVersion ?? 0}
+        />
         <LanesLayer
           orderedLinks={orderedLinks}
           projectedById={projectedById}
@@ -608,6 +628,7 @@ function SectorMap({
           ships={ships}
           projectedById={projectedById}
           selectedTraderId={selectedTraderId}
+          syndicateAccents={syndicateAccents}
           onClickShip={onClickShip}
           onEnterShip={onEnterShip}
           onLeave={hideTip}
@@ -617,6 +638,7 @@ function SectorMap({
           selectedId={selectedId}
           playerLocation={playerLocation}
           hiddenKinds={hiddenKinds}
+          syndicateAccents={syndicateAccents}
           onSelect={onSelectStation}
           onEnter={onEnterStation}
           onLeave={hideTip}
@@ -642,6 +664,27 @@ function SectorMap({
             );
           })}
         </ul>
+        {syndicateAccents.size > 0 && (
+          <>
+            <span className="atlas-legend-title">Syndicates</span>
+            <ul className="atlas-legend-list">
+              {Object.values(world.syndicates)
+                .filter(s => s.accentHex)
+                .sort((a, b) => a.id.localeCompare(b.id))
+                .map(synd => (
+                  <li key={synd.id} style={{ display: "contents" }}>
+                    <div className="atlas-legend-row syndicate">
+                      <span
+                        className="atlas-legend-dot"
+                        style={{ background: synd.accentHex } as CSSProperties}
+                      />
+                      <span className="atlas-legend-label">{synd.name}</span>
+                    </div>
+                  </li>
+                ))}
+            </ul>
+          </>
+        )}
       </div>
       {hover && (
         <div className="atlas-tooltip">
@@ -689,12 +732,98 @@ function factionClassKey(faction: string | undefined): string {
   return faction.toLowerCase().replace(/[^a-z]/g, "");
 }
 
+// Resolve a station/ship's faction id to a human label. Falls back to
+// the raw value (or "Independent") when the syndicate isn't registered
+// — happens with old saves predating the syndicate roster, or with
+// shipyards/unfactioned stations.
+function factionLabel(world: World, factionId: string | undefined): string {
+  if (!factionId) return "Independent";
+  return world.syndicates[factionId]?.name ?? factionId;
+}
+
 // --- memoized SVG layers -------------------------------------------------
 // The three layers below are wrapped in React.memo so a state change
 // confined to the SectorMap (pan/zoom, hover, kind filter, tooltip
 // content) doesn't reconcile every lane/station/ship in the tree.
 // The lane network and station list are stable across pans, and the
 // ship layer only re-renders when the snapshot changes (per tick).
+
+interface ControlBubblesLayerProps {
+  projected: ProjectedLocation[];
+  syndicateAccents: Map<SyndicateId, string>;
+  controlState: World["control"];
+  controlVersion: number;
+}
+
+// Per-syndicate territory boundaries, extracted from a sampled
+// dominant-syndicate field via marching squares and smoothed with
+// Chaikin corner-cutting. Each syndicate gets one <path> with its accent
+// stroke; fill defaults to none but stays available via the
+// --control-bubble-fill CSS variable on .atlas-control-boundary so the
+// shape can be styled either as a clean outline or as a tinted region.
+// Boundaries naturally close at the grid edge (the outermost lattice
+// row/col is forced to "no syndicate" by the sampler). Memoised on
+// (projected, syndicateAccents, controlVersion) — pan/zoom doesn't
+// recompute, but a tick that nudges control bumps the version and
+// the field rebuilds on the next paint.
+const ControlBubblesLayer = memo(function ControlBubblesLayer({
+  projected, syndicateAccents, controlState, controlVersion,
+}: ControlBubblesLayerProps) {
+  const boundaries = useMemo(() => {
+    if (syndicateAccents.size === 0) return [];
+    // Below this share, a station's contribution to a rival syndicate
+    // is too small to materially shape the boundary — drop it to keep
+    // the source list tight and stop long-tail noise from haloing the
+    // whole map.
+    const MIN_SHARE_FOR_RENDER = 0.05;
+    const sources: ControlSource[] = [];
+    for (const p of projected) {
+      const ctrl = controlState?.[p.loc.id];
+      if (ctrl) {
+        for (const synd in ctrl) {
+          if (!syndicateAccents.has(synd)) continue;
+          const share = ctrl[synd];
+          if (share < MIN_SHARE_FOR_RENDER) continue;
+          sources.push({ x: p.x, y: p.y, syndicateId: synd, control: share });
+        }
+      } else {
+        // Fallback for old saves / shipyards / first-touch stations:
+        // assume 100% control to whoever's stamped on the faction.
+        const synd = p.loc.traits.faction;
+        if (!synd || !syndicateAccents.has(synd)) continue;
+        sources.push({ x: p.x, y: p.y, syndicateId: synd, control: 1.0 });
+      }
+    }
+    if (sources.length === 0) return [];
+    const ids = Array.from(syndicateAccents.keys());
+    return buildControlBoundaries(sources, ids, MAP_W, MAP_H);
+    // controlState is mutated in place per tick — depending on its
+    // identity alone would never invalidate the memo, so we co-list
+    // controlVersion (bumped on every nudge/decay).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projected, syndicateAccents, controlState, controlVersion]);
+
+  if (boundaries.length === 0) return null;
+  return (
+    <g className="atlas-control-bubbles" pointerEvents="none">
+      {boundaries.map(b => {
+        const accent = syndicateAccents.get(b.syndicateId);
+        return (
+          <path
+            key={b.syndicateId}
+            className="atlas-control-boundary"
+            d={b.pathD}
+            stroke={accent}
+            fill="none"
+            fillRule="evenodd"
+            vectorEffect="non-scaling-stroke"
+            style={accent ? { "--syndicate-accent": accent } as CSSProperties : undefined}
+          />
+        );
+      })}
+    </g>
+  );
+});
 
 interface LanesLayerProps {
   orderedLinks: AtlasLink[];
@@ -747,18 +876,20 @@ interface StationsLayerProps {
   selectedId: LocationId | null;
   playerLocation: LocationId | null;
   hiddenKinds: Set<StationKind>;
+  syndicateAccents: Map<SyndicateId, string>;
   onSelect: (id: LocationId) => void;
   onEnter: (p: ProjectedLocation) => void;
   onLeave: () => void;
 }
 
 const StationsLayer = memo(function StationsLayer({
-  projected, selectedId, playerLocation, hiddenKinds, onSelect, onEnter, onLeave,
+  projected, selectedId, playerLocation, hiddenKinds, syndicateAccents, onSelect, onEnter, onLeave,
 }: StationsLayerProps) {
   return (
     <g className="atlas-nodes">
       {projected.map(p => {
         const factionKey = factionClassKey(p.loc.traits.faction);
+        const accent = p.loc.traits.faction ? syndicateAccents.get(p.loc.traits.faction) : null;
         const isPlayerHere = playerLocation === p.loc.id;
         const isFiltered = hiddenKinds.has(p.kind);
         const cls = [
@@ -773,6 +904,7 @@ const StationsLayer = memo(function StationsLayer({
           <g
             key={p.loc.id}
             className={cls}
+            style={accent ? { "--node-faction": accent } as CSSProperties : undefined}
             role="button"
             tabIndex={0}
             onClick={() => onSelect(p.loc.id)}
@@ -801,23 +933,27 @@ interface ShipsLayerProps {
   ships: ShipMarker[];
   projectedById: Map<LocationId, ProjectedLocation>;
   selectedTraderId: TraderId | null;
+  syndicateAccents: Map<SyndicateId, string>;
   onClickShip: (id: TraderId, e: React.MouseEvent) => void;
   onEnterShip: (ship: ShipMarker) => void;
   onLeave: () => void;
 }
 
 const ShipsLayer = memo(function ShipsLayer({
-  ships, projectedById, selectedTraderId, onClickShip, onEnterShip, onLeave,
+  ships, projectedById, selectedTraderId, syndicateAccents, onClickShip, onEnterShip, onLeave,
 }: ShipsLayerProps) {
   return (
     <g className="atlas-ships">
       {ships.map(ship => {
         const isSelected = selectedTraderId === ship.id;
         const heading = shipHeading(ship, projectedById);
+        const synd = ship.trader.syndicateId;
+        const accent = synd ? syndicateAccents.get(synd) : null;
         return (
           <g
             key={ship.id}
             className={`atlas-ship ${ship.isTransit ? "transit" : "idle"} ${ship.isPlayer ? "player" : ""} ${isSelected ? "selected" : ""}`}
+            style={accent ? { "--ship-faction": accent } as CSSProperties : undefined}
             transform={`translate(${ship.x.toFixed(2)} ${ship.y.toFixed(2)})`}
             onClick={(e) => onClickShip(ship.id, e)}
             onMouseEnter={() => onEnterShip(ship)}
@@ -930,7 +1066,7 @@ function playerTrianglePoints(dx: number, dy: number): string {
 function buildStationTip(world: World, p: ProjectedLocation): Omit<HoverTip, "px" | "py"> {
   const counts = stationCounts(world, p.loc.id);
   const pressure = stationPressure(world, p.loc);
-  const faction = p.loc.traits.faction ?? "Independent";
+  const faction = factionLabel(world, p.loc.traits.faction);
   const KindIcon = kindIcon(p.kind);
   const rows: HoverTipRow[] = [
     { label: "population", value: formatPopulation(p.loc.population) },
@@ -1183,6 +1319,7 @@ function buildLaneTraffic(world: World): Map<string, LaneTraffic> {
 // logistics. Pressure remains as the trade-side market-stock summary.
 function SystemsTable(props: {
   rows: StationSheetRow[];
+  world: World;
   selectedId: LocationId | null;
   onSelect: (id: LocationId) => void;
 }) {
@@ -1244,7 +1381,7 @@ function SystemsTable(props: {
                       <span className={`atlas-kind-dot atlas-kind-${row.kind}`} />
                       <span>
                         <span className="atlas-station-name">{row.loc.name}</span>
-                        <span className="atlas-station-sub dim">{row.loc.traits.faction ?? "Independent"}</span>
+                        <span className="atlas-station-sub dim">{factionLabel(props.world, row.loc.traits.faction)}</span>
                       </span>
                     </span>
                   </td>
@@ -1481,7 +1618,18 @@ function DetailPanel(props: {
 
       <div className="atlas-detail-body" data-scroll-key={`atlas:detail:${loc.id}`}>
         <div className="atlas-tags">
-          {loc.traits.faction && <span className="atlas-tag faction">{loc.traits.faction}</span>}
+          {loc.traits.faction && (() => {
+            const synd = world.syndicates[loc.traits.faction];
+            const accent = synd?.accentHex;
+            return (
+              <span
+                className="atlas-tag faction"
+                style={accent ? { borderColor: accent, color: accent } as CSSProperties : undefined}
+              >
+                {synd?.name ?? loc.traits.faction}
+              </span>
+            );
+          })()}
           {loc.traits.tags.map(tag => <span key={tag} className="atlas-tag">{tag}</span>)}
         </div>
 
@@ -2177,6 +2325,7 @@ function stationKind(loc: LocationDef): StationKind {
   // Match the canonical art helper: shipyard wins over the industrial/
   // research overlap so the marketplace UI keys off the same kind value.
   if (tags.includes("shipyard")) return "shipyard";
+  if (tags.includes("syndicate-outpost")) return "outpost";
   if (tags.includes("trade-hub")) return "hub";
   if (tags.includes("mining") || tags.includes("industrial")) return "mining";
   if (tags.includes("agricultural")) return "agri";
@@ -2193,12 +2342,13 @@ function kindLabel(kind: StationKind): string {
     case "frontier": return "Frontier";
     case "research": return "Research";
     case "shipyard": return "Shipyard";
+    case "outpost": return "Outpost";
     default: return "Station";
   }
 }
 
 function stationSort(a: LocationDef, b: LocationDef): number {
-  const rank: Record<StationKind, number> = { hub: 0, research: 1, shipyard: 2, mining: 3, agri: 4, frontier: 5, station: 6 };
+  const rank: Record<StationKind, number> = { outpost: 0, hub: 1, research: 2, shipyard: 3, mining: 4, agri: 5, frontier: 6, station: 7 };
   return rank[stationKind(a)] - rank[stationKind(b)]
     || b.traits.techLevel - a.traits.techLevel
     || b.population - a.population

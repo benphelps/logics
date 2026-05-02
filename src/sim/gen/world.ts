@@ -1,10 +1,12 @@
 import { euclidean } from "../geometry";
-import type { LaneMap, LocationDef, LocationId, Player, Position, World } from "../types";
+import type { LaneMap, LocationDef, LocationId, Player, Position, Syndicate, SyndicateId, World } from "../types";
 import { createWorld } from "../world";
 import type { PlayerSeedConfig } from "../data/player";
 import { ARCHETYPE_BUILDERS, type ArchetypeName } from "./archetypes";
 import { generateName } from "./names";
 import { mulberry32, rangeFloat, type Rng } from "./rng";
+import { generateSyndicates } from "./syndicates";
+import { seedControlFromFactions } from "../control";
 import { generateTraders, locationsHaveAntimatter } from "./traders";
 
 export interface GenerateWorldOptions {
@@ -34,6 +36,10 @@ const RADIAL_BIAS: Record<ArchetypeName, [number, number]> = {
   // settled space so they don't crowd the lane network and the trip
   // to one feels intentional.
   "shipyard":          [0.95, 1.15],
+  // Syndicate outposts seat the inner-to-mid disc; their positions are
+  // re-rolled to enforce inter-outpost separation so each one anchors
+  // its own cluster instead of sharing space with a rival's HQ.
+  "syndicate-outpost": [0.0, 0.6],
 };
 
 // Minimum distance any shipyard must keep from every other station, in
@@ -41,6 +47,18 @@ const RADIAL_BIAS: Record<ArchetypeName, [number, number]> = {
 // the typical inter-station spacing in a 50-station world; we re-roll
 // (or push outward) until the constraint is satisfied.
 const SHIPYARD_MIN_SEPARATION = 4.5;
+
+// Cluster offset by archetype, expressed as a fraction of mapRadius. Each
+// non-outpost station is placed at an isotropic offset from its parent
+// outpost drawn from this range — small for trade-hubs (orbit the seat),
+// far for frontier-outposts (the cluster's rim).
+const CLUSTER_OFFSET: Partial<Record<ArchetypeName, [number, number]>> = {
+  "trade-hub":         [0.06, 0.20],
+  "mining-belt":       [0.10, 0.32],
+  "agricultural-ring": [0.10, 0.32],
+  "frontier-outpost":  [0.22, 0.55],
+  "research-station":  [0.10, 0.30],
+};
 
 // At least one shipyard per world (so the player always has somewhere to
 // buy a ship), then ~1 per 18 stations beyond. Capped so big worlds don't
@@ -50,11 +68,16 @@ function shipyardQuotaFor(count: number): number {
   return Math.max(1, Math.min(4, Math.round(count / 18)));
 }
 
-function pickArchetypeMix(rng: Rng, count: number): ArchetypeName[] {
+function pickArchetypeMix(rng: Rng, count: number, outpostCount: number): ArchetypeName[] {
   const result: ArchetypeName[] = [];
-  if (count >= 1) result.push("trade-hub");
-  if (count >= 2) result.push("mining-belt");
-  if (count >= 3) result.push("agricultural-ring");
+  // Syndicate outposts come first — one per syndicate, capped by total
+  // station budget. World gen relies on these slots being present so it
+  // can place them as seeds before clustering anything else.
+  const outpostBudget = Math.min(outpostCount, count);
+  for (let i = 0; i < outpostBudget; i++) result.push("syndicate-outpost");
+  if (result.length < count) result.push("trade-hub");
+  if (result.length < count) result.push("mining-belt");
+  if (result.length < count) result.push("agricultural-ring");
   // Reserve fixed slots for shipyards so a low-count world still has at
   // least one. Subtracted from the weighted draw below.
   const shipyardQuota = Math.min(shipyardQuotaFor(count), Math.max(0, count - result.length));
@@ -72,11 +95,17 @@ function pickArchetypeMix(rng: Rng, count: number): ArchetypeName[] {
     }
     result.push(chosen);
   }
-  for (let i = result.length - 1; i > 0; i--) {
+  // Don't shuffle outposts into the middle — gen places them first as
+  // cluster seeds, then walks the rest of the list. Shuffle only the
+  // tail so the mix of trade-hubs / mining / agri / frontier / research
+  // remains random per cluster.
+  const head = result.slice(0, outpostBudget);
+  const tail = result.slice(outpostBudget);
+  for (let i = tail.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
-    [result[i], result[j]] = [result[j], result[i]];
+    [tail[i], tail[j]] = [tail[j], tail[i]];
   }
-  return result;
+  return [...head, ...tail];
 }
 
 function randomPosition(rng: Rng, archetype: ArchetypeName, mapRadius: number): Position {
@@ -114,6 +143,49 @@ function placeArchetype(
   // Couldn't satisfy the strict constraint — return the most isolated
   // candidate we saw rather than failing world generation.
   return best!.pos;
+}
+
+// Place a syndicate outpost. Inner-disc bias plus a min-separation pass
+// keeps the seats of power spread apart, so the clusters that grow
+// around them don't immediately overlap. The minimum separation scales
+// with the number of outposts — five seats in a 30-radius disc need
+// ~12 units between them; eight need ~9.
+function placeOutpost(
+  rng: Rng,
+  mapRadius: number,
+  totalOutposts: number,
+  placed: Position[],
+): Position {
+  const minSep = totalOutposts > 1 ? mapRadius * (1.6 / Math.sqrt(totalOutposts)) : 0;
+  let best: { pos: Position; minDist: number } | null = null;
+  for (let attempt = 0; attempt < 48; attempt++) {
+    const candidate = randomPosition(rng, "syndicate-outpost", mapRadius);
+    let minDist = Infinity;
+    for (const p of placed) {
+      const d = Math.hypot(candidate.x - p.x, candidate.y - p.y);
+      if (d < minDist) minDist = d;
+    }
+    if (placed.length === 0 || minDist >= minSep) return candidate;
+    if (!best || minDist > best.minDist) best = { pos: candidate, minDist };
+  }
+  return best!.pos;
+}
+
+// Place a non-outpost, non-shipyard station near its parent outpost.
+// Offset distribution is archetype-specific (see CLUSTER_OFFSET) — close
+// for trade-hubs, far for frontier-outposts — so every cluster ends up
+// with a layered structure: hub at the seat, mining/agri in the middle
+// ring, frontier on the cluster's rim.
+function placeNearOutpost(
+  rng: Rng,
+  archetype: ArchetypeName,
+  mapRadius: number,
+  parent: Position,
+): Position {
+  const range = CLUSTER_OFFSET[archetype] ?? [0.10, 0.40];
+  const r = rangeFloat(rng, range[0], range[1]) * mapRadius;
+  const theta = rangeFloat(rng, 0, Math.PI * 2);
+  return { x: parent.x + Math.cos(theta) * r, y: parent.y + Math.sin(theta) * r };
 }
 
 function routeModifier(a: LocationDef, b: LocationDef): number {
@@ -207,17 +279,67 @@ export function generateWorld(opts: GenerateWorldOptions): World {
   const mapRadius = opts.mapRadius ?? Math.max(8, Math.sqrt(locationCount) * 4);
   const traderCount = opts.traderCount ?? Math.max(2, Math.round(locationCount * 1.5));
 
-  const archetypes = pickArchetypeMix(rng, locationCount);
+  const syndicateRoster = generateSyndicates(rng, locationCount);
+  const archetypes = pickArchetypeMix(rng, locationCount, syndicateRoster.length);
   const usedIds = new Set<string>();
   const locations: Record<LocationId, LocationDef> = {};
 
-  for (let i = 0; i < locationCount; i++) {
-    const archetype = archetypes[i];
-    const position = i === 0
+  // Pass 1: place syndicate outposts as cluster seeds. Each outpost
+  // occupies a head slot in the archetype list (pickArchetypeMix
+  // guarantees the order). They're stamped with their owning syndicate
+  // immediately so the nearest-outpost faction stamp in pass 3 is a
+  // pure proximity classifier.
+  const outpostSeeds: { syndicateId: SyndicateId; position: Position }[] = [];
+  let cursor = 0;
+  while (cursor < archetypes.length && archetypes[cursor] === "syndicate-outpost" && cursor < syndicateRoster.length) {
+    const synd = syndicateRoster[cursor];
+    // Anchor the first-placed outpost at origin — keeps the world's
+    // coordinate system centered on a real station so centrality
+    // calculations (player-start ranking, etc.) have a stable pivot.
+    const position = outpostSeeds.length === 0
       ? { x: 0, y: 0 }
-      : placeArchetype(rng, archetype, mapRadius, locations);
+      : placeOutpost(rng, mapRadius, syndicateRoster.length, outpostSeeds.map(o => o.position));
+    const { name, id } = generateName(rng, "syndicate-outpost", usedIds);
+    const def = ARCHETYPE_BUILDERS["syndicate-outpost"]({ rng, id, name, position });
+    def.traits.faction = synd.id;
+    locations[id] = def;
+    synd.outpostId = id;
+    outpostSeeds.push({ syndicateId: synd.id, position });
+    cursor++;
+  }
+
+  // Pass 2: place every remaining station. Shipyards keep their isolated
+  // rim placement; everything else clusters around a randomly-chosen
+  // parent outpost so each syndicate's territory grows organically.
+  for (let i = cursor; i < archetypes.length; i++) {
+    const archetype = archetypes[i];
+    let position: Position;
+    if (archetype === "shipyard" || outpostSeeds.length === 0) {
+      position = placeArchetype(rng, archetype, mapRadius, locations);
+    } else {
+      const parent = outpostSeeds[Math.floor(rng() * outpostSeeds.length)];
+      position = placeNearOutpost(rng, archetype, mapRadius, parent.position);
+    }
     const { name, id } = generateName(rng, archetype, usedIds);
     locations[id] = ARCHETYPE_BUILDERS[archetype]({ rng, id, name, position });
+  }
+
+  // Pass 3: stamp faction on every station that didn't get one from its
+  // builder. Shipyards stay independent — they're cross-faction service
+  // hubs by design. Every other station joins the syndicate of its
+  // nearest outpost, which produces the same clusters players will see
+  // on the atlas as control bubbles.
+  for (const loc of Object.values(locations)) {
+    if (loc.traits.faction) continue;
+    if (loc.traits.tags.includes("shipyard")) continue;
+    if (outpostSeeds.length === 0) continue;
+    let nearest = outpostSeeds[0];
+    let bestDist = euclidean(loc.position, nearest.position);
+    for (let i = 1; i < outpostSeeds.length; i++) {
+      const d = euclidean(loc.position, outpostSeeds[i].position);
+      if (d < bestDist) { bestDist = d; nearest = outpostSeeds[i]; }
+    }
+    loc.traits.faction = nearest.syndicateId;
   }
 
   const lanes = generateRoutes(locations);
@@ -228,5 +350,37 @@ export function generateWorld(opts: GenerateWorldOptions): World {
     antimatterAvailable: locationsHaveAntimatter(locations),
   });
 
-  return createWorld({ locations, lanes, traders, player: opts.player ?? null });
+  // Faction-stamp every NPC. The default is the home station's owning
+  // syndicate; shipyard-based NPCs (whose home is intentionally
+  // unfactioned) are split round-robin so each syndicate's roster stays
+  // roughly balanced. Done here, before createWorld, so memberShipIds is
+  // populated by the time ensureStockMarket reads syndicate wealth.
+  if (syndicateRoster.length > 0) {
+    let stray = 0;
+    for (const trader of Object.values(traders)) {
+      const home = locations[trader.location];
+      if (home?.traits.faction) {
+        trader.syndicateId = home.traits.faction;
+      } else {
+        trader.syndicateId = syndicateRoster[stray % syndicateRoster.length].id;
+        stray++;
+      }
+    }
+  }
+
+  const syndicates: Record<SyndicateId, Syndicate> = {};
+  for (const synd of syndicateRoster) {
+    synd.memberShipIds = Object.values(traders)
+      .filter(t => t.syndicateId === synd.id)
+      .map(t => t.id);
+    syndicates[synd.id] = synd;
+  }
+
+  const world = createWorld({ locations, lanes, traders, syndicates, player: opts.player ?? null });
+  // Seed each station's control map with full ownership to its assigned
+  // syndicate. Per-tick decay and activity-driven nudges take it from
+  // here. Gen-time seeding keeps the renderer's first-paint identical
+  // to the legacy "everyone at 100%" behaviour.
+  seedControlFromFactions(world);
+  return world;
 }

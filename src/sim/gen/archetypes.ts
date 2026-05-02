@@ -11,6 +11,7 @@ export const ARCHETYPE_NAMES: ArchetypeName[] = [
   "frontier-outpost",
   "research-station",
   "shipyard",
+  "syndicate-outpost",
 ];
 
 interface ArchetypeBuildContext {
@@ -30,7 +31,6 @@ const tradeHub: Builder = ({ rng, id, name, position }) => {
     traits: {
       techLevel,
       tags: ["trade-hub", "core", "civilian"],
-      faction: "League",
     },
     primaryExports: ["protein", "fiber", "medkits", "plasma"],
     primaryImports: ["grain", "polymer", "parts", "electronics", "luxury_goods", "weapons"],
@@ -88,7 +88,6 @@ const miningBelt: Builder = ({ rng, id, name, position }) => {
     traits: {
       techLevel,
       tags: ["industrial", "core", "mining"],
-      faction: "League",
     },
     primaryExports: exports,
     primaryImports: ["grain", "protein", "polymer", "medkits"],
@@ -118,7 +117,6 @@ const agriculturalRing: Builder = ({ rng, id, name, position }) => {
     traits: {
       techLevel,
       tags: ["agricultural", "ring-habitat", "core"],
-      faction: "League",
     },
     primaryExports: ["grain", "vatmeat", "polymer"],
     primaryImports: ["parts", "fiber", "medkits", "electronics"],
@@ -170,7 +168,6 @@ const frontierOutpost: Builder = ({ rng, id, name, position }) => {
     traits: {
       techLevel,
       tags: ["frontier", "rim", "luxury"],
-      faction: "Outerguild",
     },
     primaryExports: exports,
     primaryImports: ["grain", "protein", "parts", "medkits", "weapons"],
@@ -202,7 +199,6 @@ const researchStation: Builder = ({ rng, id, name, position }) => {
     traits: {
       techLevel,
       tags: ["research", "high-tech"],
-      faction: "League",
     },
     primaryExports: ["electronics"],
     primaryImports: ["grain", "protein", "parts", "antimatter", "medkits", "luxury_goods"],
@@ -270,6 +266,49 @@ const shipyard: Builder = ({ rng, id, name, position }) => {
   };
 };
 
+// Syndicate outpost — the seat of a faction. Doesn't run a normal market
+// or shipyard; produces a small batch of "diplomatic" luxury_goods (the
+// syndicate's signature export) and a sliver of medkits, and consumes
+// basics. Imports pull cargo traffic toward the seat. The owning syndicate
+// is stamped onto traits.faction by the world generator after this builder
+// runs (it doesn't know which syndicate it belongs to here).
+const syndicateOutpost: Builder = ({ rng, id, name, position }) => {
+  const techLevel = rangeInt(rng, 5, 7);
+  return {
+    id, name, position,
+    population: rangeInt(rng, 400, 800),
+    traits: {
+      techLevel,
+      tags: ["syndicate-outpost", "core", "civilian"],
+    },
+    primaryExports: ["luxury_goods", "medkits"],
+    primaryImports: ["grain", "protein", "parts", "electronics", "fiber"],
+    produces: [
+      { good: "luxury_goods", ratePerTick: jitter(rng, 1.6, 0.25), requiresTechLevel: 5,
+        inputs: [{ good: "fiber", perUnit: 0.25 }, { good: "plasma", perUnit: 0.2 }] },
+      { good: "medkits", ratePerTick: jitter(rng, 1.4, 0.25), requiresTechLevel: 4,
+        inputs: [{ good: "protein", perUnit: 0.4 }, { good: "fiber", perUnit: 0.2 }] },
+      { good: "plasma", ratePerTick: jitter(rng, 1.6, 0.2) },
+    ],
+    consumes: [
+      { good: "grain",       ratePerTick: jitter(rng, 4, 0.15) },
+      { good: "protein",     ratePerTick: jitter(rng, 3, 0.15) },
+      { good: "parts",       ratePerTick: jitter(rng, 1.4, 0.2) },
+      { good: "plasma",      ratePerTick: jitter(rng, 1.0, 0.2) },
+      { good: "electronics", ratePerTick: jitter(rng, 0.5, 0.2) },
+      { good: "fiber",       ratePerTick: jitter(rng, 0.8, 0.2) },
+    ],
+    targetStock: {
+      luxury_goods: 35, medkits: 30, grain: 35, protein: 25, parts: 15,
+      plasma: 60, electronics: 12, fiber: 12,
+      // Outposts don't carry a real upgrade catalog — visit a shipyard
+      // for that. A single basic cargo upgrade signals "trader-friendly"
+      // without competing with the dedicated yards.
+      upg_cargo_1: 1,
+    },
+  };
+};
+
 export const ARCHETYPE_BUILDERS: Record<ArchetypeName, Builder> = {
   "trade-hub":          tradeHub,
   "mining-belt":        miningBelt,
@@ -277,4 +316,5 @@ export const ARCHETYPE_BUILDERS: Record<ArchetypeName, Builder> = {
   "frontier-outpost":   frontierOutpost,
   "research-station":   researchStation,
   "shipyard":           shipyard,
+  "syndicate-outpost":  syndicateOutpost,
 };

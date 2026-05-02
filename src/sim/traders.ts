@@ -12,6 +12,13 @@ import {
   withdrawFromTreasury,
 } from "./economy";
 import { acceptJob, collectTradeJob, creditJobOnDelivery, type JobCompletionEvent } from "./jobs";
+import {
+  creditActivity,
+  NPC_DOCK_NUDGE,
+  NPC_TRADE_PER_CREDIT,
+  PLAYER_DOCK_NUDGE,
+  PLAYER_TRADE_PER_CREDIT,
+} from "./control";
 import { noteSyndicateRevenue } from "./stock";
 import { pushNote, pushTraderEvent } from "./log";
 import {
@@ -290,6 +297,10 @@ function settleUnloadedCargo(world: World, trader: Trader, lot: CargoLot, qty: n
   noteSyndicateRevenue(world, trader.id, settlement.traderRevenue);
   events.push({ trader: trader.id, kind: "sell", good: lot.good, qty, unitPrice: settlement.effectiveUnitPrice, to: trader.location });
   creditJobOnDelivery(world, trader.id, trader.location, lot.good, qty);
+  // Selling cargo at a station counts as activity by the trader's
+  // syndicate — bumps territory control by trade volume.
+  const sellRate = isPlayerShip(world, trader) ? PLAYER_TRADE_PER_CREDIT : NPC_TRADE_PER_CREDIT;
+  creditActivity(world, trader, trader.location, settlement.traderRevenue * sellRate);
 }
 
 function beginUnloadLots(world: World, trader: Trader, lots: CargoLot[], events: TraderEvent[]): void {
@@ -751,6 +762,10 @@ function arriveTrader(world: World, trader: Trader, dst: LocationId, events: Tra
   }
 
   chargeDockingFee(world, trader);
+  // Real (non-pass-through) docks shift the destination's syndicate
+  // control toward the arriving ship's faction. Player ships move the
+  // dial harder than NPCs.
+  creditActivity(world, trader, trader.location, isPlayerShip(world, trader) ? PLAYER_DOCK_NUDGE : NPC_DOCK_NUDGE);
 
   // Manual player ships keep cargo loaded until the player chooses Sell.
   if (trader.cargo.length > 0 && trader.pilot !== "manual") {
@@ -1145,6 +1160,10 @@ export function executeTrade(world: World, trader: Trader, choice: TradeOption):
     unitPrice: choice.buyPrice,
     from: here,
   });
+  // NPC trade-and-go also nudges the source-station's control toward
+  // this trader's syndicate. Same hook the manual buy uses; this is the
+  // NPC autopilot path so it always pays NPC rates.
+  creditActivity(world, trader, here, purchase.totalCost * NPC_TRADE_PER_CREDIT);
 
   departForReposition(world, trader, choice.to, fuelNeeded, travelTicksFor(trader, dist), events);
 
@@ -1418,6 +1437,12 @@ export function buyAtLocation(world: World, trader: Trader, goodId: GoodId, qty:
 
   const events: TraderEvent[] = [{ trader: trader.id, kind: "buy", good: goodId, qty, unitPrice: price, from: trader.location }];
   for (const ev of events) pushTraderEvent(world, trader, ev);
+  // Buying credits the source station with this trader's syndicate too —
+  // commerce of any kind extends the syndicate's reach.
+  {
+    const buyRate = isPlayerShip(world, trader) ? PLAYER_TRADE_PER_CREDIT : NPC_TRADE_PER_CREDIT;
+    creditActivity(world, trader, trader.location, purchase.totalCost * buyRate);
+  }
   if (isPlayerShip(world, trader)) incrementManualActions(world);
   return { ok: true, events };
 }

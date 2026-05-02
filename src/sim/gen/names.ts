@@ -35,12 +35,18 @@ const SHIPYARD_ROOTS = [
   "Berth", "Cradle", "Hangar", "Prow", "Aegis", "Bastion",
 ];
 
+const OUTPOST_ROOTS = [
+  "Sable", "Vesper", "Ironhold", "Crimson", "Aurelian", "Verity",
+  "Solace", "Argent", "Ashen", "Halcyon", "Penumbra", "Ember",
+];
+
 const HUB_SUFFIX = ["Station", "Port", "Hub", "Exchange", "Gateway"];
 const MINING_SUFFIX = ["Belt", "Reach", "Hold", "Foundry", "Works"];
 const AGRI_SUFFIX = ["Ring", "Habitat", "Bloom", "Canopy", "Vault"];
 const FRONTIER_SUFFIX = ["Rim", "Edge", "Reach", "Outpost", "Drift"];
 const RESEARCH_SUFFIX = ["Lab", "Institute", "Spire", "Array", "Compound"];
 const SHIPYARD_SUFFIX = ["Shipyard", "Yards", "Drydock", "Stays", "Forge"];
+const OUTPOST_SUFFIX = ["Bastion", "Citadel", "Sanctum", "Pavilion", "Conclave", "Rotunda", "Capitol", "Coronet"];
 
 export type ArchetypeName =
   | "trade-hub"
@@ -48,7 +54,8 @@ export type ArchetypeName =
   | "agricultural-ring"
   | "frontier-outpost"
   | "research-station"
-  | "shipyard";
+  | "shipyard"
+  | "syndicate-outpost";
 
 const ROOTS: Record<ArchetypeName, readonly string[]> = {
   "trade-hub":          HUB_ROOTS,
@@ -57,6 +64,7 @@ const ROOTS: Record<ArchetypeName, readonly string[]> = {
   "frontier-outpost":   FRONTIER_ROOTS,
   "research-station":   RESEARCH_ROOTS,
   "shipyard":           SHIPYARD_ROOTS,
+  "syndicate-outpost":  OUTPOST_ROOTS,
 };
 
 const SUFFIXES: Record<ArchetypeName, readonly string[]> = {
@@ -66,6 +74,7 @@ const SUFFIXES: Record<ArchetypeName, readonly string[]> = {
   "frontier-outpost":   FRONTIER_SUFFIX,
   "research-station":   RESEARCH_SUFFIX,
   "shipyard":           SHIPYARD_SUFFIX,
+  "syndicate-outpost":  OUTPOST_SUFFIX,
 };
 
 export const STATION_NAME_ROOTS = ROOTS;

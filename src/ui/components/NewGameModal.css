@@ -1,0 +1,87 @@
+.ui-modal-dialog.new-game-dialog {
+  width: min(720px, 100%);
+}
+
+.new-game-intro {
+  margin: 0 0 4px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.new-game-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.new-game-card {
+  display: grid;
+  grid-template-columns: 8px 1fr;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  color: var(--text);
+  transition: background 120ms ease, border-color 120ms ease, transform 80ms ease;
+}
+
+.new-game-card:hover {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: var(--border-strong);
+}
+
+.new-game-card.selected {
+  border-color: var(--syndicate-accent, var(--accent));
+  background: color-mix(in srgb, var(--syndicate-accent, var(--accent)) 8%, var(--bg-1));
+  box-shadow: 0 0 0 1px var(--syndicate-accent, var(--accent)) inset;
+}
+
+.new-game-card-swatch {
+  display: block;
+  width: 100%;
+  border-radius: 3px;
+  background: linear-gradient(
+    180deg,
+    var(--syndicate-accent, var(--accent)) 0%,
+    color-mix(in srgb, var(--syndicate-accent, var(--accent)) 55%, transparent) 100%
+  );
+  align-self: stretch;
+}
+
+.new-game-card-body {
+  display: grid;
+  gap: 4px;
+}
+
+.new-game-card-name {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.new-game-card-trait {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--syndicate-accent, var(--accent));
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.new-game-card-desc {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  line-height: 1.45;
+}
+
+.new-game-card-foot {
+  margin-top: 4px;
+  font-size: 10.5px;
+  color: var(--text-dim);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}

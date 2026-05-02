@@ -11,6 +11,7 @@
   --atlas-frontier: #d58bdc;
   --atlas-research: #8fa8ff;
   --atlas-shipyard: #d4d8df;
+  --atlas-outpost: #efe6cf;
   /* Map-area palette: matches the parent panel surface so the map
      reads as part of the panel rather than a darker inset. The bg
      colour is also used as the halo behind stations, ships, and
@@ -837,6 +838,7 @@
 .atlas-kind-dot.atlas-kind-frontier { background: var(--atlas-frontier); }
 .atlas-kind-dot.atlas-kind-research { background: var(--atlas-research); }
 .atlas-kind-dot.atlas-kind-shipyard { background: var(--atlas-shipyard); }
+.atlas-kind-dot.atlas-kind-outpost  { background: var(--atlas-outpost); }
 .atlas-kind-dot.atlas-kind-station { background: var(--text-dim); }
 
 .atlas-kind.atlas-kind-hub,
@@ -851,6 +853,8 @@
 .atlas-node-research { color: var(--atlas-research); }
 .atlas-kind.atlas-kind-shipyard,
 .atlas-node-shipyard { color: var(--atlas-shipyard); }
+.atlas-kind.atlas-kind-outpost,
+.atlas-node-outpost  { color: var(--atlas-outpost); }
 .atlas-kind.atlas-kind-station,
 .atlas-node-station { color: var(--text-dim); }
 
@@ -1173,12 +1177,34 @@
   pointer-events: none;
 }
 
+/* Syndicate territory boundaries. Each path is one syndicate's
+   marching-squares + Chaikin-smoothed perimeter. Stroke uses the
+   inline `stroke` attr (the accent hex from the syndicate roster) so
+   the colour stays per-path; the CSS controls weight and shape. Fill
+   defaults to none — set --control-bubble-fill on .atlas-control-bubbles
+   (or globally) to tint the territory body too, e.g.
+     .atlas-control-boundary { --control-bubble-fill: color-mix(in srgb,
+       var(--syndicate-accent) 12%, transparent); }
+   Stroke is non-scaling so the line stays a hairline regardless of
+   atlas zoom. */
+/* Subpixel marching squares + Chaikin already give a clean curve, so
+   no filter — the edge stays crisp at every zoom level. Reintroduce a
+   small blur here only if the field math regresses. */
+.atlas-control-boundary {
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  fill: var(--control-bubble-fill, none);
+  opacity: 0.78;
+}
+
 /* Coloured circle, thin ink border. Faction shifts the border tint
-   subtly. Filtered-out kinds get ghosted via the parent .atlas-node. */
+   subtly via --node-faction (set inline from the syndicate's accent
+   colour). Filtered-out kinds get ghosted via the parent .atlas-node. */
 .atlas-node-core {
   fill: currentColor;
-  stroke: var(--node-faction-stroke, rgba(255, 255, 255, 0.5));
-  stroke-width: 1;
+  stroke: var(--node-faction, rgba(220, 230, 240, 0.40));
+  stroke-width: 1.2;
   vector-effect: non-scaling-stroke;
   transition: stroke 120ms ease, stroke-width 120ms ease, opacity 140ms ease;
 }
@@ -1189,10 +1215,15 @@
   stroke-width: 1.6;
 }
 
-/* Faction → border tint. Independent stays neutral. */
-.atlas-node-faction-league .atlas-node-core { --node-faction-stroke: rgba(118, 199, 255, 0.65); }
-.atlas-node-faction-outerguild .atlas-node-core { --node-faction-stroke: rgba(240, 163, 90, 0.65); }
-.atlas-node-faction-independent .atlas-node-core { --node-faction-stroke: rgba(220, 230, 240, 0.40); }
+/* Outposts wear their syndicate's accent on the core fill itself —
+   they're the seat of power, so the cluster's colour reads off them
+   even when the bubble underneath is dimmed. The border thickens too,
+   so the outpost glyph visibly outranks neighbouring station kinds. */
+.atlas-node-outpost .atlas-node-core {
+  fill: var(--node-faction, currentColor);
+  stroke: rgba(255, 255, 255, 0.9);
+  stroke-width: 1.6;
+}
 
 /* Selection ring sits just outside the halo, so selecting doesn't
    make the dot itself any bigger and clicks on adjacent stations
@@ -1271,9 +1302,12 @@
    shape conformal to the glyph — a triangle halo around the chevron
    and a circle halo around the idle dot — instead of stamping a
    disc behind every ship. Stroke scales with the user transform so
-   the halo-to-glyph ratio stays consistent across zoom levels. */
+   the halo-to-glyph ratio stays consistent across zoom levels.
+   Ships pick up their syndicate accent via --ship-faction (set inline
+   on the parent <g>); fallback is the muted off-white for unaffiliated
+   ships and old saves with no faction data. */
 .atlas-ship-glyph {
-  fill: #dde6f2;
+  fill: var(--ship-faction, #dde6f2);
   stroke: var(--atlas-bg);
   stroke-width: 4;
   paint-order: stroke;
@@ -1283,7 +1317,7 @@
 }
 
 .atlas-ship.transit .atlas-ship-glyph {
-  fill: var(--atlas-hub);
+  fill: var(--ship-faction, var(--atlas-hub));
 }
 
 .atlas-ship:hover .atlas-ship-glyph {
@@ -1373,7 +1407,18 @@
 .atlas-legend-dot.atlas-kind-frontier { background: var(--atlas-frontier); }
 .atlas-legend-dot.atlas-kind-research { background: var(--atlas-research); }
 .atlas-legend-dot.atlas-kind-shipyard { background: var(--atlas-shipyard); }
+.atlas-legend-dot.atlas-kind-outpost  { background: var(--atlas-outpost); }
 .atlas-legend-dot.atlas-kind-station  { background: var(--text-faint); }
+
+/* Syndicate legend rows aren't interactive (no hidden-by-toggle state),
+   so they shouldn't show the hover background or pointer cursor. The
+   dot color is set inline from the syndicate's accentHex. */
+.atlas-legend-row.syndicate {
+  cursor: default;
+}
+.atlas-legend-row.syndicate:hover {
+  background: none;
+}
 
 .atlas-legend-label {
   color: var(--text);

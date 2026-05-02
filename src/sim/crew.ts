@@ -35,6 +35,7 @@ export function combinedShipModifiers(ship: Trader): CrewModifiers {
   for (const mods of [crew, upgrades]) {
     addModifiers(acc, mods);
   }
+  if (ship.syndicateModifiers) addModifiers(acc, ship.syndicateModifiers);
   return acc;
 }
 

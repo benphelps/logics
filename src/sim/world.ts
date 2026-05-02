@@ -1,4 +1,4 @@
-import type { Good, GoodId, LaneMap, LocationDef, LocationId, MarketState, Player, Trader, TraderId, World } from "./types";
+import type { Good, GoodId, LaneMap, LocationDef, LocationId, MarketState, Player, Syndicate, SyndicateId, Trader, TraderId, World } from "./types";
 import { GOODS } from "./data/goods";
 import { LOCATIONS, LANES } from "./data/locations";
 import { STARTER_TRADERS } from "./data/traders";
@@ -13,6 +13,12 @@ export function createWorld(opts?: {
   lanes?: LaneMap;
   traders?: Record<TraderId, Trader>;
   player?: Player | null | PlayerSeedConfig;
+  // Pre-built syndicate roster from world gen. Stock-market init reads
+  // from world.syndicates: when this is populated up front, ensureStockMarket
+  // skips its built-in syndicate fabricator and lists equities for these
+  // instead. Omit (or pass {}) for hand-built test worlds — the legacy
+  // 4-syndicate fallback fires.
+  syndicates?: Record<SyndicateId, Syndicate>;
 }): World {
   const goods = opts?.goods ?? GOODS;
   const locations = opts?.locations ?? LOCATIONS;
@@ -63,7 +69,7 @@ export function createWorld(opts?: {
   const world: World = {
     tick: 0, goods, locations, markets, lanes, traders, player,
     jobs: {}, nextJobId: 1, hires: {}, nextHireId: 1,
-    equities: {}, syndicates: {},
+    equities: {}, syndicates: opts?.syndicates ?? {},
     newsEvents: createNewsEventsState(),
   };
   ensureStockMarket(world);

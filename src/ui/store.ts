@@ -1,7 +1,8 @@
 import { create } from "zustand";
-import type { CrewMember, CrewRole, Equity, EquityId, Job, World, LocationId, GoodId, JobId, Trader, TraderId, UpgradeSlot } from "../sim/types";
+import type { CrewMember, CrewRole, Equity, EquityId, Job, World, LocationId, GoodId, JobId, SyndicateId, Trader, TraderId, UpgradeSlot } from "../sim/types";
 import type { ActiveNewsEvent } from "../sim/news/types";
-import { createStartingWorld } from "../sim/start";
+import { createStartingWorld, DEFAULT_STARTING_WORLD, randomStartingWorldSeed } from "../sim/start";
+import { generateWorld } from "../sim/gen/world";
 import { makeStartingShip } from "../sim/data/player";
 import { tickWorld } from "../sim/tick";
 import {
@@ -38,6 +39,21 @@ import {
 } from "./saveGames";
 
 export type Speed = 0 | 1 | 4 | 16;
+
+// Whether the new-game picker is replacing the current save (reset) or
+// minting a new slot (create). Drives what confirmNewGame does on commit.
+export type NewGameIntent = "create" | "reset";
+
+export interface PendingNewGame {
+  intent: NewGameIntent;
+  seed: number;
+  // Preview-only world, generated with the same seed the commit will use.
+  // We never save or display it directly — the picker reads it for the
+  // syndicate roster (so the player sees their actual choices for this
+  // seed); confirmNewGame re-runs the seed through createStartingWorld
+  // with the chosen syndicateId to produce the real, ageed world.
+  previewWorld: World;
+}
 
 import {
   DEFAULT_VIEW_TABS,
@@ -327,6 +343,9 @@ interface UiState {
   // Toast queue — populated when tickWorld() returns spawned news events.
   // The toast component drains entries via dismissNewsToast as they auto-fade.
   newsToasts: ActiveNewsEvent[];
+  // Pending new-game flow — non-null while the syndicate picker is open.
+  // Holds the seed + a preview world the picker reads for its roster.
+  pendingNewGame: PendingNewGame | null;
 
   setSpeed: (s: Speed) => void;
   togglePause: () => void;
@@ -335,6 +354,8 @@ interface UiState {
   reset: () => void;
   saveCurrentGame: () => void;
   createGame: () => void;
+  confirmNewGame: (syndicateId: SyndicateId) => void;
+  cancelNewGame: () => void;
   loadGame: (id: string) => void;
   deleteGame: (id: string) => void;
   loadDeveloperState: () => void;
@@ -457,6 +478,22 @@ export const useStore = create<UiState>((set, get) => {
     stockGuideEnabled: state.stockGuideEnabled,
   });
 
+  // Open the syndicate picker. Generates a preview world (without aging,
+  // since we only need the syndicate roster for the picker) using a fresh
+  // seed; confirmNewGame later re-runs the same seed through
+  // createStartingWorld so the committed world matches what the player
+  // saw in the picker.
+  const openNewGameDialog = (intent: NewGameIntent) => {
+    const seed = randomStartingWorldSeed();
+    const previewWorld = generateWorld({
+      seed,
+      locationCount: DEFAULT_STARTING_WORLD.locationCount,
+      traderCount: DEFAULT_STARTING_WORLD.traderCount,
+      player: null,
+    });
+    set({ pendingNewGame: { intent, seed, previewWorld } });
+  };
+
   const persistCurrentGame = (updates: Partial<Pick<UiState, "lastError" | "speed">> = {}, bumpEpoch = true, immediate = false) => {
     const current = get();
     if (bumpEpoch || Object.keys(updates).length > 0) {
@@ -505,6 +542,7 @@ export const useStore = create<UiState>((set, get) => {
     panelScrollPositions: { ...(initialGame.panelScrollPositions ?? {}) },
     lastError: null,
     newsToasts: [],
+    pendingNewGame: null,
 
     setSpeed: (s) => set({ speed: s }),
     togglePause: () => set({ speed: get().speed === 0 ? 1 : 0 }),
@@ -537,35 +575,42 @@ export const useStore = create<UiState>((set, get) => {
     dismissNewsToast: (uid) => {
       set({ newsToasts: get().newsToasts.filter(t => t.uid !== uid) });
     },
-    reset: () => {
-      clearPendingAutosave();
-      const current = get();
-      const world = createStartingWorld();
-      const saved = saveGameSlot(current.activeSaveId, current.gameName, "standard", world);
-      set({
-        world,
-        activeSaveId: saved.activeSaveId,
-        gameName: saved.gameName,
-        gameKind: saved.gameKind,
-        saveSlots: saved.saveSlots,
-        saveStatus: saved.saveStatus,
-        saveError: saved.saveError,
-        tickEpoch: current.tickEpoch + 1,
-        speed: 0,
-        selectedLocation: null,
-        selectedGood: null,
-        selectedTrader: null,
-        panelScrollPositions: {},
-        lastError: null,
-      });
-    },
+    reset: () => openNewGameDialog("reset"),
     saveCurrentGame: () => persistCurrentGame({ lastError: null }, false, true),
-    createGame: () => {
-      clearPendingAutosave();
-      const slots = get().saveSlots;
-      const name = nextSaveName(slots, "Voyager");
-      applyLoadedGame(createGameSlot(name, "standard", createStartingWorld()));
+    createGame: () => openNewGameDialog("create"),
+    confirmNewGame: (syndicateId) => {
+      const pending = get().pendingNewGame;
+      if (!pending) return;
+      const world = createStartingWorld({ seed: pending.seed, syndicateId });
+      if (pending.intent === "create") {
+        clearPendingAutosave();
+        const slots = get().saveSlots;
+        const name = nextSaveName(slots, "Voyager");
+        applyLoadedGame(createGameSlot(name, "standard", world));
+      } else {
+        clearPendingAutosave();
+        const current = get();
+        const saved = saveGameSlot(current.activeSaveId, current.gameName, "standard", world);
+        set({
+          world,
+          activeSaveId: saved.activeSaveId,
+          gameName: saved.gameName,
+          gameKind: saved.gameKind,
+          saveSlots: saved.saveSlots,
+          saveStatus: saved.saveStatus,
+          saveError: saved.saveError,
+          tickEpoch: current.tickEpoch + 1,
+          speed: 0,
+          selectedLocation: null,
+          selectedGood: null,
+          selectedTrader: null,
+          panelScrollPositions: {},
+          lastError: null,
+        });
+      }
+      set({ pendingNewGame: null });
     },
+    cancelNewGame: () => set({ pendingNewGame: null }),
     loadGame: (id) => {
       clearPendingAutosave();
       const session = loadGameSlot(id);

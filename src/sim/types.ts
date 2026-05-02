@@ -32,7 +32,11 @@ export interface Position {
 export interface LocationTraits {
   techLevel: number;
   tags: string[];
-  faction?: string;
+  // Owning syndicate at world-gen time. Holds a SyndicateId for stations
+  // that were assigned to a faction during clustering; left undefined for
+  // stations that don't belong to any (e.g. shipyards). Mutable: the
+  // dominant syndicate at a station can flip when control swings.
+  faction?: SyndicateId;
 }
 
 export interface LocationDef {
@@ -253,6 +257,17 @@ export interface Trader {
   // perks. Optional for back-compat with the starting ship and NPCs.
   shipClass?: ShipClass;
   traits?: ShipTrait[];
+  // Owning syndicate. Set at world gen for NPCs (matches their home
+  // station's faction) and at new-game for the player ship (the picker
+  // selection). Optional for back-compat with older saves and minimal
+  // test traders that don't need an affiliation.
+  syndicateId?: SyndicateId;
+  // Cached snapshot of the syndicate's passive trait modifiers, applied
+  // alongside crew + upgrades by combinedShipModifiers. Stamped once at
+  // ship creation when joining a syndicate; safe to omit for NPCs and
+  // for the bootstrap unfactioned ship. Caching here avoids threading
+  // a world reference through every modifier reader.
+  syndicateModifiers?: CrewModifiers;
   // Multi-hop travel queue. When the player picks a non-adjacent
   // destination, travelTo plots a shortest path through the lane
   // network and stores the remaining hops here (next-hop first, final
@@ -482,6 +497,26 @@ export interface Equity {
 
 export type SyndicateId = string;
 
+// Passive perks each syndicate offers its ships. Applied to the player's
+// chosen syndicate in v1; NPC behavior is unaffected. The id is fixed per
+// build so the picker UI and save files stay stable across worlds.
+export type SyndicateTraitId =
+  | "free-traders"
+  | "deep-haulers"
+  | "swift-couriers"
+  | "fuel-conservators"
+  | "expediters"
+  | "engineers"
+  | "exchange-mavens"
+  | "wardens";
+
+export interface SyndicateTrait {
+  id: SyndicateTraitId;
+  label: string;
+  description: string;
+  modifiers: CrewModifiers;
+}
+
 export interface Syndicate {
   id: SyndicateId;
   name: string;
@@ -493,6 +528,12 @@ export interface Syndicate {
   // Trade volume tally over recent ticks (decays). Drives share-price drift —
   // active syndicates trade at a premium.
   recentRevenue: number;
+  // Faction extension — present on syndicates created by world gen. Older
+  // saves predating the faction system have undefined values here; readers
+  // should fall back to neutral defaults.
+  traitId?: SyndicateTraitId;
+  accentHex?: string;       // e.g. "#76c7ff" — used for atlas tint, badges
+  outpostId?: LocationId;   // the syndicate's HQ station (placed first at gen)
 }
 
 export type JobKind = "shortage" | "rescue" | "trade";
@@ -555,6 +596,20 @@ export interface World {
   // test worlds round-trip without explicit setup; eventMultiplier short-
   // circuits to 1 when undefined.
   newsEvents?: import("./news/types").NewsEventsState;
+  // Per-station syndicate control. control[locId][syndId] = 0..1, summing
+  // to 1 across syndicates with a presence at that station. Drives the
+  // atlas territory bubbles and downstream gameplay (crossing fees,
+  // territory bonuses). Mutated in place by control.ts; sparse — stations
+  // with only one active syndicate omit the others. Optional so old saves
+  // round-trip; renderer falls back to LocationTraits.faction at 100%
+  // when absent. See src/sim/control.ts for the per-tick decay and
+  // activity-driven nudge model.
+  control?: Record<LocationId, Record<SyndicateId, number>>;
+  // Monotonic counter bumped on every control mutation. Renderer memos
+  // its sampled field on this so pan/zoom doesn't recompute, but the
+  // first paint after a tick that nudged control does. Optional; readers
+  // default to 0.
+  controlVersion?: number;
   // Shipyard inventory — blueprints currently for sale at each shipyard
   // station. Ticked alongside hires/jobs (expire-then-post). Optional for
   // back-compat; old saves load with empty inventories that fill in

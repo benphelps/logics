@@ -1,5 +1,6 @@
 import type { GoodId, Hire, HireId, Job, LocationDef, MarketState, World } from "./types";
 import { recomputePrices } from "./pricing";
+import { tickControl } from "./control";
 import { stepTraders, type TraderEvent } from "./traders";
 import { applyIdlePerks, chargeMaintenance, chargeNpcWealthCarry, consumptionDemand, productionScale, tickTreasuries } from "./economy";
 import { expireJobs, generateJobs, type JobExpiryEvent } from "./jobs";
@@ -117,6 +118,11 @@ export function tickWorld(world: World): TickReport {
   // Milestone-gated upgrade stocking. Idempotent — only seeds tier stock
   // once per (station, upgrade), so post-purchase stays at 0 forever.
   replenishUnlockedUpgrades(world);
+
+  // Syndicate territory bookkeeping. Decays non-dominant shares toward
+  // the current leader at each station, then resyncs LocationTraits.faction
+  // with whoever actually dominates so the atlas + UI follow control swings.
+  tickControl(world);
 
   world.tick += 1;
   return {

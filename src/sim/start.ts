@@ -1,6 +1,8 @@
-import type { LocationId, World } from "./types";
+import type { LocationId, SyndicateId, World } from "./types";
 import { DEFAULT_PLAYER_SEED, makePlayer } from "./data/player";
 import { generateWorld } from "./gen/world";
+import { recomputeShipStats } from "./crew";
+import { SYNDICATE_TRAITS } from "./data/syndicates";
 import { tickN } from "./tick";
 
 export interface StartingWorldOptions {
@@ -12,6 +14,11 @@ export interface StartingWorldOptions {
   startingFunds?: number;
   startingLocation?: LocationId;
   startingShipName?: string;
+  // The syndicate the player is joining — set by the new-game picker.
+  // Stamped onto the player ship's syndicateId, and (when the syndicate
+  // has an outpost) used as the default starting location so a fresh
+  // game opens at the player's faction HQ.
+  syndicateId?: SyndicateId;
 }
 
 export const DEFAULT_STARTING_WORLD = {
@@ -56,14 +63,32 @@ export function createStartingWorld(opts: StartingWorldOptions = {}): World {
   const ageTicks = Math.max(0, Math.floor(opts.ageTicks ?? DEFAULT_STARTING_WORLD.ageTicks));
   if (ageTicks > 0) tickN(world, ageTicks);
 
+  // When the player has joined a syndicate, default the starting station
+  // to that syndicate's outpost (the seat of power). The explicit
+  // startingLocation override still wins for tests and dev tools.
+  const syndicate = opts.syndicateId ? world.syndicates[opts.syndicateId] : undefined;
+  const factionStart = syndicate?.outpostId && world.locations[syndicate.outpostId]
+    ? syndicate.outpostId
+    : null;
   const startingLocation = opts.startingLocation && world.locations[opts.startingLocation]
     ? opts.startingLocation
-    : choosePlayerStart(world);
+    : factionStart ?? choosePlayerStart(world);
   const made = makePlayer({
     startingFunds: opts.startingFunds ?? DEFAULT_PLAYER_SEED.startingFunds,
     startingLocation,
     startingShipName: opts.startingShipName ?? DEFAULT_PLAYER_SEED.startingShipName,
   });
+  if (opts.syndicateId) {
+    made.ship.syndicateId = opts.syndicateId;
+    const trait = syndicate?.traitId ? SYNDICATE_TRAITS[syndicate.traitId] : null;
+    if (trait) {
+      // Snapshot the trait's modifiers onto the ship and recompute stats
+      // so the picker's promised cargo / speed / fuel bonus is reflected
+      // immediately — without waiting for the first crew/upgrade event.
+      made.ship.syndicateModifiers = { ...trait.modifiers };
+      recomputeShipStats(made.ship);
+    }
+  }
   world.traders[made.ship.id] = made.ship;
   world.player = made.player;
   return world;
