@@ -443,7 +443,7 @@ function SectorMap({
     //      band, no flicker.
     const px = vbox.x + ((e.clientX - rect.left) / rect.width) * vbox.w;
     const py = vbox.y + ((e.clientY - rect.top) / rect.height) * vbox.h;
-    const HIGHLIGHT_BAND = vbox.w * 0.014; // ~14px screen-equiv at default zoom
+    const HIGHLIGHT_BAND = vbox.w * 0.022; // ~22px screen-equiv at default zoom
     let bestKey: string | null = null;
     let bestDist = Infinity;
     let bestLink: AtlasLink | null = null;
