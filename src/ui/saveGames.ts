@@ -54,6 +54,11 @@ export interface LoadedGameSession {
   saveError: string | null;
   viewTabs?: ViewTabs;
   panelScrollPositions?: PanelScrollPositions;
+  // True when this load could not find any existing save and we
+  // synthesized one from scratch — used by the store to auto-open
+  // the new-game picker so the player still gets to choose their
+  // syndicate on the very first launch.
+  isFreshStart?: boolean;
 }
 
 function browserStorage(): Storage | null {
@@ -407,6 +412,7 @@ export function loadInitialGame(createFallbackWorld: () => World): LoadedGameSes
       saveSlots: [],
       saveStatus: browserStorage() ? "error" : "unavailable",
       saveError: browserStorage() ? "Could not read save registry from localStorage." : "Browser localStorage is unavailable.",
+      isFreshStart: true,
     };
   }
 
@@ -417,7 +423,7 @@ export function loadInitialGame(createFallbackWorld: () => World): LoadedGameSes
   const save = makeSave(createSaveId(), "Voyager", "standard", world);
   const next: SaveRegistry = { version: SAVE_VERSION, activeId: save.id, saves: [save] };
   const write = writeRegistry(next);
-  return loadedFromSave(save, next, write);
+  return { ...loadedFromSave(save, next, write), isFreshStart: true };
 }
 
 export function saveGameSlot(

@@ -1667,10 +1667,10 @@
   border-top: 1px solid var(--atlas-line);
 }
 
-/* Travel-here CTA on the station info panel. Mirrors the fleet view's
-   primary-button shape so the action reads as the headline thing on
-   the panel; meta line breaks out the trip economics (distance / ETA
-   / fuel needed) under the label. */
+/* Travel-here CTA on the station info panel. Muted neutral chip —
+   the action is implicit (selected station ⇒ travel here is the
+   obvious next move) so it doesn't need to shout in primary blue.
+   Meta line on the right breaks out the trip economics. */
 .atlas-travel-action {
   display: grid;
   gap: 4px;
@@ -1681,40 +1681,42 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
-  padding: 10px 14px;
-  background: rgba(31, 111, 168, 0.45);
-  border: 1px solid rgba(118, 199, 255, 0.42);
-  border-radius: 5px;
-  color: white;
+  gap: 10px;
+  padding: 6px 11px;
+  background: rgba(40, 48, 60, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.85);
   cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 
 .atlas-travel-btn:hover:not(:disabled) {
-  background: rgba(42, 117, 173, 0.65);
-  border-color: rgba(118, 199, 255, 0.7);
+  background: rgba(54, 64, 78, 0.7);
+  border-color: rgba(255, 255, 255, 0.20);
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .atlas-travel-btn:disabled,
 .atlas-travel-btn.disabled {
-  background: rgba(40, 48, 60, 0.5);
-  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(40, 48, 60, 0.4);
+  border-color: rgba(255, 255, 255, 0.06);
   color: var(--text-faint);
   cursor: not-allowed;
 }
 
 .atlas-travel-label {
-  font-size: 13px;
+  font-size: 11.5px;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 .atlas-travel-meta {
-  font-size: 11px;
+  font-size: 10.5px;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
-  opacity: 0.85;
+  opacity: 0.7;
 }
 
 .atlas-travel-btn:disabled .atlas-travel-meta,

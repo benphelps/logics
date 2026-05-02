@@ -73,6 +73,27 @@ export type Tab = MainViewTab;
 export type { AtlasMapTab, AtlasSheetTab, FleetTab, CommodityTab, LedgerTab, PanelScrollPosition, PanelScrollPositions, PnoTab, StockKindFilter, ViewTabs };
 
 const initialGame = loadInitialGame(() => createStartingWorld());
+
+// First-launch UX: if loadInitialGame had to synthesize a save from
+// scratch (no registry / no active slot), open the syndicate picker
+// immediately so the player still chooses their faction. The auto-
+// generated world sits behind the modal as a placeholder; confirming
+// the picker re-rolls the world with the chosen syndicate. Cancelling
+// keeps the placeholder world (a sensible default).
+function buildFreshStartPending(): PendingNewGame {
+  const seed = randomStartingWorldSeed();
+  const previewWorld = generateWorld({
+    seed,
+    locationCount: DEFAULT_STARTING_WORLD.locationCount,
+    traderCount: DEFAULT_STARTING_WORLD.traderCount,
+    player: null,
+  });
+  return { intent: "create", seed, previewWorld };
+}
+const initialPendingNewGame: PendingNewGame | null = initialGame.isFreshStart
+  ? buildFreshStartPending()
+  : null;
+
 const AUTOSAVE_THROTTLE_MS = 2_000;
 let pendingAutosave: ReturnType<typeof setTimeout> | null = null;
 let lastAutosaveAt = 0;
@@ -554,7 +575,7 @@ export const useStore = create<UiState>((set, get) => {
     panelScrollPositions: { ...(initialGame.panelScrollPositions ?? {}) },
     lastError: null,
     newsToasts: [],
-    pendingNewGame: null,
+    pendingNewGame: initialPendingNewGame,
 
     setSpeed: (s) => set({ speed: s }),
     togglePause: () => set({ speed: get().speed === 0 ? 1 : 0 }),

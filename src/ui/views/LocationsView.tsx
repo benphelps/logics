@@ -2632,7 +2632,7 @@ function StationTravelAction({ world, loc, onPreviewRoute }: {
     <div className="atlas-travel-action">
       <button
         type="button"
-        className={`atlas-travel-btn ${disabled ? "disabled" : "primary"}`}
+        className={`atlas-travel-btn ${disabled ? "disabled" : ""}`}
         disabled={disabled}
         title={blockReason ?? `Travel ${ship.name} to ${loc.name}`}
         onMouseEnter={() => onPreviewRoute(previewablePath)}
@@ -2646,7 +2646,7 @@ function StationTravelAction({ world, loc, onPreviewRoute }: {
         }}
       >
         <span className="atlas-travel-label">
-          {atDest ? "Docked here" : inboundHere ? "Inbound" : `Travel ${ship.name}`}
+          {atDest ? "Docked here" : inboundHere ? "Inbound" : "Travel"}
         </span>
         <span className="atlas-travel-meta mono">{metaText}</span>
       </button>
