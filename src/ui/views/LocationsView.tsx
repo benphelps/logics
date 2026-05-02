@@ -435,25 +435,24 @@ function SectorMap({
     //   1) Filter to lanes within HIGHLIGHT_BAND perpendicular distance
     //      of the cursor — anything outside that band is too far away
     //      to be "near" the lane at all.
-    //   2) Among those, pick the lane whose midpoint is closest to the
-    //      cursor. So when several lanes overlap a hover point (junctions,
-    //      parallel runs), the one you're pointing nearest the centre of
-    //      wins, not whichever happens to scrape closest perpendicularly.
+    //   2) Among those, pick the SHORTEST lane regardless of midpoint
+    //      distance. Short local lanes routinely sit underneath long
+    //      transit lanes; making length the tiebreaker means a click
+    //      always reaches the local one when there's any candidate at
+    //      all. Same lane always wins for any hover point inside the
+    //      band, no flicker.
     const px = vbox.x + ((e.clientX - rect.left) / rect.width) * vbox.w;
     const py = vbox.y + ((e.clientY - rect.top) / rect.height) * vbox.h;
     const HIGHLIGHT_BAND = vbox.w * 0.014; // ~14px screen-equiv at default zoom
     let bestKey: string | null = null;
-    let bestMidDist = Infinity;
+    let bestDist = Infinity;
     let bestLink: AtlasLink | null = null;
     for (const link of orderedLinks) {
       const a = projectedById.get(link.a);
       const b = projectedById.get(link.b);
       if (!a || !b) continue;
       if (perpDistanceToSegment(px, py, a.x, a.y, b.x, b.y) >= HIGHLIGHT_BAND) continue;
-      const cx = (a.x + b.x) / 2;
-      const cy = (a.y + b.y) / 2;
-      const midDist = Math.hypot(px - cx, py - cy);
-      if (midDist < bestMidDist) { bestMidDist = midDist; bestKey = laneKey(link.a, link.b); bestLink = link; }
+      if (link.dist < bestDist) { bestDist = link.dist; bestKey = laneKey(link.a, link.b); bestLink = link; }
     }
     if (bestKey !== hoveredLane) {
       if (bestKey && bestLink) {
