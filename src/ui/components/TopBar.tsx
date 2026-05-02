@@ -36,7 +36,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "stocks", label: "Exchange" },
   { id: "markets", label: "Markets" },
   { id: "locations", label: "Atlas" },
-  { id: "charters", label: "Charters" },
+  { id: "charters", label: "Ledger" },
 ];
 
 export function TopBar() {

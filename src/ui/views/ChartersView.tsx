@@ -1,14 +1,16 @@
-// Charters view — two side-by-side panels within the standard page bounds:
+// Ledger view — two side-by-side panels within the standard page bounds:
 //
-//   Left (wider): tabbed milestone badges (Crew Guilds | Tier Licenses).
-//     Carded grid because each entry is literally a badge — rarity colors
-//     + EARNED stamps live here.
+//   Left (wider): tabbed sub-panels.
+//     - Charters: combined milestone badges (guilds + licenses, all in
+//       one carded grid). Rarity colors + EARNED stamps live here.
+//     - Syndicates: per-syndicate reputation cards listing the player's
+//       standing with each faction in this seed.
 //
 //   Right (narrower): the captain's ledger sidebar — flat ship-info-style
 //     stat sections (career, wallet/fleet, activity placeholders, save
-//     info). No table here; progress already lives on the badges panel.
+//     info). Same on both sub-tabs.
 
-import { useState, type CSSProperties } from "react";
+import { type CSSProperties } from "react";
 import type { IconType } from "react-icons";
 import {
   GiAstronautHelmet,
@@ -19,8 +21,11 @@ import {
   GiPathDistance,
   GiProcessor,
 } from "react-icons/gi";
+import type { Syndicate, World } from "../../sim/types";
 import { useStore } from "../store";
 import { listMilestoneProgress, type MilestoneKey, type MilestoneProgress } from "../../sim/milestones";
+import { SYNDICATE_TRAITS } from "../../sim/data/syndicates";
+import { playerReputationWith } from "../../sim/control";
 import { headerArtUrl } from "../art";
 import "./ChartersView.css";
 
@@ -45,83 +50,57 @@ function milestoneCategory(key: MilestoneKey): "license" | "guild" {
   return key.startsWith("upgrade") ? "license" : "guild";
 }
 
-type ChartersTab = "guilds" | "licenses";
-
 function artCardStyle(url: string): CSSProperties {
   return { "--card-art": `url("${url}")` } as CSSProperties;
 }
 
 export function ChartersView() {
   const world = useStore((s) => s.world);
+  const ledgerTab = useStore((s) => s.ledgerTab);
+  const setLedgerTab = useStore((s) => s.setLedgerTab);
   useStore((s) => s.tickEpoch);
-
-  const [activeTab, setActiveTab] = useState<ChartersTab>("guilds");
 
   const progress = listMilestoneProgress(world);
   const earned = progress.filter(p => p.met).length;
   const total = progress.length;
   const totalActions = world.player?.manualActionCount ?? 0;
 
-  const guilds = progress.filter(p => milestoneCategory(p.key) === "guild");
-  const licenses = progress.filter(p => milestoneCategory(p.key) === "license");
-  const activeRows = activeTab === "guilds" ? guilds : licenses;
-  const activeEarned = activeRows.filter(p => p.met).length;
-
   const next = progress
     .filter(p => !p.met)
     .sort((a, b) => (a.target - a.current) - (b.target - b.current))[0] ?? null;
 
-  const badgesArt = activeTab === "guilds"
-    ? headerArtUrl("crewMarket")
-    : headerArtUrl("shipyardUpgrades");
+  const syndicates = Object.values(world.syndicates).sort((a, b) => a.id.localeCompare(b.id));
 
   return (
     <section className="charters-view">
-      {/* Left (wider): tabbed badges — carded grid keeps the rarity colors
-          and earned-stamp design language used on actual badges. */}
+      {/* Left (wider): tabbed sub-panels — Charters (combined milestones)
+          or Syndicates (per-faction reputation cards). */}
       <section className="charters-badges-card">
         <div className="bridge-card-tabs charters-badges-tabs">
           <button
             type="button"
-            className={`bridge-tab ${activeTab === "guilds" ? "active" : ""}`}
-            onClick={() => setActiveTab("guilds")}
+            className={`bridge-tab ${ledgerTab === "charters" ? "active" : ""}`}
+            onClick={() => setLedgerTab("charters")}
           >
-            Crew Guilds <span className="bridge-tab-count">{guilds.filter(p => p.met).length}/{guilds.length}</span>
+            Charters <span className="bridge-tab-count">{earned}/{total}</span>
           </button>
           <button
             type="button"
-            className={`bridge-tab ${activeTab === "licenses" ? "active" : ""}`}
-            onClick={() => setActiveTab("licenses")}
+            className={`bridge-tab ${ledgerTab === "syndicates" ? "active" : ""}`}
+            onClick={() => setLedgerTab("syndicates")}
           >
-            Tier Licenses <span className="bridge-tab-count">{licenses.filter(p => p.met).length}/{licenses.length}</span>
+            Syndicates <span className="bridge-tab-count">{syndicates.length}</span>
           </button>
         </div>
-        <div
-          className="charters-badges-head"
-          style={artCardStyle(badgesArt)}
-        >
-          <div className="charters-badges-head-main">
-            <span className="charters-badges-eyebrow">{activeTab === "guilds" ? "Service guild charters" : "Shipyard tier licenses"}</span>
-            <span className="charters-badges-name">
-              {activeTab === "guilds" ? "Crew Guilds" : "Tier Licenses"}
-            </span>
-          </div>
-          <div className="charters-badges-head-stat">
-            <span className="charters-badges-head-stat-num mono">{activeEarned}<span className="charters-badges-head-stat-sep">/</span>{activeRows.length}</span>
-            <span className="charters-badges-head-stat-label">earned</span>
-          </div>
-        </div>
-        <div className="charters-badges-body" data-scroll-key={`charters:badges:${activeTab}`}>
-          <div className="charters-badges-grid">
-            {activeRows.map(m => <MilestoneBadge key={m.key} progress={m} />)}
-          </div>
-        </div>
+        {ledgerTab === "charters" ? (
+          <ChartersTabBody world={world} progress={progress} />
+        ) : (
+          <SyndicatesTabBody world={world} syndicates={syndicates} />
+        )}
       </section>
 
-      {/* Right (narrower): player info panel — career stats, wallet/fleet
-          totals, placeholder metrics for things we'll wire to real data
-          later, and save info. No charter table — the badges panel on the
-          left already shows progress. */}
+      {/* Right (narrower): captain's ledger sidebar — career stats,
+          wallet/fleet totals, save info. Stays consistent across sub-tabs. */}
       <CaptainsLedgerSidebar
         world={world}
         totalActions={totalActions}
@@ -130,6 +109,125 @@ export function ChartersView() {
         next={next}
       />
     </section>
+  );
+}
+
+// --- Charters tab (combined milestone badges) -----------------------------
+
+function ChartersTabBody({ world, progress }: { world: World; progress: MilestoneProgress[] }) {
+  void world;
+  const earned = progress.filter(p => p.met).length;
+  const guilds = progress.filter(p => milestoneCategory(p.key) === "guild");
+  const licenses = progress.filter(p => milestoneCategory(p.key) === "license");
+  const headArt = headerArtUrl("tradeLedger");
+  return (
+    <>
+      <div className="charters-badges-head" style={artCardStyle(headArt)}>
+        <div className="charters-badges-head-main">
+          <span className="charters-badges-eyebrow">Service charters & tier licenses</span>
+          <span className="charters-badges-name">Charters</span>
+        </div>
+        <div className="charters-badges-head-stat">
+          <span className="charters-badges-head-stat-num mono">{earned}<span className="charters-badges-head-stat-sep">/</span>{progress.length}</span>
+          <span className="charters-badges-head-stat-label">earned</span>
+        </div>
+      </div>
+      <div className="charters-badges-body" data-scroll-key="charters:combined">
+        {guilds.length > 0 && (
+          <>
+            <div className="charters-section-title">Crew Guilds</div>
+            <div className="charters-badges-grid">
+              {guilds.map(m => <MilestoneBadge key={m.key} progress={m} />)}
+            </div>
+          </>
+        )}
+        {licenses.length > 0 && (
+          <>
+            <div className="charters-section-title">Tier Licenses</div>
+            <div className="charters-badges-grid">
+              {licenses.map(m => <MilestoneBadge key={m.key} progress={m} />)}
+            </div>
+          </>
+        )}
+      </div>
+    </>
+  );
+}
+
+// --- Syndicates tab (reputation per faction) ------------------------------
+
+function SyndicatesTabBody({ world, syndicates }: { world: World; syndicates: Syndicate[] }) {
+  const playerSyndicateId = world.traders[world.player?.shipIds[0] ?? ""]?.syndicateId;
+  const headArt = headerArtUrl("crewMarket");
+  return (
+    <>
+      <div className="charters-badges-head" style={artCardStyle(headArt)}>
+        <div className="charters-badges-head-main">
+          <span className="charters-badges-eyebrow">Faction standings · this seed</span>
+          <span className="charters-badges-name">Syndicates</span>
+        </div>
+        <div className="charters-badges-head-stat">
+          <span className="charters-badges-head-stat-num mono">{syndicates.length}</span>
+          <span className="charters-badges-head-stat-label">factions</span>
+        </div>
+      </div>
+      <div className="charters-badges-body" data-scroll-key="charters:syndicates">
+        <div className="syndicate-rep-grid">
+          {syndicates.map(s => (
+            <SyndicateRepCard
+              key={s.id}
+              syndicate={s}
+              isPlayer={s.id === playerSyndicateId}
+              reputation={playerReputationWith(world, s.id)}
+            />
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
+function SyndicateRepCard({ syndicate, isPlayer, reputation }: {
+  syndicate: Syndicate;
+  isPlayer: boolean;
+  reputation: number;
+}) {
+  const trait = syndicate.traitId ? SYNDICATE_TRAITS[syndicate.traitId] : null;
+  const accent = syndicate.accentHex ?? "#9bb6c8";
+  // Effective reputation for the toll discount: the player's home
+  // syndicate is implicitly 100% (toll never applies), even though
+  // we don't store rep with own faction.
+  const effectiveRep = isPlayer ? 1 : reputation;
+  const repPct = Math.round(effectiveRep * 100);
+  const repBand = effectiveRep >= 0.95 ? "trusted"
+    : effectiveRep >= 0.6 ? "favoured"
+    : effectiveRep >= 0.25 ? "known"
+    : effectiveRep > 0 ? "neutral"
+    : "stranger";
+  return (
+    <div
+      className={`syndicate-rep-card ${isPlayer ? "is-player" : ""}`}
+      style={{ "--syndicate-accent": accent } as CSSProperties}
+    >
+      <span className="syndicate-rep-card-swatch" aria-hidden="true" />
+      <div className="syndicate-rep-card-content">
+        <div className="syndicate-rep-card-head">
+          <div className="syndicate-rep-card-titles">
+            <div className="syndicate-rep-card-name">{syndicate.name}</div>
+            {trait && <div className="syndicate-rep-card-trait">{trait.label}</div>}
+          </div>
+          {isPlayer && <span className="syndicate-rep-card-pill">Aligned</span>}
+        </div>
+        {trait && <div className="syndicate-rep-card-desc">{trait.description}</div>}
+        <div className="syndicate-rep-card-track" title={isPlayer ? "Home syndicate — toll free" : `Reputation ${repPct}%`}>
+          <div className="syndicate-rep-card-fill" style={{ width: `${effectiveRep * 100}%` } as CSSProperties} />
+        </div>
+        <div className="syndicate-rep-card-foot">
+          <span className={`syndicate-rep-card-band band-${repBand}`}>{repBand}</span>
+          <span className="syndicate-rep-card-pct mono">{repPct}%</span>
+        </div>
+      </div>
+    </div>
   );
 }
 

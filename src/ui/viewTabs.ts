@@ -7,6 +7,7 @@ export type CommodityTab = "all" | "food" | "raw" | "intermediate" | "luxury" | 
 export type PnoTab = "positions" | "orders" | "futures" | "history" | "insights";
 export type AtlasSheetTab = "systems" | "ships" | "news";
 export type AtlasMapTab = "stations" | "syndicates";
+export type LedgerTab = "charters" | "syndicates";
 export type StockKindFilter = "all" | "positions" | "station" | "syndicate" | "commodity" | "basis" | "futures" | "index";
 export type MainViewTab = "player" | "markets" | "locations" | "stocks" | "charters";
 export interface PanelScrollPosition {
@@ -21,6 +22,7 @@ export interface ViewTabs {
   pnoTab: PnoTab;
   atlasSheetTab: AtlasSheetTab;
   atlasMapTab: AtlasMapTab;
+  ledgerTab: LedgerTab;
   stockKindFilter: StockKindFilter;
   stockGuideEnabled: boolean;
 }
@@ -31,6 +33,7 @@ export const DEFAULT_VIEW_TABS: ViewTabs = {
   pnoTab: "positions",
   atlasSheetTab: "systems",
   atlasMapTab: "stations",
+  ledgerTab: "charters",
   stockKindFilter: "all",
   stockGuideEnabled: false,
 };
@@ -40,6 +43,7 @@ const COMMODITY_TABS: readonly CommodityTab[] = ["all", "food", "raw", "intermed
 const PNO_TABS: readonly PnoTab[] = ["positions", "orders", "futures", "history", "insights"];
 const ATLAS_SHEET_TABS: readonly AtlasSheetTab[] = ["systems", "ships", "news"];
 const ATLAS_MAP_TABS: readonly AtlasMapTab[] = ["stations", "syndicates"];
+const LEDGER_TABS: readonly LedgerTab[] = ["charters", "syndicates"];
 const STOCK_KIND_FILTERS: readonly StockKindFilter[] = ["all", "positions", "station", "syndicate", "commodity", "basis", "futures", "index"];
 
 export function normalizeViewTabs(input: unknown): ViewTabs {
@@ -51,6 +55,7 @@ export function normalizeViewTabs(input: unknown): ViewTabs {
     pnoTab: pick(v.pnoTab, PNO_TABS, DEFAULT_VIEW_TABS.pnoTab),
     atlasSheetTab: pick(v.atlasSheetTab, ATLAS_SHEET_TABS, DEFAULT_VIEW_TABS.atlasSheetTab),
     atlasMapTab: pick(v.atlasMapTab, ATLAS_MAP_TABS, DEFAULT_VIEW_TABS.atlasMapTab),
+    ledgerTab: pick(v.ledgerTab, LEDGER_TABS, DEFAULT_VIEW_TABS.ledgerTab),
     stockKindFilter: pick(v.stockKindFilter, STOCK_KIND_FILTERS, DEFAULT_VIEW_TABS.stockKindFilter),
     stockGuideEnabled: typeof v.stockGuideEnabled === "boolean" ? v.stockGuideEnabled : DEFAULT_VIEW_TABS.stockGuideEnabled,
   };
