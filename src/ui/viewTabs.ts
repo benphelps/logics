@@ -6,7 +6,7 @@ export type FleetTab = "cargo" | "upgrades" | "crew" | "contracts";
 export type CommodityTab = "all" | "food" | "raw" | "intermediate" | "luxury" | "fuel" | "advanced" | "upgrade";
 export type PnoTab = "positions" | "orders" | "futures" | "history" | "insights";
 export type AtlasSheetTab = "systems" | "ships" | "news";
-export type AtlasMapTab = "stations" | "syndicates";
+export type AtlasMapTab = "stations" | "syndicates" | "logistics";
 export type LedgerTab = "charters" | "syndicates";
 export type StockKindFilter = "all" | "positions" | "station" | "syndicate" | "commodity" | "basis" | "futures" | "index";
 export type MainViewTab = "player" | "markets" | "locations" | "stocks" | "charters";
@@ -42,7 +42,7 @@ const FLEET_TABS: readonly FleetTab[] = ["cargo", "upgrades", "crew", "contracts
 const COMMODITY_TABS: readonly CommodityTab[] = ["all", "food", "raw", "intermediate", "luxury", "fuel", "advanced", "upgrade"];
 const PNO_TABS: readonly PnoTab[] = ["positions", "orders", "futures", "history", "insights"];
 const ATLAS_SHEET_TABS: readonly AtlasSheetTab[] = ["systems", "ships", "news"];
-const ATLAS_MAP_TABS: readonly AtlasMapTab[] = ["stations", "syndicates"];
+const ATLAS_MAP_TABS: readonly AtlasMapTab[] = ["stations", "syndicates", "logistics"];
 const LEDGER_TABS: readonly LedgerTab[] = ["charters", "syndicates"];
 const STOCK_KIND_FILTERS: readonly StockKindFilter[] = ["all", "positions", "station", "syndicate", "commodity", "basis", "futures", "index"];
 

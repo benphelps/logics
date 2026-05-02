@@ -3,6 +3,7 @@ import type { IconType } from "react-icons";
 import { GiAnvil, GiAtom, GiCampfire, GiMining, GiSpaceship, GiTrade, GiWheat } from "react-icons/gi";
 import { useStore } from "../store";
 import { findRoutePath, pathDistance, reachableNeighbors, routeDistance, routeSegments } from "../../sim/geometry";
+import { playerReputationWith } from "../../sim/control";
 import type { Equity, LocationDef, LocationId, ShipBlueprint, SyndicateId, Trader, TraderId, World } from "../../sim/types";
 import { buildControlBoundaries, type ControlSource } from "./controlField";
 import type { AtlasMapTab } from "../viewTabs";
@@ -165,6 +166,13 @@ export function LocationsView() {
                 onClick={() => setMapTab("syndicates")}
               >
                 Syndicates
+              </button>
+              <button
+                type="button"
+                className={`bridge-tab ${mapTab === "logistics" ? "active" : ""}`}
+                onClick={() => setMapTab("logistics")}
+              >
+                Logistics
               </button>
             </div>
             <SectorMap
@@ -387,6 +395,165 @@ function SectorMap({
     return [...links].sort((a, b) => b.dist - a.dist || laneKey(a.a, a.b).localeCompare(laneKey(b.a, b.b)));
   }, [links]);
 
+  // Undirected adjacency: station id → set of directly-connected station
+  // ids. Used by the stations-mode filter to expand from the player's
+  // active ship + selected station into 1- and 2-hop neighbourhoods.
+  const neighborMap = useMemo(() => {
+    const m = new Map<LocationId, Set<LocationId>>();
+    for (const link of links) {
+      const a = m.get(link.a) ?? new Set<LocationId>();
+      a.add(link.b);
+      m.set(link.a, a);
+      const b = m.get(link.b) ?? new Set<LocationId>();
+      b.add(link.a);
+      m.set(link.b, b);
+    }
+    return m;
+  }, [links]);
+
+  // The station the player's active ship is anchored to. When docked
+  // that's playerLocation; when in transit it's the destination they're
+  // about to arrive at, which is more useful context than "where they
+  // left from". Null when the player has no ship at all.
+  const playerAnchor = playerDestination ?? playerLocation ?? null;
+
+  // Stations-mode visibility expansion. Three tiers from the player
+  // anchor; selecting a station only contributes one hop on top.
+  //   lvl1 = playerAnchor ∪ neighbours(playerAnchor) ∪ selectedId ∪ neighbours(selectedId)
+  //   lvl2 = neighbours(lvl1) \ lvl1   (only from playerAnchor)
+  //   lvl3 = neighbours(lvl2) \ (lvl1 ∪ lvl2)   (only from playerAnchor)
+  // Lanes whose furthest endpoint is at level 1 render at full
+  // strength; level 2 dims, level 3 dims further. Anything beyond is
+  // hidden so the local network stays the focus.
+  const { lvl1Stations, lvl2Stations, lvl3Stations } = useMemo(() => {
+    const lvl1 = new Set<LocationId>();
+    const lvl2 = new Set<LocationId>();
+    const lvl3 = new Set<LocationId>();
+    const expandOne = (id: LocationId | null) => {
+      if (!id) return;
+      lvl1.add(id);
+      for (const n of neighborMap.get(id) ?? []) lvl1.add(n);
+    };
+    expandOne(playerAnchor);
+    expandOne(selectedId);
+    if (playerAnchor) {
+      // Selecting a station limits the reveal to one hop per spec, so
+      // the outer rings only radiate from the player anchor.
+      const ring1 = new Set<LocationId>([playerAnchor]);
+      for (const n of neighborMap.get(playerAnchor) ?? []) ring1.add(n);
+      for (const m of ring1) {
+        for (const n of neighborMap.get(m) ?? []) {
+          if (!lvl1.has(n)) lvl2.add(n);
+        }
+      }
+      for (const m of lvl2) {
+        for (const n of neighborMap.get(m) ?? []) {
+          if (!lvl1.has(n) && !lvl2.has(n)) lvl3.add(n);
+        }
+      }
+    }
+    return { lvl1Stations: lvl1, lvl2Stations: lvl2, lvl3Stations: lvl3 };
+  }, [neighborMap, playerAnchor, selectedId]);
+
+  // Per-tab visible lane set. Stations: lanes within 3 hops of the
+  // player anchor, banded by tier — primary (lvl1) full strength,
+  // dim (lvl2) softer, dimmer (lvl3) softer still. Syndicates: no
+  // lanes. Logistics: every lane (the analytic overview tab).
+  const { visibleLinks, dimLanes, dimmerLanes } = useMemo(() => {
+    if (mapTab === "syndicates") {
+      return { visibleLinks: [] as AtlasLink[], dimLanes: new Set<string>(), dimmerLanes: new Set<string>() };
+    }
+    if (mapTab === "logistics") {
+      return { visibleLinks: orderedLinks, dimLanes: new Set<string>(), dimmerLanes: new Set<string>() };
+    }
+    // stations: classify each lane by the further endpoint's tier.
+    const out: AtlasLink[] = [];
+    const dim = new Set<string>();
+    const dimmer = new Set<string>();
+    const lvlOf = (id: LocationId): number => {
+      if (lvl1Stations.has(id)) return 1;
+      if (lvl2Stations.has(id)) return 2;
+      if (lvl3Stations.has(id)) return 3;
+      return 0;
+    };
+    for (const link of orderedLinks) {
+      const aLvl = lvlOf(link.a);
+      const bLvl = lvlOf(link.b);
+      if (aLvl === 0 || bLvl === 0) continue;
+      const tier = Math.max(aLvl, bLvl);
+      out.push(link);
+      const key = laneKey(link.a, link.b);
+      if (tier === 2) dim.add(key);
+      else if (tier === 3) dimmer.add(key);
+    }
+    return { visibleLinks: out, dimLanes: dim, dimmerLanes: dimmer };
+  }, [mapTab, orderedLinks, lvl1Stations, lvl2Stations, lvl3Stations]);
+
+  // Set of lane keys + endpoint stations that are currently rendered —
+  // used to filter ships so we only show ones whose route is on screen.
+  // A docked ship counts as "on a visible route" if its station has at
+  // least one visible lane attached. The player's own ship always shows
+  // regardless of tier so the player can locate themselves.
+  const { visibleLaneKeys, visibleStations } = useMemo(() => {
+    const keys = new Set<string>();
+    const stations = new Set<LocationId>();
+    for (const link of visibleLinks) {
+      keys.add(laneKey(link.a, link.b));
+      stations.add(link.a);
+      stations.add(link.b);
+    }
+    return { visibleLaneKeys: keys, visibleStations: stations };
+  }, [visibleLinks]);
+
+  // Station fade tier — only fires in the stations tab. Stations
+  // outside the player's 1-hop ring fade gradually with hop distance,
+  // floored at the dimmest tier so disconnected stations stay visible
+  // (~35% opacity) rather than vanishing entirely.
+  const stationTier = useMemo(() => {
+    const m = new Map<LocationId, "dim" | "dimmer" | "dimmest">();
+    if (mapTab !== "stations") return m;
+    for (const p of projected) {
+      const id = p.loc.id;
+      if (lvl1Stations.has(id)) continue;
+      if (lvl2Stations.has(id)) m.set(id, "dim");
+      else if (lvl3Stations.has(id)) m.set(id, "dimmer");
+      else m.set(id, "dimmest");
+    }
+    return m;
+  }, [mapTab, projected, lvl1Stations, lvl2Stations, lvl3Stations]);
+
+  // Per-tab visible ship set. Stations: only ships whose lane (or dock
+  // station) is part of the visible network. Syndicates: no docked
+  // ships, transit only — they're "in space". Logistics: full set.
+  const visibleShips = useMemo(() => {
+    if (mapTab === "logistics") return ships;
+    if (mapTab === "syndicates") return ships.filter(s => s.isTransit || s.isPlayer);
+    // stations:
+    return ships.filter(s => {
+      if (s.isPlayer) return true;
+      if (s.isTransit) {
+        if (!s.destination) return false;
+        return visibleLaneKeys.has(laneKey(s.origin, s.destination));
+      }
+      return visibleStations.has(s.origin);
+    });
+  }, [mapTab, ships, visibleLaneKeys, visibleStations]);
+
+  // In logistics mode, override the syndicate accent palette with a
+  // reputation-based palette: red (hostile) → amber (neutral) → green
+  // (trusted). The same Map<SyndicateId, string> shape is consumed by
+  // every layer (stations, ships, control bubbles), so the rep colours
+  // light everything up in the same encoding without per-layer plumbing.
+  const displayAccents = useMemo(() => {
+    if (mapTab !== "logistics") return syndicateAccents;
+    const m = new Map<SyndicateId, string>();
+    for (const synd of Object.values(world.syndicates)) {
+      const rep = playerReputationWith(world, synd.id);
+      m.set(synd.id, repColor(rep));
+    }
+    return m;
+  }, [mapTab, syndicateAccents, world]);
+
   // SVG text scales with the viewBox, so HUD text needs a font-size in
   // user units that compensates for current zoom to stay visually
   // around 11px. 0.011 ≈ 11px when the SVG is rendered at MAP_W
@@ -396,9 +563,18 @@ function SectorMap({
   const applyZoom = (clientX: number, clientY: number, factor: number) => {
     const svg = svgRef.current;
     if (!svg) return;
-    const rect = svg.getBoundingClientRect();
-    const cx = vbox.x + ((clientX - rect.left) / rect.width) * vbox.w;
-    const cy = vbox.y + ((clientY - rect.top) / rect.height) * vbox.h;
+    // Use the SVG screen-CTM to convert cursor → viewBox space. The
+    // naive form (clientX/rect.width * vbox.w) ignores the letterbox
+    // that xMidYMid-meet introduces when panel aspect ≠ viewBox aspect,
+    // which makes zoom-around-cursor drift off-target on one axis.
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return;
+    const pt = svg.createSVGPoint();
+    pt.x = clientX;
+    pt.y = clientY;
+    const local = pt.matrixTransform(ctm.inverse());
+    const cx = local.x;
+    const cy = local.y;
     const newW = Math.max(MAP_W * 0.18, Math.min(MAP_W * 1.6, vbox.w / factor));
     const newH = (newW / MAP_W) * MAP_H;
     setVbox({
@@ -426,8 +602,14 @@ function SectorMap({
     const rect = svg.getBoundingClientRect();
     const drag = dragRef.current;
     if (drag) {
-      const dx = ((e.clientX - drag.sx) / rect.width) * vbox.w;
-      const dy = ((e.clientY - drag.sy) / rect.height) * vbox.h;
+      // xMidYMid-meet uses the *smaller* of (rect.w/vbox.w, rect.h/vbox.h)
+      // on both axes and letterboxes the other. Splitting the deltas by
+      // independent per-axis ratios under-translates whichever axis has
+      // padding, so a 1px mouse move covered <1px of world. Using the
+      // single fit-scale keeps pan exactly 1:1 with the cursor.
+      const fitScale = Math.min(rect.width / vbox.w, rect.height / vbox.h);
+      const dx = (e.clientX - drag.sx) / fitScale;
+      const dy = (e.clientY - drag.sy) / fitScale;
       if (Math.abs(e.clientX - drag.sx) + Math.abs(e.clientY - drag.sy) > 3) drag.moved = true;
       setVbox({ x: drag.vx - dx, y: drag.vy - dy, w: vbox.w, h: vbox.h });
       return;
@@ -484,12 +666,15 @@ function SectorMap({
     //    a small bias so it tends to win against a near-equally-close
     //    longer one (which routinely passes through clusters where
     //    short local lanes also exist).
+    //    Only walk currently-visible lanes — in the syndicates tab
+    //    nothing renders, so hover should be a no-op there too;
+    //    otherwise off-screen lanes would still highlight invisibly.
     const HIGHLIGHT_BAND = vbox.w * 0.022; // ~22px screen-equiv at default zoom
     const LENGTH_WEIGHT = 0.2;
     let bestKey: string | null = null;
     let bestScore = Infinity;
     let bestLink: AtlasLink | null = null;
-    for (const link of orderedLinks) {
+    for (const link of visibleLinks) {
       const a = projectedById.get(link.a);
       const b = projectedById.get(link.b);
       if (!a || !b) continue;
@@ -619,88 +804,13 @@ function SectorMap({
             );
           })()}
         </g>
-      </svg>
-      <svg
-        ref={svgRef}
-        className="atlas-map atlas-map-data"
-        viewBox={`${vbox.x} ${vbox.y} ${vbox.w} ${vbox.h}`}
-        role="img"
-        aria-label="Station map"
-        onWheel={onWheel}
-        onMouseDown={onMouseDown}
-        onMouseMove={onMouseMove}
-        onMouseUp={releaseDrag}
-        onMouseLeave={() => { releaseDrag(); hideTip(); }}
-        onDoubleClick={onDoubleClick}
-      >
-        {mapTab === "syndicates" && (
-          <ControlBubblesLayer
-            projected={projected}
-            syndicateAccents={syndicateAccents}
-            controlState={world.control}
-            controlVersion={world.controlVersion ?? 0}
-          />
-        )}
-        <LanesLayer
-          orderedLinks={orderedLinks}
-          projectedById={projectedById}
-          laneTraffic={laneTraffic}
-          peakLaneTraffic={peakLaneTraffic}
-          hoveredLane={hoveredLane}
-        />
-        {previewedRoute && previewedRoute.length >= 2 && (
-          <g className="atlas-preview-route">
-            {previewedRoute.slice(0, -1).map((from, i) => {
-              const to = previewedRoute[i + 1];
-              const a = projectedById.get(from);
-              const b = projectedById.get(to);
-              if (!a || !b) return null;
-              return (
-                <line
-                  key={`preview-${from}-${to}`}
-                  className="atlas-preview-link"
-                  x1={a.x}
-                  y1={a.y}
-                  x2={b.x}
-                  y2={b.y}
-                />
-              );
-            })}
-            {previewedRoute.map((id, i) => {
-              const p = projectedById.get(id);
-              if (!p) return null;
-              return (
-                <circle
-                  key={`preview-node-${id}-${i}`}
-                  className={`atlas-preview-node ${i === 0 ? "origin" : i === previewedRoute.length - 1 ? "dest" : "waypoint"}`}
-                  cx={p.x}
-                  cy={p.y}
-                  r={i === 0 || i === previewedRoute.length - 1 ? p.r + 6 : p.r + 3}
-                />
-              );
-            })}
-          </g>
-        )}
-        {hoveredLane && (() => {
-          // Inline distance label for the lane the cursor is over —
-          // only shown on hover so the map doesn't fight the eye.
-          const link = links.find(l => laneKey(l.a, l.b) === hoveredLane);
-          if (!link) return null;
-          const a = projectedById.get(link.a);
-          const b = projectedById.get(link.b);
-          if (!a || !b) return null;
-          const label = `${link.dist.toFixed(0)}u`;
-          return (
-            <TextBadge
-              className="atlas-lane-distance"
-              text={label}
-              cx={(a.x + b.x) / 2}
-              cy={(a.y + b.y) / 2}
-              fontSize={hudFontSize}
-            />
-          );
-        })()}
         {(() => {
+          // Crosshair lives in the grid SVG (unmasked) rather than the
+          // data SVG so the dashed lines stay full-strength right to
+          // the panel edges, like the gridlines themselves — the data
+          // SVG vignette would otherwise fade them out 75px from each
+          // side. Drawn after the gridlines so it sits on top of them.
+          //
           // Selected-station crosshair stays on always (dim), hover
           // overlays a brighter version. When the cursor is over the
           // selected station, the hover variant alone reads — render
@@ -750,9 +860,6 @@ function SectorMap({
                     className="atlas-crosshair-coord"
                     text={`x ${formatAtlasCoord(hoveredStation.loc.position.x)}`}
                     cx={hoveredStation.x}
-                    /* Anchored ~hudFontSize*7.5 above the bottom — clears
-                       the 75px vignette fade-out so the badge stays at
-                       full opacity. (hudFontSize ≈ 11px screen-equiv.) */
                     cy={vbox.y + vbox.h - hudFontSize * 7.5}
                     fontSize={hudFontSize}
                   />
@@ -768,6 +875,103 @@ function SectorMap({
             </>
           );
         })()}
+      </svg>
+      <svg
+        ref={svgRef}
+        className="atlas-map atlas-map-data"
+        viewBox={`${vbox.x} ${vbox.y} ${vbox.w} ${vbox.h}`}
+        role="img"
+        aria-label="Station map"
+        onWheel={onWheel}
+        onMouseDown={onMouseDown}
+        onMouseMove={onMouseMove}
+        onMouseUp={releaseDrag}
+        onMouseLeave={() => { releaseDrag(); hideTip(); }}
+        onClick={() => {
+          // SVG-level click delegates to whichever station is currently
+          // hovered, so the click hit-zone matches the wider hover
+          // radius rather than just the drawn glyph. A click on the
+          // glyph itself still fires the inner <g>'s onClick first;
+          // since onSelect is idempotent the duplicate is harmless.
+          if (dragRef.current?.moved === true) return;
+          if (hoveredStation) onSelectStation(hoveredStation.loc.id);
+        }}
+        onDoubleClick={onDoubleClick}
+      >
+        {(mapTab === "syndicates" || mapTab === "logistics") && (
+          <ControlBubblesLayer
+            projected={projected}
+            syndicateAccents={displayAccents}
+            controlState={world.control}
+            controlVersion={world.controlVersion ?? 0}
+          />
+        )}
+        <LanesLayer
+          orderedLinks={visibleLinks}
+          dimLanes={dimLanes}
+          dimmerLanes={dimmerLanes}
+          projectedById={projectedById}
+          laneTraffic={laneTraffic}
+          peakLaneTraffic={peakLaneTraffic}
+          hoveredLane={hoveredLane}
+        />
+        {previewedRoute && previewedRoute.length >= 2 && (
+          <g className="atlas-preview-route">
+            {previewedRoute.slice(0, -1).map((from, i) => {
+              const to = previewedRoute[i + 1];
+              const a = projectedById.get(from);
+              const b = projectedById.get(to);
+              if (!a || !b) return null;
+              return (
+                <line
+                  key={`preview-${from}-${to}`}
+                  className="atlas-preview-link"
+                  x1={a.x}
+                  y1={a.y}
+                  x2={b.x}
+                  y2={b.y}
+                />
+              );
+            })}
+            {previewedRoute.map((id, i) => {
+              const p = projectedById.get(id);
+              if (!p) return null;
+              return (
+                <circle
+                  key={`preview-node-${id}-${i}`}
+                  className={`atlas-preview-node ${i === 0 ? "origin" : i === previewedRoute.length - 1 ? "dest" : "waypoint"}`}
+                  cx={p.x}
+                  cy={p.y}
+                  r={i === 0 || i === previewedRoute.length - 1 ? p.r + 6 : p.r + 3}
+                />
+              );
+            })}
+          </g>
+        )}
+        {hoveredLane && visibleLaneKeys.has(hoveredLane) && (() => {
+          // Inline distance label for the lane the cursor is over —
+          // only shown on hover so the map doesn't fight the eye.
+          // Gated on visibleLaneKeys so a stale hover persisting from
+          // before a tab switch doesn't paint a label on a lane that
+          // isn't even rendered.
+          const link = links.find(l => laneKey(l.a, l.b) === hoveredLane);
+          if (!link) return null;
+          const a = projectedById.get(link.a);
+          const b = projectedById.get(link.b);
+          if (!a || !b) return null;
+          const label = `${link.dist.toFixed(0)}u`;
+          return (
+            <TextBadge
+              className="atlas-lane-distance"
+              text={label}
+              cx={(a.x + b.x) / 2}
+              cy={(a.y + b.y) / 2}
+              fontSize={hudFontSize}
+            />
+          );
+        })()}
+        {/* Crosshair (selected + hover) renders in the grid SVG above
+            so it stays unmasked and reaches the panel edges. */}
         {/* Lane-midpoint direction arrows were dropped here — the
             transit-ship chevrons themselves show heading now that
             sub-tick smoothing makes them glide along the lane. */}
@@ -815,10 +1019,10 @@ function SectorMap({
             behind the station glyph — only the station icon shows
             when ship and station overlap. */}
         <ShipsLayer
-          ships={ships}
+          ships={visibleShips}
           projectedById={projectedById}
           selectedTraderId={selectedTraderId}
-          syndicateAccents={syndicateAccents}
+          syndicateAccents={displayAccents}
           onClickShip={onClickShip}
           onEnterShip={onEnterShip}
           onLeave={hideTip}
@@ -828,14 +1032,15 @@ function SectorMap({
           selectedId={selectedId}
           playerLocation={playerLocation}
           hiddenKinds={hiddenKinds}
-          syndicateAccents={syndicateAccents}
+          syndicateAccents={displayAccents}
+          stationTier={stationTier}
           onSelect={onSelectStation}
           onEnter={onEnterStation}
           onLeave={hideTip}
         />
       </svg>
       <div className="atlas-legend">
-        {mapTab === "stations" ? (
+        {mapTab === "stations" && (
           <>
             <span className="atlas-legend-title">Stations</span>
             <ul className="atlas-legend-list">
@@ -857,28 +1062,49 @@ function SectorMap({
               })}
             </ul>
           </>
-        ) : (
-          syndicateAccents.size > 0 && (
-            <>
-              <span className="atlas-legend-title">Syndicates</span>
-              <ul className="atlas-legend-list">
-                {Object.values(world.syndicates)
-                  .filter(s => s.accentHex)
-                  .sort((a, b) => a.id.localeCompare(b.id))
-                  .map(synd => (
-                    <li key={synd.id} style={{ display: "contents" }}>
-                      <div className="atlas-legend-row syndicate">
-                        <span
-                          className="atlas-legend-dot"
-                          style={{ background: synd.accentHex } as CSSProperties}
-                        />
-                        <span className="atlas-legend-label">{synd.name}</span>
-                      </div>
-                    </li>
-                  ))}
-              </ul>
-            </>
-          )
+        )}
+        {mapTab === "syndicates" && syndicateAccents.size > 0 && (
+          <>
+            <span className="atlas-legend-title">Syndicates</span>
+            <ul className="atlas-legend-list">
+              {Object.values(world.syndicates)
+                .filter(s => s.accentHex)
+                .sort((a, b) => a.id.localeCompare(b.id))
+                .map(synd => (
+                  <li key={synd.id} style={{ display: "contents" }}>
+                    <div className="atlas-legend-row syndicate">
+                      <span
+                        className="atlas-legend-dot"
+                        style={{ background: synd.accentHex } as CSSProperties}
+                      />
+                      <span className="atlas-legend-label">{synd.name}</span>
+                    </div>
+                  </li>
+                ))}
+            </ul>
+          </>
+        )}
+        {mapTab === "logistics" && (
+          <>
+            <span className="atlas-legend-title">Reputation</span>
+            <ul className="atlas-legend-list">
+              {[
+                { label: "Stranger", t: 0 },
+                { label: "Known", t: 0.5 },
+                { label: "Trusted", t: 1 },
+              ].map(({ label, t }) => (
+                <li key={label} style={{ display: "contents" }}>
+                  <div className="atlas-legend-row syndicate">
+                    <span
+                      className="atlas-legend-dot"
+                      style={{ background: repColor(t) } as CSSProperties}
+                    />
+                    <span className="atlas-legend-label">{label}</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </div>
       {hover && (
@@ -1027,6 +1253,11 @@ interface LanesLayerProps {
   laneTraffic: Map<string, LaneTraffic>;
   peakLaneTraffic: number;
   hoveredLane: string | null;
+  // Lane keys that should render at the "second step" tier (softer)
+  // and the "third step" tier (softer still). Used by the stations
+  // tab to band the 1/2/3-hop neighbourhood around the active ship.
+  dimLanes: Set<string>;
+  dimmerLanes: Set<string>;
 }
 
 // Lane render-only. Hover detection lives on the parent SVG's
@@ -1035,7 +1266,7 @@ interface LanesLayerProps {
 // can't both highlight at once. Per-line SVG hit-zones were removed
 // for the same reason.
 const LanesLayer = memo(function LanesLayer({
-  orderedLinks, projectedById, laneTraffic, peakLaneTraffic, hoveredLane,
+  orderedLinks, projectedById, laneTraffic, peakLaneTraffic, hoveredLane, dimLanes, dimmerLanes,
 }: LanesLayerProps) {
   return (
     <g className="atlas-lanes" pointerEvents="none">
@@ -1051,6 +1282,8 @@ const LanesLayer = memo(function LanesLayer({
           "atlas-lane",
           traffic && traffic.count > 0 ? "traffic" : null,
           isHovered ? "hovered" : null,
+          dimLanes.has(key) ? "dim" : null,
+          dimmerLanes.has(key) ? "dimmer" : null,
         ].filter(Boolean).join(" ");
         return (
           <g
@@ -1073,13 +1306,17 @@ interface StationsLayerProps {
   playerLocation: LocationId | null;
   hiddenKinds: Set<StationKind>;
   syndicateAccents: Map<SyndicateId, string>;
+  // Per-station fade tier — set in the stations tab to ghost stations
+  // that aren't directly connected to the player anchor. Missing
+  // entries render at full strength.
+  stationTier: Map<LocationId, "dim" | "dimmer" | "dimmest">;
   onSelect: (id: LocationId) => void;
   onEnter: (p: ProjectedLocation) => void;
   onLeave: () => void;
 }
 
 const StationsLayer = memo(function StationsLayer({
-  projected, selectedId, playerLocation, hiddenKinds, syndicateAccents, onSelect, onEnter, onLeave,
+  projected, selectedId, playerLocation, hiddenKinds, syndicateAccents, stationTier, onSelect, onEnter, onLeave,
 }: StationsLayerProps) {
   return (
     <g className="atlas-nodes">
@@ -1088,6 +1325,7 @@ const StationsLayer = memo(function StationsLayer({
         const accent = p.loc.traits.faction ? syndicateAccents.get(p.loc.traits.faction) : null;
         const isPlayerHere = playerLocation === p.loc.id;
         const isFiltered = hiddenKinds.has(p.kind);
+        const tier = stationTier.get(p.loc.id);
         const cls = [
           "atlas-node",
           `atlas-node-${p.kind}`,
@@ -1095,6 +1333,7 @@ const StationsLayer = memo(function StationsLayer({
           selectedId === p.loc.id ? "selected" : null,
           isPlayerHere ? "player-here" : null,
           isFiltered ? "filtered" : null,
+          tier ? `atlas-node-${tier}` : null,
         ].filter(Boolean).join(" ");
         return (
           <g
@@ -1351,6 +1590,34 @@ function buildShipTip(world: World, ship: ShipMarker): Omit<HoverTip, "px" | "py
 // Stable key for an unordered lane between two locations.
 function laneKey(a: LocationId, b: LocationId): string {
   return a < b ? `${a}|${b}` : `${b}|${a}`;
+}
+
+// Reputation → colour ramp used by the logistics tab. 0 reads as a
+// cool neutral grey (no relationship yet, neither hostile nor warm),
+// 1 as the trusted sage that matches the desaturated syndicate
+// palette. Linear RGB interpolation between the two so the midpoint
+// is a quiet green-grey.
+const REP_COLOR_STOPS: { t: number; rgb: [number, number, number] }[] = [
+  { t: 0.0, rgb: [0x6b, 0x74, 0x80] },
+  { t: 1.0, rgb: [0x54, 0x94, 0x5b] },
+];
+function repColor(rep: number): string {
+  const t = Math.max(0, Math.min(1, rep));
+  let lo = REP_COLOR_STOPS[0];
+  let hi = REP_COLOR_STOPS[REP_COLOR_STOPS.length - 1];
+  for (let i = 0; i < REP_COLOR_STOPS.length - 1; i++) {
+    if (t >= REP_COLOR_STOPS[i].t && t <= REP_COLOR_STOPS[i + 1].t) {
+      lo = REP_COLOR_STOPS[i];
+      hi = REP_COLOR_STOPS[i + 1];
+      break;
+    }
+  }
+  const span = hi.t - lo.t;
+  const k = span === 0 ? 0 : (t - lo.t) / span;
+  const r = Math.round(lo.rgb[0] + (hi.rgb[0] - lo.rgb[0]) * k);
+  const g = Math.round(lo.rgb[1] + (hi.rgb[1] - lo.rgb[1]) * k);
+  const b = Math.round(lo.rgb[2] + (hi.rgb[2] - lo.rgb[2]) * k);
+  return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
 }
 
 // Build a marker per ship — idle ships sit in a small grid offset from

@@ -1047,6 +1047,22 @@
   stroke-width: 1.8;
 }
 
+/* Stations-mode tiers around the active ship: dim = 2 hops out,
+   dimmer = 3 hops out. Both let the broader neighbourhood show as
+   context without competing with directly-connected lanes. */
+.atlas-lane.dim .atlas-lane-inner {
+  stroke-opacity: 0.18;
+}
+.atlas-lane.dim.traffic .atlas-lane-inner {
+  stroke-opacity: calc(0.18 + var(--lane-traffic-intensity) * 0.18);
+}
+.atlas-lane.dimmer .atlas-lane-inner {
+  stroke-opacity: 0.08;
+}
+.atlas-lane.dimmer.traffic .atlas-lane-inner {
+  stroke-opacity: calc(0.08 + var(--lane-traffic-intensity) * 0.08);
+}
+
 /* Crosshair: fine dashed lines from the hovered station spanning the
    visible viewport, with the world coordinates shown at the top and
    left edges. Player-station hovers swap the colour for the gold
@@ -1229,10 +1245,14 @@
   stroke-width: 1.6;
 }
 
-/* Syndicates mode: every station's core tints to the controlling
-   syndicate's accent so territory reads at a glance. Stations mode
-   leaves cores on their kind colour (the default rule above). */
-.atlas-map-wrap.mode-syndicates .atlas-node-core {
+/* Syndicates / Logistics modes: every station's core tints to
+   --node-faction (set inline by StationsLayer). Syndicates mode
+   threads the syndicate accent through that variable; Logistics
+   mode threads the player's reputation tone — same plumbing, the
+   surface flips meaning with the tab. Stations mode leaves cores
+   on their kind colour (the default rule above). */
+.atlas-map-wrap.mode-syndicates .atlas-node-core,
+.atlas-map-wrap.mode-logistics .atlas-node-core {
   fill: var(--node-faction, currentColor);
 }
 
@@ -1257,6 +1277,20 @@
 .atlas-node.filtered .atlas-node-core,
 .atlas-node.filtered .atlas-node-halo {
   opacity: 0.18;
+}
+
+/* Stations-tab fade tiers, mirroring the lane bands. The hop distance
+   from the player anchor drives how prominent each station is — the
+   dimmest tier floors at ~35% so completely disconnected stations
+   stay locatable rather than vanishing into the background. */
+.atlas-node.atlas-node-dim {
+  opacity: 0.72;
+}
+.atlas-node.atlas-node-dimmer {
+  opacity: 0.52;
+}
+.atlas-node.atlas-node-dimmest {
+  opacity: 0.35;
 }
 
 .atlas-player-route-leg {
