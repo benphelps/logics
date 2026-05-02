@@ -5,6 +5,7 @@ import { useStore } from "../store";
 import { findRoutePath, pathDistance, reachableNeighbors, routeDistance, routeSegments } from "../../sim/geometry";
 import type { Equity, LocationDef, LocationId, ShipBlueprint, SyndicateId, Trader, TraderId, World } from "../../sim/types";
 import { buildControlBoundaries, type ControlSource } from "./controlField";
+import type { AtlasMapTab } from "../viewTabs";
 import { listHiresAt } from "../../sim/hires";
 import { listShipyardInventory } from "../../sim/shipyards";
 import { useBlueprintArtImageUrl } from "../shipArtApi";
@@ -122,6 +123,8 @@ export function LocationsView() {
 
   const sheetTab = useStore((s) => s.atlasSheetTab);
   const setSheetTab = useStore((s) => s.setAtlasSheetTab);
+  const mapTab = useStore((s) => s.atlasMapTab);
+  const setMapTab = useStore((s) => s.setAtlasMapTab);
   const newsCount = world.newsEvents?.active.length ?? 0;
 
   const locations = Object.values(world.locations);
@@ -147,6 +150,22 @@ export function LocationsView() {
       <div className="atlas-grid">
         <aside className="atlas-side">
           <section className="atlas-map-panel">
+            <div className="atlas-map-tabs bridge-card-tabs">
+              <button
+                type="button"
+                className={`bridge-tab ${mapTab === "stations" ? "active" : ""}`}
+                onClick={() => setMapTab("stations")}
+              >
+                Stations
+              </button>
+              <button
+                type="button"
+                className={`bridge-tab ${mapTab === "syndicates" ? "active" : ""}`}
+                onClick={() => setMapTab("syndicates")}
+              >
+                Syndicates
+              </button>
+            </div>
             <SectorMap
               world={world}
               projected={projected}
@@ -160,6 +179,7 @@ export function LocationsView() {
               playerActiveRoute={buildActiveRoute(playerShip)}
               selectedTraderId={selectedTrader}
               previewedRoute={previewedRoute}
+              mapTab={mapTab}
               onSelect={selectLocation}
               onSelectTrader={selectTrader}
             />
@@ -275,6 +295,7 @@ function SectorMap({
   playerActiveRoute,
   selectedTraderId,
   previewedRoute,
+  mapTab,
   onSelect,
   onSelectTrader,
 }: {
@@ -294,6 +315,7 @@ function SectorMap({
   playerActiveRoute: LocationId[] | null;
   selectedTraderId: TraderId | null;
   previewedRoute: LocationId[] | null;
+  mapTab: AtlasMapTab;
   onSelect: (id: LocationId) => void;
   onSelectTrader: (id: TraderId | null) => void;
 }) {
@@ -439,7 +461,7 @@ function SectorMap({
   void playerDestination;
 
   return (
-    <div ref={wrapRef} className="atlas-map-wrap">
+    <div ref={wrapRef} className={`atlas-map-wrap mode-${mapTab}`}>
       <svg
         className="atlas-map atlas-map-grid"
         viewBox={`${vbox.x} ${vbox.y} ${vbox.w} ${vbox.h}`}
@@ -479,12 +501,14 @@ function SectorMap({
         onMouseLeave={() => { releaseDrag(); hideTip(); }}
         onDoubleClick={onDoubleClick}
       >
-        <ControlBubblesLayer
-          projected={projected}
-          syndicateAccents={syndicateAccents}
-          controlState={world.control}
-          controlVersion={world.controlVersion ?? 0}
-        />
+        {mapTab === "syndicates" && (
+          <ControlBubblesLayer
+            projected={projected}
+            syndicateAccents={syndicateAccents}
+            controlState={world.control}
+            controlVersion={world.controlVersion ?? 0}
+          />
+        )}
         <LanesLayer
           orderedLinks={orderedLinks}
           projectedById={projectedById}
@@ -645,45 +669,50 @@ function SectorMap({
         />
       </svg>
       <div className="atlas-legend">
-        <span className="atlas-legend-title">Stations</span>
-        <ul className="atlas-legend-list">
-          {KIND_LEGEND_ORDER.map(kind => {
-            const off = hiddenKinds.has(kind);
-            return (
-              <li key={kind} style={{ display: "contents" }}>
-                <button
-                  type="button"
-                  className={`atlas-legend-row ${off ? "off" : ""}`}
-                  onClick={() => toggleKind(kind)}
-                  aria-pressed={!off}
-                >
-                  <span className={`atlas-legend-dot atlas-kind-${kind}`} />
-                  <span className="atlas-legend-label">{kindLabel(kind)}</span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-        {syndicateAccents.size > 0 && (
+        {mapTab === "stations" ? (
           <>
-            <span className="atlas-legend-title">Syndicates</span>
+            <span className="atlas-legend-title">Stations</span>
             <ul className="atlas-legend-list">
-              {Object.values(world.syndicates)
-                .filter(s => s.accentHex)
-                .sort((a, b) => a.id.localeCompare(b.id))
-                .map(synd => (
-                  <li key={synd.id} style={{ display: "contents" }}>
-                    <div className="atlas-legend-row syndicate">
-                      <span
-                        className="atlas-legend-dot"
-                        style={{ background: synd.accentHex } as CSSProperties}
-                      />
-                      <span className="atlas-legend-label">{synd.name}</span>
-                    </div>
+              {KIND_LEGEND_ORDER.map(kind => {
+                const off = hiddenKinds.has(kind);
+                return (
+                  <li key={kind} style={{ display: "contents" }}>
+                    <button
+                      type="button"
+                      className={`atlas-legend-row ${off ? "off" : ""}`}
+                      onClick={() => toggleKind(kind)}
+                      aria-pressed={!off}
+                    >
+                      <span className={`atlas-legend-dot atlas-kind-${kind}`} />
+                      <span className="atlas-legend-label">{kindLabel(kind)}</span>
+                    </button>
                   </li>
-                ))}
+                );
+              })}
             </ul>
           </>
+        ) : (
+          syndicateAccents.size > 0 && (
+            <>
+              <span className="atlas-legend-title">Syndicates</span>
+              <ul className="atlas-legend-list">
+                {Object.values(world.syndicates)
+                  .filter(s => s.accentHex)
+                  .sort((a, b) => a.id.localeCompare(b.id))
+                  .map(synd => (
+                    <li key={synd.id} style={{ display: "contents" }}>
+                      <div className="atlas-legend-row syndicate">
+                        <span
+                          className="atlas-legend-dot"
+                          style={{ background: synd.accentHex } as CSSProperties}
+                        />
+                        <span className="atlas-legend-label">{synd.name}</span>
+                      </div>
+                    </li>
+                  ))}
+              </ul>
+            </>
+          )
         )}
       </div>
       {hover && (

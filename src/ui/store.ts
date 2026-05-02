@@ -57,6 +57,7 @@ export interface PendingNewGame {
 
 import {
   DEFAULT_VIEW_TABS,
+  type AtlasMapTab,
   type AtlasSheetTab,
   type CommodityTab,
   type FleetTab,
@@ -68,7 +69,7 @@ import {
   type ViewTabs,
 } from "./viewTabs";
 export type Tab = MainViewTab;
-export type { AtlasSheetTab, FleetTab, CommodityTab, PanelScrollPosition, PanelScrollPositions, PnoTab, StockKindFilter, ViewTabs };
+export type { AtlasMapTab, AtlasSheetTab, FleetTab, CommodityTab, PanelScrollPosition, PanelScrollPositions, PnoTab, StockKindFilter, ViewTabs };
 
 const initialGame = loadInitialGame(() => createStartingWorld());
 const AUTOSAVE_THROTTLE_MS = 2_000;
@@ -336,6 +337,7 @@ interface UiState {
   commodityTab: CommodityTab;
   pnoTab: PnoTab;
   atlasSheetTab: AtlasSheetTab;
+  atlasMapTab: AtlasMapTab;
   stockKindFilter: StockKindFilter;
   stockGuideEnabled: boolean;
   panelScrollPositions: PanelScrollPositions;
@@ -364,6 +366,7 @@ interface UiState {
   setCommodityTab: (t: CommodityTab) => void;
   setPnoTab: (t: PnoTab) => void;
   setAtlasSheetTab: (t: AtlasSheetTab) => void;
+  setAtlasMapTab: (t: AtlasMapTab) => void;
   setStockKindFilter: (t: StockKindFilter) => void;
   setStockGuideEnabled: (enabled: boolean) => void;
   setPanelScrollPosition: (key: string, position: PanelScrollPosition) => void;
@@ -441,6 +444,7 @@ export const useStore = create<UiState>((set, get) => {
       commodityTab: tabs.commodityTab,
       pnoTab: tabs.pnoTab,
       atlasSheetTab: tabs.atlasSheetTab,
+      atlasMapTab: tabs.atlasMapTab,
       stockKindFilter: tabs.stockKindFilter,
       stockGuideEnabled: tabs.stockGuideEnabled,
       panelScrollPositions: { ...scrollPositions },
@@ -474,6 +478,7 @@ export const useStore = create<UiState>((set, get) => {
     commodityTab: state.commodityTab,
     pnoTab: state.pnoTab,
     atlasSheetTab: state.atlasSheetTab,
+    atlasMapTab: state.atlasMapTab,
     stockKindFilter: state.stockKindFilter,
     stockGuideEnabled: state.stockGuideEnabled,
   });
@@ -537,6 +542,7 @@ export const useStore = create<UiState>((set, get) => {
     commodityTab: initialGame.viewTabs?.commodityTab ?? DEFAULT_VIEW_TABS.commodityTab,
     pnoTab: initialGame.viewTabs?.pnoTab ?? DEFAULT_VIEW_TABS.pnoTab,
     atlasSheetTab: initialGame.viewTabs?.atlasSheetTab ?? DEFAULT_VIEW_TABS.atlasSheetTab,
+    atlasMapTab: initialGame.viewTabs?.atlasMapTab ?? DEFAULT_VIEW_TABS.atlasMapTab,
     stockKindFilter: initialGame.viewTabs?.stockKindFilter ?? DEFAULT_VIEW_TABS.stockKindFilter,
     stockGuideEnabled: initialGame.viewTabs?.stockGuideEnabled ?? DEFAULT_VIEW_TABS.stockGuideEnabled,
     panelScrollPositions: { ...(initialGame.panelScrollPositions ?? {}) },
@@ -633,6 +639,7 @@ export const useStore = create<UiState>((set, get) => {
     setCommodityTab: (t) => { set({ commodityTab: t }); persistCurrentGame({}, false); },
     setPnoTab: (t) => { set({ pnoTab: t }); persistCurrentGame({}, false); },
     setAtlasSheetTab: (t) => { set({ atlasSheetTab: t }); persistCurrentGame({}, false); },
+    setAtlasMapTab: (t) => { set({ atlasMapTab: t }); persistCurrentGame({}, false); },
     setStockKindFilter: (t) => { set({ stockKindFilter: t }); persistCurrentGame({}, false); },
     setStockGuideEnabled: (enabled) => { set({ stockGuideEnabled: enabled }); persistCurrentGame({}, false, true); },
     setPanelScrollPosition: (key, position) => {

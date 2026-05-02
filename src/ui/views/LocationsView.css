@@ -520,7 +520,8 @@
    bridge-card-tabs base style (PlayerView.css) carries `flex: 1` so it
    would expand vertically inside our column-flex panel; force it back
    to a content-sized row that fills the width. */
-.atlas-sheet-tabs.bridge-card-tabs {
+.atlas-sheet-tabs.bridge-card-tabs,
+.atlas-map-tabs.bridge-card-tabs {
   display: flex;
   flex: 0 0 auto;
   align-items: stretch;
@@ -531,7 +532,8 @@
   border-radius: 0;
 }
 
-.atlas-sheet-tabs .bridge-tab {
+.atlas-sheet-tabs .bridge-tab,
+.atlas-map-tabs .bridge-tab {
   display: flex;
   flex: 1 0 max-content;
   min-width: var(--bridge-tab-min-width, 92px);
@@ -1215,14 +1217,22 @@
   stroke-width: 1.6;
 }
 
-/* Outposts wear their syndicate's accent on the core fill itself —
-   they're the seat of power, so the cluster's colour reads off them
-   even when the bubble underneath is dimmed. The border thickens too,
-   so the outpost glyph visibly outranks neighbouring station kinds. */
+/* Outposts (syndicate seats) carry their syndicate's accent on the
+   core fill regardless of mode — they're literally the seat of power
+   for that faction, so it reads even when the rest of the map keys off
+   station kinds. The thicker bright stroke marks them as outranking
+   the surrounding stations. */
 .atlas-node-outpost .atlas-node-core {
   fill: var(--node-faction, currentColor);
   stroke: rgba(255, 255, 255, 0.9);
   stroke-width: 1.6;
+}
+
+/* Syndicates mode: every station's core tints to the controlling
+   syndicate's accent so territory reads at a glance. Stations mode
+   leaves cores on their kind colour (the default rule above). */
+.atlas-map-wrap.mode-syndicates .atlas-node-core {
+  fill: var(--node-faction, currentColor);
 }
 
 /* Selection ring sits just outside the halo, so selecting doesn't
@@ -1336,8 +1346,8 @@
   top: 10px;
   left: 10px;
   display: grid;
-  gap: 6px;
-  padding: 8px 10px 9px;
+  gap: 8px;
+  padding: 6px 10px 9px;
   background: rgba(13, 17, 22, 0.88);
   border: 1px solid var(--atlas-ink-fine);
   border-radius: 4px;
@@ -1346,6 +1356,7 @@
   z-index: 4;
   backdrop-filter: blur(2px);
 }
+
 
 .atlas-legend-title {
   font-size: 9px;
