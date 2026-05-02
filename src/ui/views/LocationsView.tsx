@@ -741,6 +741,38 @@ function factionLabel(world: World, factionId: string | undefined): string {
   return world.syndicates[factionId]?.name ?? factionId;
 }
 
+// Per-syndicate control breakdown for the detail panel. Hidden when the
+// station has only the dominant faction with negligible others — the
+// faction tag already conveys that. Renders as a row of accent-coloured
+// chips listing each syndicate with its percentage share, sorted by
+// share descending so the dominant syndicate reads first.
+function ControlShareRow({ world, locId }: { world: World; locId: LocationId }) {
+  const ctrl = world.control?.[locId];
+  if (!ctrl) return null;
+  const entries = Object.entries(ctrl)
+    .filter(([, share]) => share >= 0.02)
+    .sort((a, b) => b[1] - a[1]);
+  if (entries.length < 2) return null;
+  return (
+    <div className="atlas-control-row">
+      {entries.map(([syndId, share]) => {
+        const synd = world.syndicates[syndId];
+        const accent = synd?.accentHex ?? "#9bb6c8";
+        return (
+          <span
+            key={syndId}
+            className="atlas-control-chip"
+            style={{ borderColor: accent, color: accent } as CSSProperties}
+          >
+            <span className="atlas-control-chip-name">{synd?.name ?? syndId}</span>
+            <span className="atlas-control-chip-share">{Math.round(share * 100)}%</span>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 // --- memoized SVG layers -------------------------------------------------
 // The three layers below are wrapped in React.memo so a state change
 // confined to the SectorMap (pan/zoom, hover, kind filter, tooltip
@@ -1632,6 +1664,8 @@ function DetailPanel(props: {
           })()}
           {loc.traits.tags.map(tag => <span key={tag} className="atlas-tag">{tag}</span>)}
         </div>
+
+        <ControlShareRow world={world} locId={loc.id} />
 
         <dl className="trade-helper-grid station-info-grid">
           <DetailStat label="tech" value={`L${loc.traits.techLevel}`} />

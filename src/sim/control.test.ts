@@ -1,7 +1,19 @@
 import { describe, it, expect } from "vitest";
 import { createStartingWorld } from "./start";
 import { tickN } from "./tick";
-import { nudgeStationControl, NPC_TRADE_PER_CREDIT, PLAYER_TRADE_PER_CREDIT, tickControl } from "./control";
+import {
+  FOREIGN_DOCK_TOLL,
+  isOwnTerritory,
+  nudgeStationControl,
+  NPC_TRADE_PER_CREDIT,
+  OWN_TERRITORY_BUY_BONUS,
+  OWN_TERRITORY_SELL_BONUS,
+  PLAYER_TRADE_PER_CREDIT,
+  territoryBuyBonus,
+  territorySellBonus,
+  tickControl,
+  tollForArrival,
+} from "./control";
 import type { LocationId, SyndicateId, World } from "./types";
 
 // Long-horizon tests for the syndicate territory system. These exercise
@@ -26,6 +38,13 @@ function freshWorld(seed: number): World {
   // transitions we're measuring. Smaller world keeps per-tick cost
   // bounded.
   return createStartingWorld({ seed, ageTicks: 0, locationCount: 20, traderCount: 40 });
+}
+
+// Same minimal world but with the player ship stamped to a specific
+// syndicate, so tests that need an own-territory / foreign-territory
+// distinction can find both around the player ship.
+function affiliatedWorld(seed: number, syndicateId: SyndicateId = "syn_1"): World {
+  return createStartingWorld({ seed, ageTicks: 0, locationCount: 20, traderCount: 40, syndicateId });
 }
 
 function factionStationCounts(world: World): Map<SyndicateId, number> {
@@ -225,6 +244,66 @@ describe("control mechanics: focused activity", () => {
     const rivalShare = world.control![targetId][rival!.id] ?? 0;
     expect(finalOwnerShare, "owner share should drop").toBeLessThan(initialOwnerShare);
     expect(rivalShare, "rival should accumulate measurable share").toBeGreaterThan(0.05);
+  });
+
+  // Crossing toll: charged to ships docking at a station owned by a
+  // different syndicate. Own-territory and independent (no faction)
+  // stations are toll-free.
+  it("tollForArrival charges FOREIGN_DOCK_TOLL when the station belongs to a different syndicate", () => {
+    const world = affiliatedWorld(SEEDS[0]);
+    const ship = world.traders[world.player!.shipIds[0]];
+    const foreign = Object.values(world.locations).find(
+      l => l.traits.faction && l.traits.faction !== ship.syndicateId,
+    );
+    expect(foreign).toBeDefined();
+    ship.location = foreign!.id;
+    const result = tollForArrival(world, ship);
+    expect(result.fee).toBe(FOREIGN_DOCK_TOLL);
+    expect(result.toSyndicate).toBe(foreign!.traits.faction);
+  });
+
+  it("tollForArrival is free in own territory", () => {
+    const world = affiliatedWorld(SEEDS[0]);
+    const ship = world.traders[world.player!.shipIds[0]];
+    // Player starts at their own outpost, so the default location is
+    // already own-territory.
+    const result = tollForArrival(world, ship);
+    expect(result.fee).toBe(0);
+    expect(result.toSyndicate).toBeNull();
+  });
+
+  it("tollForArrival is free at independent (no faction) stations", () => {
+    const world = affiliatedWorld(SEEDS[0]);
+    const ship = world.traders[world.player!.shipIds[0]];
+    const independent = Object.values(world.locations).find(l => !l.traits.faction);
+    expect(independent, "test world must have a shipyard for this assertion").toBeDefined();
+    ship.location = independent!.id;
+    const result = tollForArrival(world, ship);
+    expect(result.fee).toBe(0);
+  });
+
+  it("isOwnTerritory tracks the trader's syndicate vs. station faction", () => {
+    const world = affiliatedWorld(SEEDS[0]);
+    const ship = world.traders[world.player!.shipIds[0]];
+    expect(isOwnTerritory(world, ship)).toBe(true);
+    const foreign = Object.values(world.locations).find(
+      l => l.traits.faction && l.traits.faction !== ship.syndicateId,
+    );
+    ship.location = foreign!.id;
+    expect(isOwnTerritory(world, ship)).toBe(false);
+  });
+
+  it("territoryBuyBonus + territorySellBonus apply only in own territory", () => {
+    const world = affiliatedWorld(SEEDS[0]);
+    const ship = world.traders[world.player!.shipIds[0]];
+    expect(territoryBuyBonus(world, ship)).toBe(OWN_TERRITORY_BUY_BONUS);
+    expect(territorySellBonus(world, ship)).toBe(OWN_TERRITORY_SELL_BONUS);
+    const foreign = Object.values(world.locations).find(
+      l => l.traits.faction && l.traits.faction !== ship.syndicateId,
+    );
+    ship.location = foreign!.id;
+    expect(territoryBuyBonus(world, ship)).toBe(0);
+    expect(territorySellBonus(world, ship)).toBe(0);
   });
 
   // With decay zeroed, a station's control state should stay put when

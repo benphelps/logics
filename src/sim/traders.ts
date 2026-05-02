@@ -18,6 +18,9 @@ import {
   NPC_TRADE_PER_CREDIT,
   PLAYER_DOCK_NUDGE,
   PLAYER_TRADE_PER_CREDIT,
+  territoryBuyBonus,
+  territorySellBonus,
+  tollForArrival,
 } from "./control";
 import { noteSyndicateRevenue } from "./stock";
 import { pushNote, pushTraderEvent } from "./log";
@@ -287,10 +290,12 @@ function inTransitArrivalsByDestGood(world: World): Map<string, number> {
 
 function settleUnloadedCargo(world: World, trader: Trader, lot: CargoLot, qty: number, events: TraderEvent[]): void {
   const dstMarket = world.markets[trader.location];
-  // Apply the trader's sellPremium upgrade — pay-out is sourced from the
-  // station's treasury (settleSale clamps to what's available), so the
-  // float stays conserved.
-  const unitPrice = marketQuote(world, trader.location, lot.good) * (1 + sellPremiumFraction(trader));
+  // Apply the trader's sellPremium upgrade plus the own-territory
+  // bonus when applicable — pay-out is sourced from the station's
+  // treasury (settleSale clamps to what's available), so the float
+  // stays conserved. Combined cap of 0.5 mirrors the upgrade-only path.
+  const totalSellPremium = Math.min(0.5, sellPremiumFraction(trader) + territorySellBonus(world, trader));
+  const unitPrice = marketQuote(world, trader.location, lot.good) * (1 + totalSellPremium);
   dstMarket.stock[lot.good] = (dstMarket.stock[lot.good] ?? 0) + qty;
   const settlement = settleSale(dstMarket, unitPrice, qty);
   trader.funds += settlement.traderRevenue;
@@ -762,6 +767,7 @@ function arriveTrader(world: World, trader: Trader, dst: LocationId, events: Tra
   }
 
   chargeDockingFee(world, trader);
+  chargeTerritoryToll(world, trader);
   // Real (non-pass-through) docks shift the destination's syndicate
   // control toward the arriving ship's faction. Player ships move the
   // dial harder than NPCs.
@@ -784,6 +790,23 @@ function arriveTrader(world: World, trader: Trader, dst: LocationId, events: Tra
     const movedLots = trader.cargo.map(l => ({ ...l }));
     trader.cargo = [];
     beginUnloadLots(world, trader, movedLots, events);
+  }
+}
+
+// Crossing toll on docking in foreign syndicate territory. Money flows
+// to the foreign syndicate's treasury (closing the loop, not creating a
+// sink). No-op for own-territory and independent stations. Player ships
+// get a log note so the player notices the deduction.
+function chargeTerritoryToll(world: World, trader: Trader): void {
+  const { fee, toSyndicate } = tollForArrival(world, trader);
+  if (fee <= 0 || !toSyndicate) return;
+  const taken = Math.min(fee, Math.max(0, trader.funds));
+  if (taken <= 0) return;
+  trader.funds -= taken;
+  const synd = world.syndicates[toSyndicate];
+  if (synd) synd.treasury = (synd.treasury ?? 0) + taken;
+  if (isPlayerShip(world, trader)) {
+    pushNote(world, trader, `Crossing toll Ç${taken.toFixed(0)} paid to ${synd?.name ?? toSyndicate}`, "warn");
   }
 }
 
@@ -1423,10 +1446,12 @@ export function buyAtLocation(world: World, trader: Trader, goodId: GoodId, qty:
   }
 
   const basePrice = marketQuote(world, trader.location, goodId);
-  // Apply the trader's buyDiscount upgrade — the market deposits the
-  // discounted amount so the float stays conserved (treasury simply
-  // earns less on this purchase).
-  const price = basePrice * (1 - buyDiscountFraction(trader));
+  // Apply the trader's buyDiscount upgrade plus the own-territory
+  // bonus when applicable — the market deposits the discounted amount
+  // so the float stays conserved (treasury simply earns less on this
+  // purchase). Combined cap of 0.5 mirrors the upgrade-only path.
+  const totalBuyDiscount = Math.min(0.5, buyDiscountFraction(trader) + territoryBuyBonus(world, trader));
+  const price = basePrice * (1 - totalBuyDiscount);
   const cost = qty * price;
   if (trader.funds < cost - 0.001) return { ok: false, reason: `Need Ç${cost.toFixed(0)}, have Ç${trader.funds.toFixed(0)}.` };
 

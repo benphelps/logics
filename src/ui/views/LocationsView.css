@@ -1990,6 +1990,41 @@
   color: #9dd7ff;
 }
 
+/* Per-syndicate control share chips. Sit beneath the .atlas-tags row
+   in the station detail panel and only render when the station is
+   contested (more than one syndicate above 2%). Accent border + text
+   come from inline style — one chip per active syndicate. */
+.atlas-control-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: -2px;
+}
+
+.atlas-control-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+  padding: 0 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--atlas-line);
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+}
+
+.atlas-control-chip-name {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.atlas-control-chip-share {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+
 .atlas-stat-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

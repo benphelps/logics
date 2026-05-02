@@ -36,6 +36,21 @@ const MIN_SHARE = 0.0008;
 // "play it through" feel of the system.
 const MAX_NUDGE_PER_CALL = 0.18;
 
+// --- gameplay rates ----------------------------------------------------
+// Crossing toll charged when a ship docks at a station owned by a
+// different syndicate. Independent (shipyard / unfactioned) docks are
+// always free; same-syndicate docks are always free. Toll flows to the
+// foreign syndicate's treasury — closes the economic loop without
+// creating a sink.
+export const FOREIGN_DOCK_TOLL = 150;
+
+// Buy / sell market bonuses when a ship trades at a station controlled
+// by its own syndicate. Stack additively with the trader's existing
+// crew + upgrade modifiers; the same 0.5 ceiling at the call site
+// keeps the total fraction sane.
+export const OWN_TERRITORY_BUY_BONUS = 0.03;
+export const OWN_TERRITORY_SELL_BONUS = 0.03;
+
 // --- core mutations -----------------------------------------------------
 
 function ensureControlMap(world: World, locId: LocationId): Record<SyndicateId, number> | null {
@@ -169,6 +184,46 @@ export function tickControl(world: World): void {
   let changed = applyDecay(world);
   if (applyFactionFlips(world)) changed = true;
   if (changed) bumpVersion(world);
+}
+
+// --- territory queries (used by toll + bonus call sites) ---------------
+
+// True when the trader's syndicate matches the dominant syndicate at
+// its current location. Shipyards and unfactioned stations always
+// return false — there's no "own territory" relationship to check.
+export function isOwnTerritory(world: World, trader: Trader): boolean {
+  const synd = trader.syndicateId;
+  if (!synd) return false;
+  const here = world.locations[trader.location];
+  return here?.traits.faction === synd;
+}
+
+export function territoryBuyBonus(world: World, trader: Trader): number {
+  return isOwnTerritory(world, trader) ? OWN_TERRITORY_BUY_BONUS : 0;
+}
+
+export function territorySellBonus(world: World, trader: Trader): number {
+  return isOwnTerritory(world, trader) ? OWN_TERRITORY_SELL_BONUS : 0;
+}
+
+// Compute the toll for a trader docking at its current location.
+// Returns { fee: 0 } when the toll doesn't apply — caller should still
+// pass the result through to the deducting helper, which handles the
+// no-op case cleanly.
+export function tollForArrival(
+  world: World,
+  trader: Trader,
+): { fee: number; toSyndicate: SyndicateId | null } {
+  const here = world.locations[trader.location];
+  if (!here) return { fee: 0, toSyndicate: null };
+  const stationFaction = here.traits.faction;
+  // Independent ports (shipyards, gen-time unfactioned) charge no toll.
+  if (!stationFaction) return { fee: 0, toSyndicate: null };
+  // Own-syndicate or unaffiliated traders pay nothing — only foreign
+  // ships from a real syndicate get tolled.
+  const traderSynd = trader.syndicateId;
+  if (!traderSynd || traderSynd === stationFaction) return { fee: 0, toSyndicate: null };
+  return { fee: FOREIGN_DOCK_TOLL, toSyndicate: stationFaction };
 }
 
 // Initialize the control map from the world's current faction stamps —
