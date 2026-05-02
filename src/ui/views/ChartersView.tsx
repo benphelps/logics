@@ -21,7 +21,7 @@ import {
   GiPathDistance,
   GiProcessor,
 } from "react-icons/gi";
-import type { Syndicate, World } from "../../sim/types";
+import type { ShipLogEntry, Syndicate, Trader, World } from "../../sim/types";
 import { useStore } from "../store";
 import { listMilestoneProgress, type MilestoneKey, type MilestoneProgress } from "../../sim/milestones";
 import { SYNDICATE_TRAITS } from "../../sim/data/syndicates";
@@ -71,11 +71,16 @@ export function ChartersView() {
     .sort((a, b) => (a.target - a.current) - (b.target - b.current))[0] ?? null;
 
   const syndicates = Object.values(world.syndicates).sort((a, b) => a.id.localeCompare(b.id));
+  const playerShips = (world.player?.shipIds ?? [])
+    .map(id => world.traders[id])
+    .filter((t): t is Trader => Boolean(t));
+  const logEntryCount = playerShips.reduce((s, t) => s + (t.log?.length ?? 0), 0);
 
   return (
     <section className="charters-view">
-      {/* Left (wider): tabbed sub-panels — Charters (combined milestones)
-          or Syndicates (per-faction reputation cards). */}
+      {/* Left (wider): tabbed sub-panels — Charters (combined milestones),
+          Syndicates (per-faction reputation cards), or Log (consolidated
+          fleet history feed). */}
       <section className="charters-badges-card">
         <div className="bridge-card-tabs charters-badges-tabs">
           <button
@@ -92,12 +97,17 @@ export function ChartersView() {
           >
             Syndicates <span className="bridge-tab-count">{syndicates.length}</span>
           </button>
+          <button
+            type="button"
+            className={`bridge-tab ${ledgerTab === "log" ? "active" : ""}`}
+            onClick={() => setLedgerTab("log")}
+          >
+            Log <span className="bridge-tab-count">{logEntryCount}</span>
+          </button>
         </div>
-        {ledgerTab === "charters" ? (
-          <ChartersTabBody world={world} progress={progress} />
-        ) : (
-          <SyndicatesTabBody world={world} syndicates={syndicates} />
-        )}
+        {ledgerTab === "charters" && <ChartersTabBody world={world} progress={progress} />}
+        {ledgerTab === "syndicates" && <SyndicatesTabBody world={world} syndicates={syndicates} />}
+        {ledgerTab === "log" && <LogTabBody ships={playerShips} />}
       </section>
 
       {/* Right (narrower): captain's ledger sidebar — career stats,
@@ -111,6 +121,61 @@ export function ChartersView() {
       />
     </section>
   );
+}
+
+// --- Log tab (fleet history feed) -----------------------------------------
+
+interface FleetLogEntry extends ShipLogEntry {
+  shipId: string;
+  shipName: string;
+}
+
+function LogTabBody({ ships }: { ships: Trader[] }) {
+  const entries: FleetLogEntry[] = [];
+  for (const t of ships) {
+    for (const e of t.log ?? []) {
+      entries.push({ ...e, shipId: t.id, shipName: t.name });
+    }
+  }
+  // Newest first; stable secondary sort by ship name keeps same-tick
+  // entries grouped per ship rather than scrambled across the fleet.
+  entries.sort((a, b) => b.tick - a.tick || a.shipName.localeCompare(b.shipName));
+
+  const headArt = headerArtUrl("tradeLedger");
+  return (
+    <>
+      <div className="charters-badges-head" style={artCardStyle(headArt)}>
+        <div className="charters-badges-head-main">
+          <span className="charters-badges-eyebrow">Fleet history feed</span>
+          <span className="charters-badges-name">Log</span>
+        </div>
+        <div className="charters-badges-head-stat">
+          <span className="charters-badges-head-stat-num mono">{entries.length}</span>
+          <span className="charters-badges-head-stat-label">entries</span>
+        </div>
+      </div>
+      <div className="charters-badges-body ledger-log-body" data-scroll-key="ledger:log">
+        {entries.length === 0 ? (
+          <p className="ledger-log-empty dim">No fleet activity recorded yet. Buy, sell, refuel, travel, or accept a contract — every action lands here.</p>
+        ) : (
+          <ol className="ledger-log-list">
+            {entries.map((e, i) => (
+              <li key={`${e.shipId}-${e.tick}-${i}`} className={`ledger-log-entry ${e.tone ? `tone-${e.tone}` : ""}`}>
+                <span className="ledger-log-tick mono">t{e.tick}</span>
+                <span className="ledger-log-ship" title={e.shipName}>{e.shipName}</span>
+                <span className="ledger-log-kind">{kindLabel(e.kind)}</span>
+                <span className="ledger-log-msg">{e.message}</span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+    </>
+  );
+}
+
+function kindLabel(kind: string): string {
+  return kind.replace(/_/g, " ");
 }
 
 // --- Charters tab (combined milestone badges) -----------------------------

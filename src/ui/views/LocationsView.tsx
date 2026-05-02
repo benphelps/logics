@@ -122,6 +122,11 @@ export function LocationsView() {
   // hovers the Travel-here CTA on the detail panel. Set by the
   // detail panel, consumed by the map. Null when nothing is hovered.
   const [previewedRoute, setPreviewedRoute] = useState<LocationId[] | null>(null);
+  // Station id the systems / ships table is currently hovering. The
+  // map mirrors that hover (crosshair on the station) so the player
+  // can scan the table and locate stations spatially without having
+  // to click each row. Cleared on row leave or table tab switch.
+  const [externalHoveredId, setExternalHoveredId] = useState<LocationId | null>(null);
 
   const sheetTab = useStore((s) => s.atlasSheetTab);
   const setSheetTab = useStore((s) => s.setAtlasSheetTab);
@@ -188,6 +193,7 @@ export function LocationsView() {
               playerActiveRoute={buildActiveRoute(playerShip)}
               selectedTraderId={selectedTrader}
               previewedRoute={previewedRoute}
+              externalHoveredId={externalHoveredId}
               mapTab={mapTab}
               onSelect={selectLocation}
               onSelectTrader={selectTrader}
@@ -226,6 +232,7 @@ export function LocationsView() {
                   world={world}
                   selectedId={selected?.id ?? null}
                   onSelect={selectLocation}
+                  onHoverStation={setExternalHoveredId}
                 />
               )}
               {sheetTab === "ships" && (
@@ -234,6 +241,7 @@ export function LocationsView() {
                   selectedTraderId={selectedTrader}
                   onSelectTrader={selectTrader}
                   onSelectLocation={selectLocation}
+                  onHoverStation={setExternalHoveredId}
                 />
               )}
               {sheetTab === "news" && <AtlasNewsPanel world={world} onSelectLocation={selectLocation} />}
@@ -325,6 +333,7 @@ function SectorMap({
   playerActiveRoute,
   selectedTraderId,
   previewedRoute,
+  externalHoveredId,
   mapTab,
   onSelect,
   onSelectTrader,
@@ -345,6 +354,10 @@ function SectorMap({
   playerActiveRoute: LocationId[] | null;
   selectedTraderId: TraderId | null;
   previewedRoute: LocationId[] | null;
+  // Station id the systems / ships sheet is currently hovering — the
+  // map mirrors it as a crosshair so the player can scan the table
+  // and locate stations spatially. Null when nothing is row-hovered.
+  externalHoveredId: LocationId | null;
   mapTab: AtlasMapTab;
   onSelect: (id: LocationId) => void;
   onSelectTrader: (id: TraderId | null) => void;
@@ -360,6 +373,12 @@ function SectorMap({
   // The station the cursor is currently over. Drives the crosshair +
   // coordinate readout that's the centerpiece of the atlas treatment.
   const [hoveredStation, setHoveredStation] = useState<ProjectedLocation | null>(null);
+  // Effective hover for crosshair display: cursor wins, otherwise the
+  // sheet table's row hover stands in. Render-only — the cursor logic
+  // (hit-test, click delegate) keeps reading the internal hoveredStation
+  // because the table-driven hover doesn't carry a click.
+  const externalHoveredProj = externalHoveredId ? projectedById.get(externalHoveredId) ?? null : null;
+  const effectiveHoveredStation = hoveredStation ?? externalHoveredProj;
   // Legend-driven kind filter. Toggled kinds ghost out on the map
   // but stay clickable so the user can flip them back.
   const [hiddenKinds, setHiddenKinds] = useState<Set<StationKind>>(() => new Set());
@@ -504,6 +523,22 @@ function SectorMap({
     }
     return { visibleLaneKeys: keys, visibleStations: stations };
   }, [visibleLinks]);
+
+  // Route from the player ship's current dock to the selected station.
+  // Always rendered when a station other than the player's is selected
+  // (white animated line, see CSS), and overridden by previewedRoute
+  // when the user hovers the Travel CTA (blue). Null when there's no
+  // ship, no selection, or the player is already at the destination.
+  const selectedRoute = useMemo(() => {
+    if (!playerLocation || !selectedId || selectedId === playerLocation) return null;
+    const path = findRoutePath(world, playerLocation, selectedId);
+    return path && path.length >= 2 ? path : null;
+  }, [world, playerLocation, selectedId]);
+
+  // Whichever route to show. Travel-button hover wins over selection
+  // because it's the more recent intent. Tag the variant for styling.
+  const displayedRoute = previewedRoute ?? selectedRoute;
+  const displayedRouteIsPreview = previewedRoute !== null;
 
   // Station fade tier — only fires in the stations tab. Stations
   // outside the player's 1-hop ring fade gradually with hop distance,
@@ -828,7 +863,7 @@ function SectorMap({
           const yTop = vbox.y - vbox.h * 4;
           const yBot = vbox.y + vbox.h * 5;
           const selectedProj = selectedId ? projectedById.get(selectedId) ?? null : null;
-          const showSelected = selectedProj && (!hoveredStation || hoveredStation.loc.id !== selectedProj.loc.id);
+          const showSelected = selectedProj && (!effectiveHoveredStation || effectiveHoveredStation.loc.id !== selectedProj.loc.id);
           return (
             <>
               {showSelected && selectedProj && (
@@ -840,34 +875,34 @@ function SectorMap({
                   <line className="atlas-crosshair-line" x1={xLeft} y1={selectedProj.y} x2={xRight} y2={selectedProj.y} />
                 </g>
               )}
-              {hoveredStation && (
-                <g className={`atlas-crosshair ${hoveredStation.loc.id === playerLocation ? "player" : ""}`} pointerEvents="none">
+              {effectiveHoveredStation && (
+                <g className={`atlas-crosshair ${effectiveHoveredStation.loc.id === playerLocation ? "player" : ""}`} pointerEvents="none">
                   <line
                     className="atlas-crosshair-line"
-                    x1={hoveredStation.x}
+                    x1={effectiveHoveredStation.x}
                     y1={yTop}
-                    x2={hoveredStation.x}
+                    x2={effectiveHoveredStation.x}
                     y2={yBot}
                   />
                   <line
                     className="atlas-crosshair-line"
                     x1={xLeft}
-                    y1={hoveredStation.y}
+                    y1={effectiveHoveredStation.y}
                     x2={xRight}
-                    y2={hoveredStation.y}
+                    y2={effectiveHoveredStation.y}
                   />
                   <TextBadge
                     className="atlas-crosshair-coord"
-                    text={`x ${formatAtlasCoord(hoveredStation.loc.position.x)}`}
-                    cx={hoveredStation.x}
+                    text={`x ${formatAtlasCoord(effectiveHoveredStation.loc.position.x)}`}
+                    cx={effectiveHoveredStation.x}
                     cy={vbox.y + vbox.h - hudFontSize * 7.5}
                     fontSize={hudFontSize}
                   />
                   <TextBadge
                     className="atlas-crosshair-coord"
-                    text={`y ${formatAtlasCoord(hoveredStation.loc.position.y)}`}
+                    text={`y ${formatAtlasCoord(effectiveHoveredStation.loc.position.y)}`}
                     cx={vbox.x + hudFontSize * 7.5}
-                    cy={hoveredStation.y}
+                    cy={effectiveHoveredStation.y}
                     fontSize={hudFontSize}
                   />
                 </g>
@@ -915,10 +950,10 @@ function SectorMap({
           peakLaneTraffic={peakLaneTraffic}
           hoveredLane={hoveredLane}
         />
-        {previewedRoute && previewedRoute.length >= 2 && (
-          <g className="atlas-preview-route">
-            {previewedRoute.slice(0, -1).map((from, i) => {
-              const to = previewedRoute[i + 1];
+        {displayedRoute && displayedRoute.length >= 2 && (
+          <g className={`atlas-preview-route ${displayedRouteIsPreview ? "preview" : "selected"}`}>
+            {displayedRoute.slice(0, -1).map((from, i) => {
+              const to = displayedRoute[i + 1];
               const a = projectedById.get(from);
               const b = projectedById.get(to);
               if (!a || !b) return null;
@@ -933,16 +968,16 @@ function SectorMap({
                 />
               );
             })}
-            {previewedRoute.map((id, i) => {
+            {displayedRoute.map((id, i) => {
               const p = projectedById.get(id);
               if (!p) return null;
               return (
                 <circle
                   key={`preview-node-${id}-${i}`}
-                  className={`atlas-preview-node ${i === 0 ? "origin" : i === previewedRoute.length - 1 ? "dest" : "waypoint"}`}
+                  className={`atlas-preview-node ${i === 0 ? "origin" : i === displayedRoute.length - 1 ? "dest" : "waypoint"}`}
                   cx={p.x}
                   cy={p.y}
-                  r={i === 0 || i === previewedRoute.length - 1 ? p.r + 6 : p.r + 3}
+                  r={i === 0 || i === displayedRoute.length - 1 ? p.r + 6 : p.r + 3}
                 />
               );
             })}
@@ -1785,6 +1820,7 @@ function SystemsTable(props: {
   world: World;
   selectedId: LocationId | null;
   onSelect: (id: LocationId) => void;
+  onHoverStation: (id: LocationId | null) => void;
 }) {
   return (
     <SortableRows
@@ -1838,6 +1874,8 @@ function SystemsTable(props: {
                   key={row.loc.id}
                   className={selectedRow ? "active" : ""}
                   onClick={() => props.onSelect(row.loc.id)}
+                  onMouseEnter={() => props.onHoverStation(row.loc.id)}
+                  onMouseLeave={() => props.onHoverStation(null)}
                 >
                   <td>
                     <span className="atlas-station-cell">
@@ -1906,6 +1944,7 @@ function ShipsTable(props: {
   selectedTraderId: TraderId | null;
   onSelectTrader: (id: TraderId | null) => void;
   onSelectLocation: (id: LocationId) => void;
+  onHoverStation: (id: LocationId | null) => void;
 }) {
   const playerIds = new Set(props.world.player?.shipIds ?? []);
   const ships = Object.values(props.world.traders).slice().sort((a, b) => {
@@ -1965,6 +2004,8 @@ function ShipsTable(props: {
                     if (t.state === "idle") props.onSelectLocation(t.location);
                     else if (t.destination) props.onSelectLocation(t.destination);
                   }}
+                  onMouseEnter={() => props.onHoverStation(t.state === "transit" && t.destination ? t.destination : t.location)}
+                  onMouseLeave={() => props.onHoverStation(null)}
                 >
                   <td>
                     <span className="atlas-ship-cell">

@@ -1121,6 +1121,14 @@
   stroke-dasharray: 6 6;
 }
 
+/* Selected-station route: same animated dashed line, but white so
+   it reads as "destination set" rather than the blue "about to
+   travel" preview. Travel-button hover swaps the parent class to
+   .preview, restoring the blue. */
+.atlas-preview-route.selected .atlas-preview-link {
+  stroke: rgba(255, 255, 255, 0.92);
+}
+
 @keyframes atlas-preview-dash {
   to { stroke-dashoffset: -12; }
 }

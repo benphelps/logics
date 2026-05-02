@@ -35,7 +35,7 @@ import type { CrewModifiers, CrewRole, Equity } from "../../sim/types";
 import type { CrewMember, GoodId, Job, JobId, LocationDef, LocationId, ShipBlueprint, ShipTrait, Trader, TraderId, UpgradeSlot, World } from "../../sim/types";
 import { parseBasisUnderlying, priceChangePct } from "../../sim/stock";
 import { useCrewHeadshot } from "../headshots";
-import { goodArtUrl, jobArtUrl, shipArtUrl, stationArtUrl, stationKind, stationKindLabel, stationScale, stationScaleLabel, stationSubtype, stationSubtypeLabel } from "../art";
+import { goodArtUrl, shipArtUrl, stationArtUrl, stationKind, stationKindLabel, stationScale, stationScaleLabel, stationSubtype, stationSubtypeLabel } from "../art";
 import { useBlueprintArtImageUrl, useShipArtImageUrl } from "../shipArtApi";
 import { SortableRows, SortableTh } from "../components/SortableTable";
 import { MiniSparkline } from "../components/MiniSparkline";
@@ -718,7 +718,6 @@ function ContractsTab({ ship, world, loc, target, hintText, cueText, interaction
           columns={[
             { id: "tier", label: "tier", getValue: j => TIER_RANK[j.tier] },
             { id: "contract", label: "contract", getValue: j => j.good ? world.goods[j.good]?.name ?? j.good : j.kind },
-            { id: "route", label: "route", getValue: j => world.locations[j.destination]?.name ?? j.destination },
             { id: "qty", label: "quantity", getValue: j => j.qty, defaultDirection: "desc" },
             { id: "held", label: "held cargo", getValue: j => j.good ? ship.cargo.filter(l => l.good === j.good).reduce((s, l) => s + l.qty, 0) : 0, defaultDirection: "desc" },
             { id: "reward", label: "reward", getValue: j => j.reward, defaultDirection: "desc" },
@@ -731,7 +730,6 @@ function ContractsTab({ ship, world, loc, target, hintText, cueText, interaction
               <colgroup>
                 <col className="col-tier" />
                 <col />
-                <col className="col-dest" />
                 <col className="col-num" />
                 <col className="col-held" />
                 <col className="col-money" />
@@ -743,7 +741,6 @@ function ContractsTab({ ship, world, loc, target, hintText, cueText, interaction
                 <tr>
                   <SortableTh sort={sort} columnId="tier">Tier</SortableTh>
                   <SortableTh sort={sort} columnId="contract">Contract</SortableTh>
-                  <SortableTh sort={sort} columnId="route">Route</SortableTh>
                   <SortableTh sort={sort} columnId="qty" className="numeric">Qty</SortableTh>
                   <SortableTh sort={sort} columnId="held" className="numeric">Held</SortableTh>
                   <SortableTh sort={sort} columnId="reward" className="numeric">Reward</SortableTh>
@@ -789,14 +786,11 @@ function LocalJobRow({ job, world, ship, suggested, hintText, showAction, intera
   const expiringSoon = ticksLeft <= 10;
   const onHand = job.good ? ship.cargo.filter(l => l.good === job.good).reduce((s, l) => s + l.qty, 0) : 0;
   const onHandTone = onHand >= job.qty ? "good" : onHand > 0 ? "warn" : "faint";
-  const dst = world.locations[job.destination]?.name ?? job.destination;
-  const remote = job.destination !== ship.location;
   return (
     <tr className={`contract-row contract-tier-${job.tier}`}>
       <td><span className={`tier-badge tier-${job.tier}`}>{job.tier.toUpperCase()}</span></td>
       <td>
         <span className="contract-title-row">
-          <span className="row-art-thumb contract-art-thumb" style={artCardStyle(jobArtUrl(world, job))} aria-hidden="true" />
           <span className="contract-good">{good}</span>
           {job.kind === "rescue" && (
             <span className="job-kind-tag" title={job.rescueTarget ? `Rescue ${world.traders[job.rescueTarget]?.name ?? job.rescueTarget}` : "Rescue contract"}>
@@ -819,7 +813,6 @@ function LocalJobRow({ job, world, ship, suggested, hintText, showAction, intera
           })()}
         </span>
       </td>
-      <td className="dim mono">{remote ? `to ${dst}` : "here"}</td>
       <td className="numeric mono">{job.qty.toLocaleString()}</td>
       <td className={`numeric mono ${onHandTone}`}>{onHand > 0 ? onHand.toFixed(0) : "—"}</td>
       <td className="numeric mono good">Ç{job.reward.toLocaleString()}</td>
@@ -3561,7 +3554,6 @@ function ActiveContractsTab({ ship, world, jobs, target, cueText, hintText }: {
           columns={[
             { id: "tier", label: "tier", getValue: j => TIER_RANK[j.tier] },
             { id: "contract", label: "contract", getValue: j => j.kind === "trade" ? `${j.trade?.ticker ?? "Trade"} settlement` : j.good ? world.goods[j.good]?.name ?? j.good : j.kind },
-            { id: "route", label: "route", getValue: j => world.locations[j.destination]?.name ?? j.destination },
             { id: "progress", label: "progress", getValue: j => j.kind === "trade" ? Number(j.destination === ship.location) : j.qty > 0 ? j.delivered / j.qty : 0, defaultDirection: "desc" },
             { id: "reward", label: "reward", getValue: j => j.reward, defaultDirection: "desc" },
             { id: "penalty", label: "penalty", getValue: j => j.penalty, defaultDirection: "desc" },
@@ -3573,7 +3565,6 @@ function ActiveContractsTab({ ship, world, jobs, target, cueText, hintText }: {
               <colgroup>
                 <col className="col-tier" />
                 <col />
-                <col className="col-dest" />
                 <col className="col-progress" />
                 <col className="col-money" />
                 <col className="col-money" />
@@ -3584,7 +3575,6 @@ function ActiveContractsTab({ ship, world, jobs, target, cueText, hintText }: {
                 <tr>
                   <SortableTh sort={sort} columnId="tier">Tier</SortableTh>
                   <SortableTh sort={sort} columnId="contract">Contract</SortableTh>
-                  <SortableTh sort={sort} columnId="route">Route</SortableTh>
                   <SortableTh sort={sort} columnId="progress">Progress</SortableTh>
                   <SortableTh sort={sort} columnId="reward" className="numeric">Reward</SortableTh>
                   <SortableTh sort={sort} columnId="penalty" className="numeric">Penalty</SortableTh>
@@ -3609,7 +3599,6 @@ function ActiveContractsTab({ ship, world, jobs, target, cueText, hintText }: {
                       <td><span className={`tier-badge tier-${j.tier}`}>{j.tier.toUpperCase()}</span></td>
                       <td>
                         <span className="contract-title-row">
-                          <span className="row-art-thumb contract-art-thumb" style={artCardStyle(jobArtUrl(world, j))} aria-hidden="true" />
                           <span className="contract-good">{good}</span>
                           {j.kind === "rescue" && <span className="job-kind-tag">rescue</span>}
                           {isTradeJob && (
@@ -3619,7 +3608,6 @@ function ActiveContractsTab({ ship, world, jobs, target, cueText, hintText }: {
                           )}
                         </span>
                       </td>
-                      <td className="dim mono">{away ? `to ${dst}` : "here"}</td>
                       <td>
                         {isTradeJob ? (
                           <span className={`mono ${away ? "dim" : "good"}`}>{away ? "travel" : "ready"}</span>

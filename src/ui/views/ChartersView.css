@@ -615,3 +615,113 @@
   color: var(--text-faint);
   letter-spacing: 0.04em;
 }
+
+/* --- Log tab (fleet history feed) ---------------------------------- */
+
+/* The body host gets its own padding so the entries don't fight the
+   card edge — same gutter as the badge grid for consistency. */
+.ledger-log-body {
+  padding: 12px 14px 16px;
+}
+
+.ledger-log-empty {
+  margin: 24px 4px 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.ledger-log-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 12.5px;
+}
+
+/* Four-column grid: tick / ship / kind / message. The message
+   column flexes; the others are pinned so the eye lands on the
+   same alignment column on every row. */
+.ledger-log-entry {
+  display: grid;
+  grid-template-columns: 48px 130px 92px 1fr;
+  gap: 12px;
+  align-items: baseline;
+  padding: 9px 4px;
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.06));
+  /* Subtle accent stripe on the left, coloured by tone — keeps the
+     row scannable at a glance without the kind-label having to fight
+     for attention. */
+  border-left: 2px solid transparent;
+  padding-left: 10px;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.ledger-log-list .ledger-log-entry:last-child {
+  border-bottom: none;
+}
+
+.ledger-log-entry:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.ledger-log-tick {
+  font-size: 11px;
+  text-align: right;
+  color: var(--text-faint, rgba(255, 255, 255, 0.45));
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-log-ship {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text, rgba(255, 255, 255, 0.88));
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ledger-log-kind {
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim, rgba(255, 255, 255, 0.55));
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ledger-log-msg {
+  min-width: 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--text, rgba(255, 255, 255, 0.85));
+}
+
+/* Tone-coloured left stripe + message tint. Keeping the stripe
+   subtle (4px wide accent) lets a long feed read as one calm column
+   while still signaling tone for skim-reading. */
+.ledger-log-entry.tone-good {
+  border-left-color: var(--good);
+}
+.ledger-log-entry.tone-good .ledger-log-msg {
+  color: var(--good);
+}
+.ledger-log-entry.tone-bad {
+  border-left-color: var(--bad);
+}
+.ledger-log-entry.tone-bad .ledger-log-msg {
+  color: var(--bad);
+}
+.ledger-log-entry.tone-warn {
+  border-left-color: var(--warn);
+}
+.ledger-log-entry.tone-warn .ledger-log-msg {
+  color: var(--warn);
+}
+.ledger-log-entry.tone-info {
+  border-left-color: var(--accent);
+}
+.ledger-log-entry.tone-info .ledger-log-msg {
+  color: var(--accent);
+}
