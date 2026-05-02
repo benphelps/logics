@@ -27,6 +27,19 @@ export const PLAYER_TRADE_PER_CREDIT = 6e-5;
 // above 0 to add a slow consolidation pressure.
 const DECAY_PER_TICK = 0;
 
+// Per-tick pressure from nearby stations. A station surrounded by
+// another syndicate's cluster gets pushed toward that syndicate by an
+// amount that scales with how dominant the neighbour-syndicate is in
+// the local area. Squared fraction means a 90%-dominant neighbour
+// applies ~5× the pressure of a 40%-dominant one — clusters reinforce
+// their own boundaries hard, so a lone foreign foothold doesn't sit
+// stably for long.
+const NEIGHBOR_PRESSURE_PER_TICK = 0.008;
+// Neighbour radius as a fraction of the world's max-from-origin
+// station distance. 30% covers the local cluster plus a sliver of
+// adjacent ones at default scale.
+const NEIGHBOR_RADIUS_FACTOR = 0.30;
+
 // Consecutive ticks a rival must hold the dominant share before a
 // station's faction actually flips. Provides hysteresis — a momentary
 // burst of activity that pokes a rival above 50% won't snap the
@@ -279,12 +292,68 @@ export interface ControlTickReport {
   spawnedNews: ActiveNewsEvent[];
 }
 
+// Apply per-tick neighbour-station pressure: each station is nudged
+// toward whichever syndicates dominate its surrounding cluster. The
+// fraction² weighting means a station deep inside a rival cluster
+// drifts hard, while a station inside its own cluster mostly gets
+// reinforcing nudges from itself.
+function applyNeighborPressure(world: World): boolean {
+  if (!world.control) return false;
+  const locs = Object.values(world.locations);
+  if (locs.length === 0) return false;
+
+  // Approx world radius — distance from origin to the farthest station.
+  // Cheap to recompute each tick at our scales; would memoise if we
+  // started seeing it in profiles.
+  let maxR = 0;
+  for (const loc of locs) {
+    const r = Math.hypot(loc.position.x, loc.position.y);
+    if (r > maxR) maxR = r;
+  }
+  if (maxR <= 0) return false;
+  const radius = maxR * NEIGHBOR_RADIUS_FACTOR;
+  const radiusSq = radius * radius;
+
+  let changed = false;
+  for (const loc of locs) {
+    // Shipyards are intentionally unfactioned — skip them as both
+    // pressure source (they emit nothing) and target (they don't
+    // get pushed). Untargetable here keeps the source loop honest.
+    if (loc.traits.tags.includes("shipyard")) continue;
+    const pressure: Record<SyndicateId, number> = {};
+    let totalWeight = 0;
+    for (const other of locs) {
+      if (other.id === loc.id) continue;
+      const f = other.traits.faction;
+      if (!f) continue;
+      const dx = other.position.x - loc.position.x;
+      const dy = other.position.y - loc.position.y;
+      const distSq = dx * dx + dy * dy;
+      if (distSq > radiusSq) continue;
+      // Inverse-square weighting (with floor) so closer neighbours
+      // pull harder than distant ones.
+      const weight = 1 / (distSq + 1);
+      pressure[f] = (pressure[f] ?? 0) + weight;
+      totalWeight += weight;
+    }
+    if (totalWeight === 0) continue;
+    for (const synd in pressure) {
+      const fraction = pressure[synd] / totalWeight;
+      const amplified = fraction * fraction;
+      nudgeStationControl(world, loc.id, synd, amplified * NEIGHBOR_PRESSURE_PER_TICK);
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 // Per-tick housekeeping. Call once after trader events have been
 // processed for the tick, and before persisting/rendering. Returns the
 // news events spawned by faction flips so tickWorld can fold them into
 // its tick report (and the toast pipeline can surface them).
 export function tickControl(world: World): ControlTickReport {
   let changed = applyDecay(world);
+  if (applyNeighborPressure(world)) changed = true;
   const flips = applyFactionFlips(world);
   if (flips.changed) changed = true;
   if (changed) bumpVersion(world);

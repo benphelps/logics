@@ -6,6 +6,7 @@ import { findRoutePath, pathDistance, reachableNeighbors, routeDistance, routeSe
 import type { Equity, LocationDef, LocationId, ShipBlueprint, SyndicateId, Trader, TraderId, World } from "../../sim/types";
 import { buildControlBoundaries, type ControlSource } from "./controlField";
 import type { AtlasMapTab } from "../viewTabs";
+import { FLIP_HOLD_TICKS } from "../../sim/control";
 import { listHiresAt } from "../../sim/hires";
 import { listShipyardInventory } from "../../sim/shipyards";
 import { useBlueprintArtImageUrl } from "../shipArtApi";
@@ -906,16 +907,57 @@ function factionLabel(world: World, factionId: string | undefined): string {
   return world.syndicates[factionId]?.name ?? factionId;
 }
 
-// Per-syndicate control breakdown for the detail panel. Hidden when the
-// station has only the dominant faction with negligible others — the
-// faction tag already conveys that. Renders as a single horizontal bar
-// where each syndicate's segment width is its share of the total; the
-// segment color is the syndicate's accent. Only the top two leaders
-// show their percentage label; smaller slivers stay clean (hover for
-// the full breakdown via the segment title).
+// Per-syndicate control breakdown for the detail panel. Two modes:
+//
+//   1) Active challenge — when world.controlChallenge[locId] exists,
+//      the station is in the middle of a transfer-battle. Renders a
+//      head-to-head split between the current owner and the rival who
+//      just took the lead. Width tracks ticksHeld / FLIP_HOLD_TICKS,
+//      with a mild pow(0.7) amplification so early ticks read as
+//      visible movement instead of an invisible 1/30 sliver.
+//
+//   2) Stable — render the full multi-syndicate breakdown as a single
+//      horizontal bar. Hidden when only the dominant faction has any
+//      meaningful presence; the faction tag already conveys that.
 function ControlShareBar({ world, locId }: { world: World; locId: LocationId }) {
   const ctrl = world.control?.[locId];
   if (!ctrl) return null;
+  const challenge = world.controlChallenge?.[locId];
+  if (challenge) {
+    const ownerId = world.locations[locId]?.traits.faction;
+    if (!ownerId) return null;
+    const owner = world.syndicates[ownerId];
+    const challenger = world.syndicates[challenge.syndicateId];
+    if (!owner || !challenger || owner.id === challenger.id) return null;
+    const raw = Math.min(1, Math.max(0, challenge.ticksHeld / FLIP_HOLD_TICKS));
+    // Amplify so 1/30 reads as ~13% of the bar instead of ~3%.
+    const visual = Math.pow(raw, 0.7);
+    const ownerWidth = Math.max(0.04, 1 - visual);
+    const challengerWidth = Math.max(0.04, visual);
+    const ownerAccent = owner.accentHex ?? "#9bb6c8";
+    const challengerAccent = challenger.accentHex ?? "#9bb6c8";
+    return (
+      <div
+        className="atlas-control-bar contested"
+        role="img"
+        aria-label={`Contested: ${challenger.name} ${challenge.ticksHeld}/${FLIP_HOLD_TICKS} ticks`}
+        title={`${owner.name} defending vs ${challenger.name} — ${challenge.ticksHeld}/${FLIP_HOLD_TICKS}`}
+      >
+        <div
+          className="atlas-control-bar-segment owner"
+          style={{ flexGrow: ownerWidth, backgroundColor: ownerAccent } as CSSProperties}
+        >
+          <span className="atlas-control-bar-label">{owner.name}</span>
+        </div>
+        <div
+          className="atlas-control-bar-segment challenger"
+          style={{ flexGrow: challengerWidth, backgroundColor: challengerAccent } as CSSProperties}
+        >
+          <span className="atlas-control-bar-label">{challenge.ticksHeld}/{FLIP_HOLD_TICKS}</span>
+        </div>
+      </div>
+    );
+  }
   const entries = Object.entries(ctrl)
     .filter(([, share]) => share >= 0.02)
     .sort((a, b) => b[1] - a[1]);

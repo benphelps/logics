@@ -381,10 +381,15 @@ describe("control mechanics: focused activity", () => {
     const rival = Object.values(world.syndicates).find(s => s.id !== ownerId);
     expect(rival).toBeDefined();
 
-    world.control![targetId] = { [ownerId]: 0.4, [rival!.id]: 0.6 };
+    // Re-set each tick so neighbour-pressure can't quietly nudge the
+    // rival out of dominance during the run. We're testing the
+    // threshold-counter behaviour, not the pressure model.
+    const forceContested = () => { world.control![targetId] = { [ownerId]: 0.4, [rival!.id]: 0.6 }; };
+    forceContested();
 
     // Up to but not at the threshold: faction stays stable, no events.
     for (let i = 0; i < FLIP_HOLD_TICKS - 1; i++) {
+      forceContested();
       const r = tickControl(world);
       expect(r.spawnedNews).toHaveLength(0);
     }
@@ -392,6 +397,7 @@ describe("control mechanics: focused activity", () => {
     expect(world.controlChallenge?.[targetId]?.syndicateId).toBe(rival!.id);
 
     // The threshold tick fires the flip + emits the news event.
+    forceContested();
     const report = tickControl(world);
     expect(report.spawnedNews).toHaveLength(1);
     const ev = report.spawnedNews[0];
@@ -416,13 +422,21 @@ describe("control mechanics: focused activity", () => {
     const rival = Object.values(world.syndicates).find(s => s.id !== ownerId);
     expect(rival).toBeDefined();
 
+    // Re-pin each tick so neighbour-pressure can't quietly knock the
+    // rival out of dominance during the test run.
+    const pin = (m: Record<string, number>) => { world.control![targetId] = { ...m }; };
+    const half = Math.floor(FLIP_HOLD_TICKS / 2);
+
     // Rival takes a small lead for half the hold window.
-    world.control![targetId] = { [ownerId]: 0.45, [rival!.id]: 0.55 };
-    for (let i = 0; i < Math.floor(FLIP_HOLD_TICKS / 2); i++) tickControl(world);
+    pin({ [ownerId]: 0.45, [rival!.id]: 0.55 });
+    for (let i = 0; i < half; i++) {
+      pin({ [ownerId]: 0.45, [rival!.id]: 0.55 });
+      tickControl(world);
+    }
     expect(world.controlChallenge?.[targetId]?.syndicateId).toBe(rival!.id);
 
     // Owner reasserts dominance — challenger entry must clear.
-    world.control![targetId] = { [ownerId]: 0.6, [rival!.id]: 0.4 };
+    pin({ [ownerId]: 0.6, [rival!.id]: 0.4 });
     const r = tickControl(world);
     expect(r.spawnedNews).toHaveLength(0);
     expect(world.controlChallenge?.[targetId]).toBeUndefined();
@@ -430,8 +444,11 @@ describe("control mechanics: focused activity", () => {
 
     // Even after holding it back to the rival again for half a window,
     // the count restarts from scratch — no flip yet.
-    world.control![targetId] = { [ownerId]: 0.45, [rival!.id]: 0.55 };
-    for (let i = 0; i < Math.floor(FLIP_HOLD_TICKS / 2); i++) tickControl(world);
+    pin({ [ownerId]: 0.45, [rival!.id]: 0.55 });
+    for (let i = 0; i < half; i++) {
+      pin({ [ownerId]: 0.45, [rival!.id]: 0.55 });
+      tickControl(world);
+    }
     expect(world.locations[targetId].traits.faction).toBe(ownerId);
   });
 
@@ -456,15 +473,23 @@ describe("control mechanics: focused activity", () => {
     const rival = Object.values(world.syndicates).find(s => s.id !== ownerId);
     expect(rival).toBeDefined();
 
-    world.control![targetId] = { [ownerId]: 0.45, [rival!.id]: 0.55 };
-    const snapshot = JSON.stringify(world.control![targetId]);
-    // 200 ticks is well past FLIP_HOLD_TICKS, so the rival completes
-    // its sustained-dominance challenge and the faction stamp ends up
-    // on them; the underlying control shares stay identical because no
-    // activity is happening.
-    for (let i = 0; i < 200; i++) tickControl(world);
+    // Pin rival dominance each tick. Neighbour-pressure runs in tickControl
+    // and would otherwise nudge the underlying shares around — re-pinning
+    // isolates this test to the FLIP_HOLD_TICKS counter logic.
+    const pin = () => { world.control![targetId] = { [ownerId]: 0.45, [rival!.id]: 0.55 }; };
+    pin();
+    for (let i = 0; i < 200; i++) {
+      pin();
+      tickControl(world);
+    }
 
-    expect(JSON.stringify(world.control![targetId])).toBe(snapshot);
+    // Rival has flipped the faction stamp after sustaining dominance
+    // past FLIP_HOLD_TICKS. The exact post-tick share will drift a
+    // little because neighbour-pressure runs in tickControl and
+    // re-renormalises after each pin — that's the point of pinning,
+    // not asserting bit-exact equality, so the assertion stays on
+    // dominance + flip rather than precise values.
+    expect(world.control![targetId][rival!.id]).toBeGreaterThan(world.control![targetId][ownerId] ?? 0);
     expect(world.locations[targetId].traits.faction).toBe(rival!.id);
   });
 });
