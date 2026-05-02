@@ -87,8 +87,11 @@ export const COMMODITY_SHORTAGE_WEIGHT_FRACTION = 0.08;
 export const SHORT_BORROWABLE_FLOAT_FRACTION = 0.35;
 export const SHORT_LENDABLE_POSITION_FRACTION = 0.5;
 
-export const SHARE_PRICE_HISTORY_MAX = 150;    // capped history per equity (also the per-save retention)
-export const RECENT_TRADES_MAX = 100;          // capped tape per equity (T&S + volume window)
+// Equity history and recent-trades buffers grow unbounded in memory. Both
+// streams flush to IndexedDB on save (see src/ui/historyDb.ts) so the live
+// rings are also the persistent source of truth — there's no append-time
+// trim because anything dropped from the ring would be lost from the chart
+// and T&S tape window even if it survives in IDB.
 
 // Per-tick borrow fee on a short position's notional value. A real cost
 // (in real markets, paid to whoever lent the shares). Kept small so daily
@@ -807,16 +810,14 @@ export function recomputeEquityPrice(world: World, eq: Equity): void {
   const noisy = blended * (1 + deterministicNoise(eq, world.tick, profile.noise));
   eq.prevPrice = eq.price;
   eq.price = clampSharePrice(eq, noisy);
-  // Append history, capped
+  // Append history. Grows unbounded — flushed to IDB on save and kept in
+  // memory for the live chart tail.
   if (!eq.history) eq.history = [];
   const lastHistory = eq.history[eq.history.length - 1];
   if (lastHistory?.tick === world.tick) {
     lastHistory.price = eq.price;
   } else {
     eq.history.push({ tick: world.tick, price: eq.price });
-  }
-  if (eq.history.length > SHARE_PRICE_HISTORY_MAX) {
-    eq.history.splice(0, eq.history.length - SHARE_PRICE_HISTORY_MAX);
   }
 }
 
@@ -1152,9 +1153,6 @@ function recordRecentTrades(eq: Equity, trades: BookTrade[]): void {
   if (trades.length === 0) return;
   if (!eq.recentTrades) eq.recentTrades = [];
   eq.recentTrades.push(...trades);
-  if (eq.recentTrades.length > RECENT_TRADES_MAX) {
-    eq.recentTrades.splice(0, eq.recentTrades.length - RECENT_TRADES_MAX);
-  }
 }
 
 // Settle a single Trade's cash + position bookkeeping for the NON-PLAYER

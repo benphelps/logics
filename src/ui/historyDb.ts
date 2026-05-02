@@ -224,20 +224,21 @@ export function primeHighWater(gameId: string, tick: number): void {
   logHighWater.set(gameId, tick);
 }
 
-// Refill the in-memory rings on a freshly-loaded world. Reads up to the
-// runtime caps (matching SHARE_PRICE_HISTORY_MAX / RECENT_TRADES_MAX /
-// SHIP_LOG_MAX) from IndexedDB and assigns them onto each equity / trader
-// in place. Filters to tick <= world.tick so a save snapshot at tick T
-// never sees data from a later session that didn't get re-saved.
+// Refill the in-memory rings on a freshly-loaded world. By default loads
+// EVERYTHING available in IndexedDB for this gameId — the rings are also
+// the live chart/T&S/log buffers and have no cap themselves, so we want
+// the full history immediately on load. Tests and special cases can pass
+// explicit limits. Filters to tick <= world.tick so a save snapshot at
+// tick T never sees data from a later session that didn't get re-saved.
 export async function hydrateHistoryRings(
   world: World,
   opts?: { historyLimit?: number; tradesLimit?: number; logLimit?: number },
 ): Promise<void> {
   const gameId = world.gameId;
   if (!gameId) return;
-  const historyLimit = opts?.historyLimit ?? 150;
-  const tradesLimit = opts?.tradesLimit ?? 100;
-  const logLimit = opts?.logLimit ?? 60;
+  const historyLimit = opts?.historyLimit ?? Number.POSITIVE_INFINITY;
+  const tradesLimit = opts?.tradesLimit ?? Number.POSITIVE_INFINITY;
+  const logLimit = opts?.logLimit ?? Number.POSITIVE_INFINITY;
   const snapshotTick = world.tick;
 
   // Wait for any in-flight flush to settle before reading. Without this, a

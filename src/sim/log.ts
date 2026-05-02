@@ -2,20 +2,13 @@ import type { Job } from "./types";
 import type { ShipLogEntry, ShipLogTone, Trader, World } from "./types";
 import type { TraderEvent } from "./traders";
 
-export const SHIP_LOG_MAX = 60;
-
 export function pushShipLog(ship: Trader, entry: ShipLogEntry | null): void {
   if (!entry) return;
   // Lazily initialize so traders constructed inline by tests (or via older
   // serialized state) don't crash. Production fixtures all default to [].
   if (!ship.log) ship.log = [];
+  // Grows unbounded — log entries flush to IDB on save.
   ship.log.push(entry);
-  // Drop the oldest entries once the cap is exceeded — bounded memory across
-  // long sessions. We splice in place rather than reassigning so persisted
-  // references (UI snapshots) stay valid.
-  if (ship.log.length > SHIP_LOG_MAX) {
-    ship.log.splice(0, ship.log.length - SHIP_LOG_MAX);
-  }
 }
 
 // Convert a TraderEvent into a human-readable log entry. Returns null for

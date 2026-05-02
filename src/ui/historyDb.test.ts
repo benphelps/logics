@@ -322,7 +322,7 @@ describe("hydrateHistoryRings", () => {
     ]);
   });
 
-  it("respects the runtime caps (default 150/100/60)", async () => {
+  it("by default loads EVERYTHING from IDB (no in-memory cap)", async () => {
     const samples = Array.from({ length: 300 }, (_, i) => ({
       gameId: "g1", equityId: "eq1", tick: i, price: i,
     }));
@@ -333,9 +333,25 @@ describe("hydrateHistoryRings", () => {
 
     await hydrateHistoryRings(world);
 
-    expect(world.equities.eq1.history).toHaveLength(150);
-    expect(world.equities.eq1.history![0].tick).toBe(150);
-    expect(world.equities.eq1.history![149].tick).toBe(299);
+    expect(world.equities.eq1.history).toHaveLength(300);
+    expect(world.equities.eq1.history![0].tick).toBe(0);
+    expect(world.equities.eq1.history![299].tick).toBe(299);
+  });
+
+  it("explicit limits still work for callers that want a window", async () => {
+    const samples = Array.from({ length: 300 }, (_, i) => ({
+      gameId: "g1", equityId: "eq1", tick: i, price: i,
+    }));
+    await putHistory(samples);
+
+    const eq = mkEquity("eq1", []);
+    const world = mkWorld("g1", 299, [eq]);
+
+    await hydrateHistoryRings(world, { historyLimit: 50 });
+
+    expect(world.equities.eq1.history).toHaveLength(50);
+    expect(world.equities.eq1.history![0].tick).toBe(250);
+    expect(world.equities.eq1.history![49].tick).toBe(299);
   });
 
   it("waits for an in-flight flush before reading", async () => {
