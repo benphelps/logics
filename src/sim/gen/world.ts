@@ -48,6 +48,13 @@ const RADIAL_BIAS: Record<ArchetypeName, [number, number]> = {
 // (or push outward) until the constraint is satisfied.
 const SHIPYARD_MIN_SEPARATION = 4.5;
 
+// Minimum distance any clustered station has to keep from every prior
+// station — applied via rejection sampling in placeNearOutpost. Set as
+// a fraction of mapRadius so it scales with world size, and tuned so
+// the projected atlas always has visible space between station glyphs
+// (no overlap, room for docked-ship dots, room for lane endpoints).
+const CLUSTER_MIN_SEPARATION_FACTOR = 0.06;
+
 // Cluster offset by archetype, expressed as a fraction of mapRadius. Each
 // non-outpost station is placed at an isotropic offset from its parent
 // outpost drawn from this range — small for trade-hubs (orbit the seat),
@@ -176,16 +183,37 @@ function placeOutpost(
 // for trade-hubs, far for frontier-outposts — so every cluster ends up
 // with a layered structure: hub at the seat, mining/agri in the middle
 // ring, frontier on the cluster's rim.
+//
+// Rejection-samples until the candidate is at least
+// CLUSTER_MIN_SEPARATION_FACTOR × mapRadius away from every already-
+// placed station; falls back to the most-isolated candidate seen if
+// the constraint can't be hit within the budget. This is what stops
+// clusters from collapsing into illegible piles on the atlas.
 function placeNearOutpost(
   rng: Rng,
   archetype: ArchetypeName,
   mapRadius: number,
   parent: Position,
+  existing: Record<LocationId, LocationDef>,
 ): Position {
   const range = CLUSTER_OFFSET[archetype] ?? [0.10, 0.40];
-  const r = rangeFloat(rng, range[0], range[1]) * mapRadius;
-  const theta = rangeFloat(rng, 0, Math.PI * 2);
-  return { x: parent.x + Math.cos(theta) * r, y: parent.y + Math.sin(theta) * r };
+  const minSep = mapRadius * CLUSTER_MIN_SEPARATION_FACTOR;
+  const placed = Object.values(existing).map(l => l.position);
+  let best: { pos: Position; minDist: number } | null = null;
+  for (let attempt = 0; attempt < 32; attempt++) {
+    const r = rangeFloat(rng, range[0], range[1]) * mapRadius;
+    const theta = rangeFloat(rng, 0, Math.PI * 2);
+    const candidate = { x: parent.x + Math.cos(theta) * r, y: parent.y + Math.sin(theta) * r };
+    if (placed.length === 0) return candidate;
+    let minDist = Infinity;
+    for (const p of placed) {
+      const d = Math.hypot(candidate.x - p.x, candidate.y - p.y);
+      if (d < minDist) minDist = d;
+    }
+    if (minDist >= minSep) return candidate;
+    if (!best || minDist > best.minDist) best = { pos: candidate, minDist };
+  }
+  return best!.pos;
 }
 
 function routeModifier(a: LocationDef, b: LocationDef): number {
@@ -318,7 +346,7 @@ export function generateWorld(opts: GenerateWorldOptions): World {
       position = placeArchetype(rng, archetype, mapRadius, locations);
     } else {
       const parent = outpostSeeds[Math.floor(rng() * outpostSeeds.length)];
-      position = placeNearOutpost(rng, archetype, mapRadius, parent.position);
+      position = placeNearOutpost(rng, archetype, mapRadius, parent.position, locations);
     }
     const { name, id } = generateName(rng, archetype, usedIds);
     locations[id] = ARCHETYPE_BUILDERS[archetype]({ rng, id, name, position });
