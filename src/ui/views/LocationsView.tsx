@@ -435,24 +435,38 @@ function SectorMap({
     //   1) Filter to lanes within HIGHLIGHT_BAND perpendicular distance
     //      of the cursor — anything outside that band is too far away
     //      to be "near" the lane at all.
-    //   2) Among those, pick the SHORTEST lane regardless of midpoint
-    //      distance. Short local lanes routinely sit underneath long
-    //      transit lanes; making length the tiebreaker means a click
-    //      always reaches the local one when there's any candidate at
-    //      all. Same lane always wins for any hover point inside the
-    //      band, no flicker.
-    const px = vbox.x + ((e.clientX - rect.left) / rect.width) * vbox.w;
-    const py = vbox.y + ((e.clientY - rect.top) / rect.height) * vbox.h;
+    //   2) Among those, score = perpDistance + length * LENGTH_WEIGHT
+    //      and pick the smallest. Closeness to the cursor still leads,
+    //      but a shorter lane gets a small bias so it tends to win
+    //      against a near-equally-close longer one (which routinely
+    //      passes through clusters where short local lanes also exist).
+    //
+    // Coordinate conversion uses the SVG's screen-CTM rather than naive
+    // rect-relative math — preserveAspectRatio="xMidYMid meet" letter-
+    // boxes the viewBox inside the element, so the naive form was off
+    // by the band height/width whenever the element aspect didn't match.
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return;
+    const inv = ctm.inverse();
+    const pt = svg.createSVGPoint();
+    pt.x = e.clientX;
+    pt.y = e.clientY;
+    const local = pt.matrixTransform(inv);
+    const px = local.x;
+    const py = local.y;
     const HIGHLIGHT_BAND = vbox.w * 0.022; // ~22px screen-equiv at default zoom
+    const LENGTH_WEIGHT = 0.2;
     let bestKey: string | null = null;
-    let bestDist = Infinity;
+    let bestScore = Infinity;
     let bestLink: AtlasLink | null = null;
     for (const link of orderedLinks) {
       const a = projectedById.get(link.a);
       const b = projectedById.get(link.b);
       if (!a || !b) continue;
-      if (perpDistanceToSegment(px, py, a.x, a.y, b.x, b.y) >= HIGHLIGHT_BAND) continue;
-      if (link.dist < bestDist) { bestDist = link.dist; bestKey = laneKey(link.a, link.b); bestLink = link; }
+      const perp = perpDistanceToSegment(px, py, a.x, a.y, b.x, b.y);
+      if (perp >= HIGHLIGHT_BAND) continue;
+      const score = perp + link.dist * LENGTH_WEIGHT;
+      if (score < bestScore) { bestScore = score; bestKey = laneKey(link.a, link.b); bestLink = link; }
     }
     if (bestKey !== hoveredLane) {
       if (bestKey && bestLink) {
