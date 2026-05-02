@@ -26,6 +26,7 @@ import { useStore } from "../store";
 import { listMilestoneProgress, type MilestoneKey, type MilestoneProgress } from "../../sim/milestones";
 import { SYNDICATE_TRAITS } from "../../sim/data/syndicates";
 import { playerReputationWith } from "../../sim/control";
+import { useSyndicateInsigniaImageUrl } from "../syndicateInsigniaApi";
 import { headerArtUrl } from "../art";
 import "./ChartersView.css";
 
@@ -194,6 +195,7 @@ function SyndicateRepCard({ syndicate, isPlayer, reputation }: {
 }) {
   const trait = syndicate.traitId ? SYNDICATE_TRAITS[syndicate.traitId] : null;
   const accent = syndicate.accentHex ?? "#9bb6c8";
+  const insignia = useSyndicateInsigniaImageUrl(syndicate);
   // Effective reputation for the toll discount: the player's home
   // syndicate is implicitly 100% (toll never applies), even though
   // we don't store rep with own faction.
@@ -210,6 +212,14 @@ function SyndicateRepCard({ syndicate, isPlayer, reputation }: {
       style={{ "--syndicate-accent": accent } as CSSProperties}
     >
       <span className="syndicate-rep-card-swatch" aria-hidden="true" />
+      {insignia.imageUrl && (
+        <img
+          className="syndicate-rep-card-insignia"
+          src={insignia.imageUrl}
+          alt=""
+          aria-hidden="true"
+        />
+      )}
       <div className="syndicate-rep-card-content">
         <div className="syndicate-rep-card-head">
           <div className="syndicate-rep-card-titles">

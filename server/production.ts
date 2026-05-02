@@ -4,6 +4,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { extname, resolve, sep } from "node:path";
 import { handleHeadshotRequest } from "./headshots.js";
 import { handleShipArtRequest } from "./ship-art.js";
+import { handleSyndicateInsigniaRequest } from "./syndicate-insignia.js";
 
 const DIST_DIR = resolve(process.cwd(), process.env.LOGICS_DIST_DIR ?? "dist");
 const PORT = Number(process.env.PORT ?? 3000);
@@ -40,6 +41,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   try {
     if (await handleHeadshotRequest(req, res)) return;
     if (await handleShipArtRequest(req, res)) return;
+    if (await handleSyndicateInsigniaRequest(req, res)) return;
     await serveStatic(req, res);
   } catch (error) {
     if (res.headersSent) {

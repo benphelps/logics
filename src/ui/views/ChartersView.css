@@ -189,13 +189,34 @@
 }
 
 .syndicate-rep-card {
+  position: relative;
   display: flex;
   gap: 12px;
   padding: 12px 14px;
   background: var(--bg-1);
   border: 1px solid var(--border);
   border-radius: 5px;
+  overflow: hidden;
   transition: border-color 120ms ease, background 120ms ease;
+}
+
+/* Generated insignia art splashes. The image sits absolutely-positioned
+   on the right side of the card, faded into the card surface so the
+   reputation content stays readable on top. Hidden until generation
+   completes; the swatch + flat card carry the look until then. */
+.syndicate-rep-card-insignia {
+  position: absolute;
+  top: 50%;
+  right: -12%;
+  width: 50%;
+  max-width: 180px;
+  aspect-ratio: 1 / 1;
+  transform: translateY(-50%);
+  pointer-events: none;
+  opacity: 0.35;
+  filter: blur(0.4px);
+  -webkit-mask-image: radial-gradient(circle at 70% 50%, #000 35%, transparent 75%);
+  mask-image: radial-gradient(circle at 70% 50%, #000 35%, transparent 75%);
 }
 .syndicate-rep-card.is-player {
   border-color: var(--syndicate-accent, var(--accent));

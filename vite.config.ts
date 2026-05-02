@@ -3,10 +3,11 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { headshotDevServerPlugin } from "./server/headshots";
 import { shipArtDevServerPlugin } from "./server/ship-art";
+import { syndicateInsigniaDevServerPlugin } from "./server/syndicate-insignia";
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), headshotDevServerPlugin(), shipArtDevServerPlugin()],
+  plugins: [react(), headshotDevServerPlugin(), shipArtDevServerPlugin(), syndicateInsigniaDevServerPlugin()],
   build: {
     rollupOptions: {
       input: {
