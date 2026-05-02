@@ -431,22 +431,29 @@ function SectorMap({
       setVbox({ x: drag.vx - dx, y: drag.vy - dy, w: vbox.w, h: vbox.h });
       return;
     }
-    // Lane-hover detection: walk every visible lane and pick the one
-    // whose perpendicular distance to the cursor is smallest, within a
-    // small highlight band. Replaces per-line SVG hit-targets so
-    // overlapping lanes can't both light up — only the closest wins.
+    // Lane-hover detection. Two-step pick:
+    //   1) Filter to lanes within HIGHLIGHT_BAND perpendicular distance
+    //      of the cursor — anything outside that band is too far away
+    //      to be "near" the lane at all.
+    //   2) Among those, pick the lane whose midpoint is closest to the
+    //      cursor. So when several lanes overlap a hover point (junctions,
+    //      parallel runs), the one you're pointing nearest the centre of
+    //      wins, not whichever happens to scrape closest perpendicularly.
     const px = vbox.x + ((e.clientX - rect.left) / rect.width) * vbox.w;
     const py = vbox.y + ((e.clientY - rect.top) / rect.height) * vbox.h;
     const HIGHLIGHT_BAND = vbox.w * 0.014; // ~14px screen-equiv at default zoom
     let bestKey: string | null = null;
-    let bestDist = HIGHLIGHT_BAND;
+    let bestMidDist = Infinity;
     let bestLink: AtlasLink | null = null;
     for (const link of orderedLinks) {
       const a = projectedById.get(link.a);
       const b = projectedById.get(link.b);
       if (!a || !b) continue;
-      const d = perpDistanceToSegment(px, py, a.x, a.y, b.x, b.y);
-      if (d < bestDist) { bestDist = d; bestKey = laneKey(link.a, link.b); bestLink = link; }
+      if (perpDistanceToSegment(px, py, a.x, a.y, b.x, b.y) >= HIGHLIGHT_BAND) continue;
+      const cx = (a.x + b.x) / 2;
+      const cy = (a.y + b.y) / 2;
+      const midDist = Math.hypot(px - cx, py - cy);
+      if (midDist < bestMidDist) { bestMidDist = midDist; bestKey = laneKey(link.a, link.b); bestLink = link; }
     }
     if (bestKey !== hoveredLane) {
       if (bestKey && bestLink) {
