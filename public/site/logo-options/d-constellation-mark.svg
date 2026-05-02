@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Logics" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="12" fill="#070b0f"/>
+  <!-- faint background grid -->
+  <g stroke="#1f6fa8" stroke-width="0.6" opacity="0.25">
+    <path d="M8 20 L56 20 M8 32 L56 32 M8 44 L56 44"/>
+    <path d="M20 8 L20 56 M32 8 L32 56 M44 8 L44 56"/>
+  </g>
+  <!-- route edges connecting nodes (forms an L plus a branch) -->
+  <g stroke="#5bbdf5" stroke-width="2" stroke-linecap="round" fill="none">
+    <path d="M16 14 L16 36"/>
+    <path d="M16 36 L30 48"/>
+    <path d="M30 48 L50 48"/>
+  </g>
+  <!-- branch route (dashed - planned) -->
+  <path d="M16 36 L40 24 L50 18"
+        fill="none" stroke="#d7a04f" stroke-width="1.8"
+        stroke-linecap="round" stroke-dasharray="2 4"/>
+  <!-- station nodes -->
+  <g fill="#dce8f5" stroke="#070b0f" stroke-width="1.4">
+    <circle cx="16" cy="14" r="3.4"/>
+    <circle cx="16" cy="36" r="3.8"/>
+    <circle cx="30" cy="48" r="3.4"/>
+    <circle cx="50" cy="48" r="3.4"/>
+  </g>
+  <!-- planned-route nodes in amber -->
+  <g fill="#d7a04f" stroke="#070b0f" stroke-width="1.4">
+    <circle cx="40" cy="24" r="3"/>
+    <circle cx="50" cy="18" r="3"/>
+  </g>
+</svg>

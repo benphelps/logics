@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Logics" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="12" fill="#070b0f"/>
+  <!-- isometric stacked crates: bottom row 2, top row 1 -->
+  <!-- back-left crate (bottom) -->
+  <g>
+    <path d="M14 38 L26 32 L26 48 L14 54 Z" fill="#1f6fa8"/>
+    <path d="M26 32 L38 38 L38 54 L26 48 Z" fill="#274d6f"/>
+    <path d="M14 38 L26 32 L38 38 L26 44 Z" fill="#5bbdf5"/>
+    <!-- band -->
+    <path d="M16 41 L26 36 L36 41" fill="none" stroke="#dce8f5" stroke-width="1" opacity="0.7"/>
+  </g>
+  <!-- back-right crate (bottom) -->
+  <g>
+    <path d="M38 38 L50 32 L50 48 L38 54 Z" fill="#1f6fa8" opacity="0.92"/>
+    <path d="M50 32 L50 32" />
+    <path d="M38 38 L50 32 L50 38 L38 44 Z" fill="#5bbdf5" opacity="0.85"/>
+  </g>
+  <!-- top crate (the cargo with the value) -->
+  <g>
+    <path d="M20 26 L32 20 L32 36 L20 42 Z" fill="#b88638"/>
+    <path d="M32 20 L44 26 L44 42 L32 36 Z" fill="#8a6225"/>
+    <path d="M20 26 L32 20 L44 26 L32 32 Z" fill="#d7a04f"/>
+    <!-- chart icon stamped on the front face -->
+    <g stroke="#070b0f" stroke-width="1.2" stroke-linecap="round" fill="none">
+      <path d="M22 36 L25 32 L28 34 L31 28"/>
+    </g>
+  </g>
+</svg>

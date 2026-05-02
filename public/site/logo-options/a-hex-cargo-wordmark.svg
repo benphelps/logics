@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Logics" viewBox="0 0 190 48">
+  <!-- hex mark scaled -->
+  <g transform="translate(2 2)">
+    <rect width="44" height="44" rx="9" fill="#070b0f" stroke="#304052"/>
+    <path d="M22 7 L37.5 15.5 L37.5 30.5 L22 39 L6.5 30.5 L6.5 15.5 Z"
+          fill="#0f1419" stroke="#5bbdf5" stroke-width="1.8" stroke-linejoin="round"/>
+    <path d="M9 19.5 L35 19.5" stroke="#1f6fa8" stroke-width="1.2" stroke-linecap="round"/>
+    <path d="M9 26.5 L35 26.5" stroke="#1f6fa8" stroke-width="1.2" stroke-linecap="round"/>
+    <path d="M5 33 L15 26.5 L23 29 L31 18 L40 13"
+          fill="none" stroke="#d7a04f" stroke-width="1.9"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="56" y="31"
+        fill="#edf6ff"
+        font-family="-apple-system, BlinkMacSystemFont, Segoe UI, system-ui, sans-serif"
+        font-size="22" font-weight="800" letter-spacing="2.4">LOGICS</text>
+  <path d="M57 39h75" stroke="#5bbdf5" stroke-width="2" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Logics" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="12" fill="#070b0f"/>
+  <!-- hex container -->
+  <path d="M32 8 L53.5 20 L53.5 44 L32 56 L10.5 44 L10.5 20 Z"
+        fill="#0f1419" stroke="#5bbdf5" stroke-width="2.2" stroke-linejoin="round"/>
+  <!-- cargo banding -->
+  <path d="M14 26 L50 26" stroke="#1f6fa8" stroke-width="1.6" stroke-linecap="round"/>
+  <path d="M14 38 L50 38" stroke="#1f6fa8" stroke-width="1.6" stroke-linecap="round"/>
+  <!-- center seam -->
+  <path d="M32 8 L32 56" stroke="#1f6fa8" stroke-width="1.4" stroke-linecap="round" opacity="0.7"/>
+  <!-- trend line piercing through -->
+  <path d="M8 48 L22 38 L34 42 L46 26 L58 18"
+        fill="none" stroke="#d7a04f" stroke-width="2.6"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- arrow head -->
+  <path d="M58 18 L51 17.2 M58 18 L57.2 25" stroke="#d7a04f" stroke-width="2.6" stroke-linecap="round"/>
+  <!-- data dots -->
+  <circle cx="22" cy="38" r="2" fill="#dce8f5"/>
+  <circle cx="34" cy="42" r="2" fill="#dce8f5"/>
+  <circle cx="46" cy="26" r="2" fill="#dce8f5"/>
+</svg>

@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Logics — Logo Options</title>
+    <style>
+      :root {
+        --bg: #070b0f;
+        --panel: #14191f;
+        --panel-soft: #0f1419;
+        --line: rgba(219, 235, 255, 0.12);
+        --text: #d7e2ee;
+        --dim: #8996a6;
+        --cyan: #5bbdf5;
+        --amber: #d7a04f;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        font-size: 14px;
+        line-height: 1.5;
+      }
+      body {
+        background:
+          linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255,255,255,0.014) 1px, transparent 1px),
+          var(--bg);
+        background-size: 40px 40px;
+      }
+      .wrap {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 48px 24px 96px;
+      }
+      header {
+        margin-bottom: 32px;
+      }
+      h1 {
+        font-size: 28px;
+        margin: 0 0 6px;
+        letter-spacing: 0.02em;
+      }
+      .lede {
+        color: var(--dim);
+        max-width: 680px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 20px;
+      }
+      .option {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--panel);
+        overflow: hidden;
+      }
+      .option-head {
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+      .option-head h2 {
+        margin: 0;
+        font-size: 16px;
+        letter-spacing: 0.02em;
+      }
+      .option-head .tag {
+        color: var(--cyan);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+      }
+      .option-head p {
+        margin: 4px 0 0;
+        color: var(--dim);
+        font-size: 13px;
+      }
+      .panes {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 0;
+      }
+      .pane {
+        padding: 22px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        min-height: 180px;
+        border-right: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+      }
+      .pane:last-child { border-right: none; }
+      .pane.dark { background: var(--panel-soft); }
+      .pane.darker { background: #06080b; }
+      .pane.light { background: #edf2f7; color: #0a0f14; }
+      .pane.brand-bg {
+        background:
+          radial-gradient(circle at 20% 30%, rgba(91, 189, 245, 0.18), transparent 50%),
+          radial-gradient(circle at 80% 70%, rgba(215, 160, 79, 0.14), transparent 50%),
+          var(--panel-soft);
+      }
+      .pane .label {
+        font-size: 11px;
+        letter-spacing: 0.16em;
+        color: var(--dim);
+        text-transform: uppercase;
+      }
+      .pane.light .label { color: #5a6470; }
+      .mark-xl { width: 96px; height: 96px; }
+      .mark-md { width: 48px; height: 48px; }
+      .mark-sm { width: 24px; height: 24px; }
+      .wordmark { width: 240px; height: auto; }
+      .wordmark-sm { width: 160px; height: auto; }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+      .current-bar {
+        margin-bottom: 28px;
+        padding: 16px 20px;
+        border: 1px dashed var(--line);
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+      .current-bar .label {
+        font-size: 11px;
+        letter-spacing: 0.16em;
+        color: var(--dim);
+        text-transform: uppercase;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <h1>Logics — logo options</h1>
+        <p class="lede">
+          Five new directions, each with a 64×64 mark and a 190×48 wordmark.
+          Drop-in compatible with the existing <code>logics-mark.svg</code> and
+          <code>logics-wordmark.svg</code> in <code>/public/site</code>.
+        </p>
+      </header>
+
+      <div class="current-bar">
+        <span class="label">Current</span>
+        <img class="mark-md" src="/site/logics-mark.svg" alt="current mark" />
+        <img class="wordmark-sm" src="/site/logics-wordmark.svg" alt="current wordmark" />
+      </div>
+
+      <div class="grid">
+
+        <section class="option">
+          <div class="option-head">
+            <div>
+              <span class="tag">CONCEPT A</span>
+              <h2>Hex Cargo</h2>
+              <p>A hex container — the universal cargo unit — pierced by a market trendline. Logistics + markets in one shape.</p>
+            </div>
+          </div>
+          <div class="panes">
+            <div class="pane brand-bg">
+              <span class="label">Mark · 96px</span>
+              <img class="mark-xl" src="a-hex-cargo-mark.svg" alt="" />
+            </div>
+            <div class="pane dark">
+              <span class="label">Mark · 48 / 24</span>
+              <div class="row">
+                <img class="mark-md" src="a-hex-cargo-mark.svg" alt="" />
+                <img class="mark-sm" src="a-hex-cargo-mark.svg" alt="" />
+              </div>
+            </div>
+            <div class="pane darker">
+              <span class="label">Wordmark</span>
+              <img class="wordmark" src="a-hex-cargo-wordmark.svg" alt="" />
+            </div>
+            <div class="pane light">
+              <span class="label">On light</span>
+              <img class="mark-md" src="a-hex-cargo-mark.svg" alt="" />
+            </div>
+          </div>
+        </section>
+
+        <section class="option">
+          <div class="option-head">
+            <div>
+              <span class="tag">CONCEPT B</span>
+              <h2>Orbital L</h2>
+              <p>A ringed station anchors the corner of an "L" route. Solid leg = completed run, dashed leg = the next one. Direct nod to the core game loop.</p>
+            </div>
+          </div>
+          <div class="panes">
+            <div class="pane brand-bg">
+              <span class="label">Mark · 96px</span>
+              <img class="mark-xl" src="b-orbital-l-mark.svg" alt="" />
+            </div>
+            <div class="pane dark">
+              <span class="label">Mark · 48 / 24</span>
+              <div class="row">
+                <img class="mark-md" src="b-orbital-l-mark.svg" alt="" />
+                <img class="mark-sm" src="b-orbital-l-mark.svg" alt="" />
+              </div>
+            </div>
+            <div class="pane darker">
+              <span class="label">Wordmark</span>
+              <img class="wordmark" src="b-orbital-l-wordmark.svg" alt="" />
+            </div>
+            <div class="pane light">
+              <span class="label">On light</span>
+              <img class="mark-md" src="b-orbital-l-mark.svg" alt="" />
+            </div>
+          </div>
+        </section>
+
+        <section class="option">
+          <div class="option-head">
+            <div>
+              <span class="tag">CONCEPT C</span>
+              <h2>Bull Run</h2>
+              <p>A bullish chevron that doubles as a ship hull leaving an exhaust trail. Reads as "trader" first, "spaceship" second. Confident and punchy at small sizes.</p>
+            </div>
+          </div>
+          <div class="panes">
+            <div class="pane brand-bg">
+              <span class="label">Mark · 96px</span>
+              <img class="mark-xl" src="c-bull-run-mark.svg" alt="" />
+            </div>
+            <div class="pane dark">
+              <span class="label">Mark · 48 / 24</span>
+              <div class="row">
+                <img class="mark-md" src="c-bull-run-mark.svg" alt="" />
+                <img class="mark-sm" src="c-bull-run-mark.svg" alt="" />
+              </div>
+            </div>
+            <div class="pane darker">
+              <span class="label">Wordmark</span>
+              <img class="wordmark" src="c-bull-run-wordmark.svg" alt="" />
+            </div>
+            <div class="pane light">
+              <span class="label">On light</span>
+              <img class="mark-md" src="c-bull-run-mark.svg" alt="" />
+            </div>
+          </div>
+        </section>
+
+        <section class="option">
+          <div class="option-head">
+            <div>
+              <span class="tag">CONCEPT D</span>
+              <h2>Route Constellation</h2>
+              <p>Stations as nodes, routes as edges. Solid edges are flown, the dashed amber branch is the next opportunity. Feels like an Atlas screenshot.</p>
+            </div>
+          </div>
+          <div class="panes">
+            <div class="pane brand-bg">
+              <span class="label">Mark · 96px</span>
+              <img class="mark-xl" src="d-constellation-mark.svg" alt="" />
+            </div>
+            <div class="pane dark">
+              <span class="label">Mark · 48 / 24</span>
+              <div class="row">
+                <img class="mark-md" src="d-constellation-mark.svg" alt="" />
+                <img class="mark-sm" src="d-constellation-mark.svg" alt="" />
+              </div>
+            </div>
+            <div class="pane darker">
+              <span class="label">Wordmark</span>
+              <img class="wordmark" src="d-constellation-wordmark.svg" alt="" />
+            </div>
+            <div class="pane light">
+              <span class="label">On light</span>
+              <img class="mark-md" src="d-constellation-mark.svg" alt="" />
+            </div>
+          </div>
+        </section>
+
+        <section class="option">
+          <div class="option-head">
+            <div>
+              <span class="tag">CONCEPT E</span>
+              <h2>Stacked Crates</h2>
+              <p>Three isometric cargo crates with a small chart stamped on the top one. Tactile and warm — leans into the cargo / spreadsheet / clicker side of the game.</p>
+            </div>
+          </div>
+          <div class="panes">
+            <div class="pane brand-bg">
+              <span class="label">Mark · 96px</span>
+              <img class="mark-xl" src="e-stacked-crates-mark.svg" alt="" />
+            </div>
+            <div class="pane dark">
+              <span class="label">Mark · 48 / 24</span>
+              <div class="row">
+                <img class="mark-md" src="e-stacked-crates-mark.svg" alt="" />
+                <img class="mark-sm" src="e-stacked-crates-mark.svg" alt="" />
+              </div>
+            </div>
+            <div class="pane darker">
+              <span class="label">Wordmark</span>
+              <img class="wordmark" src="e-stacked-crates-wordmark.svg" alt="" />
+            </div>
+            <div class="pane light">
+              <span class="label">On light</span>
+              <img class="mark-md" src="e-stacked-crates-mark.svg" alt="" />
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </div>
+  </body>
+</html>

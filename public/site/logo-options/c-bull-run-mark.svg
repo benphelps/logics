@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Logics" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="12" fill="#070b0f"/>
+  <!-- exhaust trail dots, dimmer the further back -->
+  <circle cx="10" cy="50" r="1.6" fill="#1f6fa8" opacity="0.45"/>
+  <circle cx="16" cy="46" r="2.0" fill="#1f6fa8" opacity="0.7"/>
+  <circle cx="22" cy="42" r="2.4" fill="#5bbdf5"/>
+  <!-- thick bullish chevron / ship hull pointing up-right -->
+  <path d="M16 44 L36 24 L36 34 L52 18 L52 30 L36 46 L36 36 Z"
+        fill="#dce8f5" stroke="#5bbdf5" stroke-width="1.4" stroke-linejoin="round"/>
+  <!-- amber accent on the tip (cargo highlight) -->
+  <path d="M50 18 L52 18 L52 22 Z" fill="#d7a04f"/>
+  <!-- baseline ticks -->
+  <path d="M10 56 L54 56" stroke="#1f6fa8" stroke-width="1.4" stroke-linecap="round" opacity="0.6"/>
+  <path d="M14 54 L14 58 M24 54 L24 58 M34 54 L34 58 M44 54 L44 58 M54 54 L54 58"
+        stroke="#1f6fa8" stroke-width="1.2" stroke-linecap="round" opacity="0.6"/>
+</svg>

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Logics" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="12" fill="#070b0f"/>
+  <!-- station: ringed planet/hub at the L corner -->
+  <circle cx="20" cy="44" r="9" fill="#0f1419" stroke="#5bbdf5" stroke-width="2.4"/>
+  <ellipse cx="20" cy="44" rx="14" ry="3.4"
+           fill="none" stroke="#1f6fa8" stroke-width="1.6"
+           transform="rotate(-22 20 44)"/>
+  <!-- L vertical riser: dashed route up from station -->
+  <path d="M20 35 L20 12"
+        fill="none" stroke="#5bbdf5" stroke-width="2.4"
+        stroke-linecap="round" stroke-dasharray="3 5"/>
+  <!-- L horizontal: solid completed route -->
+  <path d="M20 44 L52 44"
+        fill="none" stroke="#dce8f5" stroke-width="3"
+        stroke-linecap="round"/>
+  <!-- destination station + arrival pulse -->
+  <circle cx="52" cy="44" r="3.6" fill="#d7a04f"/>
+  <circle cx="52" cy="44" r="6.6" fill="none" stroke="#d7a04f" stroke-width="1.2" opacity="0.6"/>
+  <!-- ship dot heading up the dashed route -->
+  <path d="M16 18 L24 18 L20 10 Z" fill="#d7a04f"/>
+</svg>
