@@ -23,6 +23,8 @@ import { DOCKING_FEE_PER_CAPACITY, MAINTENANCE_PER_CAPACITY, SALES_TAX_RATE } fr
 import { marketQuote } from "../../sim/pricing";
 import { cargoMass as cargoMassFn, findCargoLot, groupCargoByGood, type CargoGroup } from "../../sim/cargo";
 import { listLocalJobs } from "../../sim/jobs";
+import { ControlShareBar } from "../components/ControlShareBar";
+import "./LocationsView.css"; // for .atlas-control-bar styles, used by ControlShareBar
 import { effectivePerDistance, hasCrew, ignoresFuel, totalCrewWage, travelTicksFor } from "../../sim/crew";
 import { MAINTENANCE_DEBT_TRAVEL_BLOCK } from "../../sim/crew";
 import { listHiresAt } from "../../sim/hires";
@@ -981,6 +983,8 @@ function StationTradeHelperInfoContent({ loc, world }: { loc: LocationDef; world
     .sort((a, b) => b.ratePerTick - a.ratePerTick)
     .slice(0, 5);
 
+  const factionId = loc.traits.faction;
+  const factionSyndicate = factionId ? world.syndicates[factionId] : null;
   return (
     <InfoPanelFrame
       eyebrow="Station info"
@@ -989,13 +993,22 @@ function StationTradeHelperInfoContent({ loc, world }: { loc: LocationDef; world
       metaClassName="station-info-tags"
       meta={(
         <>
-          {loc.traits.faction && <span>{loc.traits.faction}</span>}
+          {factionSyndicate && (
+            <span
+              className="station-info-faction-tag"
+              style={factionSyndicate.accentHex ? { borderColor: factionSyndicate.accentHex, color: factionSyndicate.accentHex } as CSSProperties : undefined}
+              title={`Controlled by ${factionSyndicate.name}`}
+            >
+              {factionSyndicate.name}
+            </span>
+          )}
           {subtype && <span>{stationSubtypeLabel(subtype)}</span>}
           <span>{stationScaleLabel(scale)}</span>
           {loc.traits.tags.map(t => <span key={t}>{t}</span>)}
         </>
       )}
     >
+      <ControlShareBar world={world} locId={loc.id} />
       <dl className="trade-helper-grid station-info-grid">
         <Stat label="tech" value={`L${loc.traits.techLevel}`} />
         <Stat label="population" value={population} />

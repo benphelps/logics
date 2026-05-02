@@ -3097,6 +3097,22 @@ button.upgrade-remove-pill {
   margin-top: -4px;
 }
 
+/* Syndicate ownership chip in the station-info meta row. Keys off the
+   syndicate's accent (set inline via borderColor + color) so the tag
+   reads as the controlling faction's brand mark. */
+.station-info-faction-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: rgba(255, 255, 255, 0.02);
+}
+
 .trade-helper-stock {
   margin-top: 14px;
 }

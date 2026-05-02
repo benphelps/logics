@@ -6,7 +6,7 @@ import { findRoutePath, pathDistance, reachableNeighbors, routeDistance, routeSe
 import type { Equity, LocationDef, LocationId, ShipBlueprint, SyndicateId, Trader, TraderId, World } from "../../sim/types";
 import { buildControlBoundaries, type ControlSource } from "./controlField";
 import type { AtlasMapTab } from "../viewTabs";
-import { FLIP_HOLD_TICKS } from "../../sim/control";
+import { ControlShareBar } from "../components/ControlShareBar";
 import { listHiresAt } from "../../sim/hires";
 import { listShipyardInventory } from "../../sim/shipyards";
 import { useBlueprintArtImageUrl } from "../shipArtApi";
@@ -432,17 +432,12 @@ function SectorMap({
       setVbox({ x: drag.vx - dx, y: drag.vy - dy, w: vbox.w, h: vbox.h });
       return;
     }
-    // Lane-hover detection. Two-step pick:
-    //   1) Filter to lanes within HIGHLIGHT_BAND perpendicular distance
-    //      of the cursor — anything outside that band is too far away
-    //      to be "near" the lane at all.
-    //   2) Among those, score = perpDistance + length * LENGTH_WEIGHT
-    //      and pick the smallest. Closeness to the cursor still leads,
-    //      but a shorter lane gets a small bias so it tends to win
-    //      against a near-equally-close longer one (which routinely
-    //      passes through clusters where short local lanes also exist).
+    // Hover detection. Stations always win over lanes — if the cursor
+    // is within STATION_HIT_RADIUS of any station glyph, that station
+    // is hovered and lane detection short-circuits. Otherwise lanes
+    // fall through to the perpendicular-band test.
     //
-    // Coordinate conversion uses the SVG's screen-CTM rather than naive
+    // Coordinate conversion uses the SVG's screen-CTM rather than
     // rect-relative math — preserveAspectRatio="xMidYMid meet" letter-
     // boxes the viewBox inside the element, so the naive form was off
     // by the band height/width whenever the element aspect didn't match.
@@ -455,6 +450,40 @@ function SectorMap({
     const local = pt.matrixTransform(inv);
     const px = local.x;
     const py = local.y;
+
+    // 1) Station hover — generous radius so stations grab the cursor
+    //    well before lanes do. Closest-by-distance wins among candidates.
+    const STATION_HIT_RADIUS = vbox.w * 0.034; // ~34px screen-equiv at default zoom
+    const STATION_HIT_RADIUS_SQ = STATION_HIT_RADIUS * STATION_HIT_RADIUS;
+    let bestStation: ProjectedLocation | null = null;
+    let bestStationDistSq = STATION_HIT_RADIUS_SQ;
+    for (const p of projected) {
+      const dx = p.x - px;
+      const dy = p.y - py;
+      const distSq = dx * dx + dy * dy;
+      if (distSq < bestStationDistSq) {
+        bestStationDistSq = distSq;
+        bestStation = p;
+      }
+    }
+    if (bestStation) {
+      if (!hoveredStation || hoveredStation.loc.id !== bestStation.loc.id) {
+        setHoveredStation(bestStation);
+        showTip(buildStationTip(world, bestStation));
+      }
+      if (hoveredLane) setHoveredLane(null);
+      return;
+    }
+    if (hoveredStation) {
+      setHoveredStation(null);
+      setHover(null);
+    }
+
+    // 2) Lane hover — score = perpDistance + length * LENGTH_WEIGHT.
+    //    Closeness to the cursor still leads, but a shorter lane gets
+    //    a small bias so it tends to win against a near-equally-close
+    //    longer one (which routinely passes through clusters where
+    //    short local lanes also exist).
     const HIGHLIGHT_BAND = vbox.w * 0.022; // ~22px screen-equiv at default zoom
     const LENGTH_WEIGHT = 0.2;
     let bestKey: string | null = null;
@@ -907,82 +936,6 @@ function factionLabel(world: World, factionId: string | undefined): string {
   return world.syndicates[factionId]?.name ?? factionId;
 }
 
-// Per-syndicate control breakdown for the detail panel. Two modes:
-//
-//   1) Active challenge — when world.controlChallenge[locId] exists,
-//      the station is in the middle of a transfer-battle. Renders a
-//      head-to-head split between the current owner and the rival who
-//      just took the lead. Width tracks ticksHeld / FLIP_HOLD_TICKS,
-//      with a mild pow(0.7) amplification so early ticks read as
-//      visible movement instead of an invisible 1/30 sliver.
-//
-//   2) Stable — render the full multi-syndicate breakdown as a single
-//      horizontal bar. Hidden when only the dominant faction has any
-//      meaningful presence; the faction tag already conveys that.
-function ControlShareBar({ world, locId }: { world: World; locId: LocationId }) {
-  const ctrl = world.control?.[locId];
-  if (!ctrl) return null;
-  const challenge = world.controlChallenge?.[locId];
-  if (challenge) {
-    const ownerId = world.locations[locId]?.traits.faction;
-    if (!ownerId) return null;
-    const owner = world.syndicates[ownerId];
-    const challenger = world.syndicates[challenge.syndicateId];
-    if (!owner || !challenger || owner.id === challenger.id) return null;
-    const raw = Math.min(1, Math.max(0, challenge.ticksHeld / FLIP_HOLD_TICKS));
-    // Amplify so 1/30 reads as ~13% of the bar instead of ~3%.
-    const visual = Math.pow(raw, 0.7);
-    const ownerWidth = Math.max(0.04, 1 - visual);
-    const challengerWidth = Math.max(0.04, visual);
-    const ownerAccent = owner.accentHex ?? "#9bb6c8";
-    const challengerAccent = challenger.accentHex ?? "#9bb6c8";
-    return (
-      <div
-        className="atlas-control-bar contested"
-        role="img"
-        aria-label={`Contested: ${challenger.name} ${challenge.ticksHeld}/${FLIP_HOLD_TICKS} ticks`}
-        title={`${owner.name} defending vs ${challenger.name} — ${challenge.ticksHeld}/${FLIP_HOLD_TICKS}`}
-      >
-        <div
-          className="atlas-control-bar-segment owner"
-          style={{ flexGrow: ownerWidth, backgroundColor: ownerAccent } as CSSProperties}
-        >
-          <span className="atlas-control-bar-label">{owner.name}</span>
-        </div>
-        <div
-          className="atlas-control-bar-segment challenger"
-          style={{ flexGrow: challengerWidth, backgroundColor: challengerAccent } as CSSProperties}
-        >
-          <span className="atlas-control-bar-label">{challenge.ticksHeld}/{FLIP_HOLD_TICKS}</span>
-        </div>
-      </div>
-    );
-  }
-  const entries = Object.entries(ctrl)
-    .filter(([, share]) => share >= 0.02)
-    .sort((a, b) => b[1] - a[1]);
-  if (entries.length < 2) return null;
-  return (
-    <div className="atlas-control-bar" role="img" aria-label="Syndicate control breakdown">
-      {entries.map(([syndId, share], i) => {
-        const synd = world.syndicates[syndId];
-        const accent = synd?.accentHex ?? "#9bb6c8";
-        const pct = Math.round(share * 100);
-        const showLabel = i < 2;
-        return (
-          <div
-            key={syndId}
-            className="atlas-control-bar-segment"
-            style={{ flexGrow: share, backgroundColor: accent } as CSSProperties}
-            title={`${synd?.name ?? syndId} ${pct}%`}
-          >
-            {showLabel && <span className="atlas-control-bar-label">{pct}%</span>}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 // --- memoized SVG layers -------------------------------------------------
 // The three layers below are wrapped in React.memo so a state change

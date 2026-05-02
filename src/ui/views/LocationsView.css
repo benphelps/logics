@@ -2033,14 +2033,16 @@
   flex-shrink: 1;
   flex-basis: 0;
   /* Segment width = flex-grow (set inline to share). Segments share
-     the bar proportionally; tiny slivers shrink rather than overflow. */
+     the bar proportionally; tiny slivers shrink rather than overflow.
+     Brightness drop on the accent makes white labels readable. */
+  filter: brightness(0.62) saturate(0.85);
   overflow: hidden;
   white-space: nowrap;
   transition: filter 120ms ease;
 }
 
 .atlas-control-bar-segment:hover {
-  filter: brightness(1.15);
+  filter: brightness(0.78) saturate(0.95);
 }
 
 /* Contested battle bar — owner vs challenger split. Slightly taller
@@ -2061,11 +2063,11 @@
   font-weight: 700;
   letter-spacing: 0.04em;
   font-variant-numeric: tabular-nums;
-  /* Dark text on the pastel accent fills — readable across all the
-     syndicate accents without per-color luminance branching. The light
-     shadow lifts the glyphs off the segment a touch. */
-  color: rgba(0, 0, 0, 0.78);
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.22);
+  /* Bright white labels with a soft drop shadow — segments are
+     darkened enough by the brightness filter that pure white reads
+     cleanly across all syndicate palettes. */
+  color: #fff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
 }
 
 .atlas-stat-grid {
