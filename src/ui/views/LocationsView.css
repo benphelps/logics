@@ -3,12 +3,27 @@
   --atlas-surface-soft: #101419;
   --atlas-surface-raised: #1b2026;
   --atlas-line: rgba(255, 255, 255, 0.08);
+  /* Kind palette matches the table dots below the map, so the map and
+     the legend/sheet read in the same colour vocabulary. */
   --atlas-hub: #76c7ff;
   --atlas-mining: #e5b86b;
   --atlas-agri: #7bcf98;
   --atlas-frontier: #d58bdc;
   --atlas-research: #8fa8ff;
   --atlas-shipyard: #d4d8df;
+  /* Map-area palette: matches the parent panel surface so the map
+     reads as part of the panel rather than a darker inset. The bg
+     colour is also used as the halo behind stations, ships, and
+     lane outlines so no two drawn elements visually touch each
+     other. */
+  --atlas-bg: var(--atlas-surface);
+  --atlas-bg-soft: #131820;
+  --atlas-ink: rgba(218, 230, 250, 0.88);
+  --atlas-ink-soft: rgba(218, 230, 250, 0.42);
+  --atlas-ink-fine: rgba(218, 230, 250, 0.14);
+  --atlas-ink-hairline: rgba(218, 230, 250, 0.06);
+  --atlas-player: #ffd47a;
+  --atlas-bg-rgb: 13 17 22;
   /* Alias the ship-* tokens that .bridge-tab and .trade-helper-section
      reference so their hover/active states (background: var(
      --ship-surface-raised)) actually paint a visible shade inside the
@@ -923,7 +938,7 @@
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  background: var(--atlas-surface-soft);
+  background: var(--atlas-bg);
   cursor: grab;
   user-select: none;
 }
@@ -934,64 +949,137 @@
 
 .atlas-map {
   display: block;
-  width: 100%;
-  flex: 1;
-  min-height: 0;
   background: transparent;
   touch-action: none;
 }
 
-.atlas-map-bg {
-  fill: #0d1116;
-}
-
-/* Starfield — small SVG circles seeded deterministically across a
-   3x-MAP area so panning never reveals an empty edge. Kept dim so the
-   data layer (nodes + lanes) reads first. */
-.atlas-stars circle {
-  fill: rgba(218, 230, 255, 0.32);
-}
-
-.atlas-stars circle.dim {
-  fill: rgba(218, 230, 255, 0.14);
-}
-
-.atlas-gridlines line {
-  stroke: rgba(255, 255, 255, 0.022);
-  stroke-width: 1;
-  vector-effect: non-scaling-stroke;
-}
-
-.atlas-links line,
-.atlas-link {
-  stroke: rgba(130, 164, 190, 0.20);
-  stroke-width: 1.2;
-  vector-effect: non-scaling-stroke;
-  transition: stroke 120ms ease, stroke-width 120ms ease;
-}
-
-.atlas-link.traffic {
-  stroke: rgba(151, 193, 151, 0.55);
-  stroke-width: 1.6;
-}
-
-.atlas-link.long {
-  stroke-dasharray: 4 5;
-}
-
-.atlas-link:hover,
-.atlas-link.hovered {
-  stroke: rgba(220, 235, 250, 0.78);
-  stroke-width: 2;
-}
-
-.atlas-lane-arrow {
-  fill: rgba(151, 193, 151, 0.55);
-  stroke: rgba(15, 19, 23, 0.6);
-  stroke-width: 0.5;
-  vector-effect: non-scaling-stroke;
+/* Grid SVG sits behind the data SVG and is NOT masked, so the
+   gridlines stay full-strength right to the edges of the map. */
+.atlas-map-grid {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
 }
+
+/* Data SVG (lanes, ships, stations, hover overlays) is the
+   interactive layer and gets the vignette so its content fades
+   softly into the panel surface at the edges. Two linear gradient
+   masks (one per axis) are combined with `intersect` so the corners
+   fade twice and round naturally. */
+.atlas-map-data {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  -webkit-mask-image:
+    linear-gradient(to right, transparent, #000 75px, #000 calc(100% - 75px), transparent),
+    linear-gradient(to bottom, transparent, #000 75px, #000 calc(100% - 75px), transparent);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(to right, transparent, #000 75px, #000 calc(100% - 75px), transparent),
+    linear-gradient(to bottom, transparent, #000 75px, #000 calc(100% - 75px), transparent);
+  mask-composite: intersect;
+}
+
+.atlas-map-bg {
+  fill: var(--atlas-bg);
+}
+
+/* Subtle slate grid: minor lines on every 10th, major lines on the
+   quarter axes. Both very low contrast so the data layer dominates. */
+.atlas-gridline-minor {
+  stroke: var(--atlas-ink-hairline);
+  stroke-width: 0.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.atlas-gridline-major {
+  stroke: var(--atlas-ink-fine);
+  stroke-width: 0.8;
+  vector-effect: non-scaling-stroke;
+}
+
+.atlas-map-frame {
+  fill: none;
+  stroke: var(--atlas-ink-fine);
+  stroke-width: 1.4;
+  vector-effect: non-scaling-stroke;
+}
+
+/* Lanes — two passes per lane, render order driven by length so
+   shorter lanes bridge over longer ones at intersections. The outline
+   uses the map background colour so it visually erases everything
+   underneath at the crossing; the inner stroke is what survives. */
+.atlas-lane {
+  --lane-traffic-intensity: 0;
+}
+
+.atlas-lane-outline {
+  stroke: var(--atlas-bg);
+  stroke-width: 5;
+  vector-effect: non-scaling-stroke;
+}
+
+.atlas-lane-inner {
+  stroke: var(--atlas-ink);
+  stroke-opacity: 0.42;
+  stroke-width: 1.0;
+  vector-effect: non-scaling-stroke;
+  transition: stroke-opacity 120ms ease, stroke-width 120ms ease;
+}
+
+.atlas-lane.traffic .atlas-lane-inner {
+  stroke-opacity: calc(0.45 + var(--lane-traffic-intensity) * 0.45);
+  stroke-width: 1.3;
+}
+
+/* Invisible thicker hit-target so the 1px stroke is comfortable
+   to hover. `pointer-events: stroke` keeps the transparent stroke
+   eligible to catch events — the default visiblePainted skips it. */
+.atlas-lane-hit {
+  stroke: transparent;
+  stroke-width: 10;
+  vector-effect: non-scaling-stroke;
+  cursor: pointer;
+  pointer-events: stroke;
+  fill: none;
+}
+
+.atlas-lane.hovered .atlas-lane-inner {
+  stroke: var(--atlas-hub);
+  stroke-opacity: 0.95;
+  stroke-width: 1.8;
+}
+
+/* Crosshair: fine dashed lines from the hovered station spanning the
+   visible viewport, with the world coordinates shown at the top and
+   left edges. Player-station hovers swap the colour for the gold
+   "you are here" tone. */
+.atlas-crosshair-line {
+  stroke: var(--atlas-hub);
+  stroke-opacity: 0.62;
+  stroke-width: 0.9;
+  stroke-dasharray: 5 4;
+  vector-effect: non-scaling-stroke;
+}
+
+.atlas-crosshair.player .atlas-crosshair-line {
+  stroke: var(--atlas-player);
+  stroke-opacity: 0.85;
+}
+
+/* Crosshair coord readouts use the TextBadge wrapper. Border weight
+   matches the crosshair line stroke (0.9px) so the badge reads as
+   the line wrapping around the readout. */
+.atlas-text-badge.atlas-crosshair-coord .atlas-text-badge-label { fill: var(--atlas-hub); }
+.atlas-text-badge.atlas-crosshair-coord .atlas-text-badge-bg {
+  stroke: var(--atlas-hub);
+  stroke-width: 0.9;
+}
+.atlas-crosshair.player .atlas-text-badge.atlas-crosshair-coord .atlas-text-badge-label { fill: var(--atlas-player); }
+.atlas-crosshair.player .atlas-text-badge.atlas-crosshair-coord .atlas-text-badge-bg { stroke: var(--atlas-player); }
 
 /* Route preview — drawn over the regular lanes when the user hovers
    the Travel-here CTA. Highlights the segments of the plotted path
@@ -1002,10 +1090,10 @@
 }
 
 .atlas-preview-link {
-  stroke: rgba(118, 199, 255, 0.95);
-  stroke-width: 2.4;
+  stroke: var(--atlas-hub);
+  stroke-opacity: 0.95;
+  stroke-width: 2.2;
   vector-effect: non-scaling-stroke;
-  filter: drop-shadow(0 0 4px rgba(118, 199, 255, 0.55));
   animation: atlas-preview-dash 1.4s linear infinite;
   stroke-dasharray: 6 6;
 }
@@ -1016,17 +1104,18 @@
 
 .atlas-preview-node {
   fill: none;
-  stroke: rgba(118, 199, 255, 0.85);
+  stroke: var(--atlas-hub);
+  stroke-opacity: 0.9;
   stroke-width: 1.6;
   vector-effect: non-scaling-stroke;
 }
 
 .atlas-preview-node.origin {
-  stroke: rgba(108, 217, 154, 0.95);
+  stroke: var(--atlas-agri);
 }
 
 .atlas-preview-node.dest {
-  stroke: white;
+  stroke: var(--atlas-player);
   stroke-width: 2;
 }
 
@@ -1037,16 +1126,37 @@
   }
 }
 
-.atlas-lane-distance {
-  fill: rgba(218, 230, 250, 0.85);
-  font-size: 9px;
+/* Lane distance uses the TextBadge wrapper. Border weight matches
+   the hovered-lane stroke (1.8px) so the badge looks like part of
+   the same line, just bent into a rounded plate around the label. */
+.atlas-text-badge.atlas-lane-distance .atlas-text-badge-label { fill: var(--atlas-ink); }
+.atlas-text-badge.atlas-lane-distance .atlas-text-badge-bg {
+  stroke: var(--atlas-hub);
+  stroke-width: 1.8;
+}
+
+/* Generic TextBadge defaults — a rounded panel-coloured plate with
+   a hairline border and centered mono text. The per-class rules
+   above tint the fill/stroke. */
+.atlas-text-badge {
+  pointer-events: none;
+}
+
+/* Lanes are drawn with non-scaling strokes (constant pixel width
+   regardless of zoom), so the badge border stays at the same 1px
+   visual weight as the line it labels at every zoom level. */
+.atlas-text-badge-bg {
+  fill: var(--atlas-bg);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.atlas-text-badge-label {
   font-family: var(--mono);
+  font-weight: 700;
+  letter-spacing: 0.05em;
   text-anchor: middle;
   dominant-baseline: central;
-  paint-order: stroke;
-  stroke: rgba(8, 12, 16, 0.85);
-  stroke-width: 3;
-  pointer-events: none;
 }
 
 .atlas-node {
@@ -1054,137 +1164,239 @@
   outline: none;
 }
 
-/* Clean filled circle. Stroke carries faction (subtle 1px tint).
-   No glow halo, no drop shadow, no pulse — sharp dots like an
-   academic star plot. */
+/* The halo is a slightly larger bg-coloured circle drawn behind the
+   core, so lanes terminating at the station visibly stop short of
+   the coloured dot — nothing touches the station outline. */
+.atlas-node-halo {
+  fill: var(--atlas-bg);
+  stroke: none;
+  pointer-events: none;
+}
+
+/* Coloured circle, thin ink border. Faction shifts the border tint
+   subtly. Filtered-out kinds get ghosted via the parent .atlas-node. */
 .atlas-node-core {
   fill: currentColor;
-  stroke: var(--node-faction-stroke, rgba(255, 255, 255, 0.42));
+  stroke: var(--node-faction-stroke, rgba(255, 255, 255, 0.5));
   stroke-width: 1;
   vector-effect: non-scaling-stroke;
-  transition: stroke 120ms ease, stroke-width 120ms ease;
+  transition: stroke 120ms ease, stroke-width 120ms ease, opacity 140ms ease;
 }
 
 .atlas-node:hover .atlas-node-core,
 .atlas-node:focus-visible .atlas-node-core {
   stroke: rgba(255, 255, 255, 0.95);
-  stroke-width: 1.5;
+  stroke-width: 1.6;
 }
 
-/* Faction → 1px stroke tint on the core. Two factions in the world
-   right now (League, Outerguild); independent stays neutral white. */
-.atlas-node-faction-league .atlas-node-core { --node-faction-stroke: rgba(118, 199, 255, 0.55); }
-.atlas-node-faction-outerguild .atlas-node-core { --node-faction-stroke: rgba(240, 163, 90, 0.55); }
-.atlas-node-faction-independent .atlas-node-core { --node-faction-stroke: rgba(220, 230, 240, 0.32); }
+/* Faction → border tint. Independent stays neutral. */
+.atlas-node-faction-league .atlas-node-core { --node-faction-stroke: rgba(118, 199, 255, 0.65); }
+.atlas-node-faction-outerguild .atlas-node-core { --node-faction-stroke: rgba(240, 163, 90, 0.65); }
+.atlas-node-faction-independent .atlas-node-core { --node-faction-stroke: rgba(220, 230, 240, 0.40); }
 
+/* Selection ring sits just outside the halo, so selecting doesn't
+   make the dot itself any bigger and clicks on adjacent stations
+   stay hittable. */
 .atlas-node-ring {
   fill: none;
-  stroke: rgba(255, 255, 255, 0.85);
-  stroke-width: 1;
+  stroke: rgba(255, 255, 255, 0.95);
+  stroke-width: 1.2;
+  stroke-dasharray: 2.5 2.5;
   vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.atlas-node.player-here .atlas-node-ring {
+  stroke: var(--atlas-player);
+}
+
+/* Filtered-out kinds (legend toggled off) ghost to a low opacity but
+   stay clickable so the user can re-include them. */
+.atlas-node.filtered .atlas-node-core,
+.atlas-node.filtered .atlas-node-halo {
+  opacity: 0.18;
 }
 
 .atlas-player-route-leg {
-  stroke: var(--accent);
+  stroke: var(--atlas-player);
   stroke-linecap: round;
   vector-effect: non-scaling-stroke;
 }
 
 .atlas-player-route-leg.current {
-  stroke-dasharray: 8 8;
-  stroke-width: 2.5;
-  opacity: 0.78;
+  stroke-dasharray: 8 6;
+  stroke-width: 2.2;
+  opacity: 0.9;
 }
 
 .atlas-player-route-leg.upcoming {
-  stroke-dasharray: 4 6;
-  stroke-width: 1.6;
-  opacity: 0.45;
+  stroke-dasharray: 4 5;
+  stroke-width: 1.5;
+  opacity: 0.55;
 }
 
 .atlas-player-route-dest {
   fill: none;
-  stroke: var(--accent);
-  stroke-width: 1.4;
+  stroke: var(--atlas-player);
+  stroke-width: 1.5;
   vector-effect: non-scaling-stroke;
-  opacity: 0.7;
+  opacity: 0.9;
 }
 
+/* Player triangle marker — same shape vocabulary as the NPC chevrons
+   but larger and gold-tinted so the player ship reads as the focal
+   point of the map. The thick bg-coloured stroke drawn first via
+   paint-order is the halo, conformal to the triangle outline. */
 .atlas-player-marker {
-  fill: white;
-  stroke: var(--accent);
-  stroke-width: 2.5;
-  filter: drop-shadow(0 0 8px rgba(79, 182, 255, 0.8));
-  vector-effect: non-scaling-stroke;
+  fill: var(--atlas-player);
+  stroke: var(--atlas-bg);
+  stroke-width: 5;
+  paint-order: stroke;
+  stroke-linejoin: round;
+  stroke-linecap: round;
 }
 
-/* Ships drawn on the sector map. Idle ships render as small circles
-   spiraled around their station; transit ships ride along their lane
-   interpolated by ticks-remaining. The player ship is the diamond. */
+/* Ships drawn on the sector map. Each ship has a bg-coloured halo
+   behind its glyph so lanes/stations don't touch the ship outline.
+   Selection only flips the fill colour — never the size — so a
+   click never increases the ship's footprint. Position is set via
+   the SVG `transform` attribute (no CSS transition) — ships snap
+   to their tick-aligned positions each render. */
 .atlas-ship {
   cursor: pointer;
 }
 
-.atlas-ship circle {
-  fill: rgba(220, 230, 240, 0.62);
-  stroke: rgba(20, 26, 32, 0.85);
-  stroke-width: 0.6;
-  vector-effect: non-scaling-stroke;
+/* The ship glyph carries its own halo via a thick bg-coloured stroke
+   drawn before the fill (paint-order: stroke). This keeps the halo
+   shape conformal to the glyph — a triangle halo around the chevron
+   and a circle halo around the idle dot — instead of stamping a
+   disc behind every ship. Stroke scales with the user transform so
+   the halo-to-glyph ratio stays consistent across zoom levels. */
+.atlas-ship-glyph {
+  fill: #dde6f2;
+  stroke: var(--atlas-bg);
+  stroke-width: 4;
+  paint-order: stroke;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  transition: fill 120ms ease;
 }
 
-.atlas-ship.transit circle {
+.atlas-ship.transit .atlas-ship-glyph {
   fill: var(--atlas-hub);
-  stroke: rgba(20, 26, 32, 0.95);
 }
 
-/* Direction-aware chevron used for non-player transit ships. Same
-   palette as the transit circle they replace so the map keeps a
-   consistent ship vocabulary, just with heading information. */
-.atlas-ship-marker {
-  fill: var(--atlas-hub);
-  stroke: rgba(20, 26, 32, 0.95);
-  stroke-width: 0.6;
-  vector-effect: non-scaling-stroke;
+.atlas-ship:hover .atlas-ship-glyph {
+  fill: #ffffff;
 }
 
-.atlas-ship:hover .atlas-ship-marker {
-  fill: white;
+.atlas-ship.selected .atlas-ship-glyph {
+  fill: var(--atlas-player);
 }
 
-.atlas-ship.selected .atlas-ship-marker {
-  fill: var(--accent);
+/* Legend pinned in the top-left of the map. Each row is a button so
+   the user can toggle a kind on/off — filtered kinds ghost to low
+   opacity on the map but the row itself stays available to flip back. */
+.atlas-legend {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px 9px;
+  background: rgba(13, 17, 22, 0.88);
+  border: 1px solid var(--atlas-ink-fine);
+  border-radius: 4px;
+  font-size: 10.5px;
+  color: var(--text);
+  z-index: 4;
+  backdrop-filter: blur(2px);
 }
 
-.atlas-ship:hover circle {
-  fill: white;
+.atlas-legend-title {
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--text-faint);
 }
 
-.atlas-ship.selected circle {
-  fill: var(--accent);
+.atlas-legend-list {
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  gap: 2px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.atlas-ship-ring {
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 1.6;
-  vector-effect: non-scaling-stroke;
+.atlas-legend-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  background: none;
+  border: 0;
+  color: inherit;
+  padding: 1px 2px;
+  cursor: pointer;
+  font: inherit;
+  border-radius: 3px;
+  transition: opacity 120ms ease;
 }
 
-/* Tooltip floating over the map — positioned via inline transform from
-   the SectorMap mouse handlers. */
+.atlas-legend-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.atlas-legend-row.off {
+  opacity: 0.42;
+}
+
+.atlas-legend-row.off .atlas-legend-dot {
+  background: transparent;
+  border-style: dashed;
+}
+
+.atlas-legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: var(--text-faint);
+  flex: 0 0 auto;
+}
+
+.atlas-legend-dot.atlas-kind-hub      { background: var(--atlas-hub); }
+.atlas-legend-dot.atlas-kind-mining   { background: var(--atlas-mining); }
+.atlas-legend-dot.atlas-kind-agri     { background: var(--atlas-agri); }
+.atlas-legend-dot.atlas-kind-frontier { background: var(--atlas-frontier); }
+.atlas-legend-dot.atlas-kind-research { background: var(--atlas-research); }
+.atlas-legend-dot.atlas-kind-shipyard { background: var(--atlas-shipyard); }
+.atlas-legend-dot.atlas-kind-station  { background: var(--text-faint); }
+
+.atlas-legend-label {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Tooltip pinned in the top-right corner of the map — fixed position
+   so the user can rest their eyes there instead of tracking a
+   cursor-following popover. Same dark card vocabulary as the legend. */
 .atlas-tooltip {
   position: absolute;
-  left: 0;
-  top: 0;
+  top: 10px;
+  right: 10px;
   pointer-events: none;
   display: grid;
   gap: 4px;
-  min-width: 168px;
-  max-width: 240px;
-  padding: 8px 10px 9px;
-  background: rgba(10, 14, 18, 0.94);
-  border: 1px solid var(--atlas-line);
-  border-radius: 5px;
+  min-width: 192px;
+  max-width: 256px;
+  padding: 9px 11px 10px;
+  background: rgba(13, 17, 22, 0.94);
+  border: 1px solid var(--atlas-ink-fine);
+  border-radius: 4px;
+  color: var(--text);
   font-size: 11px;
   z-index: 4;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);

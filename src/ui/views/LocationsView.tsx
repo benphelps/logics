@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { memo, useCallback, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { IconType } from "react-icons";
 import { GiAnvil, GiAtom, GiCampfire, GiMining, GiSpaceship, GiTrade, GiWheat } from "react-icons/gi";
 import { useStore } from "../store";
@@ -42,6 +42,10 @@ interface AtlasLink {
 interface ShipMarker {
   id: TraderId;
   trader: Trader;
+  // Snapshot tick-aligned position. Idle ships use their dock-grid
+  // slot; transit ships use the lane-interpolated position at the
+  // current tick. The map may smooth transit positions further with
+  // sub-tick interpolation when the sim is running.
   x: number;
   y: number;
   // For idle ships, the projected station; for transit ships the lane
@@ -50,6 +54,11 @@ interface ShipMarker {
   destination: LocationId | null;
   isPlayer: boolean;
   isTransit: boolean;
+  // Total ticks for the current leg + ticks-remaining on it. Only set
+  // for transit ships; the map uses these to interpolate sub-tick
+  // motion so the marker glides instead of jumping each tick.
+  tripTotal?: number;
+  ticksRemaining?: number;
 }
 
 interface LaneTraffic {
@@ -102,7 +111,8 @@ export function LocationsView() {
   const selectLocation = useStore((s) => s.selectLocation);
   const selectedTrader = useStore((s) => s.selectedTrader);
   const selectTrader = useStore((s) => s.selectTrader);
-  useStore((s) => s.tickEpoch);
+  const tickEpoch = useStore((s) => s.tickEpoch);
+  void tickEpoch;
 
   // Sequence of LocationIds the SectorMap highlights when the user
   // hovers the Travel-here CTA on the detail panel. Set by the
@@ -126,7 +136,7 @@ export function LocationsView() {
   const projected = useMemo(() => projectLocations(locations), [locations]);
   const projectedById = useMemo(() => new Map(projected.map(p => [p.loc.id, p])), [projected]);
   const links = useMemo(() => buildAtlasLinks(world, locations), [world, locations]);
-  const ships = useMemo(() => buildShipMarkers(world, projectedById), [world, projectedById]);
+  const ships = useMemo(() => buildShipMarkers(world, projectedById, links), [world, projectedById, links]);
   const laneTraffic = useMemo(() => buildLaneTraffic(world), [world]);
   const selectedMarket = selected ? marketRows(world, selected).slice(0, 9) : [];
   const selectedCounts = selected ? stationCounts(world, selected.id) : { docked: 0, inbound: 0, jobs: 0, routes: 0 };
@@ -239,14 +249,16 @@ function artCardStyle(url: string): CSSProperties {
 
 interface HoverTipRow { label: string; value: string; tone?: "good" | "bad" | "warn" }
 interface HoverTip {
-  px: number;
-  py: number;
   title: string;
   meta?: string;
   art?: string;
   rows?: HoverTipRow[];
   icon?: ReactNode;
 }
+
+// Render order for station kinds inside the legend. Independent
+// "station" sits last so the dominant kinds read first.
+const KIND_LEGEND_ORDER: StationKind[] = ["hub", "research", "shipyard", "mining", "agri", "frontier", "station"];
 
 function SectorMap({
   world,
@@ -291,9 +303,37 @@ function SectorMap({
   const dragRef = useRef<{ sx: number; sy: number; vx: number; vy: number; moved: boolean } | null>(null);
   const [hover, setHover] = useState<HoverTip | null>(null);
   const [hoveredLane, setHoveredLane] = useState<string | null>(null);
+  // The station the cursor is currently over. Drives the crosshair +
+  // coordinate readout that's the centerpiece of the atlas treatment.
+  const [hoveredStation, setHoveredStation] = useState<ProjectedLocation | null>(null);
+  // Legend-driven kind filter. Toggled kinds ghost out on the map
+  // but stay clickable so the user can flip them back.
+  const [hiddenKinds, setHiddenKinds] = useState<Set<StationKind>>(() => new Set());
+  const toggleKind = (kind: StationKind) => {
+    setHiddenKinds(prev => {
+      const next = new Set(prev);
+      if (next.has(kind)) next.delete(kind);
+      else next.add(kind);
+      return next;
+    });
+  };
 
   const peakLaneTraffic = Math.max(1, ...Array.from(laneTraffic.values()).map(t => t.count));
-  const stars = useMemo(() => buildStarField(), []);
+
+  // Lane render order drives the bridge illusion: shorter lanes draw
+  // last so their paper-coloured outline erases the longer lane's ink
+  // at intersections, making the shorter (local) lane appear to bridge
+  // over the longer (long-haul) one. Stable secondary sort by lane key
+  // keeps the order deterministic.
+  const orderedLinks = useMemo(() => {
+    return [...links].sort((a, b) => b.dist - a.dist || laneKey(a.a, a.b).localeCompare(laneKey(b.a, b.b)));
+  }, [links]);
+
+  // SVG text scales with the viewBox, so HUD text needs a font-size in
+  // user units that compensates for current zoom to stay visually
+  // around 11px. 0.011 ≈ 11px when the SVG is rendered at MAP_W
+  // pixels wide (which it is at 1x zoom).
+  const hudFontSize = vbox.w * 0.011;
 
   const applyZoom = (clientX: number, clientY: number, factor: number) => {
     const svg = svgRef.current;
@@ -336,24 +376,50 @@ function SectorMap({
   const releaseDrag = () => { dragRef.current = null; };
   const onDoubleClick = () => setVbox({ x: 0, y: 0, w: MAP_W, h: MAP_H });
 
-  // Click handlers on shapes consult dragRef.current?.moved before
-  // committing — so a 5px drag-and-release doesn't accidentally select.
-  const wasDrag = () => dragRef.current?.moved === true;
+  // The wasDrag check (drag-then-release shouldn't count as a click)
+  // lives on a ref so the memoized layers can reach it without
+  // re-rendering on every drag-induced state change.
 
-  const showTip = (e: React.MouseEvent, tip: Omit<HoverTip, "px" | "py">) => {
-    const wrap = wrapRef.current;
-    if (!wrap) return;
-    const rect = wrap.getBoundingClientRect();
-    setHover({ ...tip, px: e.clientX - rect.left, py: e.clientY - rect.top });
-  };
-  const moveTip = (e: React.MouseEvent) => {
-    if (!hover) return;
-    const wrap = wrapRef.current;
-    if (!wrap) return;
-    const rect = wrap.getBoundingClientRect();
-    setHover({ ...hover, px: e.clientX - rect.left, py: e.clientY - rect.top });
-  };
-  const hideTip = () => { setHover(null); setHoveredLane(null); };
+  // Tooltips are pinned in the corner of the map (atlas treatment), so
+  // the hover handler just sets the content — no cursor coordinates.
+  // The handlers are wrapped in useCallback so the memoized layer
+  // components don't re-render every time the parent does (e.g. on
+  // pan/zoom) just because the inline-arrow handler reference shifts.
+  const showTip = useCallback((tip: HoverTip) => setHover(tip), []);
+  const hideTip = useCallback(() => {
+    setHover(null);
+    setHoveredLane(null);
+    setHoveredStation(null);
+  }, []);
+
+  // Stable hover/click callbacks for the memoized layers. All three
+  // close over `world`/`onSelect`/`onSelectTrader` so they need to
+  // re-create when those change, but not when vbox or hover state
+  // changes — which is the whole point of memoising the layers.
+  const onLaneEnter = useCallback((key: string, a: ProjectedLocation, b: ProjectedLocation, dist: number, traffic: LaneTraffic | undefined) => {
+    setHoveredLane(key);
+    showTip(buildLaneTip(world, a, b, dist, traffic));
+  }, [world, showTip]);
+
+  const onEnterStation = useCallback((p: ProjectedLocation) => {
+    setHoveredStation(p);
+    showTip(buildStationTip(world, p));
+  }, [world, showTip]);
+
+  const onSelectStation = useCallback((id: LocationId) => {
+    if (dragRef.current?.moved === true) return;
+    onSelect(id);
+  }, [onSelect]);
+
+  const onClickShip = useCallback((id: TraderId, e: React.MouseEvent) => {
+    if (dragRef.current?.moved === true) return;
+    e.stopPropagation();
+    onSelectTrader(id);
+  }, [onSelectTrader]);
+
+  const onEnterShip = useCallback((ship: ShipMarker) => {
+    showTip(buildShipTip(world, ship));
+  }, [world, showTip]);
 
   const playerOrigin = playerLocation ? projectedById.get(playerLocation) ?? null : null;
   void playerDestination;
@@ -361,8 +427,34 @@ function SectorMap({
   return (
     <div ref={wrapRef} className="atlas-map-wrap">
       <svg
+        className="atlas-map atlas-map-grid"
+        viewBox={`${vbox.x} ${vbox.y} ${vbox.w} ${vbox.h}`}
+        aria-hidden="true"
+      >
+        <rect className="atlas-map-bg" x={-MAP_W} y={-MAP_H} width={MAP_W * 3} height={MAP_H * 3} />
+        <g className="atlas-gridlines">
+          {/* Atlas-style minor + major grid: even five-cell ticks for the
+              minor sub-grid and a quarter-grid as the major axis lines.
+              Both are subtle so the data layer reads first. */}
+          {Array.from({ length: 9 }, (_, i) => i + 1).map(i => (
+            <line key={`gx-${i}`} className="atlas-gridline-minor" x1={MAP_W * (i / 10)} y1={0} x2={MAP_W * (i / 10)} y2={MAP_H} />
+          ))}
+          {Array.from({ length: 9 }, (_, i) => i + 1).map(i => (
+            <line key={`gy-${i}`} className="atlas-gridline-minor" x1={0} y1={MAP_H * (i / 10)} x2={MAP_W} y2={MAP_H * (i / 10)} />
+          ))}
+          {[0.25, 0.5, 0.75].map(v => (
+            <g key={`maj-${v}`}>
+              <line className="atlas-gridline-major" x1={MAP_W * v} y1={0} x2={MAP_W * v} y2={MAP_H} />
+              <line className="atlas-gridline-major" x1={0} y1={MAP_H * v} x2={MAP_W} y2={MAP_H * v} />
+            </g>
+          ))}
+          {/* Map border frames the atlas page. */}
+          <rect className="atlas-map-frame" x={0} y={0} width={MAP_W} height={MAP_H} />
+        </g>
+      </svg>
+      <svg
         ref={svgRef}
-        className="atlas-map"
+        className="atlas-map atlas-map-data"
         viewBox={`${vbox.x} ${vbox.y} ${vbox.w} ${vbox.h}`}
         role="img"
         aria-label="Station map"
@@ -373,55 +465,15 @@ function SectorMap({
         onMouseLeave={() => { releaseDrag(); hideTip(); }}
         onDoubleClick={onDoubleClick}
       >
-        <rect className="atlas-map-bg" x={-MAP_W} y={-MAP_H} width={MAP_W * 3} height={MAP_H * 3} />
-        <g className="atlas-stars">
-          {stars.map((s, i) => (
-            <circle key={i} cx={s.x} cy={s.y} r={s.r} className={s.dim ? "dim" : undefined} />
-          ))}
-        </g>
-        <g className="atlas-gridlines">
-          {[0.25, 0.5, 0.75].map(v => (
-            <g key={v}>
-              <line x1={MAP_W * v} y1={0} x2={MAP_W * v} y2={MAP_H} />
-              <line x1={0} y1={MAP_H * v} x2={MAP_W} y2={MAP_H * v} />
-            </g>
-          ))}
-        </g>
-        <g className="atlas-links">
-          {links.map(link => {
-            const a = projectedById.get(link.a);
-            const b = projectedById.get(link.b);
-            if (!a || !b) return null;
-            const key = laneKey(link.a, link.b);
-            const traffic = laneTraffic.get(key);
-            const intensity = traffic ? Math.min(1, 0.2 + (traffic.count / peakLaneTraffic) * 0.8) : 0.22;
-            const isLong = link.dist > 90;
-            const isHovered = hoveredLane === key;
-            const cls = [
-              "atlas-link",
-              traffic && traffic.count > 0 ? "traffic" : null,
-              isLong ? "long" : null,
-              isHovered ? "hovered" : null,
-            ].filter(Boolean).join(" ");
-            return (
-              <line
-                key={key}
-                className={cls}
-                x1={a.x}
-                y1={a.y}
-                x2={b.x}
-                y2={b.y}
-                style={{ opacity: intensity }}
-                onMouseEnter={(e) => {
-                  setHoveredLane(key);
-                  showTip(e, buildLaneTip(world, a, b, link.dist, traffic));
-                }}
-                onMouseMove={moveTip}
-                onMouseLeave={hideTip}
-              />
-            );
-          })}
-        </g>
+        <LanesLayer
+          orderedLinks={orderedLinks}
+          projectedById={projectedById}
+          laneTraffic={laneTraffic}
+          peakLaneTraffic={peakLaneTraffic}
+          hoveredLane={hoveredLane}
+          onEnter={onLaneEnter}
+          onLeave={hideTip}
+        />
         {previewedRoute && previewedRoute.length >= 2 && (
           <g className="atlas-preview-route">
             {previewedRoute.slice(0, -1).map((from, i) => {
@@ -463,35 +515,52 @@ function SectorMap({
           const a = projectedById.get(link.a);
           const b = projectedById.get(link.b);
           if (!a || !b) return null;
-          const mx = (a.x + b.x) / 2;
-          const my = (a.y + b.y) / 2;
+          const label = `${link.dist.toFixed(0)}u`;
           return (
-            <text className="atlas-lane-distance" x={mx} y={my}>{link.dist.toFixed(0)}u</text>
+            <TextBadge
+              className="atlas-lane-distance"
+              text={label}
+              cx={(a.x + b.x) / 2}
+              cy={(a.y + b.y) / 2}
+              fontSize={hudFontSize}
+            />
           );
         })()}
-        {/* Direction arrows on lanes that have transit traffic — small
-            chevron at the lane midpoint pointing toward the busier end. */}
-        <g className="atlas-lane-arrows">
-          {links.map(link => {
-            const traffic = laneTraffic.get(laneKey(link.a, link.b));
-            if (!traffic || traffic.count === 0) return null;
-            const a = projectedById.get(link.a);
-            const b = projectedById.get(link.b);
-            if (!a || !b) return null;
-            // Direction is set by the most-recent transit ship's heading.
-            const heading = arrowHeading(world, traffic);
-            if (!heading) return null;
-            const fromP = heading === "ab" ? a : b;
-            const toP = heading === "ab" ? b : a;
-            return (
-              <polygon
-                key={`arrow-${laneKey(link.a, link.b)}`}
-                className="atlas-lane-arrow"
-                points={chevronPoints(fromP, toP)}
-              />
-            );
-          })}
-        </g>
+        {hoveredStation && (
+          <g className={`atlas-crosshair ${hoveredStation.loc.id === playerLocation ? "player" : ""}`} pointerEvents="none">
+            <line
+              className="atlas-crosshair-line"
+              x1={hoveredStation.x}
+              y1={vbox.y}
+              x2={hoveredStation.x}
+              y2={vbox.y + vbox.h}
+            />
+            <line
+              className="atlas-crosshair-line"
+              x1={vbox.x}
+              y1={hoveredStation.y}
+              x2={vbox.x + vbox.w}
+              y2={hoveredStation.y}
+            />
+            <TextBadge
+              className="atlas-crosshair-coord"
+              text={`x ${formatAtlasCoord(hoveredStation.loc.position.x)}`}
+              cx={hoveredStation.x}
+              cy={vbox.y + hudFontSize * 1.4}
+              fontSize={hudFontSize}
+            />
+            <TextBadge
+              className="atlas-crosshair-coord"
+              text={`y ${formatAtlasCoord(hoveredStation.loc.position.y)}`}
+              cx={vbox.x + hudFontSize * 2.6}
+              cy={hoveredStation.y}
+              fontSize={hudFontSize}
+            />
+          </g>
+        )}
+        {/* Lane-midpoint direction arrows were dropped here — the
+            transit-ship chevrons themselves show heading now that
+            sub-tick smoothing makes them glide along the lane. */}
         {playerOrigin && playerActiveRoute && playerActiveRoute.length > 0 && (() => {
           // Active travel path: ship → next-hop → ...waypoints → final
           // dst. Current leg keeps the prominent dashed accent so the
@@ -531,75 +600,51 @@ function SectorMap({
             </g>
           );
         })()}
-        <g className="atlas-nodes">
-          {projected.map(p => {
-            const factionKey = factionClassKey(p.loc.traits.faction);
-            return (
-              <g
-                key={p.loc.id}
-                className={`atlas-node atlas-node-${p.kind} atlas-node-faction-${factionKey} ${selectedId === p.loc.id ? "selected" : ""}`}
-                role="button"
-                tabIndex={0}
-                onClick={() => { if (!wasDrag()) onSelect(p.loc.id); }}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    onSelect(p.loc.id);
-                  }
-                }}
-                onMouseEnter={(e) => showTip(e, buildStationTip(world, p))}
-                onMouseMove={moveTip}
-                onMouseLeave={hideTip}
-              >
-                <circle className="atlas-node-core" cx={p.x} cy={p.y} r={p.r} />
-                {selectedId === p.loc.id && (
-                  <circle className="atlas-node-ring" cx={p.x} cy={p.y} r={p.r + 5} />
-                )}
-              </g>
-            );
-          })}
-        </g>
-        <g className="atlas-ships">
-          {ships.map(ship => {
-            const isSelected = selectedTraderId === ship.id;
-            return (
-              <g
-                key={ship.id}
-                className={`atlas-ship ${ship.isTransit ? "transit" : "idle"} ${ship.isPlayer ? "player" : ""} ${isSelected ? "selected" : ""}`}
-                onClick={(e) => {
-                  if (wasDrag()) return;
-                  e.stopPropagation();
-                  onSelectTrader(ship.id);
-                }}
-                onMouseEnter={(e) => showTip(e, buildShipTip(world, ship))}
-                onMouseMove={moveTip}
-                onMouseLeave={hideTip}
-              >
-                {ship.isPlayer ? (
-                  <path
-                    className="atlas-player-marker"
-                    d={`M ${ship.x} ${ship.y - 9} L ${ship.x + 9} ${ship.y} L ${ship.x} ${ship.y + 9} L ${ship.x - 9} ${ship.y} Z`}
-                  />
-                ) : ship.isTransit ? (
-                  <ShipChevron
-                    x={ship.x}
-                    y={ship.y}
-                    fromX={projectedById.get(ship.origin)?.x ?? ship.x}
-                    fromY={projectedById.get(ship.origin)?.y ?? ship.y}
-                    toX={ship.destination ? projectedById.get(ship.destination)?.x ?? ship.x : ship.x}
-                    toY={ship.destination ? projectedById.get(ship.destination)?.y ?? ship.y : ship.y}
-                  />
-                ) : (
-                  <circle cx={ship.x} cy={ship.y} r={2.6} />
-                )}
-                {isSelected && <circle className="atlas-ship-ring" cx={ship.x} cy={ship.y} r={11} />}
-              </g>
-            );
-          })}
-        </g>
+        {/* Ships render BEFORE stations so a transit ship sitting on
+            top of its origin/destination station is visually tucked
+            behind the station glyph — only the station icon shows
+            when ship and station overlap. */}
+        <ShipsLayer
+          ships={ships}
+          projectedById={projectedById}
+          selectedTraderId={selectedTraderId}
+          onClickShip={onClickShip}
+          onEnterShip={onEnterShip}
+          onLeave={hideTip}
+        />
+        <StationsLayer
+          projected={projected}
+          selectedId={selectedId}
+          playerLocation={playerLocation}
+          hiddenKinds={hiddenKinds}
+          onSelect={onSelectStation}
+          onEnter={onEnterStation}
+          onLeave={hideTip}
+        />
       </svg>
+      <div className="atlas-legend">
+        <span className="atlas-legend-title">Stations</span>
+        <ul className="atlas-legend-list">
+          {KIND_LEGEND_ORDER.map(kind => {
+            const off = hiddenKinds.has(kind);
+            return (
+              <li key={kind} style={{ display: "contents" }}>
+                <button
+                  type="button"
+                  className={`atlas-legend-row ${off ? "off" : ""}`}
+                  onClick={() => toggleKind(kind)}
+                  aria-pressed={!off}
+                >
+                  <span className={`atlas-legend-dot atlas-kind-${kind}`} />
+                  <span className="atlas-legend-label">{kindLabel(kind)}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
       {hover && (
-        <div className="atlas-tooltip" style={{ transform: `translate(${hover.px + 14}px, ${hover.py + 14}px)` }}>
+        <div className="atlas-tooltip">
           <div className="atlas-tooltip-head">
             {hover.art && (
               <span className="atlas-tooltip-thumb" style={{ backgroundImage: `url("${hover.art}")` }} />
@@ -630,35 +675,13 @@ function SectorMap({
   );
 }
 
-// --- map background helpers ---------------------------------------------
-
-interface StarSeed { x: number; y: number; r: number; dim: boolean }
-function buildStarField(): StarSeed[] {
-  // Deterministic — same starfield every render so the dust never
-  // shimmers between ticks. 3x area so panning never finds an edge.
-  const rng = mulberry32(0xa75a5);
-  const out: StarSeed[] = [];
-  const N = 260;
-  for (let i = 0; i < N; i++) {
-    out.push({
-      x: -MAP_W + rng() * (MAP_W * 3),
-      y: -MAP_H + rng() * (MAP_H * 3),
-      r: 0.35 + rng() * 0.9,
-      dim: rng() < 0.55,
-    });
-  }
-  return out;
-}
-
-function mulberry32(seed: number): () => number {
-  let a = seed | 0;
-  return () => {
-    a = (a + 0x6D2B79F5) | 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+// Format a world-space coordinate for display in the crosshair
+// readout — signed, padded to 5 visual columns so labels of different
+// magnitudes line up under each other in the same eye fixation.
+function formatAtlasCoord(value: number): string {
+  const sign = value >= 0 ? "+" : "−";
+  const abs = Math.abs(value).toFixed(1).padStart(4, "0");
+  return `${sign}${abs}`;
 }
 
 function factionClassKey(faction: string | undefined): string {
@@ -666,68 +689,240 @@ function factionClassKey(faction: string | undefined): string {
   return faction.toLowerCase().replace(/[^a-z]/g, "");
 }
 
-// --- lane direction arrow ------------------------------------------------
+// --- memoized SVG layers -------------------------------------------------
+// The three layers below are wrapped in React.memo so a state change
+// confined to the SectorMap (pan/zoom, hover, kind filter, tooltip
+// content) doesn't reconcile every lane/station/ship in the tree.
+// The lane network and station list are stable across pans, and the
+// ship layer only re-renders when the snapshot changes (per tick).
 
-function arrowHeading(world: World, traffic: LaneTraffic): "ab" | "ba" | null {
-  // Look at the most recent ship on the lane to set the chevron direction
-  // (which leg of the lane is "outbound"). Stable enough for a glance cue
-  // since multi-tick journeys keep the same direction the whole way.
-  const t = world.traders[traffic.ships[traffic.ships.length - 1]];
-  if (!t || t.state !== "transit" || !t.destination) return null;
-  return t.location < t.destination ? "ab" : "ba";
+interface LanesLayerProps {
+  orderedLinks: AtlasLink[];
+  projectedById: Map<LocationId, ProjectedLocation>;
+  laneTraffic: Map<string, LaneTraffic>;
+  peakLaneTraffic: number;
+  hoveredLane: string | null;
+  onEnter: (key: string, a: ProjectedLocation, b: ProjectedLocation, dist: number, traffic: LaneTraffic | undefined) => void;
+  onLeave: () => void;
 }
 
-function chevronPoints(from: ProjectedLocation, to: ProjectedLocation): string {
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  const len = Math.hypot(dx, dy) || 1;
-  const ux = dx / len;
-  const uy = dy / len;
-  const mx = (from.x + to.x) / 2;
-  const my = (from.y + to.y) / 2;
-  const tip = 5;
-  const back = 4;
-  const wing = 3.4;
-  // Arrow points toward `to`. Tip ahead of midpoint; wings behind the
-  // midpoint perpendicular to the lane.
-  const tipX = mx + ux * tip;
-  const tipY = my + uy * tip;
-  const baseX = mx - ux * back;
-  const baseY = my - uy * back;
-  const px = -uy;
-  const py = ux;
-  return [
-    `${tipX.toFixed(2)},${tipY.toFixed(2)}`,
-    `${(baseX + px * wing).toFixed(2)},${(baseY + py * wing).toFixed(2)}`,
-    `${(baseX - px * wing).toFixed(2)},${(baseY - py * wing).toFixed(2)}`,
-  ].join(" ");
+const LanesLayer = memo(function LanesLayer({
+  orderedLinks, projectedById, laneTraffic, peakLaneTraffic, hoveredLane, onEnter, onLeave,
+}: LanesLayerProps) {
+  return (
+    <g className="atlas-lanes">
+      {orderedLinks.map(link => {
+        const a = projectedById.get(link.a);
+        const b = projectedById.get(link.b);
+        if (!a || !b) return null;
+        const key = laneKey(link.a, link.b);
+        const traffic = laneTraffic.get(key);
+        const intensity = traffic ? Math.min(1, 0.5 + (traffic.count / peakLaneTraffic) * 0.5) : 0;
+        const isHovered = hoveredLane === key;
+        const cls = [
+          "atlas-lane",
+          traffic && traffic.count > 0 ? "traffic" : null,
+          isHovered ? "hovered" : null,
+        ].filter(Boolean).join(" ");
+        return (
+          <g
+            key={key}
+            className={cls}
+            onMouseEnter={() => onEnter(key, a, b, link.dist, traffic)}
+            onMouseLeave={onLeave}
+            style={{ "--lane-traffic-intensity": intensity } as CSSProperties}
+          >
+            <line className="atlas-lane-outline" x1={a.x} y1={a.y} x2={b.x} y2={b.y} />
+            <line className="atlas-lane-inner" x1={a.x} y1={a.y} x2={b.x} y2={b.y} />
+            <line className="atlas-lane-hit" x1={a.x} y1={a.y} x2={b.x} y2={b.y} />
+          </g>
+        );
+      })}
+    </g>
+  );
+});
+
+interface StationsLayerProps {
+  projected: ProjectedLocation[];
+  selectedId: LocationId | null;
+  playerLocation: LocationId | null;
+  hiddenKinds: Set<StationKind>;
+  onSelect: (id: LocationId) => void;
+  onEnter: (p: ProjectedLocation) => void;
+  onLeave: () => void;
 }
 
-function ShipChevron({ x, y, fromX, fromY, toX, toY }: {
-  x: number; y: number; fromX: number; fromY: number; toX: number; toY: number;
+const StationsLayer = memo(function StationsLayer({
+  projected, selectedId, playerLocation, hiddenKinds, onSelect, onEnter, onLeave,
+}: StationsLayerProps) {
+  return (
+    <g className="atlas-nodes">
+      {projected.map(p => {
+        const factionKey = factionClassKey(p.loc.traits.faction);
+        const isPlayerHere = playerLocation === p.loc.id;
+        const isFiltered = hiddenKinds.has(p.kind);
+        const cls = [
+          "atlas-node",
+          `atlas-node-${p.kind}`,
+          `atlas-node-faction-${factionKey}`,
+          selectedId === p.loc.id ? "selected" : null,
+          isPlayerHere ? "player-here" : null,
+          isFiltered ? "filtered" : null,
+        ].filter(Boolean).join(" ");
+        return (
+          <g
+            key={p.loc.id}
+            className={cls}
+            role="button"
+            tabIndex={0}
+            onClick={() => onSelect(p.loc.id)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onSelect(p.loc.id);
+              }
+            }}
+            onMouseEnter={() => onEnter(p)}
+            onMouseLeave={onLeave}
+          >
+            <circle className="atlas-node-halo" cx={p.x} cy={p.y} r={p.r + 2.5} />
+            <circle className="atlas-node-core" cx={p.x} cy={p.y} r={p.r} />
+            {(selectedId === p.loc.id || isPlayerHere) && (
+              <circle className="atlas-node-ring" cx={p.x} cy={p.y} r={p.r + 4} />
+            )}
+          </g>
+        );
+      })}
+    </g>
+  );
+});
+
+interface ShipsLayerProps {
+  ships: ShipMarker[];
+  projectedById: Map<LocationId, ProjectedLocation>;
+  selectedTraderId: TraderId | null;
+  onClickShip: (id: TraderId, e: React.MouseEvent) => void;
+  onEnterShip: (ship: ShipMarker) => void;
+  onLeave: () => void;
+}
+
+const ShipsLayer = memo(function ShipsLayer({
+  ships, projectedById, selectedTraderId, onClickShip, onEnterShip, onLeave,
+}: ShipsLayerProps) {
+  return (
+    <g className="atlas-ships">
+      {ships.map(ship => {
+        const isSelected = selectedTraderId === ship.id;
+        const heading = shipHeading(ship, projectedById);
+        return (
+          <g
+            key={ship.id}
+            className={`atlas-ship ${ship.isTransit ? "transit" : "idle"} ${ship.isPlayer ? "player" : ""} ${isSelected ? "selected" : ""}`}
+            transform={`translate(${ship.x.toFixed(2)} ${ship.y.toFixed(2)})`}
+            onClick={(e) => onClickShip(ship.id, e)}
+            onMouseEnter={() => onEnterShip(ship)}
+            onMouseLeave={onLeave}
+          >
+            {ship.isPlayer ? (
+              <polygon
+                className="atlas-player-marker"
+                points={playerTrianglePoints(heading.dx, heading.dy)}
+              />
+            ) : ship.isTransit ? (
+              <ShipChevron dx={heading.dx} dy={heading.dy} />
+            ) : (
+              <circle className="atlas-ship-glyph" cx={0} cy={0} r={2.4} />
+            )}
+          </g>
+        );
+      })}
+    </g>
+  );
+});
+
+// Centered-text badge with a rounded-rect background. Used for the
+// lane-distance label and the crosshair coord readouts so the text
+// has a discrete background instead of a stroke-halo painted on the
+// glyphs themselves.
+function TextBadge({ className, text, cx, cy, fontSize }: {
+  className: string;
+  text: string;
+  cx: number;
+  cy: number;
+  fontSize: number;
 }) {
+  // Mono char width is ~0.6 of font-size; vertical box is the
+  // font-size with a comfortable amount of padding above and below.
+  const charW = fontSize * 0.6;
+  const padX = fontSize * 0.65;
+  const padY = fontSize * 0.40;
+  const w = text.length * charW + padX * 2;
+  const h = fontSize + padY * 2;
+  return (
+    <g className={`atlas-text-badge ${className}`}>
+      <rect
+        className="atlas-text-badge-bg"
+        x={cx - w / 2}
+        y={cy - h / 2}
+        width={w}
+        height={h}
+        rx={fontSize * 0.3}
+      />
+      <text className="atlas-text-badge-label" x={cx} y={cy} fontSize={fontSize}>{text}</text>
+    </g>
+  );
+}
+
+function ShipChevron({ dx, dy }: { dx: number; dy: number }) {
   // Render the transit ship as a chevron oriented along its lane so the
-  // direction of motion reads at a glance, not just the position.
-  const dx = toX - fromX;
-  const dy = toY - fromY;
+  // direction of motion reads at a glance. The polygon sits at (0, 0);
+  // the parent <g> handles positioning via CSS transform so motion
+  // transitions smoothly between ticks.
   const len = Math.hypot(dx, dy) || 1;
   const ux = dx / len;
   const uy = dy / len;
   const px = -uy;
   const py = ux;
-  const ahead = 4.4;
-  const behind = 3.2;
-  const wing = 2.6;
-  const tipX = x + ux * ahead;
-  const tipY = y + uy * ahead;
-  const baseX = x - ux * behind;
-  const baseY = y - uy * behind;
+  const ahead = 4.0;
+  const behind = 2.8;
+  const wing = 2.4;
   const points = [
-    `${tipX.toFixed(2)},${tipY.toFixed(2)}`,
-    `${(baseX + px * wing).toFixed(2)},${(baseY + py * wing).toFixed(2)}`,
-    `${(baseX - px * wing).toFixed(2)},${(baseY - py * wing).toFixed(2)}`,
+    `${(ux * ahead).toFixed(2)},${(uy * ahead).toFixed(2)}`,
+    `${(-ux * behind + px * wing).toFixed(2)},${(-uy * behind + py * wing).toFixed(2)}`,
+    `${(-ux * behind - px * wing).toFixed(2)},${(-uy * behind - py * wing).toFixed(2)}`,
   ].join(" ");
-  return <polygon className="atlas-ship-marker" points={points} />;
+  return <polygon className="atlas-ship-glyph" points={points} />;
+}
+
+// Heading vector (dest - origin) for a ship marker. Transit ships
+// face along their lane; idle ships face up by default. Returned as
+// a unit-magnitude pair the polygon helpers can rotate around.
+function shipHeading(ship: ShipMarker, projectedById: Map<LocationId, ProjectedLocation>): { dx: number; dy: number } {
+  if (!ship.isTransit || !ship.destination) return { dx: 0, dy: -1 };
+  const a = projectedById.get(ship.origin);
+  const b = projectedById.get(ship.destination);
+  if (!a || !b) return { dx: 0, dy: -1 };
+  return { dx: b.x - a.x, dy: b.y - a.y };
+}
+
+// Triangle polygon for the player ship — apex points along the
+// heading vector. The polygon is rendered at (0, 0); the parent <g>
+// translates the ship into position via CSS transform so motion can
+// transition smoothly between ticks.
+function playerTrianglePoints(dx: number, dy: number): string {
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len;
+  const uy = dy / len;
+  const px = -uy;
+  const py = ux;
+  const ahead = 7.5;
+  const behind = 5;
+  const wing = 4.6;
+  return [
+    `${(ux * ahead).toFixed(2)},${(uy * ahead).toFixed(2)}`,
+    `${(-ux * behind + px * wing).toFixed(2)},${(-uy * behind + py * wing).toFixed(2)}`,
+    `${(-ux * behind - px * wing).toFixed(2)},${(-uy * behind - py * wing).toFixed(2)}`,
+  ].join(" ");
 }
 
 // --- tooltip builders ---------------------------------------------------
@@ -826,19 +1021,21 @@ function laneKey(a: LocationId, b: LocationId): string {
   return a < b ? `${a}|${b}` : `${b}|${a}`;
 }
 
-// Build a marker per ship — idle ships sit on their station, transit
-// ships are interpolated along the lane from origin to destination using
-// `(1 - ticksRemaining/totalTicks)`. Total trip ticks are recomputed
-// from `routeDistance` and `speed` (the same formula traders.ts uses).
+// Build a marker per ship — idle ships sit in a small grid offset from
+// their station along the largest empty angular wedge (the direction
+// with no lanes leaving the station), and transit ships are
+// interpolated along the lane from origin to destination using `(1 -
+// ticksRemaining/total)`. The map smooths transit positions further
+// each animation frame.
 function buildShipMarkers(
   world: World,
   projectedById: Map<LocationId, ProjectedLocation>,
+  links: AtlasLink[],
 ): ShipMarker[] {
   const playerIds = new Set(world.player?.shipIds ?? []);
   const out: ShipMarker[] = [];
-  // Cluster idle ships at the station: stack them in a small spiral so
-  // multiple traders parked at the same dock don't render on top of one
-  // another. The order is stable per station via the trader id sort.
+  // Group idle ships by station. Order them so the player ship docks
+  // at the front of the grid — readability win.
   const idleByStation = new Map<LocationId, Trader[]>();
   for (const t of Object.values(world.traders)) {
     if (t.state !== "idle") continue;
@@ -846,7 +1043,26 @@ function buildShipMarkers(
     list.push(t);
     idleByStation.set(t.location, list);
   }
-  for (const [, list] of idleByStation) list.sort((a, b) => a.id.localeCompare(b.id));
+  for (const [, list] of idleByStation) {
+    list.sort((a, b) => {
+      const ap = playerIds.has(a.id) ? 0 : 1;
+      const bp = playerIds.has(b.id) ? 0 : 1;
+      if (ap !== bp) return ap - bp;
+      return a.id.localeCompare(b.id);
+    });
+  }
+
+  // Per-station neighbour list from the lane network — used to
+  // compute the largest empty wedge for the dock grid.
+  const neighbours = new Map<LocationId, LocationId[]>();
+  for (const link of links) {
+    const a = neighbours.get(link.a) ?? [];
+    a.push(link.b);
+    neighbours.set(link.a, a);
+    const b = neighbours.get(link.b) ?? [];
+    b.push(link.a);
+    neighbours.set(link.b, b);
+  }
 
   for (const t of Object.values(world.traders)) {
     if (t.state === "transit" && t.destination) {
@@ -854,8 +1070,8 @@ function buildShipMarkers(
       const b = projectedById.get(t.destination);
       if (!a || !b) continue;
       const dist = routeDistance(world, t.location, t.destination);
-      const total = dist != null && t.speed > 0 ? Math.max(1, Math.ceil(dist / t.speed)) : Math.max(1, t.ticksRemaining);
-      const progress = Math.max(0, Math.min(1, 1 - t.ticksRemaining / total));
+      const tripTotal = dist != null && t.speed > 0 ? Math.max(1, Math.ceil(dist / t.speed)) : Math.max(1, t.ticksRemaining);
+      const progress = Math.max(0, Math.min(1, 1 - t.ticksRemaining / tripTotal));
       out.push({
         id: t.id,
         trader: t,
@@ -865,6 +1081,8 @@ function buildShipMarkers(
         destination: t.destination,
         isPlayer: playerIds.has(t.id),
         isTransit: true,
+        tripTotal,
+        ticksRemaining: t.ticksRemaining,
       });
       continue;
     }
@@ -872,14 +1090,15 @@ function buildShipMarkers(
     if (!station) continue;
     const list = idleByStation.get(t.location) ?? [];
     const idx = list.indexOf(t);
-    // Spiral offsets so 0..N idle ships visibly fan around the dock.
-    const angle = idx * 0.8;
-    const radius = idx === 0 ? 0 : station.r * 1.6 + (idx - 1) * 4;
+    const totalIdle = list.length;
+    const dockNeighbours = neighbours.get(t.location) ?? [];
+    const dockBisector = emptyWedgeBisector(station, dockNeighbours, projectedById);
+    const dockPos = dockGridSlot(station, idx, totalIdle, dockBisector);
     out.push({
       id: t.id,
       trader: t,
-      x: station.x + Math.cos(angle) * radius,
-      y: station.y + Math.sin(angle) * radius,
+      x: dockPos.x,
+      y: dockPos.y,
       origin: t.location,
       destination: null,
       isPlayer: playerIds.has(t.id),
@@ -887,6 +1106,60 @@ function buildShipMarkers(
     });
   }
   return out;
+}
+
+// Pick a "dock direction" for a station — the angle (radians) that
+// bisects the largest empty wedge between connected neighbours. If a
+// station has no lane connections, drop ships down-right by default.
+function emptyWedgeBisector(
+  station: ProjectedLocation,
+  neighbourIds: LocationId[],
+  projectedById: Map<LocationId, ProjectedLocation>,
+): number {
+  const angles = neighbourIds
+    .map(id => projectedById.get(id))
+    .filter((p): p is ProjectedLocation => Boolean(p))
+    .map(p => Math.atan2(p.y - station.y, p.x - station.x))
+    .sort((a, b) => a - b);
+  if (angles.length === 0) return Math.PI / 4;
+  let bestStart = angles[0];
+  let bestSize = 0;
+  for (let i = 0; i < angles.length; i++) {
+    const next = i === angles.length - 1 ? angles[0] + Math.PI * 2 : angles[i + 1];
+    const size = next - angles[i];
+    if (size > bestSize) {
+      bestSize = size;
+      bestStart = angles[i];
+    }
+  }
+  return bestStart + bestSize / 2;
+}
+
+// Place an idle ship in a small grid offset from the station along
+// the dock bisector. Grid is 4 columns wide; rows grow as needed.
+// The first row sits clear of the station's halo so the ships read
+// as "parked at the station" rather than overlapping the marker.
+function dockGridSlot(
+  station: ProjectedLocation,
+  idx: number,
+  totalIdle: number,
+  bisector: number,
+): { x: number; y: number } {
+  const cellSize = 6;
+  const cols = Math.min(4, Math.max(1, totalIdle));
+  const col = idx % cols;
+  const row = Math.floor(idx / cols);
+  const ux = Math.cos(bisector);
+  const uy = Math.sin(bisector);
+  const px = -uy;
+  const py = ux;
+  const startOffset = station.r + 7;
+  const along = startOffset + row * cellSize;
+  const across = (col - (cols - 1) / 2) * cellSize;
+  return {
+    x: station.x + ux * along + px * across,
+    y: station.y + uy * along + py * across,
+  };
 }
 
 // Per-lane traffic map: count + ids of all ships in transit between the
