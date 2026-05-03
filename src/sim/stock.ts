@@ -1031,7 +1031,10 @@ function recordTrade(
     trigger,
   };
   trades.push(entry);
-  if (trades.length > TRADE_LEDGER_MAX) trades.splice(0, trades.length - TRADE_LEDGER_MAX);
+  // No append-time trim: trades flush to IndexedDB on save and the in-memory
+  // ledger is trimmed there once entries are durably persisted (see
+  // historyDb.ts#doFlush). Older trades stay in IDB and the History tab
+  // lazy-loads them.
   return entry;
 }
 

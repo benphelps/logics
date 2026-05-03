@@ -15,6 +15,7 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 import { useStore } from "../store";
+import { getTradeRecordsBefore } from "../historyDb";
 import type { BookTrade, Equity, EquityKind, FuturesContract, FuturesPosition, Order, OrderBook, StockPosition, TradeRecord, World } from "../../sim/types";
 import { hasCrew } from "../../sim/crew";
 import { canDeliverPhysical, listPlayerFutures, unrealizedFuturesPnl } from "../../sim/stock/futures";
@@ -137,7 +138,10 @@ export function StockMarketView() {
   const cash = playerShip?.funds ?? 0;
   const unrealizedTotal = totalUnrealizedPnl(world);
   const positions = useMemo(() => listPositions(world), [world, tickEpoch]);
-  const trades = useMemo(() => listTradeRecords(world, 100), [world, tickEpoch]);
+  // Use the in-memory ledger directly (capped at ~200 by historyDb's
+  // post-flush trim). Older entries live in IDB and TradesList lazy-loads
+  // them when the user scrolls past the in-memory window.
+  const trades = useMemo(() => listTradeRecords(world), [world, tickEpoch]);
   const longCount = positions.filter(p => p.kind === "long").length;
   const shortCount = positions.filter(p => p.kind === "short").length;
 
@@ -2531,14 +2535,73 @@ function FuturesAccordionItem({ world, equity, contract, position, docked, activ
   );
 }
 
+const TRADES_PAGE_SIZE = 100;
+
 function TradesList({ trades, onSelect }: { trades: TradeRecord[]; onSelect: (eqId: string) => void }) {
-  if (trades.length === 0) {
+  const gameId = useStore(s => s.world.gameId);
+  // Older trades pulled from IndexedDB beyond the in-memory ledger window
+  // (capped at ~200 in memory by post-flush trim). Each scroll-to-end fetch
+  // pulls another TRADES_PAGE_SIZE older entries.
+  const [olderTrades, setOlderTrades] = useState<TradeRecord[]>([]);
+  const [exhausted, setExhausted] = useState(false);
+  const fetchingRef = useRef(false);
+  const sentinelRef = useRef<HTMLTableRowElement | null>(null);
+
+  // Reset on game change.
+  useEffect(() => {
+    setOlderTrades([]);
+    setExhausted(false);
+    fetchingRef.current = false;
+  }, [gameId]);
+
+  // Combine in-memory + IDB-backfilled (both newest-first within their
+  // range; older block follows the newer block).
+  const allTrades = olderTrades.length > 0 ? [...trades, ...olderTrades] : trades;
+
+  useEffect(() => {
+    if (exhausted) return;
+    const sentinel = sentinelRef.current;
+    if (!sentinel || !gameId) return;
+    const obs = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting || fetchingRef.current) return;
+      const earliestTick = allTrades[allTrades.length - 1]?.tick;
+      if (earliestTick == null) return;
+      fetchingRef.current = true;
+      void getTradeRecordsBefore(gameId, earliestTick, TRADES_PAGE_SIZE)
+        .then(records => {
+          fetchingRef.current = false;
+          if (records.length === 0) {
+            setExhausted(true);
+            return;
+          }
+          const cleaned: TradeRecord[] = records.map(r => {
+            const out: TradeRecord = {
+              id: r.id, tick: r.tick, equityId: r.equityId, ticker: r.ticker,
+              action: r.action, shares: r.shares, price: r.price, fee: r.fee,
+              cashFlow: r.cashFlow,
+            };
+            if (r.realizedPnl !== undefined) out.realizedPnl = r.realizedPnl;
+            if (r.trigger !== undefined) out.trigger = r.trigger;
+            return out;
+          });
+          setOlderTrades(prev => [...prev, ...cleaned]);
+        })
+        .catch(err => {
+          fetchingRef.current = false;
+          console.warn("[logics] trade ledger backfill failed", err);
+        });
+    }, { rootMargin: "200px" });
+    obs.observe(sentinel);
+    return () => obs.disconnect();
+  }, [allTrades, exhausted, gameId]);
+
+  if (allTrades.length === 0) {
     return <div className="stocks-detail-empty dim">No trades yet.</div>;
   }
   return (
     <div className="stocks-trades-list" data-scroll-key="exchange:pno:history:list">
       <SortableRows
-        rows={trades}
+        rows={allTrades}
         columns={[
           { id: "tick", label: "tick", getValue: trade => trade.tick, defaultDirection: "desc" },
           { id: "action", label: "action", getValue: trade => trade.action },
@@ -2583,6 +2646,11 @@ function TradesList({ trades, onSelect }: { trades: TradeRecord[]; onSelect: (eq
                   </tr>
                 );
               })}
+              {!exhausted && (
+                <tr ref={sentinelRef} className="stocks-trades-sentinel">
+                  <td colSpan={7} className="dim">Loading older trades…</td>
+                </tr>
+              )}
             </tbody>
           </table>
         )}

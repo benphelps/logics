@@ -12,6 +12,7 @@ import {
   checkPositionTriggers,
   coverShares,
   computeFundamental,
+  createSyndicateEquity,
   ensureStockMarket,
   listEquities,
   listPlayerLimits,
@@ -84,6 +85,18 @@ describe("stock market — initialization", () => {
     expect(symbolize("Path Alpha", ["PA"])).toBe("PL");
     expect(symbolize("Path Alpha", ["PA", "PL", "PP", "PH", "PT"])).toBe("PAL");
     expect(symbolize("", [])).toBe("X2");
+  });
+
+  it("syndicate symbols omit a terminal Syndicate word", () => {
+    const equity = createSyndicateEquity({
+      id: "syn_test",
+      name: "Voss Cargo Syndicate",
+      memberShipIds: [],
+      treasury: 0,
+      recentRevenue: 0,
+    });
+
+    expect(equity.ticker).toBe("SVC");
   });
 
   it("stock symbols are unique and non-station assets are type-prefixed", () => {
@@ -730,15 +743,21 @@ describe("stock market — trade ledger", () => {
     expect(trades[0].realizedPnl).toBeDefined();
   });
 
-  it("trade ledger caps at TRADE_LEDGER_MAX", () => {
+  it("trade ledger grows unbounded in memory between flushes", () => {
+    // Append-time capping was removed when the ledger moved to IndexedDB:
+    // entries are now trimmed in historyDb#doFlush AFTER they're durably
+    // persisted, so the ring may temporarily exceed TRADE_LEDGER_MAX between
+    // saves. Older trades still survive in IDB and the History tab lazy-
+    // loads them. See historyDb.test.ts for the post-flush trim coverage.
     const w = createWorld();
     const ship = w.traders[w.player!.shipIds[0]];
     ship.funds = 100_000_000;
     const eq = listEquities(w)[0];
-    for (let i = 0; i < TRADE_LEDGER_MAX + 50; i++) {
+    const target = TRADE_LEDGER_MAX + 50;
+    for (let i = 0; i < target; i++) {
       buyShares(w, eq.id, 1);
     }
-    expect((w.player!.trades ?? []).length).toBeLessThanOrEqual(TRADE_LEDGER_MAX);
+    expect((w.player!.trades ?? []).length).toBe(target);
   });
 
   it("listPositions returns active positions", () => {

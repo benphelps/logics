@@ -106,11 +106,24 @@ export function symbolizeEquity(kind: EquityKind, name: string, existingSymbols:
   }
 
   const prefix = kind[0].toUpperCase();
+  const symbolName = equitySymbolSourceName(kind, name);
   const usedBehindPrefix = [...existingSymbols]
     .map(s => s.toUpperCase())
     .filter(s => s.startsWith(prefix))
     .map(s => s.slice(prefix.length))
     .filter(Boolean);
 
-  return `${prefix}${symbolize(name, usedBehindPrefix)}`;
+  return `${prefix}${symbolize(symbolName, usedBehindPrefix)}`;
+}
+
+function equitySymbolSourceName(kind: EquityKind, name: string): string {
+  if (kind !== "syndicate") return name;
+
+  const words = name.trim().split(/\s+/);
+  const last = words.at(-1);
+  if (!last || last.replace(/[^a-z0-9]/gi, "").toUpperCase() !== "SYNDICATE") {
+    return name;
+  }
+
+  return words.slice(0, -1).join(" ");
 }

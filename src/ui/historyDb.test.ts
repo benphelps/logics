@@ -7,14 +7,17 @@ import {
   getHistoryWindow,
   getRecentHistory,
   getRecentLog,
+  getRecentTradeRecords,
   getRecentTrades,
+  getTradeRecordsBefore,
   hydrateHistoryRings,
   primeHighWater,
   putHistory,
   putLog,
+  putTradeRecords,
   putTrades,
 } from "./historyDb";
-import type { BookTrade, Equity, ShipLogEntry, Trader, World } from "../sim/types";
+import type { BookTrade, Equity, ShipLogEntry, TradeRecord, Trader, World } from "../sim/types";
 
 beforeEach(async () => {
   await __resetHistoryDbForTests();
@@ -212,6 +215,120 @@ describe("historyDb", () => {
     expect(await getRecentHistory("g2", "eq1", 10)).toHaveLength(1);
     expect(await getRecentTrades("g2", "eq1", 10)).toHaveLength(1);
     expect(await getRecentLog("g2", "t1", 10)).toHaveLength(1);
+  });
+});
+
+function mkRecord(overrides: Partial<TradeRecord>): TradeRecord {
+  return {
+    id: overrides.id ?? `tr_${Math.random().toString(36).slice(2, 8)}`,
+    tick: overrides.tick ?? 0,
+    equityId: overrides.equityId ?? "eq1",
+    ticker: overrides.ticker ?? "EQ1",
+    action: overrides.action ?? "open_long",
+    shares: overrides.shares ?? 10,
+    price: overrides.price ?? 100,
+    fee: overrides.fee ?? 1,
+    cashFlow: overrides.cashFlow ?? -1001,
+    ...(overrides.realizedPnl !== undefined ? { realizedPnl: overrides.realizedPnl } : {}),
+    ...(overrides.trigger !== undefined ? { trigger: overrides.trigger } : {}),
+  };
+}
+
+describe("trade ledger", () => {
+  it("round-trips per (gameId, shipId) — getRecentTradeRecords returns oldest-first within window", async () => {
+    await putTradeRecords([
+      { ...mkRecord({ id: "r1", tick: 10, ticker: "AAA" }), gameId: "g1", shipId: "s1" },
+      { ...mkRecord({ id: "r2", tick: 20, ticker: "BBB" }), gameId: "g1", shipId: "s1" },
+      { ...mkRecord({ id: "r3", tick: 15, ticker: "CCC" }), gameId: "g1", shipId: "s2" },
+      { ...mkRecord({ id: "r4", tick: 5,  ticker: "DDD" }), gameId: "g2", shipId: "s1" },
+    ]);
+
+    const s1 = await getRecentTradeRecords("g1", "s1", 10);
+    expect(s1.map(r => r.id)).toEqual(["r1", "r2"]);
+    const s2 = await getRecentTradeRecords("g1", "s2", 10);
+    expect(s2).toHaveLength(1);
+    expect(s2[0].id).toBe("r3");
+    const otherGame = await getRecentTradeRecords("g2", "s1", 10);
+    expect(otherGame.map(r => r.id)).toEqual(["r4"]);
+  });
+
+  it("getTradeRecordsBefore paginates the cross-ship feed newest-first", async () => {
+    const records: { gameId: string; shipId: string; record: TradeRecord }[] = [];
+    for (let i = 0; i < 25; i++) {
+      records.push({
+        gameId: "g1", shipId: i % 2 === 0 ? "s1" : "s2",
+        record: mkRecord({ id: `r${i}`, tick: i }),
+      });
+    }
+    await putTradeRecords(records.map(r => ({ ...r.record, gameId: r.gameId, shipId: r.shipId })));
+
+    // Page 1: newest-first, before tick 1000 (effectively no upper bound).
+    const page1 = await getTradeRecordsBefore("g1", 1000, 10);
+    expect(page1.map(r => r.tick)).toEqual([24, 23, 22, 21, 20, 19, 18, 17, 16, 15]);
+
+    // Page 2: starting before page1's earliest.
+    const page2 = await getTradeRecordsBefore("g1", page1[page1.length - 1].tick, 10);
+    expect(page2.map(r => r.tick)).toEqual([14, 13, 12, 11, 10, 9, 8, 7, 6, 5]);
+
+    // Page 3: shorter than the requested page size = exhausted region.
+    const page3 = await getTradeRecordsBefore("g1", page2[page2.length - 1].tick, 10);
+    expect(page3.map(r => r.tick)).toEqual([4, 3, 2, 1, 0]);
+
+    // Past the start: empty.
+    const empty = await getTradeRecordsBefore("g1", 0, 10);
+    expect(empty).toHaveLength(0);
+  });
+
+  it("flushHistoryFromWorld writes ship.stockTrades and post-flush trim caps the ring", async () => {
+    const trader: Trader = {
+      ...mkTrader("s1"),
+      stockTrades: Array.from({ length: 250 }, (_, i) => mkRecord({ id: `r${i}`, tick: i })),
+    };
+    const world: World = {
+      ...mkWorld("g1", 250, [], [trader]),
+      player: { funds: 0, shipIds: ["s1"] },
+    };
+
+    await flushHistoryFromWorld(world);
+
+    // All 250 entries persisted.
+    expect(await getRecentTradeRecords("g1", "s1", 1000)).toHaveLength(250);
+    // Post-flush trim drops the in-memory ring to LEDGER_KEEP=200.
+    expect(trader.stockTrades).toHaveLength(200);
+    expect(trader.stockTrades![0].tick).toBe(50);
+    expect(trader.stockTrades![199].tick).toBe(249);
+  });
+
+  it("hydrateHistoryRings refills ship.stockTrades with the most recent N", async () => {
+    const records = Array.from({ length: 300 }, (_, i) => ({
+      ...mkRecord({ id: `r${i}`, tick: i }),
+      gameId: "g1", shipId: "s1",
+    }));
+    await putTradeRecords(records);
+
+    const trader: Trader = { ...mkTrader("s1"), stockTrades: [] };
+    const world: World = {
+      ...mkWorld("g1", 299, [], [trader]),
+      player: { funds: 0, shipIds: ["s1"] },
+    };
+
+    await hydrateHistoryRings(world);
+
+    expect(trader.stockTrades).toHaveLength(200);
+    expect(trader.stockTrades![0].tick).toBe(100);
+    expect(trader.stockTrades![199].tick).toBe(299);
+  });
+
+  it("deleteGame purges the ledger", async () => {
+    await putTradeRecords([
+      { ...mkRecord({ id: "g1r1", tick: 1 }), gameId: "g1", shipId: "s1" },
+      { ...mkRecord({ id: "g2r1", tick: 1 }), gameId: "g2", shipId: "s1" },
+    ]);
+
+    await deleteGame("g1");
+
+    expect(await getRecentTradeRecords("g1", "s1", 10)).toHaveLength(0);
+    expect(await getRecentTradeRecords("g2", "s1", 10)).toHaveLength(1);
   });
 });
 

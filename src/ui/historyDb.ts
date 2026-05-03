@@ -1,12 +1,15 @@
-import type { BookTrade, Equity, EquityId, ShipLogEntry, TraderId, World } from "../sim/types";
+import type { BookTrade, Equity, EquityId, ShipLogEntry, TradeRecord, TraderId, World } from "../sim/types";
 
 const DB_NAME = "logics-history";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_HISTORY = "equityHistory";
 const STORE_TRADES = "equityTrades";
 const STORE_LOG = "traderLog";
+const STORE_LEDGER = "tradeLedger";
 const IDX_TRADES = "byEquityTick";
 const IDX_LOG = "byTraderTick";
+const IDX_LEDGER_SHIP = "byShipTick";
+const IDX_LEDGER_GAME = "byGameTick";
 
 export interface HistorySample {
   gameId: string;
@@ -24,12 +27,21 @@ export interface PersistedLogEntry extends ShipLogEntry {
   traderId: TraderId;
 }
 
+// The player trade ledger — buys/sells/settlements with realized P&L.
+// Persisted per (gameId, shipId) so the History tab can lazy-load older
+// entries past whatever's currently in memory.
+export interface PersistedTradeRecord extends TradeRecord {
+  gameId: string;
+  shipId: TraderId;
+}
+
 // Per-(gameId) high-water marks. We only flush samples with tick > the mark
 // to avoid re-writing on every save. Reset implicitly on page reload — load
 // re-seeds these to world.tick before any new samples can be appended.
 const historyHighWater = new Map<string, number>();
 const tradesHighWater = new Map<string, number>();
 const logHighWater = new Map<string, number>();
+const ledgerHighWater = new Map<string, number>();
 
 // Per-gameId chain of pending flushes. Two saves in quick succession serialize
 // rather than racing the same high-water mark. hydrateHistoryRings awaits the
@@ -67,6 +79,15 @@ export function openHistoryDb(): Promise<IDBDatabase | null> {
         const log = db.createObjectStore(STORE_LOG, { autoIncrement: true });
         log.createIndex(IDX_LOG, ["gameId", "traderId", "tick"], { unique: false });
       }
+      if (!db.objectStoreNames.contains(STORE_LEDGER)) {
+        // Player trade ledger. TradeRecord.id is a unique string from the
+        // sim — use it as the primary key so re-flushing is idempotent.
+        // Two indexes: per-ship-then-tick for hydrate, per-game-then-tick
+        // for the "all my trades, newest first" UI query.
+        const ledger = db.createObjectStore(STORE_LEDGER, { keyPath: "id" });
+        ledger.createIndex(IDX_LEDGER_SHIP, ["gameId", "shipId", "tick"], { unique: false });
+        ledger.createIndex(IDX_LEDGER_GAME, ["gameId", "tick"], { unique: false });
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => {
@@ -86,6 +107,7 @@ export async function __resetHistoryDbForTests(): Promise<void> {
   historyHighWater.clear();
   tradesHighWater.clear();
   logHighWater.clear();
+  ledgerHighWater.clear();
   pendingFlushes.clear();
   if (existing) {
     try {
@@ -144,6 +166,17 @@ export async function putLog(entries: PersistedLogEntry[]): Promise<void> {
   await txDone(tx);
 }
 
+export async function putTradeRecords(records: PersistedTradeRecord[]): Promise<void> {
+  if (records.length === 0) return;
+  const db = await openHistoryDb();
+  if (!db) return;
+  const tx = db.transaction(STORE_LEDGER, "readwrite");
+  const store = tx.objectStore(STORE_LEDGER);
+  // Primary key is TradeRecord.id (a unique sim-side id); put is idempotent.
+  for (const r of records) store.put(r);
+  await txDone(tx);
+}
+
 // --- world flush ------------------------------------------------------------
 
 // Extract anything in the world's in-memory rings that hasn't been written
@@ -165,12 +198,14 @@ async function doFlush(world: World): Promise<void> {
   const lastH = historyHighWater.get(gameId) ?? -1;
   const lastT = tradesHighWater.get(gameId) ?? -1;
   const lastL = logHighWater.get(gameId) ?? -1;
+  const lastLedger = ledgerHighWater.get(gameId) ?? -1;
 
   const history: HistorySample[] = [];
   const trades: PersistedTrade[] = [];
   const log: PersistedLogEntry[] = [];
+  const ledger: PersistedTradeRecord[] = [];
 
-  let maxH = lastH, maxT = lastT, maxL = lastL;
+  let maxH = lastH, maxT = lastT, maxL = lastL, maxLedger = lastLedger;
 
   for (const eq of Object.values(world.equities ?? {})) {
     if (eq.history) {
@@ -192,11 +227,20 @@ async function doFlush(world: World): Promise<void> {
   }
 
   for (const trader of Object.values(world.traders ?? {})) {
-    if (!trader.log) continue;
-    for (const entry of trader.log) {
-      if (entry.tick > lastL) {
-        log.push({ ...entry, gameId, traderId: trader.id });
-        if (entry.tick > maxL) maxL = entry.tick;
+    if (trader.log) {
+      for (const entry of trader.log) {
+        if (entry.tick > lastL) {
+          log.push({ ...entry, gameId, traderId: trader.id });
+          if (entry.tick > maxL) maxL = entry.tick;
+        }
+      }
+    }
+    if (trader.stockTrades) {
+      for (const record of trader.stockTrades) {
+        if (record.tick > lastLedger) {
+          ledger.push({ ...record, gameId, shipId: trader.id });
+          if (record.tick > maxLedger) maxLedger = record.tick;
+        }
       }
     }
   }
@@ -212,6 +256,7 @@ async function doFlush(world: World): Promise<void> {
   const HISTORY_KEEP = 1000;
   const TRADES_KEEP = 500;
   const LOG_KEEP = 200;
+  const LEDGER_KEEP = 200;
   try {
     await Promise.all([
       history.length > 0 ? putHistory(history).then(() => {
@@ -238,6 +283,14 @@ async function doFlush(world: World): Promise<void> {
           }
         }
       }) : Promise.resolve(),
+      ledger.length > 0 ? putTradeRecords(ledger).then(() => {
+        ledgerHighWater.set(gameId, maxLedger);
+        for (const trader of Object.values(world.traders ?? {})) {
+          if (trader.stockTrades && trader.stockTrades.length > LEDGER_KEEP) {
+            trader.stockTrades.splice(0, trader.stockTrades.length - LEDGER_KEEP);
+          }
+        }
+      }) : Promise.resolve(),
     ]);
   } catch (error) {
     console.warn("[logics] historyDb flush failed", error);
@@ -252,6 +305,7 @@ export function primeHighWater(gameId: string, tick: number): void {
   historyHighWater.set(gameId, tick);
   tradesHighWater.set(gameId, tick);
   logHighWater.set(gameId, tick);
+  ledgerHighWater.set(gameId, tick);
 }
 
 // Refill the in-memory rings on a freshly-loaded world. Pulls bounded
@@ -263,13 +317,14 @@ export function primeHighWater(gameId: string, tick: number): void {
 // tick T never sees data from a later session that didn't get re-saved.
 export async function hydrateHistoryRings(
   world: World,
-  opts?: { historyLimit?: number; tradesLimit?: number; logLimit?: number },
+  opts?: { historyLimit?: number; tradesLimit?: number; logLimit?: number; ledgerLimit?: number },
 ): Promise<void> {
   const gameId = world.gameId;
   if (!gameId) return;
   const historyLimit = opts?.historyLimit ?? 1000;
   const tradesLimit = opts?.tradesLimit ?? 500;
   const logLimit = opts?.logLimit ?? 200;
+  const ledgerLimit = opts?.ledgerLimit ?? 200;
   const snapshotTick = world.tick;
 
   // Wait for any in-flight flush to settle before reading. Without this, a
@@ -304,6 +359,12 @@ export async function hydrateHistoryRings(
       const entries = await getRecentLog(gameId, tId, logLimit);
       trader.log = entries.filter(e => e.tick <= snapshotTick).map(trimToLog);
     }),
+    ...(world.player?.shipIds ?? []).map(async (shipId) => {
+      const trader = world.traders[shipId];
+      if (!trader) return;
+      const records = await getRecentTradeRecords(gameId, shipId, ledgerLimit);
+      trader.stockTrades = records.filter(r => r.tick <= snapshotTick).map(trimToTradeRecord);
+    }),
   ]);
 
   primeHighWater(gameId, snapshotTick);
@@ -328,6 +389,23 @@ function trimToLog(e: PersistedLogEntry): ShipLogEntry {
   const entry: ShipLogEntry = { tick: e.tick, kind: e.kind, message: e.message };
   if (e.tone !== undefined) entry.tone = e.tone;
   return entry;
+}
+
+function trimToTradeRecord(r: PersistedTradeRecord): TradeRecord {
+  const record: TradeRecord = {
+    id: r.id,
+    tick: r.tick,
+    equityId: r.equityId,
+    ticker: r.ticker,
+    action: r.action,
+    shares: r.shares,
+    price: r.price,
+    fee: r.fee,
+    cashFlow: r.cashFlow,
+  };
+  if (r.realizedPnl !== undefined) record.realizedPnl = r.realizedPnl;
+  if (r.trigger !== undefined) record.trigger = r.trigger;
+  return record;
 }
 
 // --- reads ------------------------------------------------------------------
@@ -445,41 +523,117 @@ export async function getRecentLog(gameId: string, traderId: TraderId, limit: nu
   });
 }
 
+// Per-ship trade ledger query — used by hydrate to repopulate ship.stockTrades.
+export async function getRecentTradeRecords(gameId: string, shipId: TraderId, limit: number): Promise<PersistedTradeRecord[]> {
+  if (limit <= 0) return [];
+  const db = await openHistoryDb();
+  if (!db) return [];
+  const tx = db.transaction(STORE_LEDGER, "readonly");
+  const idx = tx.objectStore(STORE_LEDGER).index(IDX_LEDGER_SHIP);
+  const range = IDBKeyRange.bound(
+    [gameId, shipId, Number.NEGATIVE_INFINITY],
+    [gameId, shipId, Number.POSITIVE_INFINITY],
+  );
+  const out: PersistedTradeRecord[] = [];
+  return new Promise<PersistedTradeRecord[]>((resolve, reject) => {
+    const req = idx.openCursor(range, "prev");
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (cursor && out.length < limit) {
+        out.push(cursor.value as PersistedTradeRecord);
+        cursor.continue();
+      } else {
+        out.reverse();
+        resolve(out);
+      }
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+// Cross-ship "all trades for this game" query — used by the History tab
+// to lazy-load older trades. Returns newest-first; callers can paginate by
+// passing `beforeTick` to fetch the next older chunk.
+export async function getTradeRecordsBefore(
+  gameId: string,
+  beforeTick: number,
+  limit: number,
+): Promise<PersistedTradeRecord[]> {
+  if (limit <= 0) return [];
+  const db = await openHistoryDb();
+  if (!db) return [];
+  const tx = db.transaction(STORE_LEDGER, "readonly");
+  const idx = tx.objectStore(STORE_LEDGER).index(IDX_LEDGER_GAME);
+  // Open-ended on the high side — `beforeTick` is exclusive.
+  const range = IDBKeyRange.bound(
+    [gameId, Number.NEGATIVE_INFINITY],
+    [gameId, beforeTick],
+    false,
+    true,
+  );
+  const out: PersistedTradeRecord[] = [];
+  return new Promise<PersistedTradeRecord[]>((resolve, reject) => {
+    const req = idx.openCursor(range, "prev");
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (cursor && out.length < limit) {
+        out.push(cursor.value as PersistedTradeRecord);
+        cursor.continue();
+      } else {
+        resolve(out);
+      }
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
 // --- delete -----------------------------------------------------------------
 
 export async function deleteGame(gameId: string): Promise<void> {
   if (!gameId) return;
   const db = await openHistoryDb();
   if (!db) return;
-  const tx = db.transaction([STORE_HISTORY, STORE_TRADES, STORE_LOG], "readwrite");
+  const tx = db.transaction([STORE_HISTORY, STORE_TRADES, STORE_LOG, STORE_LEDGER], "readwrite");
   await Promise.all([
-    deleteByGameId(tx.objectStore(STORE_HISTORY), gameId, "primary"),
+    deleteByGameId(tx.objectStore(STORE_HISTORY), gameId, "history"),
     deleteByGameId(tx.objectStore(STORE_TRADES), gameId, "trades"),
     deleteByGameId(tx.objectStore(STORE_LOG), gameId, "log"),
+    deleteByGameId(tx.objectStore(STORE_LEDGER), gameId, "ledger"),
   ]);
   await txDone(tx);
   historyHighWater.delete(gameId);
   tradesHighWater.delete(gameId);
   logHighWater.delete(gameId);
+  ledgerHighWater.delete(gameId);
 }
 
-function deleteByGameId(store: IDBObjectStore, gameId: string, kind: "primary" | "trades" | "log"): Promise<void> {
-  // History uses [gameId, equityId, tick] compound primary key — range-delete
-  // on the primary key directly. Trades/log use auto-key, so we walk the
+function deleteByGameId(
+  store: IDBObjectStore,
+  gameId: string,
+  kind: "history" | "trades" | "log" | "ledger",
+): Promise<void> {
+  // history uses [gameId, equityId, tick] compound primary key — range-delete
+  // on the primary key directly. The auto-key / id-key stores walk the
   // matching index and call cursor.delete() row by row.
-  if (kind === "primary") {
+  if (kind === "history") {
     const range = IDBKeyRange.bound(
       [gameId, "", Number.NEGATIVE_INFINITY],
       [gameId, "￿", Number.POSITIVE_INFINITY],
     );
     return reqAsPromise(store.delete(range)).then(() => undefined);
   }
-  const indexName = kind === "trades" ? IDX_TRADES : IDX_LOG;
+  const indexName = kind === "trades" ? IDX_TRADES
+    : kind === "log" ? IDX_LOG
+    : IDX_LEDGER_GAME;
   const idx = store.index(indexName);
-  const range = IDBKeyRange.bound(
-    [gameId, "", Number.NEGATIVE_INFINITY],
-    [gameId, "￿", Number.POSITIVE_INFINITY],
-  );
+  // trades/log indexes are [gameId, equityId|traderId, tick] (3-tuple);
+  // ledger byGameTick is [gameId, tick] (2-tuple). Build matching ranges.
+  const range = kind === "ledger"
+    ? IDBKeyRange.bound([gameId, Number.NEGATIVE_INFINITY], [gameId, Number.POSITIVE_INFINITY])
+    : IDBKeyRange.bound(
+        [gameId, "", Number.NEGATIVE_INFINITY],
+        [gameId, "￿", Number.POSITIVE_INFINITY],
+      );
   return new Promise<void>((resolve, reject) => {
     const req = idx.openCursor(range);
     req.onsuccess = () => {
