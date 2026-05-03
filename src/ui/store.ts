@@ -56,6 +56,47 @@ export interface PendingNewGame {
   previewWorld: World;
 }
 
+// "Seeding world" overlay state. After a syndicate is picked we run
+// tickWorld in setTimeout(0) chunks for `durationMs` so the universe has
+// some lived-in NPC activity before the player steps in. Quotes rotate
+// every 2s for flair while the loop runs in the background.
+export interface PendingSeed {
+  startedAt: number;
+  durationMs: number;
+  quotes: readonly string[];
+}
+
+const SEED_QUOTES = [
+  "Reticulating splines",
+  "Greasing syndicate palms",
+  "Bribing dock officials",
+  "Calibrating cargo manifests",
+  "Aligning hyperspace lanes",
+  "Spinning up freighter engines",
+  "Buffing the hull plating",
+  "Forging crew identities",
+  "Provisioning waystation rations",
+  "Posting limit orders for the housewares index",
+  "Tuning treasury floats",
+  "Brewing crew coffee",
+  "Auditing exchange listings",
+  "Stamping merchant credentials",
+  "Stocking the syndicate vaults",
+  "Loading sublight reactors",
+] as const;
+
+function pickSeedQuotes(n: number): string[] {
+  // Always lead with "Reticulating splines" — that's the SimCity homage
+  // the user asked for. Shuffle the rest and take the next n-1.
+  const lead = "Reticulating splines";
+  const rest = SEED_QUOTES.filter(q => q !== lead);
+  for (let i = rest.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [rest[i], rest[j]] = [rest[j], rest[i]];
+  }
+  return [lead, ...rest.slice(0, Math.max(0, n - 1))];
+}
+
 import {
   DEFAULT_VIEW_TABS,
   type AtlasMapTab,
@@ -372,6 +413,10 @@ interface UiState {
   // Pending new-game flow — non-null while the syndicate picker is open.
   // Holds the seed + a preview world the picker reads for its roster.
   pendingNewGame: PendingNewGame | null;
+  // Set after confirmNewGame while the world is being seeded with NPC
+  // activity. The seeding modal reads this to render itself + rotate
+  // through its quotes; the seeding loop clears it when finished.
+  pendingSeed: PendingSeed | null;
 
   setSpeed: (s: Speed) => void;
   togglePause: () => void;
@@ -458,6 +503,66 @@ export const useStore = create<UiState>((set, get) => {
       .then(() => hydrateHistoryRings(world))
       .then(() => set({ tickEpoch: get().tickEpoch + 1 }))
       .catch((err) => { console.warn("[logics] history hydrate failed", err); });
+  };
+
+  // Run a chunked tickWorld loop in the background while pendingSeed is
+  // active. We yield via setTimeout(0) between chunks so the seeding modal
+  // can paint and rotate its quotes; the player ship is on the world but
+  // its pilot is "manual" so it sits idle while NPCs flesh out the
+  // universe. When the wall-clock budget is up we save + apply the world
+  // exactly like the old confirmNewGame path did.
+  const runSeedingLoop = (
+    world: World,
+    intent: NewGameIntent,
+    targetSaveId: string | null,
+    saveName: string,
+  ): void => {
+    const tick = () => {
+      const seed = get().pendingSeed;
+      if (!seed) return;  // cancelled
+      const elapsed = performance.now() - seed.startedAt;
+      if (elapsed >= seed.durationMs) {
+        finalizeSeeding(world, intent, targetSaveId, saveName);
+        return;
+      }
+      // Tick chunks of 5 — at typical 5–10 ms per tickWorld this keeps
+      // each chunk under one frame so quote rotation stays smooth.
+      const CHUNK = 5;
+      for (let i = 0; i < CHUNK; i++) tickWorld(world);
+      setTimeout(tick, 0);
+    };
+    setTimeout(tick, 0);
+  };
+
+  const finalizeSeeding = (
+    world: World,
+    intent: NewGameIntent,
+    targetSaveId: string | null,
+    saveName: string,
+  ): void => {
+    if (intent === "create") {
+      applyLoadedGame(createGameSlot(saveName, "standard", world));
+    } else {
+      const saved = saveGameSlot(targetSaveId, saveName, "standard", world);
+      set({
+        world,
+        activeSaveId: saved.activeSaveId,
+        gameName: saved.gameName,
+        gameKind: saved.gameKind,
+        saveSlots: saved.saveSlots,
+        saveStatus: saved.saveStatus,
+        saveError: saved.saveError,
+        tickEpoch: get().tickEpoch + 1,
+        speed: 0,
+        selectedLocation: null,
+        selectedGood: null,
+        selectedTrader: null,
+        panelScrollPositions: {},
+        lastError: null,
+      });
+      kickoffHistoryHydration(world);
+    }
+    set({ pendingSeed: null });
   };
 
   const applyLoadedGame = (session: LoadedGameSession) => {
@@ -590,6 +695,7 @@ export const useStore = create<UiState>((set, get) => {
     lastError: null,
     newsToasts: [],
     pendingNewGame: initialPendingNewGame,
+    pendingSeed: null,
 
     setSpeed: (s) => set({ speed: s }),
     togglePause: () => set({ speed: get().speed === 0 ? 1 : 0 }),
@@ -628,35 +734,31 @@ export const useStore = create<UiState>((set, get) => {
     confirmNewGame: (syndicateId) => {
       const pending = get().pendingNewGame;
       if (!pending) return;
-      const world = createStartingWorld({ seed: pending.seed, syndicateId });
-      if (pending.intent === "create") {
-        clearPendingAutosave();
-        const slots = get().saveSlots;
-        const name = nextSaveName(slots, "Voyager");
-        applyLoadedGame(createGameSlot(name, "standard", world));
-      } else {
-        clearPendingAutosave();
-        const current = get();
-        const saved = saveGameSlot(current.activeSaveId, current.gameName, "standard", world);
-        set({
-          world,
-          activeSaveId: saved.activeSaveId,
-          gameName: saved.gameName,
-          gameKind: saved.gameKind,
-          saveSlots: saved.saveSlots,
-          saveStatus: saved.saveStatus,
-          saveError: saved.saveError,
-          tickEpoch: current.tickEpoch + 1,
-          speed: 0,
-          selectedLocation: null,
-          selectedGood: null,
-          selectedTrader: null,
-          panelScrollPositions: {},
-          lastError: null,
-        });
-        kickoffHistoryHydration(world);
-      }
-      set({ pendingNewGame: null });
+      // Skip the synchronous tickN aging — the seeding-world phase below
+      // runs the same kind of warm-up against a real wall-clock budget,
+      // chunked through setTimeout so the UI doesn't freeze.
+      const world = createStartingWorld({ seed: pending.seed, syndicateId, ageTicks: 0 });
+      const intent = pending.intent;
+      const slots = get().saveSlots;
+      const name = intent === "create" ? nextSaveName(slots, "Voyager") : get().gameName;
+      const targetSaveId = intent === "create" ? null : get().activeSaveId;
+
+      clearPendingAutosave();
+      // Pause the tick driver while we seed — useTickDriver fires against
+      // state.world, but the seeding loop ticks the new (separate) world.
+      // Once finalizeSeeding swaps state.world over, speed stays at 0
+      // so the player begins paused like every other freshly-loaded save.
+      set({
+        speed: 0,
+        pendingNewGame: null,
+        pendingSeed: {
+          startedAt: performance.now(),
+          durationMs: 6000,
+          quotes: pickSeedQuotes(3),
+        },
+      });
+
+      runSeedingLoop(world, intent, targetSaveId, name);
     },
     cancelNewGame: () => set({ pendingNewGame: null }),
     loadGame: (id) => {

@@ -1,0 +1,38 @@
+.ui-modal-dialog.seeding-dialog {
+  width: min(480px, 100%);
+}
+
+.seeding-quote {
+  margin: 0 0 14px;
+  font-size: 18px;
+  color: var(--text);
+  letter-spacing: 0.02em;
+}
+
+.seeding-progress {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.seeding-progress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent) 70%, transparent) 0%,
+    var(--accent) 100%
+  );
+  transition: width 120ms ease;
+}
+
+.seeding-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
