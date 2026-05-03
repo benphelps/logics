@@ -2094,7 +2094,8 @@ function DetailPanel(props: {
   const localFutures = Object.values(world.contracts ?? {})
     .filter(c => c.deliveryStation === loc.id)
     .sort((a, b) => a.expiryTick - b.expiryTick);
-  const sparkPoints = (exchange.equity?.history ?? []).map(h => h.price);
+  // Glance preview only — last 100 samples; equity.history is unbounded.
+  const sparkPoints = (exchange.equity?.history ?? []).slice(-100).map(h => h.price);
   const lastDiv = exchange.equity?.lastDividend;
   const ticksSinceDiv = lastDiv ? Math.max(0, world.tick - lastDiv.tick) : null;
   const changeTone = exchange.changePct > 0.0005 ? "good" : exchange.changePct < -0.0005 ? "bad" : "";

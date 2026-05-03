@@ -1204,7 +1204,10 @@ function StationExchangeSection({ loc, world }: { loc: LocationDef; world: World
 
   if (!stationEquity && localBasis.length === 0 && localFutures.length === 0) return null;
 
-  const sparkPoints = (stationEquity?.history ?? []).map(h => h.price);
+  // Glance preview only — last 100 samples is enough for the SVG line shape.
+  // equity.history grows unbounded; mapping all of it on every render
+  // dominates with thousands of ticks.
+  const sparkPoints = (stationEquity?.history ?? []).slice(-100).map(h => h.price);
   const changePct = stationEquity ? priceChangePct(stationEquity) : 0;
   const changeTone = changePct > 0.0005 ? "good" : changePct < -0.0005 ? "bad" : "";
   const lastDiv = stationEquity?.lastDividend;
