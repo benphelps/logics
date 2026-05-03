@@ -12,6 +12,7 @@ import {
   checkPositionTriggers,
   coverShares,
   computeFundamental,
+  createBasisEquity,
   createSyndicateEquity,
   ensureStockMarket,
   listEquities,
@@ -84,7 +85,14 @@ describe("stock market — initialization", () => {
     expect(symbolize("Path Alpha")).toBe("PA");
     expect(symbolize("Path Alpha", ["PA"])).toBe("PL");
     expect(symbolize("Path Alpha", ["PA", "PL", "PP", "PH", "PT"])).toBe("PAL");
+    expect(symbolize("Ore")).toBe("OR");
     expect(symbolize("", [])).toBe("X2");
+  });
+
+  it("symbolize accepts a target symbol length with a minimum of 2", () => {
+    expect(symbolize("Kestrel Shipping Group", [], 3)).toBe("KSG");
+    expect(symbolize("Kestrel Shipping Group", [], 2)).toBe("KS");
+    expect(symbolize("A", [], 1)).toBe("A2");
   });
 
   it("syndicate symbols omit a terminal Syndicate word", () => {
@@ -96,7 +104,29 @@ describe("stock market — initialization", () => {
       recentRevenue: 0,
     });
 
-    expect(equity.ticker).toBe("SVC");
+    expect(equity.ticker).toBe("S.VC");
+  });
+
+  it("non-station symbols count their type prefix toward the symbol length", () => {
+    const equity = createSyndicateEquity({
+      id: "syn_test",
+      name: "Kestrel Shipping Group",
+      memberShipIds: [],
+      treasury: 0,
+      recentRevenue: 0,
+    });
+
+    expect(equity.ticker).toBe("S.KS");
+  });
+
+  it("non-station symbols separate the type prefix with a dot", () => {
+    const equity = createBasisEquity(
+      { id: "cinder_belt", name: "Cinder Belt Hydroponic" },
+      { id: "grain", name: "Grain", basePrice: 8 },
+      ["B.CB", "B.CI", "B.CN", "B.CD"],
+    );
+
+    expect(equity.ticker).toBe("B.CE");
   });
 
   it("stock symbols are unique and non-station assets are type-prefixed", () => {
@@ -107,7 +137,7 @@ describe("stock market — initialization", () => {
       tickers.add(eq.ticker);
 
       if (eq.kind !== "station") {
-        expect(eq.ticker.startsWith(eq.kind[0].toUpperCase())).toBe(true);
+        expect(eq.ticker.startsWith(`${eq.kind[0].toUpperCase()}.`)).toBe(true);
       }
     }
   });

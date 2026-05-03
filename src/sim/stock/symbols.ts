@@ -1,6 +1,16 @@
 import type { EquityKind } from "../types";
 
-export function symbolize(name: string, existingSymbols: Iterable<string> = []): string {
+export function symbolize(name: string, existingSymbols: Iterable<string> = [], symbolLength = 2): string {
+  return symbolizeWithLength(name, existingSymbols, symbolLength, 2);
+}
+
+function symbolizeWithLength(
+  name: string,
+  existingSymbols: Iterable<string> = [],
+  symbolLength = 2,
+  minimumLength = 2,
+): string {
+  const targetLength = normalizeSymbolLength(symbolLength, minimumLength);
   const taken = new Set(
     [...existingSymbols].map(s => s.toUpperCase()),
   );
@@ -12,13 +22,14 @@ export function symbolize(name: string, existingSymbols: Iterable<string> = []):
     .filter(Boolean);
 
   if (words.length === 0) {
-    return nextNumberedSymbol("X", taken);
+    return nextNumberedSymbol("X".repeat(Math.max(1, targetLength - 1)), taken);
   }
 
   const upperWords = words.map(w => w.toUpperCase());
 
   // First letter of each word, e.g. "Part Alpha" => "PA"
-  const base = upperWords.map(w => w[0]).join("");
+  const baseWords = upperWords.slice(0, Math.min(upperWords.length, targetLength));
+  const base = baseWords.map(w => w[0]).join("");
 
   const seenCandidates = new Set<string>();
 
@@ -35,7 +46,7 @@ export function symbolize(name: string, existingSymbols: Iterable<string> = []):
   }
 
   // 1. Try the plain initials first.
-  let result = tryCandidate(base);
+  let result = base.length >= targetLength ? tryCandidate(base) : null;
   if (result) return result;
 
   // Word priority:
@@ -47,20 +58,25 @@ export function symbolize(name: string, existingSymbols: Iterable<string> = []):
     0,
   ];
 
-  // 2. Try short conflicts.
+  // 2. Try target-length conflicts.
   //
   // For two words:
   // Path Alpha:
   // PA, PL, PP, PH, PA, PA, PT, PH...
   //
   // Duplicates are skipped automatically.
-  const anchor = upperWords[0][0];
+  const stem = base.length >= targetLength
+    ? base.slice(0, targetLength - 1)
+    : base;
+  const needed = targetLength - stem.length;
 
   for (const wordIndex of wordOrder) {
     const word = upperWords[wordIndex];
 
     for (let charIndex = 1; charIndex < word.length; charIndex++) {
-      const candidate = anchor + word[charIndex];
+      const fill = word.slice(charIndex, charIndex + needed);
+      if (fill.length < needed) continue;
+      const candidate = stem + fill;
 
       result = tryCandidate(candidate);
       if (result) return result;
@@ -87,7 +103,7 @@ export function symbolize(name: string, existingSymbols: Iterable<string> = []):
   }
 
   // 4. Last resort: add numbers.
-  return nextNumberedSymbol(base, taken);
+  return nextNumberedSymbol(baseForNumberedFallback(base, targetLength), taken);
 }
 
 function nextNumberedSymbol(base: string, taken: Set<string>): string {
@@ -100,20 +116,39 @@ function nextNumberedSymbol(base: string, taken: Set<string>): string {
   return `${base}${i}`;
 }
 
-export function symbolizeEquity(kind: EquityKind, name: string, existingSymbols: Iterable<string> = []): string {
+function normalizeSymbolLength(symbolLength: number, minimumLength: number): number {
+  if (!Number.isFinite(symbolLength)) return minimumLength;
+  return Math.max(minimumLength, Math.floor(symbolLength));
+}
+
+function baseForNumberedFallback(base: string, targetLength: number): string {
+  if (base.length >= targetLength - 1) return base;
+  const fill = base[0] ?? "X";
+  return base.padEnd(Math.max(1, targetLength - 1), fill);
+}
+
+export function symbolizeEquity(
+  kind: EquityKind,
+  name: string,
+  existingSymbols: Iterable<string> = [],
+  symbolLength = 3,
+): string {
   if (kind === "station") {
-    return symbolize(name, existingSymbols);
+    return symbolize(name, existingSymbols, symbolLength);
   }
 
   const prefix = kind[0].toUpperCase();
+  const prefixToken = `${prefix}.`;
+  const targetLength = normalizeSymbolLength(symbolLength, 2);
+  const bodyLength = Math.max(1, targetLength - prefix.length);
   const symbolName = equitySymbolSourceName(kind, name);
   const usedBehindPrefix = [...existingSymbols]
     .map(s => s.toUpperCase())
-    .filter(s => s.startsWith(prefix))
-    .map(s => s.slice(prefix.length))
+    .filter(s => s.startsWith(prefixToken))
+    .map(s => s.slice(prefixToken.length))
     .filter(Boolean);
 
-  return `${prefix}${symbolize(symbolName, usedBehindPrefix)}`;
+  return `${prefixToken}${symbolizeWithLength(symbolName, usedBehindPrefix, bodyLength, 1)}`;
 }
 
 function equitySymbolSourceName(kind: EquityKind, name: string): string {

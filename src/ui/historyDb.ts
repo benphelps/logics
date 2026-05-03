@@ -1,15 +1,18 @@
 import type { BookTrade, Equity, EquityId, ShipLogEntry, TradeRecord, TraderId, World } from "../sim/types";
+import type { RecentNewsEvent } from "../sim/news/types";
 
 const DB_NAME = "logics-history";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_HISTORY = "equityHistory";
 const STORE_TRADES = "equityTrades";
 const STORE_LOG = "traderLog";
 const STORE_LEDGER = "tradeLedger";
+const STORE_NEWS = "newsEvents";
 const IDX_TRADES = "byEquityTick";
 const IDX_LOG = "byTraderTick";
 const IDX_LEDGER_SHIP = "byShipTick";
 const IDX_LEDGER_GAME = "byGameTick";
+const IDX_NEWS_GAME = "byGameTick";
 
 export interface HistorySample {
   gameId: string;
@@ -35,6 +38,13 @@ export interface PersistedTradeRecord extends TradeRecord {
   shipId: TraderId;
 }
 
+// Expired news events. The in-memory `state.recent` is a small ring; the
+// IDB store retains them forever so a future "news archive" UI can paginate
+// arbitrarily far back. uid is unique per event, so it's the natural pk.
+export interface PersistedNewsEvent extends RecentNewsEvent {
+  gameId: string;
+}
+
 // Per-(gameId) high-water marks. We only flush samples with tick > the mark
 // to avoid re-writing on every save. Reset implicitly on page reload — load
 // re-seeds these to world.tick before any new samples can be appended.
@@ -42,6 +52,7 @@ const historyHighWater = new Map<string, number>();
 const tradesHighWater = new Map<string, number>();
 const logHighWater = new Map<string, number>();
 const ledgerHighWater = new Map<string, number>();
+const newsHighWater = new Map<string, number>();
 
 // Per-gameId chain of pending flushes. Two saves in quick succession serialize
 // rather than racing the same high-water mark. hydrateHistoryRings awaits the
@@ -88,6 +99,13 @@ export function openHistoryDb(): Promise<IDBDatabase | null> {
         ledger.createIndex(IDX_LEDGER_SHIP, ["gameId", "shipId", "tick"], { unique: false });
         ledger.createIndex(IDX_LEDGER_GAME, ["gameId", "tick"], { unique: false });
       }
+      if (!db.objectStoreNames.contains(STORE_NEWS)) {
+        // Expired news events. The sim assigns a stable uid per event;
+        // pair it with gameId for the compound primary key. Range queries
+        // by tick happen via the byGameTick index.
+        const news = db.createObjectStore(STORE_NEWS, { keyPath: ["gameId", "uid"] });
+        news.createIndex(IDX_NEWS_GAME, ["gameId", "tick"], { unique: false });
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => {
@@ -108,6 +126,7 @@ export async function __resetHistoryDbForTests(): Promise<void> {
   tradesHighWater.clear();
   logHighWater.clear();
   ledgerHighWater.clear();
+  newsHighWater.clear();
   pendingFlushes.clear();
   if (existing) {
     try {
@@ -177,6 +196,17 @@ export async function putTradeRecords(records: PersistedTradeRecord[]): Promise<
   await txDone(tx);
 }
 
+export async function putNewsEvents(events: PersistedNewsEvent[]): Promise<void> {
+  if (events.length === 0) return;
+  const db = await openHistoryDb();
+  if (!db) return;
+  const tx = db.transaction(STORE_NEWS, "readwrite");
+  const store = tx.objectStore(STORE_NEWS);
+  // Primary key is [gameId, uid]; put is idempotent.
+  for (const e of events) store.put(e);
+  await txDone(tx);
+}
+
 // --- world flush ------------------------------------------------------------
 
 // Extract anything in the world's in-memory rings that hasn't been written
@@ -199,13 +229,15 @@ async function doFlush(world: World): Promise<void> {
   const lastT = tradesHighWater.get(gameId) ?? -1;
   const lastL = logHighWater.get(gameId) ?? -1;
   const lastLedger = ledgerHighWater.get(gameId) ?? -1;
+  const lastNews = newsHighWater.get(gameId) ?? -1;
 
   const history: HistorySample[] = [];
   const trades: PersistedTrade[] = [];
   const log: PersistedLogEntry[] = [];
   const ledger: PersistedTradeRecord[] = [];
+  const news: PersistedNewsEvent[] = [];
 
-  let maxH = lastH, maxT = lastT, maxL = lastL, maxLedger = lastLedger;
+  let maxH = lastH, maxT = lastT, maxL = lastL, maxLedger = lastLedger, maxNews = lastNews;
 
   for (const eq of Object.values(world.equities ?? {})) {
     if (eq.history) {
@@ -245,6 +277,17 @@ async function doFlush(world: World): Promise<void> {
     }
   }
 
+  // Expired news events live in world.newsEvents.recent (a small ring); we
+  // also persist them so a future news-archive UI can paginate forever.
+  if (world.newsEvents?.recent) {
+    for (const ev of world.newsEvents.recent) {
+      if (ev.tick > lastNews) {
+        news.push({ ...ev, gameId });
+        if (ev.tick > maxNews) maxNews = ev.tick;
+      }
+    }
+  }
+
   // Update high-water only after a successful write — failures keep the
   // previous mark so the next save retries the same range.
   // After a successful write the entries up to the new high-water are
@@ -253,10 +296,14 @@ async function doFlush(world: World): Promise<void> {
   // pinning hundreds of MB in heap and triggering major GC pauses on
   // every click. Older bars are still available via lazy IDB backfill
   // when the user scrolls past the kept window.
-  const HISTORY_KEEP = 1000;
-  const TRADES_KEEP = 500;
-  const LOG_KEEP = 200;
-  const LEDGER_KEEP = 200;
+  // First-render windows. UI components show ~100 entries by default
+  // (chart's HISTORY_PAGE, TradesList's TRADES_PAGE_SIZE, ShipLogCard's
+  // LOG_PAGE_SIZE) and lazy-load older from IDB on scroll, so keeping
+  // any more than this in memory is wasted heap.
+  const HISTORY_KEEP = 100;
+  const TRADES_KEEP = 100;
+  const LOG_KEEP = 100;
+  const LEDGER_KEEP = 100;
   try {
     await Promise.all([
       history.length > 0 ? putHistory(history).then(() => {
@@ -291,6 +338,11 @@ async function doFlush(world: World): Promise<void> {
           }
         }
       }) : Promise.resolve(),
+      news.length > 0 ? putNewsEvents(news).then(() => {
+        newsHighWater.set(gameId, maxNews);
+        // No in-memory trim — news.recent is already capped at 64 by
+        // tickNewsEvents; that's our display window.
+      }) : Promise.resolve(),
     ]);
   } catch (error) {
     console.warn("[logics] historyDb flush failed", error);
@@ -306,6 +358,7 @@ export function primeHighWater(gameId: string, tick: number): void {
   tradesHighWater.set(gameId, tick);
   logHighWater.set(gameId, tick);
   ledgerHighWater.set(gameId, tick);
+  newsHighWater.set(gameId, tick);
 }
 
 // Refill the in-memory rings on a freshly-loaded world. Pulls bounded
@@ -317,14 +370,15 @@ export function primeHighWater(gameId: string, tick: number): void {
 // tick T never sees data from a later session that didn't get re-saved.
 export async function hydrateHistoryRings(
   world: World,
-  opts?: { historyLimit?: number; tradesLimit?: number; logLimit?: number; ledgerLimit?: number },
+  opts?: { historyLimit?: number; tradesLimit?: number; logLimit?: number; ledgerLimit?: number; newsLimit?: number },
 ): Promise<void> {
   const gameId = world.gameId;
   if (!gameId) return;
-  const historyLimit = opts?.historyLimit ?? 1000;
-  const tradesLimit = opts?.tradesLimit ?? 500;
-  const logLimit = opts?.logLimit ?? 200;
-  const ledgerLimit = opts?.ledgerLimit ?? 200;
+  const historyLimit = opts?.historyLimit ?? 100;
+  const tradesLimit = opts?.tradesLimit ?? 100;
+  const logLimit = opts?.logLimit ?? 100;
+  const ledgerLimit = opts?.ledgerLimit ?? 100;
+  const newsLimit = opts?.newsLimit ?? 64;
   const snapshotTick = world.tick;
 
   // Wait for any in-flight flush to settle before reading. Without this, a
@@ -365,6 +419,13 @@ export async function hydrateHistoryRings(
       const records = await getRecentTradeRecords(gameId, shipId, ledgerLimit);
       trader.stockTrades = records.filter(r => r.tick <= snapshotTick).map(trimToTradeRecord);
     }),
+    (async () => {
+      if (!world.newsEvents) return;
+      const events = await getRecentNewsEvents(gameId, newsLimit);
+      world.newsEvents.recent = events
+        .filter(e => e.tick <= snapshotTick)
+        .map(e => ({ uid: e.uid, templateId: e.templateId, tick: e.tick, effects: e.effects }));
+    })(),
   ]);
 
   primeHighWater(gameId, snapshotTick);
@@ -564,6 +625,65 @@ export async function countTradeRecords(gameId: string): Promise<number> {
   return reqAsPromise(idx.count(range));
 }
 
+// Most recent news events for this game, oldest-first within the window.
+// Used by hydrate to refill state.recent.
+export async function getRecentNewsEvents(gameId: string, limit: number): Promise<PersistedNewsEvent[]> {
+  if (limit <= 0) return [];
+  const db = await openHistoryDb();
+  if (!db) return [];
+  const tx = db.transaction(STORE_NEWS, "readonly");
+  const idx = tx.objectStore(STORE_NEWS).index(IDX_NEWS_GAME);
+  const range = IDBKeyRange.bound([gameId, Number.NEGATIVE_INFINITY], [gameId, Number.POSITIVE_INFINITY]);
+  const out: PersistedNewsEvent[] = [];
+  return new Promise<PersistedNewsEvent[]>((resolve, reject) => {
+    const req = idx.openCursor(range, "prev");
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (cursor && out.length < limit) {
+        out.push(cursor.value as PersistedNewsEvent);
+        cursor.continue();
+      } else {
+        out.reverse();
+        resolve(out);
+      }
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+// Paginate older news events for a future archive UI.
+export async function getNewsEventsBefore(
+  gameId: string,
+  beforeTick: number,
+  limit: number,
+): Promise<PersistedNewsEvent[]> {
+  if (limit <= 0) return [];
+  const db = await openHistoryDb();
+  if (!db) return [];
+  const tx = db.transaction(STORE_NEWS, "readonly");
+  const idx = tx.objectStore(STORE_NEWS).index(IDX_NEWS_GAME);
+  const range = IDBKeyRange.bound(
+    [gameId, Number.NEGATIVE_INFINITY],
+    [gameId, beforeTick],
+    false,
+    true,
+  );
+  const out: PersistedNewsEvent[] = [];
+  return new Promise<PersistedNewsEvent[]>((resolve, reject) => {
+    const req = idx.openCursor(range, "prev");
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (cursor && out.length < limit) {
+        out.push(cursor.value as PersistedNewsEvent);
+        cursor.continue();
+      } else {
+        resolve(out);
+      }
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
 // Cross-ship "all trades for this game" query — used by the History tab
 // to lazy-load older trades. Returns newest-first; callers can paginate by
 // passing `beforeTick` to fetch the next older chunk.
@@ -606,33 +726,39 @@ export async function deleteGame(gameId: string): Promise<void> {
   if (!gameId) return;
   const db = await openHistoryDb();
   if (!db) return;
-  const tx = db.transaction([STORE_HISTORY, STORE_TRADES, STORE_LOG, STORE_LEDGER], "readwrite");
+  const tx = db.transaction([STORE_HISTORY, STORE_TRADES, STORE_LOG, STORE_LEDGER, STORE_NEWS], "readwrite");
   await Promise.all([
     deleteByGameId(tx.objectStore(STORE_HISTORY), gameId, "history"),
     deleteByGameId(tx.objectStore(STORE_TRADES), gameId, "trades"),
     deleteByGameId(tx.objectStore(STORE_LOG), gameId, "log"),
     deleteByGameId(tx.objectStore(STORE_LEDGER), gameId, "ledger"),
+    deleteByGameId(tx.objectStore(STORE_NEWS), gameId, "news"),
   ]);
   await txDone(tx);
   historyHighWater.delete(gameId);
   tradesHighWater.delete(gameId);
   logHighWater.delete(gameId);
   ledgerHighWater.delete(gameId);
+  newsHighWater.delete(gameId);
 }
 
 function deleteByGameId(
   store: IDBObjectStore,
   gameId: string,
-  kind: "history" | "trades" | "log" | "ledger",
+  kind: "history" | "trades" | "log" | "ledger" | "news",
 ): Promise<void> {
-  // history uses [gameId, equityId, tick] compound primary key — range-delete
-  // on the primary key directly. The auto-key / id-key stores walk the
-  // matching index and call cursor.delete() row by row.
+  // history + news use compound primary keys whose first element is gameId;
+  // range-delete on the primary key directly. The auto-key / id-key stores
+  // walk the matching index and call cursor.delete() row by row.
   if (kind === "history") {
     const range = IDBKeyRange.bound(
       [gameId, "", Number.NEGATIVE_INFINITY],
       [gameId, "￿", Number.POSITIVE_INFINITY],
     );
+    return reqAsPromise(store.delete(range)).then(() => undefined);
+  }
+  if (kind === "news") {
+    const range = IDBKeyRange.bound([gameId, ""], [gameId, "￿"]);
     return reqAsPromise(store.delete(range)).then(() => undefined);
   }
   const indexName = kind === "trades" ? IDX_TRADES

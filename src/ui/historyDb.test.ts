@@ -293,10 +293,10 @@ describe("trade ledger", () => {
 
     // All 250 entries persisted.
     expect(await getRecentTradeRecords("g1", "s1", 1000)).toHaveLength(250);
-    // Post-flush trim drops the in-memory ring to LEDGER_KEEP=200.
-    expect(trader.stockTrades).toHaveLength(200);
-    expect(trader.stockTrades![0].tick).toBe(50);
-    expect(trader.stockTrades![199].tick).toBe(249);
+    // Post-flush trim drops the in-memory ring to LEDGER_KEEP=100.
+    expect(trader.stockTrades).toHaveLength(100);
+    expect(trader.stockTrades![0].tick).toBe(150);
+    expect(trader.stockTrades![99].tick).toBe(249);
   });
 
   it("hydrateHistoryRings refills ship.stockTrades with the most recent N", async () => {
@@ -314,9 +314,9 @@ describe("trade ledger", () => {
 
     await hydrateHistoryRings(world);
 
-    expect(trader.stockTrades).toHaveLength(200);
-    expect(trader.stockTrades![0].tick).toBe(100);
-    expect(trader.stockTrades![199].tick).toBe(299);
+    expect(trader.stockTrades).toHaveLength(100);
+    expect(trader.stockTrades![0].tick).toBe(200);
+    expect(trader.stockTrades![99].tick).toBe(299);
   });
 
   it("deleteGame purges the ledger", async () => {
@@ -439,20 +439,20 @@ describe("hydrateHistoryRings", () => {
     ]);
   });
 
-  it("loads up to the default 1000-entry hydrate cap (older bars stay in IDB)", async () => {
-    const samples = Array.from({ length: 1500 }, (_, i) => ({
+  it("loads up to the default 100-entry hydrate cap (older bars stay in IDB)", async () => {
+    const samples = Array.from({ length: 300 }, (_, i) => ({
       gameId: "g1", equityId: "eq1", tick: i, price: i,
     }));
     await putHistory(samples);
 
     const eq = mkEquity("eq1", []);
-    const world = mkWorld("g1", 1499, [eq]);
+    const world = mkWorld("g1", 299, [eq]);
 
     await hydrateHistoryRings(world);
 
-    expect(world.equities.eq1.history).toHaveLength(1000);
-    expect(world.equities.eq1.history![0].tick).toBe(500);
-    expect(world.equities.eq1.history![999].tick).toBe(1499);
+    expect(world.equities.eq1.history).toHaveLength(100);
+    expect(world.equities.eq1.history![0].tick).toBe(200);
+    expect(world.equities.eq1.history![99].tick).toBe(299);
   });
 
   it("explicit limits still work for callers that want a window", async () => {

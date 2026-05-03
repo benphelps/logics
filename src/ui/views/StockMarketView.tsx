@@ -15,7 +15,7 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 import { useStore } from "../store";
-import { countTradeRecords, getTradeRecordsBefore } from "../historyDb";
+import { countTradeRecords, getHistoryWindow, getTradeRecordsBefore } from "../historyDb";
 import type { BookTrade, Equity, EquityKind, FuturesContract, FuturesPosition, Order, OrderBook, StockPosition, TradeRecord, World } from "../../sim/types";
 import { hasCrew } from "../../sim/crew";
 import { canDeliverPhysical, listPlayerFutures, unrealizedFuturesPnl } from "../../sim/stock/futures";
@@ -2925,21 +2925,29 @@ function Sparkline({ equity, position }: { equity: Equity; position: StockPositi
   // so the data effect re-fires with a fresh full setData.
   const [layoutGen, setLayoutGen] = useState(0);
 
-  // The chart shows the last `historyDepth` price samples; we expand on
-  // overpan past the leftmost loaded bar. The ring (equity.history) is
-  // capped (post-flush trim in historyDb.ts at 1000) so unbounded growth
-  // doesn't pin heap memory.
+  // The chart shows the last `historyDepth` price samples. The in-memory
+  // ring (equity.history) is capped at 100 by post-flush trim, so once
+  // the user scrolls past the leftmost ring bar we fetch older bars
+  // from IndexedDB and prepend into `idbBackfill`. allHistory =
+  // [...idbBackfill, ...ringHistory] is the chart's view; depth grows
+  // both via in-ring expansion and via IDB chunks landing.
   const HISTORY_PAGE = 100;
-  const TRADES_PAGE = 500;
   const [historyDepth, setHistoryDepth] = useState(HISTORY_PAGE);
+  const [idbBackfill, setIdbBackfill] = useState<{ tick: number; price: number }[]>([]);
+  // Refs mirror the values the visible-range subscriber needs to read
+  // synchronously without re-subscribing. State is for triggering
+  // re-renders; the refs are the source of truth inside the handler.
+  const idbBackfillRef = useRef<{ tick: number; price: number }[]>([]);
   const fetchingRef = useRef<boolean>(false);
+  const idbExhaustedRef = useRef<boolean>(false);
+  const gameIdForChart = useStore(s => s.world.gameId);
 
   const ringHistory = equity.history ?? [];
   const ringTrades = equity.recentTrades ?? [];
-  const historyStart = Math.max(0, ringHistory.length - historyDepth);
-  const history = historyStart === 0 ? ringHistory : ringHistory.slice(historyStart);
-  const tradesStart = Math.max(0, ringTrades.length - TRADES_PAGE);
-  const trades = tradesStart === 0 ? ringTrades : ringTrades.slice(tradesStart);
+  const allHistory = idbBackfill.length > 0 ? [...idbBackfill, ...ringHistory] : ringHistory;
+  const historyStart = Math.max(0, allHistory.length - historyDepth);
+  const history = historyStart === 0 ? allHistory : allHistory.slice(historyStart);
+  const trades = ringTrades;
 
   // Build the chart once the container has an actual measurable width.
   // On first paint of the Exchange tab the info panel may still be in
@@ -3143,30 +3151,79 @@ function Sparkline({ equity, position }: { equity: Equity; position: StockPositi
   // first entry jumps to the left side".
   useEffect(() => {
     setHistoryDepth(HISTORY_PAGE);
+    setIdbBackfill([]);
+    idbBackfillRef.current = [];
     fetchingRef.current = false;
+    idbExhaustedRef.current = false;
   }, [equity.id]);
 
-  // Lazy expand on overpan past the leftmost loaded bar.
+  // Keep the historyDepth ref in sync (the subscribe handler reads it
+  // without re-subscribing on every depth change — a state read would
+  // capture a stale value, and putting historyDepth in deps would loop).
+  const historyDepthRef = useRef(HISTORY_PAGE);
+  historyDepthRef.current = historyDepth;
+
+  // Lazy expand on overpan past the leftmost loaded bar. Two stages:
+  //   1) If the in-memory ring + already-fetched IDB backfill has more
+  //      bars than `historyDepth`, just bump depth — pure render work.
+  //   2) Otherwise pull a chunk of older bars from IDB and prepend them
+  //      to `idbBackfill`. Stops when IDB returns empty.
+  // Subscriber deps DO NOT include historyDepth/idbBackfill — those are
+  // read via refs to avoid re-subscribing on every fetch (which would
+  // re-fire the handler with the still-overpanned range and loop).
   useEffect(() => {
     const chart = chartRef.current;
-    if (!chart) return;
+    if (!chart || !gameIdForChart) return;
     const ts = chart.timeScale();
     const handler = (range: LogicalRange | null) => {
       if (!range) return;
       if (fetchingRef.current) return;
       if (range.from > -2) return;
       const ring = equity.history ?? [];
-      if (ring.length <= historyDepth) return;
+      const backfill = idbBackfillRef.current;
+      const available = backfill.length + ring.length;
+      const currentDepth = historyDepthRef.current;
+      if (available > currentDepth) {
+        fetchingRef.current = true;
+        Promise.resolve().then(() => {
+          fetchingRef.current = false;
+          setHistoryDepth(d => Math.min(d + HISTORY_PAGE, available));
+        });
+        return;
+      }
+      if (idbExhaustedRef.current) return;
+      const earliest = backfill[0]?.tick ?? ring[0]?.tick;
+      if (earliest == null || earliest <= 0) {
+        idbExhaustedRef.current = true;
+        return;
+      }
       fetchingRef.current = true;
-      Promise.resolve().then(() => {
-        fetchingRef.current = false;
-        setHistoryDepth(d => Math.min(d + HISTORY_PAGE, ring.length));
-      });
+      const upTo = earliest - 1;
+      const from = Math.max(0, upTo - HISTORY_PAGE * 5);
+      void getHistoryWindow(gameIdForChart, equity.id, from, upTo)
+        .then(samples => {
+          fetchingRef.current = false;
+          if (samples.length === 0) {
+            idbExhaustedRef.current = true;
+            return;
+          }
+          const chunk = samples.map(s => ({ tick: s.tick, price: s.price }));
+          setIdbBackfill(prev => {
+            const next = [...chunk, ...prev];
+            idbBackfillRef.current = next;
+            return next;
+          });
+          setHistoryDepth(d => d + chunk.length);
+        })
+        .catch(err => {
+          fetchingRef.current = false;
+          console.warn("[logics] chart IDB backfill failed", err);
+        });
     };
     ts.subscribeVisibleLogicalRangeChange(handler);
     return () => ts.unsubscribeVisibleLogicalRangeChange(handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [equity.id, layoutGen, historyDepth]);
+  }, [equity.id, gameIdForChart, layoutGen]);
 
   // Position lines (avg entry / SL / TP). Re-create on every position
   // change rather than tracking individual line refs — there are at most
