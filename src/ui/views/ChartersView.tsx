@@ -21,7 +21,7 @@ import {
   GiPathDistance,
   GiProcessor,
 } from "react-icons/gi";
-import type { ShipLogEntry, Syndicate, Trader, World } from "../../sim/types";
+import type { ShipLogEntry, ShipLogTone, Syndicate, TradeRecord, Trader, World } from "../../sim/types";
 import { useStore } from "../store";
 import { listMilestoneProgress, type MilestoneKey, type MilestoneProgress } from "../../sim/milestones";
 import { SYNDICATE_TRAITS } from "../../sim/data/syndicates";
@@ -133,15 +133,20 @@ interface FleetLogEntry extends ShipLogEntry {
 const FLEET_LOG_PAGE_SIZE = 100;
 
 function LogTabBody({ ships }: { ships: Trader[] }) {
-  // Build the merged feed once per render. We avoid per-ship `.reverse()`
-  // and instead sort the merged array by tick desc — newest first across
-  // the whole fleet. With 80 ships and 5k+ log entries each this can be a
-  // big array, so we paginate the rendering below.
+  // Build the merged feed once per render. Combines per-ship log entries
+  // (ship.log: cargo trades, travel, contract events) with stock-trade
+  // ledger entries (ship.stockTrades: buys/sells/shorts/covers on the
+  // exchange) so the Ledger Log shows everything the player has done in
+  // one feed. Sorted newest-first; secondary by ship name keeps same-tick
+  // entries grouped per ship.
   const entries = useMemo(() => {
     const out: FleetLogEntry[] = [];
     for (const t of ships) {
       for (const e of t.log ?? []) {
         out.push({ ...e, shipId: t.id, shipName: t.name });
+      }
+      for (const record of t.stockTrades ?? []) {
+        out.push({ ...formatTradeRecord(record), shipId: t.id, shipName: t.name });
       }
     }
     out.sort((a, b) => b.tick - a.tick || a.shipName.localeCompare(b.shipName));
@@ -207,6 +212,33 @@ function LogTabBody({ ships }: { ships: Trader[] }) {
 
 function kindLabel(kind: string): string {
   return kind.replace(/_/g, " ");
+}
+
+// Format a stock-trade ledger entry as a fleet-log entry. The action verb
+// + ticker + qty/price line up with the cargo log's "Bought X parts at
+// Y" style; closes also surface the realized P&L.
+function formatTradeRecord(record: TradeRecord): ShipLogEntry {
+  const verb = record.action === "open_long" ? "Bought"
+    : record.action === "add_long" ? "Added"
+    : record.action === "close_long" ? "Sold"
+    : record.action === "open_short" ? "Shorted"
+    : record.action === "add_short" ? "Added short"
+    : record.action === "cover_short" ? "Covered"
+    : "Trade";
+  const price = `Ç${record.price.toFixed(2)}`;
+  const qty = record.shares.toLocaleString();
+  let message = `${verb} ${qty} ${record.ticker} @ ${price}`;
+  let tone: ShipLogTone | undefined;
+  if (record.realizedPnl != null) {
+    const pnl = record.realizedPnl;
+    const sign = pnl >= 0 ? "+" : "";
+    message += ` (${sign}Ç${Math.round(pnl).toLocaleString()})`;
+    tone = pnl > 0 ? "good" : pnl < 0 ? "bad" : undefined;
+  }
+  if (record.trigger != null) {
+    message += ` (auto: ${record.trigger.replace(/_/g, " ")})`;
+  }
+  return { tick: record.tick, kind: record.action, message, tone };
 }
 
 // --- Charters tab (combined milestone badges) -----------------------------
