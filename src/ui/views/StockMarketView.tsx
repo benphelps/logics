@@ -3703,9 +3703,7 @@ function buildRows(world: World): EquityRow[] {
       underlyingHealth,
       underlyingHealthLabel,
     };
-  }).sort((a, b) => {
-    return Math.abs(b.changePct) - Math.abs(a.changePct) || a.equity.name.localeCompare(b.equity.name);
-  });
+  }).sort((a, b) => a.equity.name.localeCompare(b.equity.name));
 }
 
 function splitRowsByAccess(world: World, rows: EquityRow[], shipId?: string): { reachable: EquityRow[]; far: EquityRow[] } {
