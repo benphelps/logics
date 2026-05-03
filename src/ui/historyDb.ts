@@ -203,11 +203,41 @@ async function doFlush(world: World): Promise<void> {
 
   // Update high-water only after a successful write — failures keep the
   // previous mark so the next save retries the same range.
+  // After a successful write the entries up to the new high-water are
+  // safely persisted, so we trim the in-memory rings to bounded sizes —
+  // the rings are also chart/T&S/log buffers but unbounded growth was
+  // pinning hundreds of MB in heap and triggering major GC pauses on
+  // every click. Older bars are still available via lazy IDB backfill
+  // when the user scrolls past the kept window.
+  const HISTORY_KEEP = 1000;
+  const TRADES_KEEP = 500;
+  const LOG_KEEP = 200;
   try {
     await Promise.all([
-      history.length > 0 ? putHistory(history).then(() => { historyHighWater.set(gameId, maxH); }) : Promise.resolve(),
-      trades.length > 0 ? putTrades(trades).then(() => { tradesHighWater.set(gameId, maxT); }) : Promise.resolve(),
-      log.length > 0 ? putLog(log).then(() => { logHighWater.set(gameId, maxL); }) : Promise.resolve(),
+      history.length > 0 ? putHistory(history).then(() => {
+        historyHighWater.set(gameId, maxH);
+        for (const eq of Object.values(world.equities ?? {})) {
+          if (eq.history && eq.history.length > HISTORY_KEEP) {
+            eq.history.splice(0, eq.history.length - HISTORY_KEEP);
+          }
+        }
+      }) : Promise.resolve(),
+      trades.length > 0 ? putTrades(trades).then(() => {
+        tradesHighWater.set(gameId, maxT);
+        for (const eq of Object.values(world.equities ?? {})) {
+          if (eq.recentTrades && eq.recentTrades.length > TRADES_KEEP) {
+            eq.recentTrades.splice(0, eq.recentTrades.length - TRADES_KEEP);
+          }
+        }
+      }) : Promise.resolve(),
+      log.length > 0 ? putLog(log).then(() => {
+        logHighWater.set(gameId, maxL);
+        for (const trader of Object.values(world.traders ?? {})) {
+          if (trader.log && trader.log.length > LOG_KEEP) {
+            trader.log.splice(0, trader.log.length - LOG_KEEP);
+          }
+        }
+      }) : Promise.resolve(),
     ]);
   } catch (error) {
     console.warn("[logics] historyDb flush failed", error);
@@ -224,11 +254,12 @@ export function primeHighWater(gameId: string, tick: number): void {
   logHighWater.set(gameId, tick);
 }
 
-// Refill the in-memory rings on a freshly-loaded world. By default loads
-// EVERYTHING available in IndexedDB for this gameId — the rings are also
-// the live chart/T&S/log buffers and have no cap themselves, so we want
-// the full history immediately on load. Tests and special cases can pass
-// explicit limits. Filters to tick <= world.tick so a save snapshot at
+// Refill the in-memory rings on a freshly-loaded world. Pulls bounded
+// windows that match the post-flush trim sizes (1000/500/200) — the
+// rings are also the live chart/T&S/log buffers and unbounded heap was
+// causing major GC pauses on every interaction. Anything older is still
+// in IndexedDB and gets fetched lazily by the chart's overpan
+// subscription. Filters to tick <= world.tick so a save snapshot at
 // tick T never sees data from a later session that didn't get re-saved.
 export async function hydrateHistoryRings(
   world: World,
@@ -236,9 +267,9 @@ export async function hydrateHistoryRings(
 ): Promise<void> {
   const gameId = world.gameId;
   if (!gameId) return;
-  const historyLimit = opts?.historyLimit ?? Number.POSITIVE_INFINITY;
-  const tradesLimit = opts?.tradesLimit ?? Number.POSITIVE_INFINITY;
-  const logLimit = opts?.logLimit ?? Number.POSITIVE_INFINITY;
+  const historyLimit = opts?.historyLimit ?? 1000;
+  const tradesLimit = opts?.tradesLimit ?? 500;
+  const logLimit = opts?.logLimit ?? 200;
   const snapshotTick = world.tick;
 
   // Wait for any in-flight flush to settle before reading. Without this, a

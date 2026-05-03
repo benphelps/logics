@@ -2840,13 +2840,10 @@ function Sparkline({ equity, position }: { equity: Equity; position: StockPositi
   // so the data effect re-fires with a fresh full setData.
   const [layoutGen, setLayoutGen] = useState(0);
 
-  // The ring (equity.history / equity.recentTrades) is unbounded — every
-  // tick has a sample, every fill has a trade. Feeding all of it to
-  // lightweight-charts on every tick would be O(n) per render and is
-  // visible as a per-tick hitch once the world has thousands of ticks.
-  // Window the chart instead: show the last `historyDepth` price samples
-  // and the last `tradesDepth` fills; expand on scroll-left near the edge
-  // of the loaded data.
+  // The chart shows the last `historyDepth` price samples; we expand on
+  // overpan past the leftmost loaded bar. The ring (equity.history) is
+  // capped (post-flush trim in historyDb.ts at 1000) so unbounded growth
+  // doesn't pin heap memory.
   const HISTORY_PAGE = 100;
   const TRADES_PAGE = 500;
   const [historyDepth, setHistoryDepth] = useState(HISTORY_PAGE);
@@ -3054,7 +3051,7 @@ function Sparkline({ equity, position }: { equity: Equity; position: StockPositi
   //
   // We deliberately do NOT touch lastDepthRef here — the data effect's else
   // branch (equityChanged path) already sets it to the new histLen at end.
-  // Resetting it to 0 here makes the next data-effect run see
+  // Resetting it to 0 here would make the next data-effect run see
   // `histLen - 0 > 2 = true` and fire the depthExpanded path, which calls
   // setData with the smaller window and shifts the visible logical range
   // off the end of the data. Symptom: "after the first step the chart's
@@ -3064,16 +3061,7 @@ function Sparkline({ equity, position }: { equity: Equity; position: StockPositi
     fetchingRef.current = false;
   }, [equity.id]);
 
-  // Lazy expand: subscribe to the chart's visible logical range. When the
-  // user pans LEFT past the leftmost loaded bar (logical range.from goes
-  // negative — that's lightweight-charts' signal for whitespace beyond the
-  // data) and there's more history available in the ring, increase
-  // historyDepth by HISTORY_PAGE.
-  //
-  // We deliberately ignore range changes near 0 (the initial fitContent
-  // sets range to roughly [0, N-1] on every equity switch and on chart
-  // mount) — the threshold is overpan, not "near the left edge", to avoid
-  // a spurious expand that double-renders the chart on every switch.
+  // Lazy expand on overpan past the leftmost loaded bar.
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart) return;
@@ -3081,15 +3069,10 @@ function Sparkline({ equity, position }: { equity: Equity; position: StockPositi
     const handler = (range: LogicalRange | null) => {
       if (!range) return;
       if (fetchingRef.current) return;
-      // Only fire when the user has actually pulled the chart past the
-      // first loaded bar. After fitContent, range.from sits at about -0.5
-      // (the left edge of bar 0), so require strictly more overpan than
-      // that.
       if (range.from > -2) return;
       const ring = equity.history ?? [];
       if (ring.length <= historyDepth) return;
       fetchingRef.current = true;
-      // Defer to next microtask so we don't fight a render in progress.
       Promise.resolve().then(() => {
         fetchingRef.current = false;
         setHistoryDepth(d => Math.min(d + HISTORY_PAGE, ring.length));

@@ -322,20 +322,20 @@ describe("hydrateHistoryRings", () => {
     ]);
   });
 
-  it("by default loads EVERYTHING from IDB (no in-memory cap)", async () => {
-    const samples = Array.from({ length: 300 }, (_, i) => ({
+  it("loads up to the default 1000-entry hydrate cap (older bars stay in IDB)", async () => {
+    const samples = Array.from({ length: 1500 }, (_, i) => ({
       gameId: "g1", equityId: "eq1", tick: i, price: i,
     }));
     await putHistory(samples);
 
     const eq = mkEquity("eq1", []);
-    const world = mkWorld("g1", 299, [eq]);
+    const world = mkWorld("g1", 1499, [eq]);
 
     await hydrateHistoryRings(world);
 
-    expect(world.equities.eq1.history).toHaveLength(300);
-    expect(world.equities.eq1.history![0].tick).toBe(0);
-    expect(world.equities.eq1.history![299].tick).toBe(299);
+    expect(world.equities.eq1.history).toHaveLength(1000);
+    expect(world.equities.eq1.history![0].tick).toBe(500);
+    expect(world.equities.eq1.history![999].tick).toBe(1499);
   });
 
   it("explicit limits still work for callers that want a window", async () => {
