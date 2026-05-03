@@ -23,6 +23,7 @@ import {
 } from "react-icons/gi";
 import type { ShipLogEntry, ShipLogTone, Syndicate, TradeRecord, Trader, World } from "../../sim/types";
 import { useStore } from "../store";
+import { getLogEntriesBefore, getTradeRecordsBefore } from "../historyDb";
 import { listMilestoneProgress, type MilestoneKey, type MilestoneProgress } from "../../sim/milestones";
 import { SYNDICATE_TRAITS } from "../../sim/data/syndicates";
 import { playerReputationWith } from "../../sim/control";
@@ -74,7 +75,13 @@ export function ChartersView() {
   const playerShips = (world.player?.shipIds ?? [])
     .map(id => world.traders[id])
     .filter((t): t is Trader => Boolean(t));
-  const logEntryCount = playerShips.reduce((s, t) => s + (t.log?.length ?? 0), 0);
+  // Count ship.log + ship.stockTrades — the Ledger Log feed shows both,
+  // so the badge needs to reflect both. Older archived entries live in
+  // IDB and are paginated in lazily.
+  const logEntryCount = playerShips.reduce(
+    (s, t) => s + (t.log?.length ?? 0) + (t.stockTrades?.length ?? 0),
+    0,
+  );
 
   return (
     <section className="charters-view">
@@ -133,13 +140,13 @@ interface FleetLogEntry extends ShipLogEntry {
 const FLEET_LOG_PAGE_SIZE = 100;
 
 function LogTabBody({ ships }: { ships: Trader[] }) {
-  // Build the merged feed once per render. Combines per-ship log entries
-  // (ship.log: cargo trades, travel, contract events) with stock-trade
-  // ledger entries (ship.stockTrades: buys/sells/shorts/covers on the
-  // exchange) so the Ledger Log shows everything the player has done in
-  // one feed. Sorted newest-first; secondary by ship name keeps same-tick
-  // entries grouped per ship.
-  const entries = useMemo(() => {
+  const gameId = useStore(s => s.world.gameId);
+
+  // Build the merged in-memory feed: per-ship log entries (ship.log: cargo
+  // trades, travel, contract events) + stock-trade ledger entries
+  // (ship.stockTrades: buys/sells/shorts/covers). Newest-first; secondary
+  // by ship name groups same-tick entries per ship.
+  const inMemory = useMemo(() => {
     const out: FleetLogEntry[] = [];
     for (const t of ships) {
       for (const e of t.log ?? []) {
@@ -153,26 +160,69 @@ function LogTabBody({ ships }: { ships: Trader[] }) {
     return out;
   }, [ships]);
 
-  const [visibleCount, setVisibleCount] = useState(FLEET_LOG_PAGE_SIZE);
+  // Older entries pulled from IDB once the user scrolls past the in-memory
+  // window. Reset whenever the game changes.
+  const [olderEntries, setOlderEntries] = useState<FleetLogEntry[]>([]);
+  const [exhausted, setExhausted] = useState(false);
+  const fetchingRef = useRef(false);
   const sentinelRef = useRef<HTMLLIElement | null>(null);
-  const visible = entries.slice(0, visibleCount);
-  const hasMore = visibleCount < entries.length;
 
   useEffect(() => {
-    if (!hasMore) return;
+    setOlderEntries([]);
+    setExhausted(false);
+    fetchingRef.current = false;
+  }, [gameId]);
+
+  const entries = olderEntries.length > 0 ? [...inMemory, ...olderEntries] : inMemory;
+
+  useEffect(() => {
+    if (exhausted || !gameId) return;
     const sentinel = sentinelRef.current;
     if (!sentinel) return;
-    const obs = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setVisibleCount(c => Math.min(c + FLEET_LOG_PAGE_SIZE, entries.length));
+    const obs = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting || fetchingRef.current) return;
+      const earliestTick = entries[entries.length - 1]?.tick;
+      if (earliestTick == null) return;
+      fetchingRef.current = true;
+      const shipMap = new Map(ships.map(s => [s.id, s.name]));
+      // Pull older log entries from each player ship + older trade records
+      // across the whole game in parallel, then merge by tick.
+      Promise.all([
+        Promise.all(ships.map(t => getLogEntriesBefore(gameId, t.id, earliestTick, FLEET_LOG_PAGE_SIZE))),
+        getTradeRecordsBefore(gameId, earliestTick, FLEET_LOG_PAGE_SIZE),
+      ]).then(([logBatches, trades]) => {
+        fetchingRef.current = false;
+        const fetched: FleetLogEntry[] = [];
+        for (let i = 0; i < ships.length; i++) {
+          const shipId = ships[i].id;
+          const shipName = shipMap.get(shipId) ?? shipId;
+          for (const e of logBatches[i]) {
+            fetched.push({
+              tick: e.tick, kind: e.kind, message: e.message,
+              ...(e.tone !== undefined ? { tone: e.tone } : {}),
+              shipId, shipName,
+            });
+          }
         }
-      },
-      { rootMargin: "200px" },
-    );
+        for (const record of trades) {
+          const shipId = record.shipId;
+          const shipName = shipMap.get(shipId) ?? shipId;
+          fetched.push({ ...formatTradeRecord(record), shipId, shipName });
+        }
+        if (fetched.length === 0) {
+          setExhausted(true);
+          return;
+        }
+        fetched.sort((a, b) => b.tick - a.tick || a.shipName.localeCompare(b.shipName));
+        setOlderEntries(prev => [...prev, ...fetched]);
+      }).catch(err => {
+        fetchingRef.current = false;
+        console.warn("[logics] fleet log backfill failed", err);
+      });
+    }, { rootMargin: "200px" });
     obs.observe(sentinel);
     return () => obs.disconnect();
-  }, [hasMore, entries.length]);
+  }, [entries, exhausted, gameId, ships]);
 
   const headArt = headerArtUrl("tradeLedger");
   return (
@@ -192,7 +242,7 @@ function LogTabBody({ ships }: { ships: Trader[] }) {
           <p className="ledger-log-empty dim">No fleet activity recorded yet. Buy, sell, refuel, travel, or accept a contract — every action lands here.</p>
         ) : (
           <ol className="ledger-log-list">
-            {visible.map((e, i) => (
+            {entries.map((e, i) => (
               <li key={`${e.shipId}-${e.tick}-${i}`} className={`ledger-log-entry ${e.tone ? `tone-${e.tone}` : ""}`}>
                 <span className="ledger-log-tick mono">t{e.tick}</span>
                 <span className="ledger-log-ship" title={e.shipName}>{e.shipName}</span>
@@ -200,7 +250,7 @@ function LogTabBody({ ships }: { ships: Trader[] }) {
                 <span className="ledger-log-msg">{e.message}</span>
               </li>
             ))}
-            {hasMore && (
+            {!exhausted && (
               <li ref={sentinelRef} className="ledger-log-loading dim">Loading older entries…</li>
             )}
           </ol>

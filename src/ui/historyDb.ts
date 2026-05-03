@@ -584,6 +584,43 @@ export async function getRecentLog(gameId: string, traderId: TraderId, limit: nu
   });
 }
 
+// Older trader-log entries, newest-first within the queried range, used by
+// the Ledger Log lazy pagination once the user scrolls past the in-memory
+// window. Mirrors getTradeRecordsBefore — pass `beforeTick` exclusive to
+// fetch the next older chunk.
+export async function getLogEntriesBefore(
+  gameId: string,
+  traderId: TraderId,
+  beforeTick: number,
+  limit: number,
+): Promise<PersistedLogEntry[]> {
+  if (limit <= 0) return [];
+  const db = await openHistoryDb();
+  if (!db) return [];
+  const tx = db.transaction(STORE_LOG, "readonly");
+  const idx = tx.objectStore(STORE_LOG).index(IDX_LOG);
+  const range = IDBKeyRange.bound(
+    [gameId, traderId, Number.NEGATIVE_INFINITY],
+    [gameId, traderId, beforeTick],
+    false,
+    true,
+  );
+  const out: PersistedLogEntry[] = [];
+  return new Promise<PersistedLogEntry[]>((resolve, reject) => {
+    const req = idx.openCursor(range, "prev");
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (cursor && out.length < limit) {
+        out.push(cursor.value as PersistedLogEntry);
+        cursor.continue();
+      } else {
+        resolve(out);
+      }
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
 // Per-ship trade ledger query — used by hydrate to repopulate ship.stockTrades.
 export async function getRecentTradeRecords(gameId: string, shipId: TraderId, limit: number): Promise<PersistedTradeRecord[]> {
   if (limit <= 0) return [];
