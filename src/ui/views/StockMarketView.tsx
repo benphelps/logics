@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { MdArrowDropDown, MdArrowDropUp, MdRemove } from "react-icons/md";
 import {
@@ -140,6 +140,18 @@ export function StockMarketView() {
   const trades = useMemo(() => listTradeRecords(world, 100), [world, tickEpoch]);
   const longCount = positions.filter(p => p.kind === "long").length;
   const shortCount = positions.filter(p => p.kind === "short").length;
+
+  // Stable callback ref so PnoPanel's React.memo can skip re-renders when
+  // selectedEquity flips. The inline arrow function would create a new ref
+  // each render and defeat memoization.
+  const handleAbandon = useCallback((eqId: string) => {
+    const pos = positions.find(p => p.equityId === eqId);
+    const shares = pos?.shares ?? 0;
+    const ticker = world.equities[eqId]?.ticker ?? eqId;
+    if (confirm(`Abandon ${shares} shares of ${ticker}? Settles at the current mark with a 5% penalty.`)) {
+      abandonPosition(eqId);
+    }
+  }, [positions, world.equities, abandonPosition]);
   const detailArtUrl = detail ? equityArtUrl(world, detail.equity) : null;
 
   // If the focused position closed (sold / covered / abandoned / auto-fired
@@ -192,18 +204,11 @@ export function StockMarketView() {
             docked={docked}
             activeHint={activeTradeHint}
             onSelectEquity={select}
-            onSell={(eqId, qty) => sellShares(eqId, qty)}
-            onCover={(eqId, qty) => coverShares(eqId, qty)}
-            onAbandon={(eqId) => {
-              const pos = positions.find(p => p.equityId === eqId);
-              const shares = pos?.shares ?? 0;
-              const ticker = world.equities[eqId]?.ticker ?? eqId;
-              if (confirm(`Abandon ${shares} shares of ${ticker}? Settles at the current mark with a 5% penalty.`)) {
-                abandonPosition(eqId);
-              }
-            }}
-            onSetStopLoss={(eqId, price) => setStopLoss(eqId, price)}
-            onSetTakeProfit={(eqId, price) => setTakeProfit(eqId, price)}
+            onSell={sellShares}
+            onCover={coverShares}
+            onAbandon={handleAbandon}
+            onSetStopLoss={setStopLoss}
+            onSetTakeProfit={setTakeProfit}
           />
         </aside>
 
@@ -448,7 +453,11 @@ function EquitySelector({ rows, tapeRows, selectedId, activeHint, bestHint, guid
   );
 }
 
-function SelectorRow({ row, selected, activeHint, onSelect, farRow = false }: {
+// Memoized — there are 100+ rows in the selector and each parent re-render
+// (every selectedId change) used to re-render every row. With memo, only the
+// previously-selected row and the newly-selected row re-render; the other
+// 100+ skip. That's the bulk of the equity-switch click cost in dev mode.
+const SelectorRow = memo(function SelectorRow({ row, selected, activeHint, onSelect, farRow = false }: {
   row: EquityRow;
   selected: boolean;
   activeHint: StockExchangeHint | null;
@@ -479,11 +488,14 @@ function SelectorRow({ row, selected, activeHint, onSelect, farRow = false }: {
       <span className={`stocks-selector-delta mono ${tone}`}>{fmtPct(row.changePct)}</span>
     </button>
   );
-}
+});
 
 // --- positions, orders, history (P&O) panel ----------------------------
 
-function PnoPanel(props: {
+// Memoized — props are stable (positions/trades come from cached useMemos,
+// callbacks are now stable refs from the parent), so equity-switch clicks
+// (which only flip selectedEquity) skip the entire PnoPanel subtree.
+const PnoPanel = memo(function PnoPanel(props: {
   world: World;
   positions: StockPosition[];
   trades: TradeRecord[];
@@ -579,7 +591,7 @@ function PnoPanel(props: {
       </div>
     </section>
   );
-}
+});
 
 // --- positions accordion (multi-expand) ---------------------------------
 
@@ -3046,11 +3058,15 @@ function Sparkline({ equity, position }: { equity: Equity; position: StockPositi
   }, [equity.id]);
 
   // Lazy expand: subscribe to the chart's visible logical range. When the
-  // user pans within a few bars of the left edge and there's more history
-  // available in the ring, increase historyDepth by HISTORY_PAGE. The data
-  // effect above re-runs and prepends the new bars while keeping the same
-  // ticks under the user's eye. Cheap — no IDB query, the ring is the
-  // source of truth and is fully populated after hydrate.
+  // user pans LEFT past the leftmost loaded bar (logical range.from goes
+  // negative — that's lightweight-charts' signal for whitespace beyond the
+  // data) and there's more history available in the ring, increase
+  // historyDepth by HISTORY_PAGE.
+  //
+  // We deliberately ignore range changes near 0 (the initial fitContent
+  // sets range to roughly [0, N-1] on every equity switch and on chart
+  // mount) — the threshold is overpan, not "near the left edge", to avoid
+  // a spurious expand that double-renders the chart on every switch.
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart) return;
@@ -3058,7 +3074,11 @@ function Sparkline({ equity, position }: { equity: Equity; position: StockPositi
     const handler = (range: LogicalRange | null) => {
       if (!range) return;
       if (fetchingRef.current) return;
-      if (range.from > 5) return;
+      // Only fire when the user has actually pulled the chart past the
+      // first loaded bar. After fitContent, range.from sits at about -0.5
+      // (the left edge of bar 0), so require strictly more overpan than
+      // that.
+      if (range.from > -2) return;
       const ring = equity.history ?? [];
       if (ring.length <= historyDepth) return;
       fetchingRef.current = true;
