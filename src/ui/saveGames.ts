@@ -117,7 +117,9 @@ function compactWorldForSave(world: World): World {
   }
   const traders: World["traders"] = {};
   for (const [id, t] of Object.entries(world.traders)) {
-    traders[id] = { ...t, log: [] };
+    // log + stockTrades both live in IndexedDB; strip from the save
+    // snapshot so we don't write the same data to both stores.
+    traders[id] = { ...t, log: [], stockTrades: [] };
   }
   let orderBooks = world.orderBooks;
   if (orderBooks) {
@@ -131,7 +133,13 @@ function compactWorldForSave(world: World): World {
     }
     orderBooks = next;
   }
-  return { ...world, equities, traders, orderBooks };
+  // Legacy player.trades shares its array reference with ship.stockTrades
+  // (see migratePlayerStockToShips). The trader strip above replaces
+  // stockTrades on the cloned trader, but player.trades on the live
+  // world still points at the original full array. Mirror the strip on
+  // the player so the snapshot is consistent.
+  const player = world.player ? { ...world.player, trades: [] } : world.player;
+  return { ...world, equities, traders, orderBooks, player };
 }
 
 
