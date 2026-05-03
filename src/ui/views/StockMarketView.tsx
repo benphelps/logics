@@ -15,7 +15,7 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 import { useStore } from "../store";
-import { getTradeRecordsBefore } from "../historyDb";
+import { countTradeRecords, getTradeRecordsBefore } from "../historyDb";
 import type { BookTrade, Equity, EquityKind, FuturesContract, FuturesPosition, Order, OrderBook, StockPosition, TradeRecord, World } from "../../sim/types";
 import { hasCrew } from "../../sim/crew";
 import { canDeliverPhysical, listPlayerFutures, unrealizedFuturesPnl } from "../../sim/stock/futures";
@@ -518,6 +518,7 @@ const PnoPanel = memo(function PnoPanel(props: {
 }) {
   const tab = useStore((s) => s.pnoTab);
   const setTab = useStore((s) => s.setPnoTab);
+  const gameId = props.world.gameId;
   // Recompute every render — props.world is mutated in place, so a stable
   // reference would let useMemo cache stale values across action ticks.
   // Both lists are cheap (small array iteration).
@@ -526,6 +527,22 @@ const PnoPanel = memo(function PnoPanel(props: {
   const insightHints = props.hints.filter(h => h.action !== "watch");
   const guidePositions = props.activeHint?.action === "cover";
   const guideFutures = props.activeHint?.action === "close_future";
+
+  // Total ledger entries persisted in IDB (across all ships in this game).
+  // The in-memory `trades` array tops out at ~200 thanks to the post-flush
+  // trim, so reading its length under-reports once the ledger has been
+  // saved. Re-query whenever the in-memory length changes — that's a proxy
+  // for "a new trade happened" and the count() call is fast.
+  const [ledgerTotal, setLedgerTotal] = useState(0);
+  useEffect(() => {
+    if (!gameId) { setLedgerTotal(0); return; }
+    let cancelled = false;
+    countTradeRecords(gameId).then(n => {
+      if (!cancelled) setLedgerTotal(n);
+    }).catch(() => { /* leave at last known count */ });
+    return () => { cancelled = true; };
+  }, [gameId, props.trades.length]);
+  const tradeBadge = Math.max(props.trades.length, ledgerTotal);
 
   return (
     <section className="stocks-shell-panel stocks-pno">
@@ -554,7 +571,7 @@ const PnoPanel = memo(function PnoPanel(props: {
           className={`bridge-tab ${tab === "history" ? "active" : ""}`}
           onClick={() => setTab("history")}
         >
-          History <span className="bridge-tab-count">{props.trades.length}</span>
+          History <span className="bridge-tab-count">{tradeBadge}</span>
         </button>
         <button
           className={`bridge-tab ${tab === "insights" ? "active" : ""}`}

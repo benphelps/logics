@@ -551,6 +551,19 @@ export async function getRecentTradeRecords(gameId: string, shipId: TraderId, li
   });
 }
 
+// Total number of trade records persisted for this game across all ships.
+// Used by the History tab to display the real total on its count badge —
+// the in-memory ledger only sees the most recent ~200, so without this the
+// badge under-reports once the ledger has been flushed and trimmed.
+export async function countTradeRecords(gameId: string): Promise<number> {
+  const db = await openHistoryDb();
+  if (!db) return 0;
+  const tx = db.transaction(STORE_LEDGER, "readonly");
+  const idx = tx.objectStore(STORE_LEDGER).index(IDX_LEDGER_GAME);
+  const range = IDBKeyRange.bound([gameId, Number.NEGATIVE_INFINITY], [gameId, Number.POSITIVE_INFINITY]);
+  return reqAsPromise(idx.count(range));
+}
+
 // Cross-ship "all trades for this game" query — used by the History tab
 // to lazy-load older trades. Returns newest-first; callers can paginate by
 // passing `beforeTick` to fetch the next older chunk.
