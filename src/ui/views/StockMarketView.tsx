@@ -15,7 +15,7 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 import { useStore } from "../store";
-import { countTradeRecords, getHistoryWindow, getTradeRecordsBefore } from "../historyDb";
+import { countTradeRecords, getHistoryWindow, getTradeRecordsBeforeForShip } from "../historyDb";
 import type { BookTrade, Equity, EquityKind, FuturesContract, FuturesPosition, Order, OrderBook, StockPosition, TradeRecord, World } from "../../sim/types";
 import { hasCrew } from "../../sim/crew";
 import { canDeliverPhysical, listPlayerFutures, unrealizedFuturesPnl } from "../../sim/stock/futures";
@@ -137,11 +137,14 @@ export function StockMarketView() {
   const docked = !!playerShip && playerShip.state === "idle";
   const cash = playerShip?.funds ?? 0;
   const unrealizedTotal = totalUnrealizedPnl(world);
-  const positions = useMemo(() => listPositions(world), [world, tickEpoch]);
-  // Use the in-memory ledger directly (capped at ~200 by historyDb's
+  // Stock state (positions, trades, orders, futures) is per-ship just like
+  // cargo — every list is filtered to the selected ship. The Ledger Log
+  // (ChartersView) is what aggregates the combined fleet feed.
+  const positions = useMemo(() => listPositions(world, playerShipId), [world, tickEpoch, playerShipId]);
+  // Use the in-memory ledger directly (capped at ~100 by historyDb's
   // post-flush trim). Older entries live in IDB and TradesList lazy-loads
   // them when the user scrolls past the in-memory window.
-  const trades = useMemo(() => listTradeRecords(world), [world, tickEpoch]);
+  const trades = useMemo(() => listTradeRecords(world, undefined, playerShipId), [world, tickEpoch, playerShipId]);
   const longCount = positions.filter(p => p.kind === "long").length;
   const shortCount = positions.filter(p => p.kind === "short").length;
 
@@ -523,7 +526,7 @@ const PnoPanel = memo(function PnoPanel(props: {
   // reference would let useMemo cache stale values across action ticks.
   // Both lists are cheap (small array iteration).
   const limits = listPlayerLimits(props.world, props.shipId);
-  const futures = listPlayerFutures(props.world);
+  const futures = listPlayerFutures(props.world, props.shipId);
   const insightHints = props.hints.filter(h => h.action !== "watch");
   const guidePositions = props.activeHint?.action === "cover";
   const guideFutures = props.activeHint?.action === "close_future";
@@ -535,13 +538,13 @@ const PnoPanel = memo(function PnoPanel(props: {
   // for "a new trade happened" and the count() call is fast.
   const [ledgerTotal, setLedgerTotal] = useState(0);
   useEffect(() => {
-    if (!gameId) { setLedgerTotal(0); return; }
+    if (!gameId || !props.shipId) { setLedgerTotal(0); return; }
     let cancelled = false;
-    countTradeRecords(gameId).then(n => {
+    countTradeRecords(gameId, props.shipId).then(n => {
       if (!cancelled) setLedgerTotal(n);
     }).catch(() => { /* leave at last known count */ });
     return () => { cancelled = true; };
-  }, [gameId, props.trades.length]);
+  }, [gameId, props.shipId, props.trades.length]);
   const tradeBadge = Math.max(props.trades.length, ledgerTotal);
 
   return (
@@ -604,7 +607,7 @@ const PnoPanel = memo(function PnoPanel(props: {
           <FuturesPositionsList world={props.world} futures={futures} docked={props.docked} activeHint={props.activeHint} onSelectEquity={props.onSelectEquity} />
         )}
         {tab === "history" && (
-          <TradesList trades={props.trades} onSelect={props.onSelectEquity} />
+          <TradesList trades={props.trades} shipId={props.shipId} onSelect={props.onSelectEquity} />
         )}
         {tab === "insights" && (
           <InsightsList hints={insightHints} activeHint={props.activeHint} onSelect={props.onSelectEquity} emptyText={props.insightsEmptyText} />
@@ -2554,22 +2557,22 @@ function FuturesAccordionItem({ world, equity, contract, position, docked, activ
 
 const TRADES_PAGE_SIZE = 100;
 
-function TradesList({ trades, onSelect }: { trades: TradeRecord[]; onSelect: (eqId: string) => void }) {
+function TradesList({ trades, shipId, onSelect }: { trades: TradeRecord[]; shipId?: string; onSelect: (eqId: string) => void }) {
   const gameId = useStore(s => s.world.gameId);
   // Older trades pulled from IndexedDB beyond the in-memory ledger window
-  // (capped at ~200 in memory by post-flush trim). Each scroll-to-end fetch
-  // pulls another TRADES_PAGE_SIZE older entries.
+  // (capped at ~100 in memory by post-flush trim). Per-ship — the
+  // History tab is scoped to the selected ship, like positions/orders/etc.
   const [olderTrades, setOlderTrades] = useState<TradeRecord[]>([]);
   const [exhausted, setExhausted] = useState(false);
   const fetchingRef = useRef(false);
   const sentinelRef = useRef<HTMLTableRowElement | null>(null);
 
-  // Reset on game change.
+  // Reset on game OR ship change — ship switch shows a different feed.
   useEffect(() => {
     setOlderTrades([]);
     setExhausted(false);
     fetchingRef.current = false;
-  }, [gameId]);
+  }, [gameId, shipId]);
 
   // Combine in-memory + IDB-backfilled (both newest-first within their
   // range; older block follows the newer block).
@@ -2578,13 +2581,13 @@ function TradesList({ trades, onSelect }: { trades: TradeRecord[]; onSelect: (eq
   useEffect(() => {
     if (exhausted) return;
     const sentinel = sentinelRef.current;
-    if (!sentinel || !gameId) return;
+    if (!sentinel || !gameId || !shipId) return;
     const obs = new IntersectionObserver(([entry]) => {
       if (!entry.isIntersecting || fetchingRef.current) return;
       const earliestTick = allTrades[allTrades.length - 1]?.tick;
       if (earliestTick == null) return;
       fetchingRef.current = true;
-      void getTradeRecordsBefore(gameId, earliestTick, TRADES_PAGE_SIZE)
+      void getTradeRecordsBeforeForShip(gameId, shipId, earliestTick, TRADES_PAGE_SIZE)
         .then(records => {
           fetchingRef.current = false;
           if (records.length === 0) {
@@ -2610,7 +2613,7 @@ function TradesList({ trades, onSelect }: { trades: TradeRecord[]; onSelect: (eq
     }, { rootMargin: "200px" });
     obs.observe(sentinel);
     return () => obs.disconnect();
-  }, [allTrades, exhausted, gameId]);
+  }, [allTrades, exhausted, gameId, shipId]);
 
   if (allTrades.length === 0) {
     return <div className="stocks-detail-empty dim">No trades yet.</div>;
