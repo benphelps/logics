@@ -10,7 +10,7 @@
 //     stat sections (career, wallet/fleet, activity placeholders, save
 //     info). Same on both sub-tabs.
 
-import { type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { IconType } from "react-icons";
 import {
   GiAstronautHelmet,
@@ -130,16 +130,44 @@ interface FleetLogEntry extends ShipLogEntry {
   shipName: string;
 }
 
+const FLEET_LOG_PAGE_SIZE = 100;
+
 function LogTabBody({ ships }: { ships: Trader[] }) {
-  const entries: FleetLogEntry[] = [];
-  for (const t of ships) {
-    for (const e of t.log ?? []) {
-      entries.push({ ...e, shipId: t.id, shipName: t.name });
+  // Build the merged feed once per render. We avoid per-ship `.reverse()`
+  // and instead sort the merged array by tick desc — newest first across
+  // the whole fleet. With 80 ships and 5k+ log entries each this can be a
+  // big array, so we paginate the rendering below.
+  const entries = useMemo(() => {
+    const out: FleetLogEntry[] = [];
+    for (const t of ships) {
+      for (const e of t.log ?? []) {
+        out.push({ ...e, shipId: t.id, shipName: t.name });
+      }
     }
-  }
-  // Newest first; stable secondary sort by ship name keeps same-tick
-  // entries grouped per ship rather than scrambled across the fleet.
-  entries.sort((a, b) => b.tick - a.tick || a.shipName.localeCompare(b.shipName));
+    out.sort((a, b) => b.tick - a.tick || a.shipName.localeCompare(b.shipName));
+    return out;
+  }, [ships]);
+
+  const [visibleCount, setVisibleCount] = useState(FLEET_LOG_PAGE_SIZE);
+  const sentinelRef = useRef<HTMLLIElement | null>(null);
+  const visible = entries.slice(0, visibleCount);
+  const hasMore = visibleCount < entries.length;
+
+  useEffect(() => {
+    if (!hasMore) return;
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisibleCount(c => Math.min(c + FLEET_LOG_PAGE_SIZE, entries.length));
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    obs.observe(sentinel);
+    return () => obs.disconnect();
+  }, [hasMore, entries.length]);
 
   const headArt = headerArtUrl("tradeLedger");
   return (
@@ -159,7 +187,7 @@ function LogTabBody({ ships }: { ships: Trader[] }) {
           <p className="ledger-log-empty dim">No fleet activity recorded yet. Buy, sell, refuel, travel, or accept a contract — every action lands here.</p>
         ) : (
           <ol className="ledger-log-list">
-            {entries.map((e, i) => (
+            {visible.map((e, i) => (
               <li key={`${e.shipId}-${e.tick}-${i}`} className={`ledger-log-entry ${e.tone ? `tone-${e.tone}` : ""}`}>
                 <span className="ledger-log-tick mono">t{e.tick}</span>
                 <span className="ledger-log-ship" title={e.shipName}>{e.shipName}</span>
@@ -167,6 +195,9 @@ function LogTabBody({ ships }: { ships: Trader[] }) {
                 <span className="ledger-log-msg">{e.message}</span>
               </li>
             ))}
+            {hasMore && (
+              <li ref={sentinelRef} className="ledger-log-loading dim">Loading older entries…</li>
+            )}
           </ol>
         )}
       </div>

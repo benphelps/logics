@@ -32,7 +32,7 @@ import { listShipyardInventory } from "../../sim/shipyards";
 import { selectRefuelType, UNLOAD_TICKS, unloadTicksRemainingFor } from "../../sim/traders";
 import { UPGRADE_SLOTS, installedUpgrade, isUpgradeGood, upgradeDef, upgradeEffectText } from "../../sim/upgrades";
 import type { CrewModifiers, CrewRole, Equity } from "../../sim/types";
-import type { CrewMember, GoodId, Job, JobId, LocationDef, LocationId, ShipBlueprint, ShipTrait, Trader, TraderId, UpgradeSlot, World } from "../../sim/types";
+import type { CrewMember, GoodId, Job, JobId, LocationDef, LocationId, ShipBlueprint, ShipLogEntry, ShipTrait, Trader, TraderId, UpgradeSlot, World } from "../../sim/types";
 import { parseBasisUnderlying, priceChangePct } from "../../sim/stock";
 import { useCrewHeadshot } from "../headshots";
 import { goodArtUrl, shipArtUrl, stationArtUrl, stationKind, stationKindLabel, stationScale, stationScaleLabel, stationSubtype, stationSubtypeLabel } from "../art";
@@ -657,8 +657,6 @@ function DockedView({ ship, world, loc, guidedPlan, hint, target, hintText, cueT
 
 function ShipLogCard({ ship }: { ship: Trader }) {
   const entries = ship.log ?? [];
-  // Newest-first display so the latest action is at the top — feels like a feed.
-  const ordered = [...entries].reverse();
   return (
     <section className="bridge-card ship-log-card">
       <header className="bridge-card-head">
@@ -668,20 +666,75 @@ function ShipLogCard({ ship }: { ship: Trader }) {
         </div>
         <span className="dim mono">{entries.length} entries</span>
       </header>
-      {ordered.length === 0 ? (
+      {entries.length === 0 ? (
         <p className="ship-log-empty dim">No actions yet. Buy, sell, refuel, travel, or accept a contract — they'll all show up here.</p>
       ) : (
-        <ol className="ship-log-list" data-scroll-key={`fleet:${ship.id}:log`}>
-          {ordered.map((e, i) => (
-            <li key={`${e.tick}-${i}`} className={`ship-log-entry ${e.tone ? `tone-${e.tone}` : ""}`}>
-              <span className="ship-log-tick mono dim">t{e.tick}</span>
-              <span className="ship-log-kind">{e.kind.replace(/_/g, " ")}</span>
-              <span className="ship-log-msg">{e.message}</span>
-            </li>
-          ))}
-        </ol>
+        <PaginatedLogList entries={entries} scrollKey={`fleet:${ship.id}:log`} />
       )}
     </section>
+  );
+}
+
+const LOG_PAGE_SIZE = 100;
+
+// Newest-first paginated log. Renders the most recent LOG_PAGE_SIZE entries
+// initially; an IntersectionObserver on a sentinel at the bottom expands by
+// LOG_PAGE_SIZE more whenever the user scrolls into view of the sentinel.
+// Resets the visible count when entries identity changes (different ship).
+function PaginatedLogList({ entries, scrollKey }: { entries: ShipLogEntry[]; scrollKey: string }) {
+  const [visibleCount, setVisibleCount] = useState(LOG_PAGE_SIZE);
+  const sentinelRef = useRef<HTMLLIElement | null>(null);
+
+  // Reset the window when the underlying list changes identity (different
+  // ship picked, or game reloaded). Length-only changes (new entries
+  // appended) don't reset — newest is at the top so the user keeps the
+  // expansion they already chose.
+  const entriesRef = useRef(entries);
+  if (entriesRef.current !== entries) {
+    entriesRef.current = entries;
+    // Bumps via a ref rather than a state-set during render — visibleCount
+    // doesn't need to change unless entries identity actually flipped.
+  }
+  useEffect(() => {
+    setVisibleCount(LOG_PAGE_SIZE);
+  }, [scrollKey]);
+
+  const total = entries.length;
+  const sliceStart = Math.max(0, total - visibleCount);
+  // Newest-first display: take the tail of `entries` (most recent N) and
+  // reverse so the freshest is at the top.
+  const visible = entries.slice(sliceStart).reverse();
+  const hasMore = sliceStart > 0;
+
+  useEffect(() => {
+    if (!hasMore) return;
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisibleCount(c => Math.min(c + LOG_PAGE_SIZE, total));
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    obs.observe(sentinel);
+    return () => obs.disconnect();
+  }, [hasMore, total]);
+
+  return (
+    <ol className="ship-log-list" data-scroll-key={scrollKey}>
+      {visible.map((e, i) => (
+        <li key={`${e.tick}-${i}`} className={`ship-log-entry ${e.tone ? `tone-${e.tone}` : ""}`}>
+          <span className="ship-log-tick mono dim">t{e.tick}</span>
+          <span className="ship-log-kind">{e.kind.replace(/_/g, " ")}</span>
+          <span className="ship-log-msg">{e.message}</span>
+        </li>
+      ))}
+      {hasMore && (
+        <li ref={sentinelRef} className="ship-log-loading dim">Loading older entries…</li>
+      )}
+    </ol>
   );
 }
 

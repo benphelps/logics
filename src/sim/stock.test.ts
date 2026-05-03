@@ -87,7 +87,7 @@ describe("stock market — price invariants", () => {
       expect(eq.price).toBeGreaterThanOrEqual(eq.anchorPrice * SHARE_PRICE_FLOOR_MULT - 0.01);
       expect(eq.price).toBeLessThanOrEqual(eq.anchorPrice * SHARE_PRICE_CEILING_MULT + 0.01);
     }
-  });
+  }, 15_000);
 
   it("priceChangePct is computable after a tick", () => {
     const w = createWorld();

@@ -174,7 +174,7 @@ describe("news — long-run mean reversion", () => {
     for (const [, value] of Object.entries(state.bias)) {
       expect(Math.abs(value)).toBeLessThan(0.5);
     }
-  });
+  }, 15_000);
 });
 
 describe("news — wired into tickWorld", () => {

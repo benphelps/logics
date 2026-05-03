@@ -94,33 +94,44 @@ function cloneWorld(world: World): World {
   return JSON.parse(JSON.stringify(world)) as World;
 }
 
-// Compact a world before serializing to localStorage. With 80+ equities
-// each carrying a recentTrades buffer, a price history, and an order book
-// of agent quotes, multiple save slots blow past the ~5 MB localStorage
-// origin quota and setItem throws.
+// Compact a world before serializing to localStorage. The save snapshot is
+// a "current state only" view — historical streams live in IndexedDB:
+//   - equity.history / equity.recentTrades / trader.log are stripped entirely
+//     (see historyDb.ts), partitioned by world.gameId.
+//   - Order book TTL entries are agent quotes that re-post in a few ticks;
+//     player limit orders (no TTL) survive untouched.
 //
-// The save snapshot is a "current state only" view — anything regenerated
-// from gameplay or stored elsewhere is stripped:
-//   - equity.history / equity.recentTrades / trader.log live in IndexedDB
-//     (see historyDb.ts), partitioned by world.gameId. Strip them entirely.
-//   - Order book TTL entries are agent quotes that re-post in a few ticks.
-//     Player limit orders (no TTL) survive untouched.
+// We deliberately DON'T structuredClone the full world here. Those three
+// stripped streams grow unbounded with playtime — at 3000+ ticks across
+// 80 equities the rings are hundreds of thousands of entries. Cloning them
+// just to overwrite with [] was the dominant per-autosave cost (visible as
+// a once-per-2s hitch at 16x). Instead we shallow-copy each entity record
+// with the heavy fields swapped for empty arrays / TTL-filtered books, and
+// share references for everything bounded. JSON.stringify (the next step)
+// is synchronous, so no concurrent tick can mutate the live references
+// while serialization runs.
 function compactWorldForSave(world: World): World {
-  const w = cloneWorld(world);
-  for (const eq of Object.values(w.equities ?? {})) {
-    eq.history = [];
-    eq.recentTrades = [];
+  const equities: World["equities"] = {};
+  for (const [id, eq] of Object.entries(world.equities ?? {})) {
+    equities[id] = { ...eq, history: [], recentTrades: [] };
   }
-  if (w.orderBooks) {
-    for (const book of Object.values(w.orderBooks)) {
-      book.bids = book.bids.filter(o => o.ttl == null);
-      book.asks = book.asks.filter(o => o.ttl == null);
+  const traders: World["traders"] = {};
+  for (const [id, t] of Object.entries(world.traders)) {
+    traders[id] = { ...t, log: [] };
+  }
+  let orderBooks = world.orderBooks;
+  if (orderBooks) {
+    const next: NonNullable<World["orderBooks"]> = {};
+    for (const [id, book] of Object.entries(orderBooks)) {
+      next[id] = {
+        ...book,
+        bids: book.bids.filter(o => o.ttl == null),
+        asks: book.asks.filter(o => o.ttl == null),
+      };
     }
+    orderBooks = next;
   }
-  for (const t of Object.values(w.traders)) {
-    t.log = [];
-  }
-  return w;
+  return { ...world, equities, traders, orderBooks };
 }
 
 function compactPersistedSave(save: PersistedSaveGame): PersistedSaveGame {
