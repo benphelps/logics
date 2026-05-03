@@ -60,6 +60,9 @@ import {
   markPriceFor,
   tickFutures,
 } from "./stock/futures";
+import { symbolizeEquity } from "./stock/symbols";
+
+export { symbolize } from "./stock/symbols";
 
 // --- tunables --------------------------------------------------------------
 
@@ -102,18 +105,18 @@ export const EXCHANGE_TRADE_MAX_HOPS = 3;
 
 // --- equity construction --------------------------------------------------
 
-function tickerFromName(name: string): string {
-  const cleaned = name.replace(/[^A-Za-z]/g, "").toUpperCase();
-  return cleaned.slice(0, 4) || "XXXX";
-}
-
-export function createStationEquity(locId: string, locName: string, population: number): Equity {
+export function createStationEquity(
+  locId: string,
+  locName: string,
+  population: number,
+  existingSymbols: Iterable<string> = [],
+): Equity {
   const anchor = Math.max(50, population * STATION_IPO_PER_POPULATION / SHARES_OUTSTANDING_DEFAULT);
   return {
     id: `eq_loc_${locId}`,
     kind: "station",
     name: locName,
-    ticker: tickerFromName(locName),
+    ticker: symbolizeEquity("station", locName, existingSymbols),
     sharesOutstanding: SHARES_OUTSTANDING_DEFAULT,
     price: anchor,
     anchorPrice: anchor,
@@ -122,13 +125,13 @@ export function createStationEquity(locId: string, locName: string, population: 
   };
 }
 
-export function createSyndicateEquity(synd: Syndicate): Equity {
+export function createSyndicateEquity(synd: Syndicate, existingSymbols: Iterable<string> = []): Equity {
   const anchor = SYNDICATE_IPO_DEFAULT;
   return {
     id: `eq_syn_${synd.id}`,
     kind: "syndicate",
     name: synd.name,
-    ticker: tickerFromName(synd.name),
+    ticker: symbolizeEquity("syndicate", synd.name, existingSymbols),
     sharesOutstanding: SHARES_OUTSTANDING_DEFAULT,
     price: anchor,
     anchorPrice: anchor,
@@ -140,13 +143,16 @@ export function createSyndicateEquity(synd: Syndicate): Equity {
 // Commodity equity — one per traded good. Backed by a volume-weighted
 // spot index across all stations. Anchor = good.basePrice (the canonical
 // price of the good across the universe). Tradable from anywhere.
-export function createCommodityEquity(good: { id: string; name: string; basePrice: number }): Equity {
+export function createCommodityEquity(
+  good: { id: string; name: string; basePrice: number },
+  existingSymbols: Iterable<string> = [],
+): Equity {
   const anchor = Math.max(1, good.basePrice);
   return {
     id: `eq_com_${good.id}`,
     kind: "commodity",
     name: good.name,
-    ticker: tickerFromName(good.name),
+    ticker: symbolizeEquity("commodity", good.name, existingSymbols),
     sharesOutstanding: SHARES_OUTSTANDING_DEFAULT,
     price: anchor,
     anchorPrice: anchor,
@@ -175,15 +181,15 @@ export function parseBasisUnderlying(underlyingId: string): { locationId: string
 export function createBasisEquity(
   loc: { id: string; name: string },
   good: { id: string; name: string; basePrice: number },
+  existingSymbols: Iterable<string> = [],
 ): Equity {
   const anchor = Math.max(1, good.basePrice);
-  const stationTag = (loc.name.match(/[A-Za-z]+/)?.[0] ?? loc.id).slice(0, 3).toUpperCase();
-  const goodTag = (good.name.match(/[A-Za-z]+/)?.[0] ?? good.id).slice(0, 3).toUpperCase();
+  const name = `${loc.name} ${good.name} basis`;
   return {
     id: `eq_bas_${loc.id}_${good.id}`,
     kind: "basis",
-    name: `${loc.name} ${good.name} basis`,
-    ticker: `${stationTag}${goodTag}`.slice(0, 6),
+    name,
+    ticker: symbolizeEquity("basis", name, existingSymbols),
     sharesOutstanding: SHARES_OUTSTANDING_DEFAULT,
     price: anchor,
     anchorPrice: anchor,
@@ -199,7 +205,7 @@ export function createBasisEquity(
 export const BASIS_PAIRS_PER_LOCATION = 2;
 export const BASIS_PAIRS_GLOBAL_CAP = 20;
 
-function seedBasisPairs(world: World): void {
+function seedBasisPairs(world: World, existingSymbols: Set<string>): void {
   const created = new Set<string>();
   let total = 0;
 
@@ -239,8 +245,9 @@ function seedBasisPairs(world: World): void {
       const key = basisUnderlying(loc.id, goodId);
       if (created.has(key)) continue;
       created.add(key);
-      const eq = createBasisEquity(loc, good);
+      const eq = createBasisEquity(loc, good, existingSymbols);
       world.equities[eq.id] = eq;
+      existingSymbols.add(eq.ticker);
       total++;
     }
   }
@@ -299,44 +306,45 @@ export function buildSyndicates(world: World, count: number = 4, seed: number = 
 
 export function ensureStockMarket(world: World, opts: { syndicateCount?: number; seed?: number } = {}): void {
   if (Object.keys(world.equities).length > 0) return;
+  const symbols = new Set<string>();
+  const addEquity = (eq: Equity) => {
+    world.equities[eq.id] = eq;
+    symbols.add(eq.ticker);
+  };
+
   // Syndicates first (so equities can reference them)
   if (Object.keys(world.syndicates).length === 0) {
     world.syndicates = buildSyndicates(world, opts.syndicateCount ?? 4, opts.seed ?? 1);
   }
   for (const loc of Object.values(world.locations)) {
-    const eq = createStationEquity(loc.id, loc.name, loc.population);
-    world.equities[eq.id] = eq;
+    addEquity(createStationEquity(loc.id, loc.name, loc.population, symbols));
   }
   for (const synd of Object.values(world.syndicates)) {
-    const eq = createSyndicateEquity(synd);
-    world.equities[eq.id] = eq;
+    addEquity(createSyndicateEquity(synd, symbols));
   }
   // C-1: spot-index commodity per traded good (everything except the
   // upgrade catalogue). Anchor = good.basePrice, fundamental tracked by
   // commodityFundamental (volume-weighted spot across stations).
   for (const good of Object.values(world.goods)) {
     if (good.category === "upgrade") continue;
-    const eq = createCommodityEquity(good);
-    world.equities[eq.id] = eq;
+    addEquity(createCommodityEquity(good, symbols));
   }
   // C-2: basis pairs — a handful of (station, good) listings tracking
   // each station's local price vs the spot index. We seed two pairs per
   // location (top exporter good + top consumer good) up to a soft global
   // cap. This keeps the listing count bounded on big worlds while
   // surfacing the most-tradable basis spreads.
-  seedBasisPairs(world);
+  seedBasisPairs(world, symbols);
   // C-3: futures listings — near + far per traded good.
-  ensureFuturesListings(world);
+  ensureFuturesListings(world, symbols);
   // C-6: sector indices + Treasury Index Note. Indices are cash-settled
   // weighted baskets of commodities (sectors) or aggregate treasury
   // health (TIN).
   for (const def of SECTOR_INDICES) {
-    const eq = createSectorIndexEquity(world, def);
-    world.equities[eq.id] = eq;
+    addEquity(createSectorIndexEquity(world, def, symbols));
   }
   {
-    const tin = createTreasuryIndexEquity();
-    world.equities[tin.id] = tin;
+    addEquity(createTreasuryIndexEquity(symbols));
   }
   // Phase 2 (MM-less): distribute the float across NPC agents and warm up
   // the book — each agent posts both a bid and an ask on every equity using
@@ -503,7 +511,6 @@ export function computeFundamental(world: World, eq: Equity): number {
 export interface IndexDef {
   id: EquityId;
   name: string;
-  ticker: string;
   members: { goodId: string; weight: number }[]; // weights normalized to 1 internally
 }
 
@@ -511,7 +518,6 @@ const SECTOR_INDICES: IndexDef[] = [
   {
     id: "eq_idx_food",
     name: "Food Sector Index",
-    ticker: "FOOD",
     members: [
       { goodId: "grain", weight: 1 },
       { goodId: "protein", weight: 1 },
@@ -521,7 +527,6 @@ const SECTOR_INDICES: IndexDef[] = [
   {
     id: "eq_idx_raw",
     name: "Raw Materials Index",
-    ticker: "RAW",
     members: [
       { goodId: "ore", weight: 1 },
       { goodId: "polymer", weight: 1 },
@@ -531,7 +536,6 @@ const SECTOR_INDICES: IndexDef[] = [
   {
     id: "eq_idx_advanced",
     name: "Advanced Goods Index",
-    ticker: "ADV",
     members: [
       { goodId: "electronics", weight: 1 },
       { goodId: "weapons", weight: 1 },
@@ -542,7 +546,6 @@ const SECTOR_INDICES: IndexDef[] = [
   {
     id: "eq_idx_fuel",
     name: "Fuel Index",
-    ticker: "FUEL",
     members: [
       { goodId: "plasma", weight: 1 },
       { goodId: "antimatter", weight: 1 },
@@ -553,7 +556,6 @@ const SECTOR_INDICES: IndexDef[] = [
 // Treasury Index Note — aggregate treasury health across all stations.
 // Constant id; underlying is "all stations".
 const TREASURY_INDEX_ID: EquityId = "eq_idx_tin";
-const TREASURY_INDEX_TICKER = "TIN";
 const TREASURY_INDEX_NAME = "Treasury Index Note";
 const TREASURY_INDEX_ANCHOR = 100;
 
@@ -568,7 +570,11 @@ export function isIndexEquity(id: EquityId): boolean {
 // Weighted-spot index. anchor = weighted sum of member basePrices so that
 // at world creation, when each commodity is at anchor, the index sits at
 // 1.0× (i.e., price = anchor).
-export function createSectorIndexEquity(world: World, def: IndexDef): Equity {
+export function createSectorIndexEquity(
+  world: World,
+  def: IndexDef,
+  existingSymbols: Iterable<string> = [],
+): Equity {
   const totalWeight = def.members.reduce((s, m) => s + m.weight, 0) || 1;
   let anchor = 0;
   for (const m of def.members) {
@@ -581,7 +587,7 @@ export function createSectorIndexEquity(world: World, def: IndexDef): Equity {
     id: def.id,
     kind: "index",
     name: def.name,
-    ticker: def.ticker,
+    ticker: symbolizeEquity("index", def.name, existingSymbols),
     sharesOutstanding: SHARES_OUTSTANDING_DEFAULT,
     price: anchor,
     anchorPrice: anchor,
@@ -590,12 +596,12 @@ export function createSectorIndexEquity(world: World, def: IndexDef): Equity {
   };
 }
 
-export function createTreasuryIndexEquity(): Equity {
+export function createTreasuryIndexEquity(existingSymbols: Iterable<string> = []): Equity {
   return {
     id: TREASURY_INDEX_ID,
     kind: "index",
     name: TREASURY_INDEX_NAME,
-    ticker: TREASURY_INDEX_TICKER,
+    ticker: symbolizeEquity("index", TREASURY_INDEX_NAME, existingSymbols),
     sharesOutstanding: SHARES_OUTSTANDING_DEFAULT,
     price: TREASURY_INDEX_ANCHOR,
     anchorPrice: TREASURY_INDEX_ANCHOR,

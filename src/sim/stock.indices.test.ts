@@ -21,19 +21,19 @@ describe("stock — C-6 index listings", () => {
   it("createWorld lists 4 sector indices + 1 Treasury Index Note", () => {
     const w = createWorld();
     const indices = listIndices(w);
-    // FOOD, RAW, ADV, FUEL + TIN = 5
     expect(indices.length).toBe(5);
-    const tickers = new Set(indices.map(i => i.ticker));
-    expect(tickers.has("FOOD")).toBe(true);
-    expect(tickers.has("RAW")).toBe(true);
-    expect(tickers.has("ADV")).toBe(true);
-    expect(tickers.has("FUEL")).toBe(true);
-    expect(tickers.has("TIN")).toBe(true);
+    const ids = new Set(indices.map(i => i.id));
+    expect(ids.has("eq_idx_food")).toBe(true);
+    expect(ids.has("eq_idx_raw")).toBe(true);
+    expect(ids.has("eq_idx_advanced")).toBe(true);
+    expect(ids.has("eq_idx_fuel")).toBe(true);
+    expect(ids.has("eq_idx_tin")).toBe(true);
+    for (const eq of indices) expect(eq.ticker.startsWith("I")).toBe(true);
   });
 
   it("sector index anchor equals weighted avg of member basePrices", () => {
     const w = createWorld();
-    const food = listIndices(w).find(e => e.ticker === "FOOD")!;
+    const food = listIndices(w).find(e => e.id === "eq_idx_food")!;
     // Members: grain (8), protein (12), vatmeat (20). Equal weights → 13.33.
     const expected = (8 + 12 + 20) / 3;
     expect(food.anchorPrice).toBeCloseTo(Math.max(1, expected), 4);
@@ -41,7 +41,7 @@ describe("stock — C-6 index listings", () => {
 
   it("sector index price tracks weighted member commodity prices", () => {
     const w = createWorld();
-    const food = listIndices(w).find(e => e.ticker === "FOOD")!;
+    const food = listIndices(w).find(e => e.id === "eq_idx_food")!;
     // Force commodity prices to known values.
     w.equities["eq_com_grain"].price = 10;
     w.equities["eq_com_protein"].price = 20;
@@ -52,9 +52,9 @@ describe("stock — C-6 index listings", () => {
 
   it("treasury index note tracks aggregate station health", () => {
     const w = createWorld();
-    const tin = listIndices(w).find(e => e.ticker === "TIN")!;
+    const tin = listIndices(w).find(e => e.id === "eq_idx_tin")!;
     expect(tin).toBeDefined();
-    // Force every market's treasury to 2× target — TIN should be at
+    // Force every market's treasury to 2× target — the note should be at
     // 2× anchor (clamped at 2×).
     for (const m of Object.values(w.markets)) {
       m.treasury = m.treasuryTarget * 2;
@@ -69,7 +69,7 @@ describe("stock — C-6 index trading", () => {
     const w = createWorld();
     const ship = w.traders[w.player!.shipIds[0]];
     ship.funds = 1_000_000;
-    const food = listIndices(w).find(e => e.ticker === "FOOD")!;
+    const food = listIndices(w).find(e => e.id === "eq_idx_food")!;
     expect(buyShares(w, food.id, 10).ok).toBe(true);
     tickWorld(w);
     const r = sellShares(w, food.id, 10);
@@ -84,7 +84,7 @@ describe("stock — C-6 index trading", () => {
     const otherLoc = Object.keys(w.locations).find(id => id !== ship.location)!;
     ship.location = otherLoc;
     ship.state = "idle";
-    const food = listIndices(w).find(e => e.ticker === "FOOD")!;
+    const food = listIndices(w).find(e => e.id === "eq_idx_food")!;
     expect(buyShares(w, food.id, 5).ok).toBe(true);
   });
 });

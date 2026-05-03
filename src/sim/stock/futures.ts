@@ -30,6 +30,7 @@ import type {
   World,
 } from "../types";
 import { ensureOrderBook } from "./orderbook";
+import { symbolizeEquity } from "./symbols";
 
 // --- tunables ------------------------------------------------------------
 
@@ -126,6 +127,7 @@ function createFuturesPair(
   world: World,
   goodId: GoodId,
   expiryTick: number,
+  existingSymbols: Set<string> = new Set(Object.values(world.equities).map(eq => eq.ticker)),
 ): { equity: Equity; contract: FuturesContract } | null {
   const spotEqId = spotEquityIdFor(goodId);
   const spotEq = world.equities[spotEqId];
@@ -133,12 +135,12 @@ function createFuturesPair(
   const id = contractIdFor(goodId, expiryTick);
   if (world.equities[id]) return null;
   const anchor = spotEq.price;
-  const ticker = `${(world.goods[goodId]?.name?.match(/[A-Za-z]+/)?.[0] ?? goodId).slice(0, 3).toUpperCase()}${expiryTick % 10000}`.slice(0, 6);
+  const name = `${world.goods[goodId]?.name ?? goodId} ${expiryTick}`;
   const equity: Equity = {
     id,
     kind: "futures",
-    name: `${world.goods[goodId]?.name ?? goodId} ${expiryTick}`,
-    ticker,
+    name,
+    ticker: symbolizeEquity("futures", name, existingSymbols),
     sharesOutstanding: 1_000_000,    // open interest cap; effectively unbounded
     price: anchor,
     anchorPrice: anchor,
@@ -158,19 +160,23 @@ function createFuturesPair(
     deliveryStation: pickDeliveryStation(world),
   };
   world.equities[id] = equity;
+  existingSymbols.add(equity.ticker);
   ensureFuturesContainer(world)[id] = contract;
   ensureOrderBook(world, id);
   return { equity, contract };
 }
 
 // Run from ensureStockMarket: list near + far contracts for every traded good.
-export function ensureFuturesListings(world: World): void {
+export function ensureFuturesListings(
+  world: World,
+  existingSymbols: Set<string> = new Set(Object.values(world.equities).map(eq => eq.ticker)),
+): void {
   const goods = Object.values(world.goods).filter(g => g.category !== "upgrade");
   for (const good of goods) {
     const near = world.tick + NEAR_EXPIRY_TICKS;
     const far = world.tick + FAR_EXPIRY_TICKS;
-    createFuturesPair(world, good.id, near);
-    createFuturesPair(world, good.id, far);
+    createFuturesPair(world, good.id, near, existingSymbols);
+    createFuturesPair(world, good.id, far, existingSymbols);
   }
 }
 

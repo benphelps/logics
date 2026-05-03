@@ -26,6 +26,7 @@ import {
   setStopLoss,
   setTakeProfit,
   shortShares,
+  symbolize,
   tickStockMarket,
   totalUnrealizedPnl,
   SHARE_PRICE_CEILING_MULT,
@@ -76,6 +77,26 @@ describe("stock market — initialization", () => {
     const equityCount = Object.keys(w.equities).length;
     ensureStockMarket(w);
     expect(Object.keys(w.equities).length).toBe(equityCount);
+  });
+
+  it("symbolize chooses the shortest unique candidate", () => {
+    expect(symbolize("Path Alpha")).toBe("PA");
+    expect(symbolize("Path Alpha", ["PA"])).toBe("PL");
+    expect(symbolize("Path Alpha", ["PA", "PL", "PP", "PH", "PT"])).toBe("PAL");
+    expect(symbolize("", [])).toBe("X2");
+  });
+
+  it("stock symbols are unique and non-station assets are type-prefixed", () => {
+    const w = createWorld();
+    const tickers = new Set<string>();
+    for (const eq of Object.values(w.equities)) {
+      expect(tickers.has(eq.ticker)).toBe(false);
+      tickers.add(eq.ticker);
+
+      if (eq.kind !== "station") {
+        expect(eq.ticker.startsWith(eq.kind[0].toUpperCase())).toBe(true);
+      }
+    }
   });
 });
 

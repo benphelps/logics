@@ -472,7 +472,7 @@ export interface Equity {
   id: EquityId;
   kind: EquityKind;
   name: string;
-  ticker: string;          // 3-4 char trading symbol, e.g., "HVN", "IRO"
+  ticker: string;          // Short unique trading symbol, e.g., "HVN", "CGR", "SVC"
   sharesOutstanding: number;
   // Current public quote per share. Recomputed each tick from the
   // underlying entity's economic health (treasury, traffic, etc.).
