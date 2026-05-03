@@ -3051,10 +3051,17 @@ function Sparkline({ equity, position }: { equity: Equity; position: StockPositi
   }, [equity.id, histLen, tradesLen, lastPrice, lastTick, layoutGen]);
 
   // Reset windowing on equity switch.
+  //
+  // We deliberately do NOT touch lastDepthRef here — the data effect's else
+  // branch (equityChanged path) already sets it to the new histLen at end.
+  // Resetting it to 0 here makes the next data-effect run see
+  // `histLen - 0 > 2 = true` and fire the depthExpanded path, which calls
+  // setData with the smaller window and shifts the visible logical range
+  // off the end of the data. Symptom: "after the first step the chart's
+  // first entry jumps to the left side".
   useEffect(() => {
     setHistoryDepth(HISTORY_PAGE);
     fetchingRef.current = false;
-    lastDepthRef.current = 0;
   }, [equity.id]);
 
   // Lazy expand: subscribe to the chart's visible logical range. When the

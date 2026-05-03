@@ -134,14 +134,6 @@ function compactWorldForSave(world: World): World {
   return { ...world, equities, traders, orderBooks };
 }
 
-function compactPersistedSave(save: PersistedSaveGame): PersistedSaveGame {
-  return {
-    ...save,
-    world: compactWorldForSave(save.world),
-    viewTabs: save.viewTabs ? normalizeViewTabs(save.viewTabs) : undefined,
-    panelScrollPositions: save.panelScrollPositions ? normalizePanelScrollPositions(save.panelScrollPositions) : undefined,
-  };
-}
 
 // Saves predating later mechanics (treasuries, stock market, long/short
 // positions) won't have those fields. Backfill on load so the rest of the
@@ -283,19 +275,38 @@ function backfillCrewIdentity(world: World): void {
   }
 }
 
+// Cached registry across calls. The localStorage layout puts every save slot
+// (each holding a full World) under a single key — re-reading it on every
+// autosave means JSON.parse-ing megabytes every 2s, which shows up in
+// profiles as the "every-2s freeze". We're the only writer, so the cache is
+// always authoritative; just keep it warm and skip the parse.
+let cachedRegistry: SaveRegistry | null | undefined; // undefined = not yet loaded
+
 function readRegistry(): SaveRegistry | null {
+  if (cachedRegistry !== undefined) return cachedRegistry;
   const storage = browserStorage();
-  if (!storage) return null;
+  if (!storage) {
+    cachedRegistry = null;
+    return null;
+  }
   try {
     const raw = storage.getItem(SAVE_REGISTRY_KEY);
-    if (!raw) return { version: SAVE_VERSION, activeId: null, saves: [] };
+    if (!raw) {
+      cachedRegistry = { version: SAVE_VERSION, activeId: null, saves: [] };
+      return cachedRegistry;
+    }
     const parsed = JSON.parse(raw) as unknown;
-    if (!isRecord(parsed) || parsed.version !== SAVE_VERSION || !Array.isArray(parsed.saves)) return null;
+    if (!isRecord(parsed) || parsed.version !== SAVE_VERSION || !Array.isArray(parsed.saves)) {
+      cachedRegistry = null;
+      return null;
+    }
     const saves = parsed.saves.filter(isPersistedSave);
     const activeId = typeof parsed.activeId === "string" ? parsed.activeId : null;
-    return { version: SAVE_VERSION, activeId, saves };
+    cachedRegistry = { version: SAVE_VERSION, activeId, saves };
+    return cachedRegistry;
   } catch (error) {
     console.warn("[logics] Save registry read failed", error);
+    cachedRegistry = null;
     return null;
   }
 }
@@ -308,6 +319,9 @@ function describeSaveError(error: unknown, registry: SaveRegistry, payloadChars:
 }
 
 function writeRegistry(registry: SaveRegistry): SaveWriteResult {
+  // Always update the cache so subsequent readRegistry() calls don't have
+  // to round-trip through localStorage again.
+  cachedRegistry = registry;
   const storage = browserStorage();
   if (!storage) return { status: "unavailable", error: "Browser localStorage is unavailable." };
   let payload: string;
@@ -472,12 +486,17 @@ export function saveGameSlot(
   const saveId = id ?? createSaveId(kind === "developer" ? "dev" : "game");
   const existing = registry.saves.find(save => save.id === saveId);
   const save = makeSave(saveId, name, kind, world, existing?.createdAt, viewTabs, panelScrollPositions);
-  const compactedExisting = registry.saves
-    .map(compactPersistedSave)
-    .filter(item => kind !== "developer" || item.kind !== "developer" || item.id === saveId);
+  // Other slots in the registry were already compacted when they were saved
+  // (their world.equity rings are empty; their world.traders[].log is empty).
+  // Don't run compactPersistedSave on them every autosave — it allocates new
+  // shallow copies for every equity + trader in every other save and does a
+  // ton of redundant work. Just keep their existing references.
+  const filteredExisting = kind === "developer"
+    ? registry.saves.filter(item => item.kind !== "developer" || item.id === saveId)
+    : registry.saves;
   const saves = existing
-    ? compactedExisting.map(item => item.id === saveId ? save : item)
-    : [...compactedExisting, save];
+    ? filteredExisting.map(item => item.id === saveId ? save : item)
+    : [...filteredExisting, save];
   const next: SaveRegistry = { version: SAVE_VERSION, activeId: saveId, saves };
   const write = writeRegistry(next);
   // Pass the live world so the in-memory history rings (which we just flushed
@@ -493,10 +512,10 @@ export function createGameSlot(name: string, kind: SaveGameKind, world: World): 
 export function loadGameSlot(id: string): LoadedGameSession | null {
   const registry = readRegistry();
   if (!registry) return null;
-  const saves = registry.saves.map(compactPersistedSave);
-  const save = saves.find(item => item.id === id);
+  const save = registry.saves.find(item => item.id === id);
   if (!save) return null;
-  const next: SaveRegistry = { version: SAVE_VERSION, activeId: id, saves };
+  // Slots are stored already-compacted; no need to re-walk every world.
+  const next: SaveRegistry = { version: SAVE_VERSION, activeId: id, saves: registry.saves };
   const write = writeRegistry(next);
   return loadedFromSave(save, next, write);
 }
@@ -521,7 +540,8 @@ export function deleteGameSlot(id: string, createFallbackWorld: () => World): Lo
   // "gone" from the user's perspective; IDB cleanup just reclaims space.
   if (removed?.world.gameId) void deleteGameHistory(removed.world.gameId);
 
-  const saves = registry.saves.filter(save => save.id !== id).map(compactPersistedSave);
+  // Same as loadGameSlot — surviving slots are already compacted.
+  const saves = registry.saves.filter(save => save.id !== id);
   const active = saves.find(save => save.id === registry.activeId) ?? saves[0];
   if (active) {
     const next: SaveRegistry = { version: SAVE_VERSION, activeId: active.id, saves };
