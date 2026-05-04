@@ -20,14 +20,19 @@ function crewLevelLabel(level: number): string {
   return "green";
 }
 
-function lossSummary(world: World, loss: EncounterLoss): string {
-  const parts: string[] = [];
+interface LossPill {
+  id: string;
+  text: string;
+}
+
+function lossPills(world: World, loss: EncounterLoss): LossPill[] {
+  const pills: LossPill[] = [];
   for (const c of loss.cargo) {
-    parts.push(`${c.qty} ${world.goods[c.good]?.name ?? c.good}`);
+    pills.push({ id: `c-${c.good}`, text: `${c.qty} ${world.goods[c.good]?.name ?? c.good}` });
   }
-  if (loss.credits > 0) parts.push(`Ç${Math.round(loss.credits).toLocaleString()}`);
-  if (loss.hull > 0) parts.push(`${loss.hull} hull damage`);
-  return parts.length > 0 ? parts.join(" + ") : "—";
+  if (loss.credits > 0) pills.push({ id: "credits", text: `Ç${Math.round(loss.credits).toLocaleString()}` });
+  if (loss.hull > 0) pills.push({ id: "hull", text: `${loss.hull} hull` });
+  return pills;
 }
 
 function attackerArtUrl(kind: EncounterKind): string {
@@ -50,15 +55,16 @@ export function EncounterModal() {
   const toLoc = world.locations[encounter.toLocation]?.name ?? encounter.toLocation;
   const recommended = autopilotPolicy(ship, encounter);
 
-  const partialLossText = (() => {
-    if (encounter.attacker.kind === "rival_syndicate") {
-      return `Ç${encounter.negotiateBribe.toLocaleString()} bribe`;
+  const negotiatePills: LossPill[] = (() => {
+    const pills: LossPill[] = [
+      { id: "bribe", text: `Ç${encounter.negotiateBribe.toLocaleString()}` },
+    ];
+    if (encounter.attacker.kind !== "rival_syndicate") {
+      for (const c of encounter.negotiatePartialCargo) {
+        pills.push({ id: `np-${c.good}`, text: `${c.qty} ${world.goods[c.good]?.name ?? c.good}` });
+      }
     }
-    const cargoText = encounter.negotiatePartialCargo
-      .map(c => `${c.qty} ${world.goods[c.good]?.name ?? c.good}`)
-      .join(" + ");
-    if (!cargoText) return `Ç${encounter.negotiateBribe.toLocaleString()} bribe`;
-    return `Ç${encounter.negotiateBribe.toLocaleString()} + ${cargoText}`;
+    return pills;
   })();
 
   const playerArt = shipArtUrl(ship);
@@ -103,21 +109,22 @@ export function EncounterModal() {
           <ActionCard
             label="Fight"
             band={encounter.oddsFight}
-            risk={`if you lose: ${lossSummary(world, encounter.fightLossOnFail)}`}
+            pills={lossPills(world, encounter.fightLossOnFail)}
             recommended={recommended === "fight"}
             onClick={() => resolve("fight")}
           />
           <ActionCard
             label="Flee"
             band={encounter.oddsFlee}
-            risk={`if you fail: ${lossSummary(world, encounter.fleeLossOnFail)}`}
+            pills={lossPills(world, encounter.fleeLossOnFail)}
             recommended={recommended === "flee"}
             onClick={() => resolve("flee")}
           />
           <ActionCard
             label={encounter.attacker.kind === "pirate" ? "Bribe" : "Negotiate"}
             band={encounter.oddsNegotiate}
-            risk={cantBribe ? "insufficient funds" : `pay: ${partialLossText}`}
+            pills={negotiatePills}
+            note={cantBribe ? "insufficient funds" : undefined}
             recommended={recommended === "negotiate"}
             disabled={cantBribe}
             onClick={() => resolve("negotiate")}
@@ -140,12 +147,13 @@ function Stat({ label, value, muted }: { label: string; value: number | string; 
 function ActionCard(props: {
   label: string;
   band: OddsBand;
-  risk: string;
+  pills: LossPill[];
+  note?: string;
   recommended?: boolean;
   disabled?: boolean;
   onClick: () => void;
 }) {
-  const { label, band, risk, recommended, disabled, onClick } = props;
+  const { label, band, pills, note, recommended, disabled, onClick } = props;
   return (
     <button
       type="button"
@@ -158,7 +166,18 @@ function ActionCard(props: {
         {recommended && <span className="encounter-action-tag">recommended</span>}
       </span>
       <span className="encounter-action-band">{ODDS_LABEL[band]}</span>
-      <span className="encounter-action-risk">{risk}</span>
+      {note ? (
+        <span className="encounter-action-note">{note}</span>
+      ) : (
+        <span className="encounter-action-pills">
+          {pills.map(p => (
+            <span key={p.id} className="encounter-action-pill">
+              <span className="encounter-action-pill-sign" aria-hidden="true">−</span>
+              <span className="encounter-action-pill-text">{p.text}</span>
+            </span>
+          ))}
+        </span>
+      )}
     </button>
   );
 }
