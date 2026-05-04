@@ -105,17 +105,10 @@ export function StockMarketView() {
   const [focusedPositionId, setFocusedPositionId] = useState<string | null>(null);
   const [activePanel, setActivePanel] = useState<"tape" | "positions" | "trades">("tape");
 
-  // Pin/inspect model — mirrors the Fleet view's DockedView pattern.
-  // Hover an equity row to preview it in the info column; click pins it
-  // as a tab in the info-column head. Clicking a pinned row again unpins
-  // it. Pins persist across re-renders; hover takes priority over the
-  // active pin for what's actually displayed.
-  const [hoveredEquityId, setHoveredEquityId] = useState<string | null>(null);
+  // Pin/inspect model — click an equity row to inspect it; clicking the
+  // already-inspected row pins it as a tab in the info-column head.
+  // Clicking a pinned row's tab × unpins it. Pins persist across renders.
   const [pinnedEquityIds, setPinnedEquityIds] = useState<string[]>([]);
-  const hoverClearTimer = useRef<number | null>(null);
-  useEffect(() => () => {
-    if (hoverClearTimer.current != null) window.clearTimeout(hoverClearTimer.current);
-  }, []);
 
   // Mobile panel-tabs — collapse the 3-column shell into a single-pane
   // mobile view. The actual tab strip lives in App.tsx so it sits
@@ -132,29 +125,13 @@ export function StockMarketView() {
   const playerShipId = playerShip?.id;
   const stockGuidanceUnlocked = playerShip ? hasCrew(playerShip, "navigator") : false;
   const tapeRows = useMemo(() => splitRowsByAccess(world, rows, playerShipId), [world, rows, playerShipId]);
-  // Resolve the displayed equity. Order: hover preview → store-selected
-  // (= active pin) → first reachable row.
+  // Resolve the displayed equity. Order: store-selected (= active pin)
+  // → first reachable row. Inspect-on-hover is intentionally off — click
+  // is the only way to change what the info column shows.
   const activePinnedId = selected && rows.some(r => r.equity.id === selected) ? selected : null;
   const fallbackId = tapeRows.reachable[0]?.equity.id ?? rows[0]?.equity.id ?? null;
-  const selectedId = hoveredEquityId && rows.some(r => r.equity.id === hoveredEquityId)
-    ? hoveredEquityId
-    : activePinnedId ?? fallbackId;
+  const selectedId = activePinnedId ?? fallbackId;
   const detail = selectedId ? rows.find(r => r.equity.id === selectedId) ?? null : null;
-
-  const setHoverEquity = useCallback((eqId: string | null) => {
-    if (hoverClearTimer.current != null) {
-      window.clearTimeout(hoverClearTimer.current);
-      hoverClearTimer.current = null;
-    }
-    if (eqId == null) {
-      hoverClearTimer.current = window.setTimeout(() => {
-        setHoveredEquityId(null);
-        hoverClearTimer.current = null;
-      }, 150);
-    } else {
-      setHoveredEquityId(eqId);
-    }
-  }, []);
 
   // Click toggles the pin: adds the equity to the pin tab strip if it
   // isn't there yet (and makes it active), or removes it if it already
@@ -171,6 +148,18 @@ export function StockMarketView() {
       return [...prev, eqId];
     });
   }, [selected, select]);
+
+  // Two-step row click: first click on a row inspects (just selects);
+  // clicking the already-selected row pins it as a tab. Mirrors the
+  // fleet view's row-click pattern so users can preview without
+  // committing to a pin.
+  const clickRow = useCallback((eqId: string) => {
+    if (selected === eqId) {
+      togglePin(eqId);
+    } else {
+      select(eqId);
+    }
+  }, [selected, select, togglePin]);
 
   const closePin = useCallback((eqId: string) => {
     setPinnedEquityIds(prev => {
@@ -275,8 +264,7 @@ export function StockMarketView() {
             guideEnabled={guidedTradeEnabled}
             emptyText={stockGuidanceUnlocked ? "No actionable exchange trade right now." : "Hire a navigator for exchange insights."}
             onGuideToggle={() => stockGuidanceUnlocked && setStockGuideEnabled(!stockGuideEnabled)}
-            onTogglePin={togglePin}
-            onHover={setHoverEquity}
+            onSelectRow={clickRow}
           />
           <PnoPanel
             world={world}
@@ -311,7 +299,6 @@ export function StockMarketView() {
               emptyText={stockGuidanceUnlocked ? "No listing insights" : "Hire a navigator for listing insights."}
               pinnedIds={pinnedEquityIds}
               activePinnedId={activePinnedId}
-              hoveredId={hoveredEquityId}
               onSelectPin={select}
               onClosePin={closePin}
             />
@@ -433,7 +420,7 @@ const KIND_FILTER_LABEL: Record<KindFilter, string> = {
   index: "Indices",
 };
 
-function EquitySelector({ rows, tapeRows, selectedId, pinnedIds, activeHint, bestHint, guideEnabled, emptyText, onGuideToggle, onTogglePin, onHover }: {
+function EquitySelector({ rows, tapeRows, selectedId, pinnedIds, activeHint, bestHint, guideEnabled, emptyText, onGuideToggle, onSelectRow }: {
   rows: EquityRow[];
   tapeRows: { reachable: EquityRow[]; far: EquityRow[] };
   selectedId: string | null;
@@ -443,8 +430,7 @@ function EquitySelector({ rows, tapeRows, selectedId, pinnedIds, activeHint, bes
   guideEnabled: boolean;
   emptyText: string;
   onGuideToggle: () => void;
-  onTogglePin: (eqId: string) => void;
-  onHover: (eqId: string | null) => void;
+  onSelectRow: (eqId: string) => void;
 }) {
   const pinnedSet = useMemo(() => new Set(pinnedIds), [pinnedIds]);
   const kindFilter = useStore((s) => s.stockKindFilter);
@@ -513,8 +499,7 @@ function EquitySelector({ rows, tapeRows, selectedId, pinnedIds, activeHint, bes
                   selected={r.equity.id === selectedId}
                   pinned={pinnedSet.has(r.equity.id)}
                   activeHint={activeHint}
-                  onTogglePin={onTogglePin}
-                  onHover={onHover}
+                  onSelectRow={onSelectRow}
                 />
               ))}
               {sortedFar.length > 0 && (
@@ -527,8 +512,7 @@ function EquitySelector({ rows, tapeRows, selectedId, pinnedIds, activeHint, bes
                       selected={r.equity.id === selectedId}
                       pinned={pinnedSet.has(r.equity.id)}
                       activeHint={activeHint}
-                      onTogglePin={onTogglePin}
-                      onHover={onHover}
+                      onSelectRow={onSelectRow}
                       farRow
                     />
                   ))}
@@ -554,13 +538,12 @@ function EquitySelector({ rows, tapeRows, selectedId, pinnedIds, activeHint, bes
 // (every selectedId change) used to re-render every row. With memo, only the
 // previously-selected row and the newly-selected row re-render; the other
 // 100+ skip. That's the bulk of the equity-switch click cost in dev mode.
-const SelectorRow = memo(function SelectorRow({ row, selected, pinned, activeHint, onTogglePin, onHover, farRow = false }: {
+const SelectorRow = memo(function SelectorRow({ row, selected, pinned, activeHint, onSelectRow, farRow = false }: {
   row: EquityRow;
   selected: boolean;
   pinned: boolean;
   activeHint: StockExchangeHint | null;
-  onTogglePin: (eqId: string) => void;
-  onHover: (eqId: string | null) => void;
+  onSelectRow: (eqId: string) => void;
   farRow?: boolean;
 }) {
   const eq = row.equity;
@@ -571,11 +554,7 @@ const SelectorRow = memo(function SelectorRow({ row, selected, pinned, activeHin
     <button
       type="button"
       className={`stocks-selector-row ${selected ? "selected" : ""} ${pinned ? "is-pinned" : ""} ${tone} ${ownedTone} ${farRow ? "far" : ""}`}
-      onClick={() => onTogglePin(eq.id)}
-      onMouseEnter={() => onHover(eq.id)}
-      onMouseLeave={() => onHover(null)}
-      onFocus={() => onHover(eq.id)}
-      onBlur={() => onHover(null)}
+      onClick={() => onSelectRow(eq.id)}
     >
       <StockGuidanceCell
         guided={isGuidedTicker}
@@ -907,7 +886,7 @@ function PositionAccordionItem(props: {
                 onPingClick={() => (pos.kind === "long" ? props.onSell(closeQty) : props.onCover(closeQty))}
               >
                 <button
-                  className="btn-action primary"
+                  className={`btn-action stocks-position-close side-${pos.kind === "long" ? "sell" : "buy"} ${closeReadyForGuide ? "btn-suggested" : "primary"}`}
                   disabled={!props.docked || closeQty <= 0}
                   onClick={() => (pos.kind === "long" ? props.onSell(closeQty) : props.onCover(closeQty))}
               >
@@ -1209,10 +1188,9 @@ function OrderAccordionItem({ world, order, isOpen, onToggle, onCancel, onAdjust
 
 // --- info column (right) -----------------------------------------------
 
-function PinTabs({ pinnedIds, activePinnedId, hoveredId, world, onSelectPin, onClosePin }: {
+function PinTabs({ pinnedIds, activePinnedId, world, onSelectPin, onClosePin }: {
   pinnedIds: string[];
   activePinnedId: string | null;
-  hoveredId: string | null;
   world: World;
   onSelectPin: (eqId: string) => void;
   onClosePin: (eqId: string) => void;
@@ -1220,7 +1198,7 @@ function PinTabs({ pinnedIds, activePinnedId, hoveredId, world, onSelectPin, onC
   if (pinnedIds.length === 0) {
     return (
       <div className="stocks-pin-tabs empty">
-        <span className="stocks-pin-tabs-empty">Hover to inspect · click to pin</span>
+        <span className="stocks-pin-tabs-empty">Click to inspect · click again to pin</span>
       </div>
     );
   }
@@ -1229,11 +1207,7 @@ function PinTabs({ pinnedIds, activePinnedId, hoveredId, world, onSelectPin, onC
       {pinnedIds.map(id => {
         const eq = world.equities[id];
         if (!eq) return null;
-        // The active tab is the one currently driving the info column.
-        // Hover preview overrides the active pin visually so the user
-        // can always tell which row is being previewed.
-        const isHoverPreview = hoveredId != null && hoveredId === id && id !== activePinnedId;
-        const active = isHoverPreview || (!hoveredId && activePinnedId === id);
+        const active = activePinnedId === id;
         return (
           <div
             key={id}
@@ -1277,7 +1251,6 @@ function InfoColumn({ row, world, shipId, docked, hint, selectedHint, activeHint
   emptyText: string;
   pinnedIds: string[];
   activePinnedId: string | null;
-  hoveredId: string | null;
   onSelectPin: (eqId: string) => void;
   onClosePin: (eqId: string) => void;
 }) {
@@ -1305,7 +1278,6 @@ function InfoColumn({ row, world, shipId, docked, hint, selectedHint, activeHint
       <PinTabs
         pinnedIds={pinnedIds}
         activePinnedId={activePinnedId}
-        hoveredId={hoveredId}
         world={world}
         onSelectPin={onSelectPin}
         onClosePin={onClosePin}
@@ -1323,6 +1295,12 @@ function InfoColumn({ row, world, shipId, docked, hint, selectedHint, activeHint
         </div>
       </div>
 
+      <div className="stocks-info-fixed-form">
+        {eq.kind === "futures"
+          ? <FuturesOrderForm equity={eq} world={world} docked={docked} access={access} hint={formHint} hintApplyKey={hintApplyKey} />
+          : <UnifiedOrderForm equity={eq} world={world} docked={docked} access={access} hint={formHint} hintApplyKey={hintApplyKey} />}
+      </div>
+
       <div className="stocks-info-body" data-scroll-key={`exchange:info:${eq.id}`}>
         <Sparkline equity={eq} position={row.position} />
 
@@ -1335,10 +1313,6 @@ function InfoColumn({ row, world, shipId, docked, hint, selectedHint, activeHint
           <OrderBookPanel equity={eq} world={world} />
           <TimeAndSalesPanel equity={eq} />
         </div>
-
-        {eq.kind === "futures"
-          ? <FuturesOrderForm equity={eq} world={world} docked={docked} access={access} hint={formHint} hintApplyKey={hintApplyKey} />
-          : <UnifiedOrderForm equity={eq} world={world} docked={docked} access={access} hint={formHint} hintApplyKey={hintApplyKey} />}
       </div>
       <StockHintChin
         hint={selectedHint}
@@ -1522,9 +1496,9 @@ function KpiPanel({ row, world }: { row: EquityRow; world: World }) {
 // Mirrors the Stat component used by the fleet view — same classes
 // (.cargo-stat with dim label + mono value) so the visual style is
 // guaranteed identical across views.
-export function FleetStat({ label, value }: { label: string; value: string }) {
+export function FleetStat({ label, value, wide = false }: { label: string; value: string; wide?: boolean }) {
   return (
-    <div className="cargo-stat">
+    <div className={`cargo-stat ${wide ? "stocks-stat-wide" : ""}`.trim()}>
       <dt className="dim">{label}</dt>
       <dd className="mono info-value">{value}</dd>
     </div>
@@ -1608,16 +1582,15 @@ function UnifiedOrderForm({ equity, world, docked, access, hint, hintApplyKey = 
 
   const total = qty * price;
   const fee = total * BROKER_FEE_RATE;
-  const summary = side === "buy"
-    ? `Reserve Ç${Math.round(total + fee).toLocaleString()}`
-    : side === "sell"
-      ? `Net Ç${Math.round(total - fee).toLocaleString()} on fill`
-      : `Short proceeds ~Ç${Math.round(total - fee).toLocaleString()}`;
+  const buyCost = Math.round(total + fee);
+  const sellNet = Math.round(total - fee);
+  const shortNet = Math.round(qty * mark - qty * mark * BROKER_FEE_RATE);
 
-  const submit = () => {
-    if (side === "buy") placeLimitBuy(equity.id, qty, price);
-    else if (side === "sell") placeLimitSell(equity.id, qty, price);
-    else shortShares(equity.id, qty);   // short uses market for now
+  const submit = (chosen: Side) => {
+    setSide(chosen);
+    if (chosen === "buy") placeLimitBuy(equity.id, qty, price);
+    else if (chosen === "sell") placeLimitSell(equity.id, qty, price);
+    else shortShares(equity.id, qty);
   };
 
   // For short: aggressive market order direction. The price chip's sign
@@ -1625,24 +1598,15 @@ function UnifiedOrderForm({ equity, world, docked, access, hint, hintApplyKey = 
   // up, short uses −Δ. For order entry, "+" means a higher limit price
   // (more aggressive on a buy, less aggressive on a sell).
   const priceSign = side === "sell" ? -1 : 1;
+  const buyDisabled = !docked || !access.ok || qty <= 0 || price <= 0;
+  const sellDisabled = !docked || !access.ok || qty <= 0 || price <= 0;
+  const shortDisabled = !docked || !access.ok || qty <= 0;
+  const buyGuided = readyForGuidedSubmit && guidedAction === "buy";
+  const sellGuided = readyForGuidedSubmit && guidedAction === "sell";
+  const shortGuided = readyForGuidedSubmit && guidedAction === "short";
 
   return (
     <section className="trade-helper-section stocks-order-form">
-      <div className="exchange-section-title">Place order</div>
-      <div className="stocks-order-side">
-        {(["buy", "sell", "short"] as Side[]).map(sideName => (
-          <StockGuidanceCell
-            key={sideName}
-            guided={guidedAction === sideName && side !== sideName}
-            hintText={`Choose ${sideName === "buy" ? "buy" : sideName === "sell" ? "sell" : "short"} for ${equity.ticker}.`}
-            onPingClick={() => setSide(sideName)}
-          >
-            <button className={`stocks-order-side-btn ${sideName} ${side === sideName ? "active" : ""}`} onClick={() => setSide(sideName)}>
-              {sideName === "buy" ? "Buy" : sideName === "sell" ? "Sell" : "Short"}
-            </button>
-          </StockGuidanceCell>
-        ))}
-      </div>
       <div className="stocks-order-fields">
         <StockGuidanceCell
           guided={qtyNeedsGuide}
@@ -1665,11 +1629,10 @@ function UnifiedOrderForm({ equity, world, docked, access, hint, hintApplyKey = 
           <label>
             <span>Price</span>
             <input type="number" step="0.01" value={price.toFixed(2)}
-              onChange={e => setPrice(Math.max(0.01, Number(e.target.value) || 0))}
-              disabled={side === "short"} />
+              onChange={e => setPrice(Math.max(0.01, Number(e.target.value) || 0))} />
           </label>
         </StockGuidanceCell>
-        <button className="stocks-order-spot" onClick={() => setPrice(equity.price)} disabled={side === "short"}>
+        <button className="stocks-order-spot" onClick={() => setPrice(equity.price)}>
           Use spot
         </button>
       </div>
@@ -1697,27 +1660,53 @@ function UnifiedOrderForm({ equity, world, docked, access, hint, hintApplyKey = 
                 label={`${priceSign > 0 ? "+" : "−"}${pct}%`}
                 hoverLabel={`Ç${fmtPrice(target)}`}
                 className={side === "sell" ? "sl" : "tp"}
-                onClick={() => side !== "short" && setPrice(target)}
+                onClick={() => setPrice(target)}
               />
             );
           })}
         </div>
       </div>
-      <div className="stocks-order-summary dim">{summary}</div>
-      <StockGuidanceCell
-        guided={readyForGuidedSubmit}
-        hintText={hint ? `Execute ${hint.actionLabel.toLowerCase()}.` : ""}
-        onPingClick={submit}
-        className="full"
-      >
-        <button
-          className="btn-action primary stocks-order-submit"
-          disabled={!docked || !access.ok || qty <= 0 || (side !== "short" && price <= 0)}
-          onClick={submit}
+      <div className="stocks-order-side stocks-order-side-three">
+        <StockGuidanceCell
+          guided={buyGuided}
+          hintText={hint ? `Execute ${hint.actionLabel.toLowerCase()}.` : ""}
+          onPingClick={() => submit("buy")}
         >
-          Place {side === "buy" ? "Buy" : side === "sell" ? "Sell" : "Short"} Order
-        </button>
-      </StockGuidanceCell>
+          <button
+            className={`btn-action side-buy ${buyGuided ? "btn-suggested" : "primary"}`}
+            disabled={buyDisabled}
+            onClick={() => submit("buy")}
+          >
+            Buy · Ç{buyCost.toLocaleString()}
+          </button>
+        </StockGuidanceCell>
+        <StockGuidanceCell
+          guided={sellGuided}
+          hintText={hint ? `Execute ${hint.actionLabel.toLowerCase()}.` : ""}
+          onPingClick={() => submit("sell")}
+        >
+          <button
+            className={`btn-action side-sell ${sellGuided ? "btn-suggested" : "primary"}`}
+            disabled={sellDisabled}
+            onClick={() => submit("sell")}
+          >
+            Sell · Ç{sellNet.toLocaleString()}
+          </button>
+        </StockGuidanceCell>
+        <StockGuidanceCell
+          guided={shortGuided}
+          hintText={hint ? `Execute ${hint.actionLabel.toLowerCase()}.` : ""}
+          onPingClick={() => submit("short")}
+        >
+          <button
+            className={`btn-action side-short ${shortGuided ? "btn-suggested" : "primary"}`}
+            disabled={shortDisabled}
+            onClick={() => submit("short")}
+          >
+            Short · Ç{shortNet.toLocaleString()}
+          </button>
+        </StockGuidanceCell>
+      </div>
       {!docked && <div className="stocks-warning dim">Equity trades only execute while docked.</div>}
       {!access.ok && <div className="stocks-warning dim">{access.reason}</div>}
     </section>
@@ -1799,81 +1788,81 @@ function FuturesOrderForm({ equity, world, docked, access, hint, hintApplyKey = 
   const shortReadyForGuide = guidedFutureAction === "open_short_future" && !shortBlock && count > 0 && !countNeedsGuide;
 
   return (
-    <section className="trade-helper-section stocks-order-form">
-      <div className="exchange-section-title">Open futures position</div>
-
-      <div className="stocks-order-fields">
-        <StockGuidanceCell
-          guided={countNeedsGuide}
-          hintText={suggestedCount != null ? `Set contracts to ${suggestedCount.toLocaleString()} ct.` : ""}
-          onPingClick={() => {
-            if (suggestedCount == null) return;
-            setCount(suggestedCount);
-            setIncrementMode(false);
-          }}
-          className="field"
-          style={{ gridColumn: "1 / span 3" }}
-        >
-          <label>
-            <span>Contracts</span>
-            <input type="number" min={1} value={count}
-              onChange={e => {
-                setCount(Math.max(1, Math.floor(Number(e.target.value) || 0)));
-                setIncrementMode(false);
-              }} />
-          </label>
-        </StockGuidanceCell>
-      </div>
-
-      <div className="stocks-position-quick-row stocks-quick-row-flat">
-        <div className="stocks-position-quick-group">
-          {[25, 50, 100].map(pct => {
-            const target = Math.max(1, Math.round(maxContracts * pct / 100));
-            return (
-              <QuickChip
-                key={pct}
-                label={`${pct}%`}
-                hoverLabel={maxContracts > 0 ? `${target} ct (Ç${Math.round((marginPerContract + feePerContract) * target).toLocaleString()})` : "—"}
-                onClick={() => {
-                  if (maxContracts > 0) setCount(target);
+    <section className="trade-helper-section stocks-order-form stocks-order-form-futures">
+      <div className="stocks-future-input-area">
+        <div className="stocks-order-fields">
+          <StockGuidanceCell
+            guided={countNeedsGuide}
+            hintText={suggestedCount != null ? `Set contracts to ${suggestedCount.toLocaleString()} ct.` : ""}
+            onPingClick={() => {
+              if (suggestedCount == null) return;
+              setCount(suggestedCount);
+              setIncrementMode(false);
+            }}
+            className="field"
+            style={{ gridColumn: "1 / span 3" }}
+          >
+            <label>
+              <span>Contracts</span>
+              <input type="number" min={1} value={count}
+                onChange={e => {
+                  setCount(Math.max(1, Math.floor(Number(e.target.value) || 0)));
                   setIncrementMode(false);
+                }} />
+            </label>
+          </StockGuidanceCell>
+        </div>
+
+        <div className="stocks-position-quick-row">
+          <div className="stocks-position-quick-group">
+            {[25, 50, 100].map(pct => {
+              const target = Math.max(1, Math.round(maxContracts * pct / 100));
+              return (
+                <QuickChip
+                  key={pct}
+                  label={`${pct}%`}
+                  hoverLabel={maxContracts > 0 ? `${target} ct (Ç${Math.round((marginPerContract + feePerContract) * target).toLocaleString()})` : "—"}
+                  onClick={() => {
+                    if (maxContracts > 0) setCount(target);
+                    setIncrementMode(false);
+                  }}
+                />
+              );
+            })}
+          </div>
+          <div className="stocks-position-quick-group">
+            {[1, 5, 10].map(n => (
+              <QuickChip
+                key={n}
+                label={incrementMode ? `+${n}` : `${n}`}
+                hoverLabel={incrementMode ? `+${n} contracts` : `${n} contracts`}
+                onClick={() => {
+                  setCount(c => incrementMode ? c + n : n);
+                  setIncrementMode(true);
                 }}
               />
-            );
-          })}
+            ))}
+          </div>
         </div>
-        <div className="stocks-position-quick-group">
-          {[1, 5, 10].map(n => (
-            <QuickChip
-              key={n}
-              label={incrementMode ? `+${n}` : `${n}`}
-              hoverLabel={incrementMode ? `+${n} contracts` : `${n} contracts`}
-              onClick={() => {
-                setCount(c => incrementMode ? c + n : n);
-                setIncrementMode(true);
-              }}
-            />
-          ))}
-        </div>
+
+        <dl className="trade-helper-grid station-info-grid stocks-futures-stats">
+          <FleetStat label="spot" value={`Ç${fmtPrice(spot)}`} />
+          <FleetStat label="contract size" value={`${c.contractSize}`} />
+          <FleetStat label="notional" value={`Ç${Math.round(notional).toLocaleString()}`} />
+          <FleetStat label="margin" value={`Ç${Math.round(margin).toLocaleString()} (${(c.marginFraction * 100).toFixed(0)}%)`} />
+          <FleetStat label="fee" value={`Ç${Math.round(fee).toLocaleString()}`} />
+          <FleetStat label="expires in" value={`${ttx}t`} />
+        </dl>
       </div>
 
-      <dl className="trade-helper-grid station-info-grid" style={{ marginTop: 6 }}>
-        <FleetStat label="spot" value={`Ç${fmtPrice(spot)}`} />
-        <FleetStat label="contract size" value={`${c.contractSize}`} />
-        <FleetStat label="notional" value={`Ç${Math.round(notional).toLocaleString()}`} />
-        <FleetStat label="margin" value={`Ç${Math.round(margin).toLocaleString()} (${(c.marginFraction * 100).toFixed(0)}%)`} />
-        <FleetStat label="fee" value={`Ç${Math.round(fee).toLocaleString()}`} />
-        <FleetStat label="expires in" value={`${ttx}t`} />
-      </dl>
-
-      <div className="stocks-order-side" style={{ marginTop: 8, gridTemplateColumns: "1fr 1fr" }}>
+      <div className="stocks-order-side" style={{ gridTemplateColumns: "1fr 1fr" }}>
         <StockGuidanceCell
           guided={longReadyForGuide}
           hintText={hint ? `Execute ${hint.actionLabel.toLowerCase()}.` : ""}
           onPingClick={() => openLongFuture(equity.id, count)}
         >
           <button
-            className="stocks-order-side-btn buy"
+            className={`stocks-order-side-btn buy ${longReadyForGuide ? "btn-suggested" : ""}`}
             disabled={longBlock != null}
             title={longBlock ?? undefined}
             onClick={() => openLongFuture(equity.id, count)}
@@ -1887,7 +1876,7 @@ function FuturesOrderForm({ equity, world, docked, access, hint, hintApplyKey = 
           onPingClick={() => openShortFuture(equity.id, count)}
         >
           <button
-            className="stocks-order-side-btn short"
+            className={`stocks-order-side-btn short ${shortReadyForGuide ? "btn-suggested" : ""}`}
             disabled={shortBlock != null}
             title={shortBlock ?? undefined}
             onClick={() => openShortFuture(equity.id, count)}
@@ -2184,7 +2173,7 @@ function CompanyUnderlying({ eq, world }: { eq: Equity; world: World }) {
           <FleetStat label="target" value={`Ç${fmtBig(market.treasuryTarget)}`} />
           <FleetStat label="population" value={loc.population.toLocaleString()} />
           <FleetStat label="tech" value={`L${loc.traits.techLevel}`} />
-          <FleetStat label="net trade" value={`${ntPct >= 0 ? "+" : ""}${ntPct.toFixed(1)}%`} />
+          <FleetStat label="trade" value={`${ntPct >= 0 ? "+" : ""}${ntPct.toFixed(1)}%`} />
         </dl>
       </section>
     );
@@ -2207,9 +2196,9 @@ function CompanyUnderlying({ eq, world }: { eq: Equity; world: World }) {
         <div className="exchange-section-title">Underlying</div>
         <dl className="trade-helper-grid station-info-grid">
           <FleetStat label="category" value={good.category} />
-          <FleetStat label="base price" value={`Ç${good.basePrice.toFixed(2)}`} />
-          <FleetStat label="spot index" value={`Ç${spot.toFixed(2)}`} />
-          <FleetStat label="universe stock" value={fmtBig(totalStock)} />
+          <FleetStat label="base" value={`Ç${good.basePrice.toFixed(2)}`} />
+          <FleetStat label="spot" value={`Ç${spot.toFixed(2)}`} />
+          <FleetStat label="stock" value={fmtBig(totalStock)} />
         </dl>
       </section>
     );
@@ -2233,8 +2222,8 @@ function CompanyUnderlying({ eq, world }: { eq: Equity; world: World }) {
           <div className="exchange-section-title">Underlying</div>
           <dl className="trade-helper-grid station-info-grid">
             <FleetStat label="stations" value={total.toLocaleString()} />
-            <FleetStat label="healthy (≥target)" value={`${healthy}/${total}`} />
-            <FleetStat label="avg health" value={`${(avg * 100).toFixed(0)}%`} />
+            <FleetStat label="healthy" value={`${healthy}/${total}`} />
+            <FleetStat label="health" value={`${(avg * 100).toFixed(0)}%`} />
           </dl>
         </section>
       );
@@ -2245,7 +2234,7 @@ function CompanyUnderlying({ eq, world }: { eq: Equity; world: World }) {
     return (
       <section className="trade-helper-section">
         <div className="exchange-section-title">Underlying — sector basket</div>
-        <dl className="trade-helper-grid station-info-grid">
+        <dl className="trade-helper-grid station-info-grid stocks-basket-grid">
           {def.members.map(m => {
             const mEq = world.equities[`eq_com_${m.goodId}`];
             const good = world.goods[m.goodId];
@@ -2273,13 +2262,13 @@ function CompanyUnderlying({ eq, world }: { eq: Equity; world: World }) {
       <section className="trade-helper-section">
         <div className="exchange-section-title">Underlying</div>
         <dl className="trade-helper-grid station-info-grid">
-          <FleetStat label="good" value={good.name} />
-          <FleetStat label="contract size" value={`${c.contractSize}`} />
-          <FleetStat label="expires in" value={`${ttx} ticks`} />
+          <FleetStat label="good" value={good.name} wide />
+          <FleetStat label="size" value={`${c.contractSize}`} />
+          <FleetStat label="expires" value={`${ttx}t`} />
           <FleetStat label="spot" value={`Ç${spot.toFixed(2)}`} />
           <FleetStat label="notional" value={`Ç${fmtBig(notional)}`} />
-          <FleetStat label="margin (10%)" value={`Ç${fmtBig(margin)}`} />
-          <FleetStat label="open interest" value={fmtBig(c.openInterest)} />
+          <FleetStat label="margin" value={`Ç${fmtBig(margin)}`} />
+          <FleetStat label="interest" value={fmtBig(c.openInterest)} />
         </dl>
       </section>
     );
@@ -2298,12 +2287,12 @@ function CompanyUnderlying({ eq, world }: { eq: Equity; world: World }) {
     return (
       <section className="trade-helper-section">
         <div className="exchange-section-title">Underlying</div>
-        <dl className="trade-helper-grid station-info-grid">
+        <dl className="trade-helper-grid station-info-grid stocks-basket-grid">
           <FleetStat label="station" value={loc.name} />
           <FleetStat label="good" value={good.name} />
-          <FleetStat label="local price" value={`Ç${local.toFixed(2)}`} />
-          <FleetStat label="vs spot" value={`${spread >= 0 ? "+" : ""}${spread.toFixed(2)} (${spreadPct.toFixed(1)}%)`} />
-          <FleetStat label="local stock" value={fmtBig(stock)} />
+          <FleetStat label="local" value={`Ç${local.toFixed(2)}`} />
+          <FleetStat label="spread" value={`${spread >= 0 ? "+" : ""}${spread.toFixed(2)} (${spreadPct.toFixed(1)}%)`} />
+          <FleetStat label="stock" value={fmtBig(stock)} />
         </dl>
       </section>
     );
@@ -2317,10 +2306,10 @@ function CompanyUnderlying({ eq, world }: { eq: Equity; world: World }) {
       <div className="exchange-section-title">Underlying</div>
       <dl className="trade-helper-grid station-info-grid">
         <FleetStat label="ships" value={synd.memberShipIds.length.toLocaleString()} />
-        <FleetStat label="member wealth" value={`Ç${fmtBig(memberWealth)}`} />
+        <FleetStat label="wealth" value={`Ç${fmtBig(memberWealth)}`} />
         <FleetStat label="treasury" value={`Ç${fmtBig(synd.treasury)}`} />
-        <FleetStat label="recent revenue" value={`Ç${fmtBig(synd.recentRevenue)}`} />
-        <FleetStat label="lead ship" value={lead?.name ?? "Unassigned"} />
+        <FleetStat label="revenue" value={`Ç${fmtBig(synd.recentRevenue)}`} />
+        <FleetStat label="lead" value={lead?.name ?? "Unassigned"} />
       </dl>
     </section>
   );

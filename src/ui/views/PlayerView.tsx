@@ -1334,6 +1334,7 @@ function ShipCard({ ship, world, loc, guidedPlan, target, hintText, cueText, cri
           critical={critical}
           inTransit={inTransit}
         />
+        <ShipPilotStatusEntry ship={ship} />
         <ShipMaintenanceStatusEntry
           debt={debt}
           canRepair={canRepair}
@@ -1447,6 +1448,27 @@ function ShipMaintenanceStatusEntry({ debt, canRepair, onRepair }: {
         <span className="ship-meter-percent">{percentText}</span>
       </button>
     </ActionCell>
+  );
+}
+
+function ShipPilotStatusEntry({ ship }: { ship: Trader }) {
+  const setPilot = useStore((s) => s.setPilot);
+  if (!hasCrew(ship, "captain")) return null;
+  const auto = ship.pilot === "auto";
+  const next = auto ? "manual" : "auto";
+  const title = auto
+    ? "Autopilot engaged — captain handles trading. Click for manual control."
+    : "Manual control. Click to engage autopilot.";
+  return (
+    <button
+      className={`bridge-tab ship-meter-tab ship-status-entry ship-pilot-entry ${auto ? "active" : ""}`}
+      onClick={() => setPilot(ship.id, next)}
+      title={title}
+      type="button"
+    >
+      <span className="ship-meter-label">Autopilot</span>
+      <span className="ship-meter-percent">{auto ? "ON" : "OFF"}</span>
+    </button>
   );
 }
 
@@ -1846,7 +1868,7 @@ function MarketTableBody({ ship, world, loc, target, hintText, cueText, selected
                 <SortableTh sort={sort} columnId="stock" className="numeric">Stock</SortableTh>
                 <SortableTh sort={sort} columnId="held" className="numeric">Held</SortableTh>
                 <SortableTh sort={sort} columnId="price" className="numeric">Price</SortableTh>
-                <SortableTh sort={sort} columnId="net-sell" className="numeric">Net Sell*</SortableTh>
+                <SortableTh sort={sort} columnId="net-sell" className="numeric" title="Listed price minus 15% port tax. What you'd actually receive if you sold here.">Net Sell</SortableTh>
                 {manualActions && <th>Action</th>}
               </tr>
             </thead>
@@ -1916,9 +1938,6 @@ function MarketTableBody({ ship, world, loc, target, hintText, cueText, selected
           </table>
         )}
       </SortableRows>
-      <div className="market-footnote faint">
-        * Net Sell = listed price minus 15% port tax. What you'd actually receive if you sold here.
-      </div>
     </div>
   );
 }

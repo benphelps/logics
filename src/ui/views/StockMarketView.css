@@ -2060,8 +2060,46 @@
 .stock-guidance-cell.field > label,
 .stock-guidance-cell.full > .stocks-order-submit,
 .stocks-order-side > .stock-guidance-cell > .stocks-order-side-btn,
+.stocks-order-side > .stock-guidance-cell > .btn-action,
 .stocks-position-row .stock-guidance-cell > .btn-action {
   width: 100%;
+}
+
+/* Three-up submit row for the unified order form (Buy / Sell / Short).
+   Each button is its own action and the row replaces the old single
+   Place Order button. Height matches .stocks-order-side-btn (32px) so
+   it lines up with the futures Open Long / Open Short buttons. */
+.stocks-order-side.stocks-order-side-three > .stock-guidance-cell > .btn-action {
+  height: 32px;
+}
+
+/* Futures form: the contracts input + chips section is wrapped in
+   .stocks-future-input-area so we have a positioned host for the
+   contract-info stats overlay. Default shows the input/chips; hovering
+   Open Long / Open Short reveals the stats overlaid in the same place,
+   no layout shift. The inner grid gap matches the section grid (7px). */
+.stocks-future-input-area {
+  position: relative;
+  display: grid;
+  gap: 7px;
+}
+
+.stocks-future-input-area > .stocks-futures-stats {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  visibility: hidden;
+  pointer-events: none;
+  background: var(--stock-surface);
+}
+
+.stocks-order-form-futures:has(.stocks-order-side-btn:hover) .stocks-future-input-area > .stocks-order-fields,
+.stocks-order-form-futures:has(.stocks-order-side-btn:hover) .stocks-future-input-area > .stocks-position-quick-row {
+  visibility: hidden;
+}
+
+.stocks-order-form-futures:has(.stocks-order-side-btn:hover) .stocks-future-input-area > .stocks-futures-stats {
+  visibility: visible;
 }
 
 .stock-guidance-marker {
@@ -2629,12 +2667,12 @@
 
 /* Quick-% buttons under the close row. Mirrors the close row's first two
    columns so qty chips sit under the qty input and price chips sit under
-   the price input. */
+   the price input. Inside .trade-helper-section the parent grid handles
+   vertical spacing (gap: 7px), so no margins here. */
 .stocks-position-quick-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px;
-  margin-top: 6px;
 }
 
 /* Variant used on the futures order form: chips sit tight under their
@@ -3181,6 +3219,25 @@
   color: var(--text);
 }
 
+/* Sticky order form sits between the panel header and the scrolling
+   info body so the buy/sell/short controls stay on screen as the
+   user scrolls through the chart, KPIs, order book, and time & sales.
+   Tight padding keeps the form compact since the title/summary lines
+   inside have been removed. */
+.stocks-info-fixed-form {
+  flex: 0 0 auto;
+  padding: 8px var(--bridge-table-pad-x) 16px;
+  border-bottom: 1px solid var(--stock-line);
+  background: var(--stock-surface);
+}
+
+.stocks-info-fixed-form > .trade-helper-section.stocks-order-form {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+}
+
 .stocks-info-body {
   flex: 1 1 auto;
   overflow-y: auto;
@@ -3260,6 +3317,18 @@
    its section, so the margin reads as a stray gap between the section
    title and the grid — kill it so KPI's title→grid gap matches the
    title→line gap on the Underlying side. */
+/* Sector basket override — list one underlying per row instead of the
+   default 2-column grid so commodity names don't wrap. */
+.stocks-info-body .trade-helper-grid.stocks-basket-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Wide stat — spans both columns of the trade-helper-grid so long values
+   (commodity names, station names) get the whole row to themselves. */
+.cargo-stat.stocks-stat-wide {
+  grid-column: 1 / -1;
+}
+
 .stocks-info-body .trade-helper-grid {
   margin: 0;
 }
@@ -3291,7 +3360,7 @@
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
   gap: 4px;
-  margin-bottom: 8px;
+  margin-bottom: 0;
 }
 
 .stocks-order-side-btn {
@@ -3331,7 +3400,6 @@
   grid-template-columns: 1fr 1fr auto;
   gap: 6px;
   align-items: end;
-  margin-bottom: 6px;
 }
 
 .stocks-order-fields label {
@@ -3387,6 +3455,46 @@
   width: 100%;
   height: 34px;
   font-weight: 700;
+}
+
+/* Side-aware tints on order-form action buttons. Mirrors the
+   .market-table / .cargo-table primary tints: green for buy/cover,
+   red for sell/short. .btn-suggested still wins (blue) when the
+   action is the guided next step. */
+.btn-action.side-buy.primary,
+.stocks-order-side-btn.buy:not(.active):not(.btn-suggested):not([data-side-tab="true"]) {
+  background: rgba(108, 217, 154, 0.15) !important;
+  border-color: #6cd99a !important;
+  color: #6cd99a !important;
+  text-shadow: none !important;
+  box-shadow: none !important;
+}
+
+.btn-action.side-buy.primary:hover:not(:disabled),
+.stocks-order-side-btn.buy:not(.active):not(.btn-suggested):not([data-side-tab="true"]):hover:not(:disabled) {
+  background: rgba(108, 217, 154, 0.24) !important;
+  border-color: #6cd99a !important;
+  color: #6cd99a !important;
+}
+
+.btn-action.side-sell.primary,
+.btn-action.side-short.primary,
+.stocks-order-side-btn.short:not(.active):not(.btn-suggested):not([data-side-tab="true"]),
+.stocks-order-side-btn.sell:not(.active):not(.btn-suggested):not([data-side-tab="true"]) {
+  background: rgba(239, 111, 125, 0.15) !important;
+  border-color: #ef6f7d !important;
+  color: #ef6f7d !important;
+  text-shadow: none !important;
+  box-shadow: none !important;
+}
+
+.btn-action.side-sell.primary:hover:not(:disabled),
+.btn-action.side-short.primary:hover:not(:disabled),
+.stocks-order-side-btn.short:not(.active):not(.btn-suggested):not([data-side-tab="true"]):hover:not(:disabled),
+.stocks-order-side-btn.sell:not(.active):not(.btn-suggested):not([data-side-tab="true"]):hover:not(:disabled) {
+  background: rgba(239, 111, 125, 0.24) !important;
+  border-color: #ef6f7d !important;
+  color: #ef6f7d !important;
 }
 
 .stocks-warning {

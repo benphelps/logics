@@ -1,9 +1,6 @@
 /* Mobile panel-tab strip — second row of the topbar-tabs system,
    identical chrome to the main view tabs. Spans full topbar width so
-   the equal-flex tabs distribute across the screen. Sits inside
-   .topbar-nav-row between .topbar-nav-left and .topbar-run-controls;
-   the @media rule below wraps the nav row vertically on mobile so all
-   three siblings stack as full-width rows in JSX order. */
+   the equal-flex tabs distribute across the screen. */
 .topbar-tabs.mobile-panel-tabs {
   display: flex;
   width: 100%;
@@ -15,24 +12,34 @@
   min-width: 0;
 }
 
-/* Mobile layout for the topbar — save menu + run controls share row 1,
-   view tabs get row 2 (full width), panel tabs get row 3 (full width).
-   Driven by both the .topbar-mobile JS class and an @media query so
-   ?mobile=1 force-testing on desktop matches real-phone behavior. */
+/* Mobile layout for the topbar — ship picker shares row 1 with the run
+   controls (tick + speed + hamburger), view tabs get row 2, panel tabs
+   row 3. Driven by both the .topbar-mobile JS class and an @media query
+   so ?mobile=1 force-testing on desktop matches real phones. */
 .topbar-mobile .topbar-nav-row {
   flex-wrap: wrap;
 }
 
-.topbar-mobile .topbar-save-tabs {
-  flex: 0 0 auto;
+.topbar-mobile .topbar-ship-tabs {
+  flex: 1 1 auto;
+  min-width: 0;
   order: 1;
 }
 
+.topbar-mobile .topbar-ship-tab {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+}
+
 .topbar-mobile .topbar-run-controls {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   order: 2;
-  margin-left: auto;
-  justify-content: flex-end;
+  margin-left: 0;
+}
+
+.topbar-mobile .topbar-tick-pill {
+  display: none;
 }
 
 .topbar-mobile .topbar-view-tabs {
@@ -51,15 +58,23 @@
   .topbar-nav-row {
     flex-wrap: wrap;
   }
-  .topbar-save-tabs {
-    flex: 0 0 auto;
+  .topbar-ship-tabs {
+    flex: 1 1 auto;
+    min-width: 0;
     order: 1;
   }
+  .topbar-ship-tab {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+  }
   .topbar-run-controls {
-    flex: 1 1 auto;
+    flex: 0 0 auto;
     order: 2;
-    margin-left: auto;
-    justify-content: flex-end;
+    margin-left: 0;
+  }
+  .topbar-tick-pill {
+    display: none;
   }
   .topbar-view-tabs {
     flex-basis: 100%;

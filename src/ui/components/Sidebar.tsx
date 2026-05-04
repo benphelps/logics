@@ -2,7 +2,7 @@ import { useStore, type Tab } from "../store";
 import "./Sidebar.css";
 
 const TABS: { id: Tab; label: string; hint?: string }[] = [
-  { id: "player",    label: "My Fleet" },
+  { id: "player",    label: "Cargo" },
   { id: "markets",   label: "Markets" },
   { id: "locations", label: "Atlas" },
   { id: "stocks",    label: "Exchange" },

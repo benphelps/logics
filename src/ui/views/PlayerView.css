@@ -514,6 +514,20 @@
   background: rgba(112, 124, 136, 0.17);
 }
 
+.ship-pilot-entry::before {
+  background: rgba(96, 106, 118, 0.10);
+  width: 0;
+}
+
+.ship-pilot-entry.active::before {
+  width: 100%;
+  background: rgba(79, 182, 255, 0.14);
+}
+
+.ship-pilot-entry.active .ship-meter-percent {
+  color: #9dd7ff;
+}
+
 .ship-meter-tab > * {
   position: relative;
   z-index: 1;
@@ -3886,12 +3900,6 @@ button.upgrade-remove-pill {
   box-shadow: 0 0 0 1px var(--accent);
 }
 
-.market-footnote {
-  font-size: 10px;
-  margin-top: 10px;
-  padding: 0 var(--bridge-table-pad-x);
-}
-
 .row-meta-pill {
   display: inline-flex;
   align-items: center;
@@ -4050,11 +4058,10 @@ button.upgrade-remove-pill {
   color: var(--text);
 }
 
-/* Buy: permanent green tint on the primary + suggested variants. The
-   !important wins over the global .btn-suggested blue (which is also
-   !important). */
-.market-table tbody tr .btn-action.primary,
-.market-table tbody tr .btn-action.btn-suggested {
+/* Buy: permanent green tint on primary (non-suggested). Suggested buy
+   actions fall through to the global .btn-suggested blue so a single
+   recommended next step pops out from the row of green buys. */
+.market-table tbody tr .btn-action.primary {
   background: rgba(108, 217, 154, 0.15) !important;
   border-color: #6cd99a !important;
   color: #6cd99a !important;
@@ -4062,17 +4069,16 @@ button.upgrade-remove-pill {
   box-shadow: none !important;
 }
 
-.market-table tbody tr .btn-action.primary:hover:not(:disabled),
-.market-table tbody tr .btn-action.btn-suggested:hover:not(:disabled) {
+.market-table tbody tr .btn-action.primary:hover:not(:disabled) {
   background: rgba(108, 217, 154, 0.24) !important;
   border-color: #6cd99a !important;
   color: #6cd99a !important;
   box-shadow: none !important;
 }
 
-/* Sell: permanent red tint on cargo-table buttons. */
-.cargo-table tbody tr .btn-action.primary,
-.cargo-table tbody tr .btn-action.btn-suggested {
+/* Sell: permanent red tint on primary (non-suggested) cargo-table
+   buttons. Suggested sells fall through to the global hint-blue. */
+.cargo-table tbody tr .btn-action.primary {
   background: rgba(239, 111, 125, 0.15) !important;
   border-color: #ef6f7d !important;
   color: #ef6f7d !important;
@@ -4080,8 +4086,7 @@ button.upgrade-remove-pill {
   box-shadow: none !important;
 }
 
-.cargo-table tbody tr .btn-action.primary:hover:not(:disabled),
-.cargo-table tbody tr .btn-action.btn-suggested:hover:not(:disabled) {
+.cargo-table tbody tr .btn-action.primary:hover:not(:disabled) {
   background: rgba(239, 111, 125, 0.24) !important;
   border-color: #ef6f7d !important;
   color: #ef6f7d !important;

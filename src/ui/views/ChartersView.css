@@ -30,6 +30,24 @@
 }
 
 .charters-view {
+  --charter-surface: #15181d;
+  --charter-surface-soft: #101317;
+  --charter-surface-raised: #1b2026;
+  --charter-line: #25282d;
+  --charter-line-soft: rgba(255, 255, 255, 0.06);
+  /* Alias the ship-* tokens used by the shared .bridge-card / .bridge-card-tabs
+     / .trade-helper-* / .cargo-stat styles so the right-side ledger renders
+     with the same surface, borders, and divider lines as the fleet view's
+     ShipInfoPanelContent. Without these the panel background goes transparent
+     and pill / section borders disappear. Mirrors what .stocks-view does. */
+  --ship-surface: var(--charter-surface);
+  --ship-surface-soft: var(--charter-surface-soft);
+  --ship-surface-raised: var(--charter-surface-raised);
+  --ship-line: var(--charter-line);
+  --ship-line-soft: var(--charter-line-soft);
+  display: grid;
+  grid-template-columns: minmax(530px, 2.1fr) minmax(360px, 1.35fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 14px;
   height: 100%;
   min-height: 0;

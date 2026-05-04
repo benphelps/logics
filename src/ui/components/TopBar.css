@@ -16,47 +16,16 @@
   min-width: 0;
 }
 
-/* Run controls (Tick + speed buttons) hug the right edge on desktop so
-   save/view tabs sit together at the left. On mobile the .topbar-mobile
-   rules in MobilePanelTabs.css reorder them onto a shared row. */
-.topbar-run-controls {
-  margin-left: auto;
-}
-
-.topbar-nav-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-.topbar-card {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  min-height: 0;
-  padding: 2px 4px;
-  box-sizing: border-box;
-  background: #15191f;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
-}
-
 .topbar-tabs,
-.topbar-speed-tabs,
-.topbar-pilot-tabs {
+.topbar-speed-tabs {
   display: inline-flex;
   align-items: stretch;
   gap: 2px;
   min-width: 0;
   height: 28px;
   padding: 2px;
-  background: #101419;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #101317;
+  border: 1px solid #25282d;
   border-radius: 6px;
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.14);
 }
@@ -66,7 +35,7 @@
   overflow-x: auto;
 }
 
-.topbar-save-tabs {
+.topbar-ship-tabs {
   position: relative;
   flex: 0 0 auto;
   overflow: visible;
@@ -81,6 +50,7 @@
   align-items: center;
   gap: 8px;
   flex: 0 0 auto;
+  margin-left: auto;
   min-width: 0;
 }
 
@@ -91,8 +61,8 @@
   height: 28px;
   padding: 0 10px;
   box-sizing: border-box;
-  background: #101419;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #101317;
+  border: 1px solid #25282d;
   border-radius: 6px;
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.14);
   white-space: nowrap;
@@ -110,56 +80,6 @@
   color: var(--text);
   font-size: 12px;
   font-weight: 650;
-}
-
-.topbar-pilot-tabs {
-  flex: 0 0 auto;
-  margin-left: auto;
-}
-
-.topbar-page-summary {
-  display: flex;
-  flex: 1 1 auto;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-  min-width: 0;
-  margin-left: auto;
-}
-
-.topbar-summary-item {
-  display: inline-flex;
-  align-items: center;
-  min-width: 0;
-  height: 29px;
-  padding: 0 8px;
-  background: rgba(255, 255, 255, 0.018);
-  border: 1px solid rgba(255, 255, 255, 0.045);
-  border-radius: 6px;
-}
-
-.topbar-summary-item > span {
-  display: grid;
-  gap: 1px;
-  min-width: 0;
-}
-
-.topbar-summary-label {
-  color: rgba(142, 154, 174, 0.66);
-  font-size: 8px;
-  font-weight: 750;
-  letter-spacing: 0.07em;
-  line-height: 1;
-  text-transform: uppercase;
-}
-
-.topbar-summary-value {
-  color: rgba(203, 213, 225, 0.72);
-  font-size: 11px;
-  font-weight: 650;
-  line-height: 1.1;
-  white-space: nowrap;
 }
 
 .topbar-tab {
@@ -187,6 +107,16 @@
   min-width: 42px;
 }
 
+.topbar-step-button {
+  min-width: 32px !important;
+  padding: 0 6px;
+}
+
+.topbar-step-button .topbar-tab-icon {
+  width: 16px;
+  height: 16px;
+}
+
 .topbar-tab-icon {
   width: 14px;
   height: 14px;
@@ -196,12 +126,12 @@
 
 .topbar-tab:hover:not(:disabled) {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.045);
+  background: #1b2026;
 }
 
 .topbar-tab.active {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.07);
+  background: #1b2026;
 }
 
 .topbar-tab:disabled {
@@ -209,53 +139,30 @@
   opacity: 0.45;
 }
 
-.topbar-game-menu {
-  flex: 0 0 auto;
-}
-
-.topbar-game-menu > summary {
-  cursor: pointer;
-  list-style: none;
-  user-select: none;
-}
-
-.topbar-game-menu > summary::-webkit-details-marker {
-  display: none;
-}
-
-.topbar-game-menu[open] > .topbar-game-tab {
+.topbar-menu {
   position: relative;
-  z-index: 22;
-  color: var(--text);
-  background: rgba(255, 255, 255, 0.07);
 }
 
-.topbar-game-tab {
-  justify-content: flex-start;
-  min-width: 154px;
-  max-width: 238px;
+.topbar-menu-button {
+  height: 28px;
+  min-width: 0;
+  padding: 0;
+  width: 32px;
+  background: #101317;
+  border: 1px solid #25282d;
+  border-radius: 6px;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.14);
 }
 
-.topbar-game-tab::after {
-  content: "";
-  width: 0;
-  height: 0;
-  margin-left: auto;
-  border-left: 4px solid transparent;
-  border-right: 4px solid transparent;
-  border-top: 5px solid var(--text-dim);
-}
-
-.topbar-game-tab.has-kind::after {
-  margin-left: 0;
+.topbar-menu-button .topbar-tab-icon {
+  width: 18px;
+  height: 18px;
+  opacity: 0.92;
 }
 
 .topbar-ship-picker {
-  position: relative;
-  display: block;
-  min-width: 310px;
-  max-width: 520px;
-  flex: 1 1 430px;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .topbar-ship-picker > summary {
@@ -268,24 +175,19 @@
   display: none;
 }
 
-.topbar-ship-summary {
+.topbar-ship-tab {
+  justify-content: flex-start;
+  gap: 8px;
+  min-width: 200px;
+  max-width: 320px;
+  padding-right: 22px;
   position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 28px;
-  margin: 2px 1px;
-  padding: 2px 30px 2px 9px;
-  background: #101419;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 6px;
-  box-shadow: none;
 }
 
-.topbar-ship-summary::after {
+.topbar-ship-tab::after {
   content: "";
   position: absolute;
-  right: 13px;
+  right: 8px;
   top: 50%;
   width: 0;
   height: 0;
@@ -296,39 +198,36 @@
   border-top: 5px solid var(--text-dim);
 }
 
-.topbar-ship-picker[open] .topbar-ship-summary {
-  border-color: rgba(255, 255, 255, 0.12);
-  background: #101419;
+.topbar-ship-picker[open] > .topbar-ship-tab {
+  position: relative;
+  z-index: 22;
+  color: var(--text);
+  background: #1b2026;
 }
 
-.topbar-ship-picker[open] .topbar-ship-summary::after {
+.topbar-ship-picker[open] .topbar-ship-tab::after {
   transform: translateY(-55%) rotate(180deg);
 }
 
 .topbar-ship-summary-main {
-  display: grid;
-  min-width: 0;
-}
-
-.topbar-ship-name-row,
-.topbar-ship-option-head {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.topbar-ship-name,
-.topbar-ship-option-name {
+  gap: 8px;
   min-width: 0;
   overflow: hidden;
-  color: rgba(226, 232, 240, 0.84);
-  font-size: 13px;
-  font-weight: 650;
-  letter-spacing: 0;
-  line-height: 1.05;
+}
+
+.topbar-ship-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-transform: none;
 }
 
 .topbar-ship-state {
@@ -354,75 +253,22 @@
   color: #9dd7ff;
 }
 
-.topbar-ship-summary-meta {
+.topbar-ship-option-head {
   display: inline-flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 7px;
+  gap: 6px;
   min-width: 0;
-  color: var(--text-dim);
-  font-size: 9.5px;
-  font-variant-numeric: tabular-nums;
+}
+
+.topbar-ship-option-name {
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(226, 232, 240, 0.84);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.05;
+  text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.topbar-ship-summary-meta span {
-  min-width: 0;
-}
-
-.topbar-ship-summary-meta > span,
-.topbar-ship-option-meta > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.topbar-ship-summary-meta > span > span,
-.topbar-ship-option-meta > span > span {
-  color: var(--text-faint);
-  font-size: 8px;
-  font-weight: 750;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-}
-
-.topbar-ship-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  z-index: 20;
-  display: grid;
-  gap: 4px;
-  width: min(520px, calc(100vw - 40px));
-  max-height: 320px;
-  overflow-y: auto;
-  padding: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 6px;
-  background: #101419;
-  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.46);
-}
-
-.topbar-ship-option {
-  display: grid;
-  gap: 5px;
-  width: 100%;
-  min-width: 0;
-  min-height: 52px;
-  padding: 8px 9px;
-  border-color: transparent;
-  background: #101419;
-  text-align: left;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.045);
-}
-
-.topbar-ship-option:hover:not(:disabled) {
-  background: #121820;
-}
-
-.topbar-ship-option.active {
-  background: #11171d;
-  box-shadow: inset 0 0 0 1px rgba(157, 215, 255, 0.14);
 }
 
 .topbar-ship-option-meta {
@@ -435,73 +281,17 @@
   line-height: 1.2;
 }
 
-.topbar-ship-empty {
-  padding: 10px;
-  color: var(--text-dim);
-  font-size: 12px;
-}
-
-.topbar-stats {
-  min-width: 0;
-  display: flex;
-  align-items: stretch;
-  gap: 0;
-  font-size: 12px;
-}
-
-.topbar-stat {
+.topbar-ship-option-meta > span {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-height: 100%;
-  padding: 0 12px;
-  border: 0;
-  border-left: 1px solid rgba(255, 255, 255, 0.055);
-  background: transparent;
-  white-space: nowrap;
+  gap: 4px;
 }
 
-.topbar-stats .topbar-stat {
-  min-height: 32px;
-}
-
-.topbar-stats .topbar-stat:first-child {
-  border-left: 0;
-  padding-left: 6px;
-}
-
-.topbar-stat-label {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.topbar-stat-value {
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-}
-
-.topbar-menu {
-  position: relative;
-}
-
-.topbar-menu-summary-main {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.topbar-menu-summary-kind {
-  margin-left: auto;
-  padding: 1px 4px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.045);
-  color: var(--text-dim);
-  font-size: 9px;
+.topbar-ship-option-meta > span > span {
+  color: var(--text-faint);
+  font-size: 8px;
   font-weight: 750;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
 }
 
@@ -509,7 +299,7 @@
   display: none;
 }
 
-.topbar-game-menu[open] > .topbar-menu-backdrop {
+.topbar-ship-picker[open] > .topbar-menu-backdrop {
   appearance: none;
   display: block;
   position: fixed;
@@ -522,24 +312,53 @@
   padding: 0;
   border: 0;
   border-radius: 0;
-  background: rgba(0, 0, 0, 0.48);
+  background: rgba(0, 0, 0, 0.32);
   cursor: default;
 }
 
-.topbar-menu-panel {
+.topbar-ship-menu {
   position: absolute;
-  top: calc(100% + 8px);
+  top: calc(100% + 6px);
   left: 0;
   z-index: 23;
-  width: 440px;
   display: grid;
-  gap: 14px;
-  padding: 14px;
-  border: 1px solid var(--border-strong);
-  border-radius: 5px;
-  background: #15191f;
-  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.48);
-  overflow: hidden;
+  gap: 4px;
+  width: min(520px, calc(100vw - 40px));
+  max-height: 340px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid #25282d;
+  border-radius: 6px;
+  background: #101317;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.46);
+}
+
+.topbar-ship-option {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+  min-height: 52px;
+  padding: 8px 9px;
+  border-color: transparent;
+  background: #101317;
+  text-align: left;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.045);
+}
+
+.topbar-ship-option:hover:not(:disabled) {
+  background: #1b2026;
+}
+
+.topbar-ship-option.active {
+  background: #1b2026;
+  box-shadow: inset 0 0 0 1px rgba(157, 215, 255, 0.14);
+}
+
+.topbar-ship-empty {
+  padding: 10px;
+  color: var(--text-dim);
+  font-size: 12px;
 }
 
 @media (max-width: 1080px) {
@@ -547,20 +366,12 @@
     flex-wrap: wrap;
   }
 
-  .topbar-nav-left {
-    flex: 1 1 100%;
-  }
-
   .topbar-run-controls {
     margin-left: auto;
   }
 
-  .topbar-card {
-    flex-wrap: wrap;
-  }
-
-  .topbar-ship-picker {
-    min-width: 240px;
+  .topbar-ship-tab {
+    min-width: 160px;
   }
 }
 
@@ -569,57 +380,15 @@
     align-items: stretch;
   }
 
-  .topbar-nav-left {
-    flex-wrap: wrap;
-  }
-
-  .topbar-tabs,
-  .topbar-speed-tabs,
-  .topbar-pilot-tabs {
-    width: 100%;
+  .topbar-view-tabs,
+  .topbar-speed-tabs {
     overflow-x: auto;
   }
+}
 
-  .topbar-run-controls {
-    width: 100%;
-  }
-
-  .topbar-run-controls .topbar-speed-tabs {
-    flex: 1 1 auto;
-  }
-
-  .topbar-card {
-    align-items: stretch;
-  }
-
-  .topbar-ship-picker,
-  .topbar-stats,
-  .topbar-pilot-tabs {
-    width: 100%;
-  }
-
-  .topbar-stats {
-    overflow-x: auto;
-  }
-
-  .topbar-ship-summary {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 6px;
-  }
-
-  .topbar-ship-summary-meta {
-    justify-content: flex-start;
-    flex-wrap: wrap;
-  }
-
-  .topbar-pilot-tabs {
-    margin-left: 0;
-  }
-
-  .topbar-menu-panel {
-    left: 0;
-    width: min(440px, calc(100vw - 60px));
-  }
+.topbar-save-modal {
+  display: grid;
+  gap: 14px;
 }
 
 .topbar-menu-current {
@@ -665,6 +434,17 @@
   background: #0f1317;
 }
 
+.topbar-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 100%;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  white-space: nowrap;
+}
+
 .topbar-menu-metrics .topbar-stat {
   justify-content: space-between;
   min-height: 30px;
@@ -675,6 +455,17 @@
 
 .topbar-menu-metrics .topbar-stat + .topbar-stat {
   border-left: 1px solid rgba(255, 255, 255, 0.055);
+}
+
+.topbar-stat-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.topbar-stat-value {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
 }
 
 .topbar-menu-section {

@@ -70,15 +70,16 @@ export function SortableRows<T>({ rows, columns, children }: SortableRowsProps<T
   return <>{children(sortedRows, sort)}</>;
 }
 
-export function SortableTh({ sort, columnId, className = "", children }: {
+export function SortableTh({ sort, columnId, className = "", title, children }: {
   sort: SortController;
   columnId: string;
   className?: string;
+  title?: string;
   children: ReactNode;
 }) {
   const active = sort.activeId === columnId;
   return (
-    <th className={`${className} sortable-th ${active ? "is-sorted" : ""}`.trim()} aria-sort={sort.ariaSort(columnId)}>
+    <th className={`${className} sortable-th ${active ? "is-sorted" : ""}`.trim()} aria-sort={sort.ariaSort(columnId)} title={title}>
       <SortableHeaderButton sort={sort} columnId={columnId}>
         {children}
       </SortableHeaderButton>
