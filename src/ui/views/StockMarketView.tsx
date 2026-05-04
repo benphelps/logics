@@ -42,17 +42,9 @@ import {
 import { listStockExchangeHints, type StockExchangeHint } from "../../sim/stock/suggestions";
 import { goodArtUrl, shipArtUrl, stationArtUrl, stationKind, stationKindLabel, stationScale, stationScaleLabel, stationSubtype, stationSubtypeLabel } from "../art";
 import { SortableHeaderButton, SortableRows, SortableTh } from "../components/SortableTable";
-import { MobilePanelTabs } from "../components/MobilePanelTabs";
 import { useIsMobile } from "../useIsMobile";
+import { defaultMobilePanelId } from "../mobilePanels";
 import "./StockMarketView.css";
-
-type StocksMobilePanel = "listings" | "holdings" | "detail";
-
-const STOCKS_MOBILE_PANELS: { id: StocksMobilePanel; label: string }[] = [
-  { id: "listings", label: "Listings" },
-  { id: "holdings", label: "Holdings" },
-  { id: "detail", label: "Detail" },
-];
 
 // Resolve which player ship is currently the trading agent. The TopBar
 // ship-picker writes `selectedTrader` into the store; if it points at one
@@ -126,9 +118,11 @@ export function StockMarketView() {
   }, []);
 
   // Mobile panel-tabs — collapse the 3-column shell into a single-pane
-  // mobile view with a sub-tab strip selecting which panel to show.
+  // mobile view. The actual tab strip lives in App.tsx so it sits
+  // directly under the main view tabs; this view just reads which
+  // panel is active and applies it as a data-attribute for CSS.
   const isMobile = useIsMobile();
-  const [mobilePanel, setMobilePanel] = useState<StocksMobilePanel>("listings");
+  const mobilePanel = useStore(s => s.mobilePanel.stocks ?? defaultMobilePanelId("stocks") ?? "listings");
 
   const rows = useMemo(() => buildRows(world), [world, tickEpoch]);
   const playerShipIds = world.player?.shipIds ?? [];
@@ -267,14 +261,6 @@ export function StockMarketView() {
         <div className="stocks-error" onClick={clearError}>
           {lastError} <span className="stocks-error-dismiss">dismiss</span>
         </div>
-      )}
-
-      {isMobile && (
-        <MobilePanelTabs
-          panels={STOCKS_MOBILE_PANELS}
-          active={mobilePanel}
-          onChange={setMobilePanel}
-        />
       )}
 
       <div className="stocks-shell">

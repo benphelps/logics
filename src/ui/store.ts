@@ -405,6 +405,10 @@ interface UiState {
   ledgerTab: LedgerTab;
   stockKindFilter: StockKindFilter;
   stockGuideEnabled: boolean;
+  // Active sub-panel per main view, used by the mobile single-pane
+  // layout. Persisted only in memory — resets to the view's default
+  // panel on reload. Map keys are MainViewTab values (e.g. "stocks").
+  mobilePanel: Record<string, string>;
   panelScrollPositions: PanelScrollPositions;
   lastError: string | null;
   // Toast queue — populated when tickWorld() returns spawned news events.
@@ -439,6 +443,7 @@ interface UiState {
   setLedgerTab: (t: LedgerTab) => void;
   setStockKindFilter: (t: StockKindFilter) => void;
   setStockGuideEnabled: (enabled: boolean) => void;
+  setMobilePanel: (tab: string, panelId: string) => void;
   setPanelScrollPosition: (key: string, position: PanelScrollPosition) => void;
   selectLocation: (id: LocationId | null) => void;
   selectGood: (id: GoodId | null) => void;
@@ -691,6 +696,7 @@ export const useStore = create<UiState>((set, get) => {
     ledgerTab: initialGame.viewTabs?.ledgerTab ?? DEFAULT_VIEW_TABS.ledgerTab,
     stockKindFilter: initialGame.viewTabs?.stockKindFilter ?? DEFAULT_VIEW_TABS.stockKindFilter,
     stockGuideEnabled: initialGame.viewTabs?.stockGuideEnabled ?? DEFAULT_VIEW_TABS.stockGuideEnabled,
+    mobilePanel: {},
     panelScrollPositions: { ...(initialGame.panelScrollPositions ?? {}) },
     lastError: null,
     newsToasts: [],
@@ -787,6 +793,7 @@ export const useStore = create<UiState>((set, get) => {
     setLedgerTab: (t) => { set({ ledgerTab: t }); persistCurrentGame({}, false); },
     setStockKindFilter: (t) => { set({ stockKindFilter: t }); persistCurrentGame({}, false); },
     setStockGuideEnabled: (enabled) => { set({ stockGuideEnabled: enabled }); persistCurrentGame({}, false, true); },
+    setMobilePanel: (tab, panelId) => set((state) => ({ mobilePanel: { ...state.mobilePanel, [tab]: panelId } })),
     setPanelScrollPosition: (key, position) => {
       if (!key) return;
       const top = Number.isFinite(position.top) ? Math.max(0, Math.round(position.top)) : 0;
