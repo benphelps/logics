@@ -1122,6 +1122,31 @@
   stroke-opacity: calc(0.6 + var(--lane-danger-intensity) * 0.4);
 }
 
+/* Live encounter pings — appear at the lane midpoint when an encounter
+   fires, pulse outward, fade away over ~20 ticks. The wrapper <g> is
+   translated to (x, y); its child circles draw at (0,0) so CSS scale
+   on the ring expands around the marker center rather than the SVG
+   origin. The wrapper's opacity carries the age fade independently of
+   the pulse animation. */
+.atlas-ping-core {
+  fill: rgba(248, 113, 113, 0.95);
+  vector-effect: non-scaling-stroke;
+}
+
+.atlas-ping-ring {
+  fill: none;
+  stroke: rgba(248, 113, 113, 0.85);
+  stroke-width: 0.5;
+  vector-effect: non-scaling-stroke;
+  animation: atlas-ping-pulse 1.4s ease-out infinite;
+}
+
+@keyframes atlas-ping-pulse {
+  0%   { transform: scale(0.6); opacity: 0.95; }
+  90%  { transform: scale(3.2); opacity: 0; }
+  100% { transform: scale(3.2); opacity: 0; }
+}
+
 /* Crosshair: fine dashed lines from the hovered station spanning the
    visible viewport, with the world coordinates shown at the top and
    left edges. Player-station hovers swap the colour for the gold

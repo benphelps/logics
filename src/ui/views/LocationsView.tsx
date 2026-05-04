@@ -85,6 +85,18 @@ interface LaneDanger {
 // hotspots, not archaeological ones.
 const LANE_DANGER_WINDOW_TICKS = 1000;
 
+// Live "ping" markers — encounters that fired within the last N ticks
+// flash on the map at the lane midpoint, fading out over the window so the
+// player can spot fresh hostile activity at a glance.
+const ENCOUNTER_PING_TICKS = 20;
+
+interface EncounterPing {
+  id: string;
+  x: number;
+  y: number;
+  age: number;                 // ticks since spawn (0..ENCOUNTER_PING_TICKS)
+}
+
 interface MarketRow {
   good: string;
   name: string;
@@ -165,6 +177,7 @@ export function LocationsView() {
   const ships = useMemo(() => buildShipMarkers(world, projectedById, links), [world, projectedById, links]);
   const laneTraffic = useMemo(() => buildLaneTraffic(world), [world]);
   const laneDanger = useMemo(() => buildLaneDanger(world), [world]);
+  const encounterPings = useMemo(() => buildEncounterPings(world, projectedById), [world, projectedById]);
   const selectedMarket = selected ? marketRows(world, selected).slice(0, 9) : [];
   const selectedCounts = selected ? stationCounts(world, selected.id) : { docked: 0, inbound: 0, jobs: 0, routes: 0 };
 
@@ -207,6 +220,7 @@ export function LocationsView() {
               ships={ships}
               laneTraffic={laneTraffic}
               laneDanger={laneDanger}
+              encounterPings={encounterPings}
               selectedId={selected?.id ?? null}
               playerLocation={playerShip?.location ?? null}
               playerDestination={playerShip?.state === "transit" ? playerShip.destination : null}
@@ -348,6 +362,7 @@ function SectorMap({
   ships,
   laneTraffic,
   laneDanger,
+  encounterPings,
   selectedId,
   playerLocation,
   playerDestination,
@@ -368,6 +383,9 @@ function SectorMap({
   // Per-lane recent-encounter density. Tints lanes red on the logistics
   // tab to flag dangerous corridors.
   laneDanger: Map<string, LaneDanger>;
+  // Recently-fired encounters as positioned pings — pulse + fade out over
+  // ENCOUNTER_PING_TICKS so the player spots fresh hostile activity.
+  encounterPings: EncounterPing[];
   selectedId: LocationId | null;
   playerLocation: LocationId | null;
   playerDestination: LocationId | null;
@@ -977,6 +995,9 @@ function SectorMap({
           peakLaneDanger={peakLaneDanger}
           hoveredLane={hoveredLane}
         />
+        {mapTab !== "syndicates" && encounterPings.length > 0 && (
+          <PingsLayer pings={encounterPings} />
+        )}
         {displayedRoute && displayedRoute.length >= 2 && (
           <g className={`atlas-preview-route ${displayedRouteIsPreview ? "preview" : "selected"}`}>
             {displayedRoute.slice(0, -1).map((from, i) => {
@@ -1365,6 +1386,31 @@ const LanesLayer = memo(function LanesLayer({
           >
             <line className="atlas-lane-outline" x1={a.x} y1={a.y} x2={b.x} y2={b.y} />
             <line className="atlas-lane-inner" x1={a.x} y1={a.y} x2={b.x} y2={b.y} />
+          </g>
+        );
+      })}
+    </g>
+  );
+});
+
+// Live encounter pings — small pulsing red markers that fade out over
+// ENCOUNTER_PING_TICKS. Each ping wraps in a translated <g> so the ring's
+// CSS scale animation rotates around the marker's center (the inner
+// circle's local origin) rather than the SVG's (0,0).
+const PingsLayer = memo(function PingsLayer({ pings }: { pings: EncounterPing[] }) {
+  return (
+    <g className="atlas-pings" pointerEvents="none">
+      {pings.map(p => {
+        const lifeFrac = Math.max(0, 1 - p.age / ENCOUNTER_PING_TICKS);
+        return (
+          <g
+            key={p.id}
+            className="atlas-ping"
+            transform={`translate(${p.x}, ${p.y})`}
+            style={{ opacity: lifeFrac } as CSSProperties}
+          >
+            <circle r="1.4" className="atlas-ping-ring" />
+            <circle r="0.7" className="atlas-ping-core" />
           </g>
         );
       })}
@@ -1867,6 +1913,31 @@ function buildLaneDanger(world: World): Map<string, LaneDanger> {
     map.set(key, cur);
   }
   return map;
+}
+
+// Recent encounters as positioned ping markers. Position is the midpoint
+// of the from→to lane in projected coordinates — close enough for "this
+// general corridor" without needing per-encounter geometry. Caller skips
+// pings whose endpoints aren't projected (off-screen filters etc.).
+function buildEncounterPings(
+  world: World,
+  projectedById: Map<LocationId, ProjectedLocation>,
+): EncounterPing[] {
+  const pings: EncounterPing[] = [];
+  const cutoff = world.tick - ENCOUNTER_PING_TICKS;
+  for (const enc of world.encounterHistory ?? []) {
+    if (enc.spawnedAt <= cutoff) continue;
+    const a = projectedById.get(enc.fromLocation);
+    const b = projectedById.get(enc.toLocation);
+    if (!a || !b) continue;
+    pings.push({
+      id: enc.id,
+      x: (a.x + b.x) / 2,
+      y: (a.y + b.y) / 2,
+      age: world.tick - enc.spawnedAt,
+    });
+  }
+  return pings;
 }
 
 // Systems sheet — exchange + logistics signals side by side. Class and
