@@ -2,6 +2,10 @@
   width: min(720px, 100%);
 }
 
+.ui-modal-dialog.new-game-dialog-pilot {
+  width: min(820px, 100%);
+}
+
 .new-game-intro {
   margin: 0 0 4px;
   font-size: 12.5px;
@@ -84,4 +88,327 @@
   color: var(--text-dim);
   letter-spacing: 0.05em;
   text-transform: uppercase;
+}
+
+/* ----- Intro phase ------------------------------------------------------ */
+
+.new-game-intro-phase {
+  display: grid;
+  gap: 12px;
+}
+
+.new-game-intro-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.new-game-intro-tile {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+
+.new-game-intro-tile-title {
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.new-game-intro-tile-body {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+@media (max-width: 620px) {
+  .new-game-intro-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ----- Pilot phase ------------------------------------------------------ */
+
+.new-game-pilot-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 240px;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 720px) {
+  .new-game-pilot-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.new-game-pilot-form {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.new-game-pilot-field {
+  display: grid;
+  gap: 6px;
+}
+
+.new-game-pilot-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.new-game-pilot-name-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.new-game-pilot-name,
+.new-game-pilot-vibe {
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+}
+
+.new-game-pilot-name:focus,
+.new-game-pilot-vibe:focus {
+  border-color: var(--accent);
+}
+
+.new-game-pilot-dice {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  width: 36px;
+  padding: 0;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.new-game-pilot-dice:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.new-game-pilot-dice svg {
+  width: 18px;
+  height: 18px;
+}
+
+.new-game-pilot-segments {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 3px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.new-game-pilot-segment {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 26px;
+  padding: 0 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: center;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.new-game-pilot-segment:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.new-game-pilot-segment.active {
+  color: var(--text);
+  background: #1b2026;
+  border-color: rgba(255, 255, 255, 0.085);
+}
+
+.new-game-pilot-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.new-game-pilot-chip {
+  height: 22px;
+  padding: 0 8px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  text-transform: lowercase;
+}
+
+.new-game-pilot-chip:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.new-game-pilot-chip.active {
+  color: var(--text);
+  background: rgba(108, 167, 217, 0.12);
+  border-color: var(--accent);
+}
+
+/* ----- Pilot portrait --------------------------------------------------- */
+
+.new-game-pilot-portrait {
+  display: grid;
+  gap: 10px;
+  justify-self: stretch;
+  align-self: start;
+}
+
+.new-game-pilot-portrait-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  background: linear-gradient(180deg, #14181d 0%, #0d1116 100%);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.new-game-pilot-portrait-frame.ready {
+  border-color: rgba(108, 167, 217, 0.45);
+}
+
+.new-game-pilot-portrait-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  animation: pilot-portrait-fade 320ms ease-out;
+}
+
+@keyframes pilot-portrait-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.new-game-pilot-portrait-placeholder {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 50% 38%, rgba(255, 255, 255, 0.04) 0%, transparent 65%),
+    linear-gradient(180deg, #14181d 0%, #0d1116 100%);
+  overflow: hidden;
+}
+
+.new-game-pilot-portrait-shimmer {
+  position: absolute;
+  inset: -20% -40%;
+  background: linear-gradient(
+    100deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.04) 50%,
+    transparent 70%
+  );
+  animation: pilot-portrait-shimmer 2.4s linear infinite;
+}
+
+@keyframes pilot-portrait-shimmer {
+  from { transform: translateX(-30%); }
+  to   { transform: translateX(30%); }
+}
+
+.new-game-pilot-portrait-progress {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  height: 4px;
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.new-game-pilot-portrait-progress-fill {
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent) 70%, transparent) 0%,
+    var(--accent) 100%
+  );
+  border-radius: 2px;
+  transition: width 120ms ease-out;
+}
+
+.new-game-pilot-portrait-actions {
+  display: grid;
+  gap: 6px;
+}
+
+.new-game-pilot-reroll {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.new-game-pilot-reroll:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.new-game-pilot-reroll:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.new-game-pilot-reroll svg {
+  width: 14px;
+  height: 14px;
+  opacity: 0.85;
+}
+
+.new-game-pilot-portrait-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.45;
 }

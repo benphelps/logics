@@ -22,6 +22,11 @@ export interface HeadshotSubject {
   sex?: CrewSex;
   age?: CrewAge;
   race?: CrewRace;
+  // Free-text outfit/vibe forwarded to the headshot API. Crew don't set
+  // this (the server uses role-default clothing); the new-game wizard
+  // sets it for pilot portraits so the player gets a face that matches
+  // the vibe they wrote into the form.
+  clothing?: string;
 }
 
 interface AllocateResponse {
@@ -109,7 +114,7 @@ async function pollUntilReady(subjectId: string, statusUrl: string): Promise<voi
   notify();
 }
 
-function allocate(subjectId: string, role: CrewRole, identity: CrewIdentity, gameId: number): Promise<void> {
+function allocate(subjectId: string, role: CrewRole, identity: CrewIdentity, gameId: number, clothing?: string): Promise<void> {
   const existing = inflight.get(subjectId);
   if (existing) return existing;
 
@@ -124,6 +129,7 @@ function allocate(subjectId: string, role: CrewRole, identity: CrewIdentity, gam
           sex: identity.sex,
           age: identity.age,
           subjectId,
+          ...(clothing ? { clothing } : {}),
         }),
       });
       if (!response.ok && response.status !== 202) {
@@ -162,7 +168,7 @@ export function ensureCrewHeadshot(saveId: string | null, subject: HeadshotSubje
   if (inflight.has(subject.id)) return;
   cache.set(subject.id, { status: "loading" });
   notify();
-  void allocate(subject.id, subject.role, effectiveIdentity(subject), gameIdFromSaveId(saveId));
+  void allocate(subject.id, subject.role, effectiveIdentity(subject), gameIdFromSaveId(saveId), subject.clothing);
 }
 
 // Drop the local cache entry and tell the server to forget this subject's
@@ -211,10 +217,11 @@ export function useCrewHeadshot(saveId: string | null, subject: HeadshotSubject 
   const sex = subject?.sex;
   const age = subject?.age;
   const race = subject?.race;
+  const clothing = subject?.clothing;
   useEffect(() => {
     if (!subjectId || !role) return;
-    ensureCrewHeadshot(saveId, { id: subjectId, role, sex, age, race });
-  }, [saveId, subjectId, role, sex, age, race]);
+    ensureCrewHeadshot(saveId, { id: subjectId, role, sex, age, race, clothing });
+  }, [saveId, subjectId, role, sex, age, race, clothing]);
   if (!subject) return null;
   return cache.get(subject.id) ?? { status: "loading" };
 }

@@ -801,11 +801,16 @@ export const useStore = create<UiState>((set, get) => {
       const pending = get().pendingNewGame;
       if (!pending) return;
       const draft = pending.pilotDraft;
+      // Bake the final variant suffix into the persisted portraitId so
+      // the save card looks up the exact image the wizard previewed.
+      // The wizard's useCrewHeadshot keys off the same `${id}_v${n}`
+      // string, so this reuses the cache hit instead of re-generating.
+      const portraitId = `${draft.portraitId}_v${draft.portraitVariant}`;
       const pilot: Pilot = {
         name: draft.name.trim() || "Captain",
         identity: draft.identity,
         clothing: draft.clothing.trim() || undefined,
-        portraitId: draft.portraitId,
+        portraitId,
       };
       // Skip the synchronous tickN aging — the seeding-world phase below
       // runs the same kind of warm-up against a real wall-clock budget,
