@@ -95,9 +95,13 @@
 .new-game-intro-phase {
   display: grid;
   gap: 14px;
+  /* Modal body dropped its top padding; restore breathing room here so
+     the lead paragraph isn't flush with the head's bottom border. */
+  padding-top: 12px;
 }
 
 .new-game-intro {
+  margin: 0;
   font-size: 13px;
   color: var(--text);
   line-height: 1.55;
@@ -118,37 +122,30 @@
 
 .new-game-intro-tile {
   display: grid;
-  gap: 8px;
-  padding: 14px 14px 16px;
+  gap: 6px;
+  padding: 12px 14px 14px;
   background: var(--bg-1);
   border: 1px solid var(--border);
   border-radius: 5px;
-  position: relative;
 }
 
 .new-game-intro-tile-head {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  align-items: baseline;
   gap: 8px;
-  color: var(--accent);
+  min-width: 0;
 }
 
 .new-game-intro-tile-index {
+  flex: 0 0 auto;
   font-size: 11px;
   letter-spacing: 0.12em;
   color: var(--text-dim);
   opacity: 0.75;
 }
 
-.new-game-intro-tile-icon {
-  width: 22px;
-  height: 22px;
-  color: var(--accent);
-  opacity: 0.9;
-}
-
 .new-game-intro-tile-title {
+  min-width: 0;
   font-size: 12.5px;
   font-weight: 650;
   letter-spacing: 0.04em;

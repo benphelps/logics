@@ -1,7 +1,5 @@
-import type { ComponentType, SVGProps } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MdCasino, MdRefresh } from "react-icons/md";
-import { GiPathDistance, GiReceiveMoney, GiShipWheel } from "react-icons/gi";
 import type { CrewAge, CrewIdentity, CrewRace, CrewSex, Syndicate, SyndicateId, World } from "../../sim/types";
 import { CREW_AGES, CREW_RACES, CREW_SEXES } from "../../sim/crewIdentity";
 import { SYNDICATE_TRAITS } from "../../sim/data/syndicates";
@@ -137,19 +135,16 @@ export function NewGameModal() {
 
 // ----- Intro --------------------------------------------------------------
 
-const INTRO_LOOP: { icon: ComponentType<SVGProps<SVGSVGElement>>; title: string; body: string }[] = [
+const INTRO_LOOP: { title: string; body: string }[] = [
   {
-    icon: GiReceiveMoney,
     title: "Click the profitable move",
     body: "Read prices, buy low, haul cargo, and sell into demand. Pick up contracts on the side for the bonus.",
   },
   {
-    icon: GiShipWheel,
     title: "Delegate the routine",
     body: "Hire a navigator for guidance, a mechanic for upkeep, and a captain when the route is ready for auto-pilot.",
   },
   {
-    icon: GiPathDistance,
     title: "Scale into logistics",
     body: "Grow from one hauler into a managed fleet that feeds shortages, rescues stranded traders, and supplies advanced chains.",
   },
@@ -168,7 +163,6 @@ function IntroPhase() {
           <IntroTile
             key={step.title}
             index={i + 1}
-            icon={step.icon}
             title={step.title}
             body={step.body}
           />
@@ -183,19 +177,13 @@ function IntroPhase() {
   );
 }
 
-function IntroTile({ index, icon: Icon, title, body }: {
-  index: number;
-  icon: ComponentType<SVGProps<SVGSVGElement>>;
-  title: string;
-  body: string;
-}) {
+function IntroTile({ index, title, body }: { index: number; title: string; body: string }) {
   return (
     <article className="new-game-intro-tile">
       <header className="new-game-intro-tile-head">
         <span className="new-game-intro-tile-index mono">{String(index).padStart(2, "0")}</span>
-        <Icon className="new-game-intro-tile-icon" aria-hidden="true" focusable="false" />
+        <span className="new-game-intro-tile-title">{title}</span>
       </header>
-      <div className="new-game-intro-tile-title">{title}</div>
       <div className="new-game-intro-tile-body">{body}</div>
     </article>
   );

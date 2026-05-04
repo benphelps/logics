@@ -3905,9 +3905,16 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
     )
   ) : null;
   const travelTitle = inTransit ? "Route dest" : "Current location";
+  // Meta only carries useful info while docked — in transit, the
+  // neighbor list is from the destination and the player hasn't arrived
+  // yet, so showing "N reachable stations" reads as stale. Drop the
+  // fallback in transit; if there's a contract at the destination we
+  // still surface that line.
   const currentMeta = currentStationJobs.length > 0
     ? contractLine(currentStationJobs)
-    : `${neighborDests.length} reachable station${neighborDests.length === 1 ? "" : "s"}`;
+    : inTransit
+      ? null
+      : `${neighborDests.length} reachable station${neighborDests.length === 1 ? "" : "s"}`;
 
   return (
     <section className="bridge-card travel-card">
@@ -3920,7 +3927,7 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
           <div className="travel-panel-kicker">
             <span className="travel-panel-label">{travelTitle}</span>
           </div>
-          <span className="travel-current-meta">{currentMeta}</span>
+          {currentMeta && <span className="travel-current-meta">{currentMeta}</span>}
           <button
             type="button"
             className={`travel-current-station info-focus-trigger ${currentPinned ? "is-pinned" : ""}`}
