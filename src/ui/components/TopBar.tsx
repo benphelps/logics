@@ -95,7 +95,7 @@ export function TopBar() {
   };
 
   return (
-    <section className="topbar-shell" aria-label="Game controls">
+    <section className={`topbar-shell ${isMobile ? "topbar-mobile" : ""}`} aria-label="Game controls">
       <div className="topbar-nav-row">
         <div className="topbar-nav-left">
           <div className="topbar-tabs topbar-save-tabs">
@@ -222,6 +222,14 @@ export function TopBar() {
           </nav>
         </div>
 
+        {isMobile && mobilePanels && mobilePanels.length > 0 && (
+          <MobilePanelTabs
+            panels={mobilePanels}
+            active={activeMobilePanel}
+            onChange={(id) => setMobilePanel(selectedTab, id)}
+          />
+        )}
+
         <div className="topbar-run-controls">
           <span className="topbar-tick-pill mono" aria-label={`Tick ${tick.toLocaleString()}`}>
             <span>Tick</span>
@@ -241,14 +249,6 @@ export function TopBar() {
           </div>
         </div>
       </div>
-
-      {isMobile && mobilePanels && mobilePanels.length > 0 && (
-        <MobilePanelTabs
-          panels={mobilePanels}
-          active={activeMobilePanel}
-          onChange={(id) => setMobilePanel(selectedTab, id)}
-        />
-      )}
 
       <div className="topbar-card">
         <details ref={shipMenuRef} className={`topbar-ship-picker ${playerShips.length === 0 ? "is-empty" : ""}`}>

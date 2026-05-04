@@ -1,6 +1,9 @@
 /* Mobile panel-tab strip — second row of the topbar-tabs system,
    identical chrome to the main view tabs. Spans full topbar width so
-   the equal-flex tabs distribute across the screen. */
+   the equal-flex tabs distribute across the screen. Sits inside
+   .topbar-nav-row between .topbar-nav-left and .topbar-run-controls;
+   the @media rule below wraps the nav row vertically on mobile so all
+   three siblings stack as full-width rows in JSX order. */
 .topbar-tabs.mobile-panel-tabs {
   display: flex;
   width: 100%;
@@ -10,4 +13,39 @@
 .topbar-tabs.mobile-panel-tabs .topbar-tab {
   flex: 1 1 0;
   min-width: 0;
+}
+
+/* Stack the three nav-row siblings (nav-left → panel-tabs → run-controls)
+   on mobile. Triggered by both the @media query and the JS-applied
+   .topbar-mobile class so ?mobile=1 testing on a wide viewport works
+   identically to a real narrow phone. */
+.topbar-mobile .topbar-nav-row,
+.topbar-shell:where(.topbar-mobile) .topbar-nav-row {
+  flex-wrap: wrap;
+}
+
+.topbar-mobile .topbar-nav-row > .topbar-nav-left,
+.topbar-mobile .topbar-nav-row > .mobile-panel-tabs,
+.topbar-mobile .topbar-nav-row > .topbar-run-controls {
+  flex-basis: 100%;
+  width: 100%;
+}
+
+.topbar-mobile .topbar-nav-row > .topbar-run-controls {
+  justify-content: flex-end;
+}
+
+@media (max-width: 899px) {
+  .topbar-nav-row {
+    flex-wrap: wrap;
+  }
+  .topbar-nav-row > .topbar-nav-left,
+  .topbar-nav-row > .mobile-panel-tabs,
+  .topbar-nav-row > .topbar-run-controls {
+    flex-basis: 100%;
+    width: 100%;
+  }
+  .topbar-nav-row > .topbar-run-controls {
+    justify-content: flex-end;
+  }
 }
