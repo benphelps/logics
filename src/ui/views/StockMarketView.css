@@ -1969,6 +1969,34 @@
   min-height: 0;
 }
 
+/* === Mobile single-pane layout =====================================
+   When .mobile is set on the view, the shell collapses to a single
+   column and only the panel matching data-mobile-panel is visible.
+   The asides become display: contents so their children layout in
+   the shell directly, simplifying the show/hide rules. */
+.stocks-view.mobile .stocks-shell {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.stocks-view.mobile .stocks-shell-left,
+.stocks-view.mobile .stocks-shell-right {
+  display: contents;
+}
+
+.stocks-view.mobile .stocks-shell > aside > .stocks-shell-panel,
+.stocks-view.mobile .stocks-shell-panel {
+  display: none !important;
+}
+
+.stocks-view.mobile[data-mobile-panel="listings"] .stocks-shell > aside > .stocks-selector,
+.stocks-view.mobile[data-mobile-panel="listings"] .stocks-shell .stocks-selector,
+.stocks-view.mobile[data-mobile-panel="holdings"] .stocks-shell > aside > .stocks-pno,
+.stocks-view.mobile[data-mobile-panel="holdings"] .stocks-shell .stocks-pno,
+.stocks-view.mobile[data-mobile-panel="detail"] .stocks-shell > aside > .stocks-info-col,
+.stocks-view.mobile[data-mobile-panel="detail"] .stocks-shell .stocks-info-col {
+  display: flex !important;
+}
+
 .stocks-shell-left {
   display: flex;
   flex-direction: column;

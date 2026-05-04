@@ -1,0 +1,19 @@
+/* Mobile panel-tab strip sits between the top-bar view tabs and the
+   view content, so each panel can be picked one at a time. Width
+   spans the view and the strip uses the same chrome as the in-view
+   bridge-card-tabs. */
+.bridge-card-tabs.mobile-panel-tabs {
+  flex: 0 0 auto;
+  width: 100%;
+  margin-bottom: 8px;
+  border-radius: 6px;
+  border-color: rgba(255, 255, 255, 0.08);
+  border-width: 1px;
+  border-style: solid;
+}
+
+.bridge-card-tabs.mobile-panel-tabs .bridge-tab {
+  flex: 1 1 0;
+  justify-content: center;
+  min-width: 0;
+}
