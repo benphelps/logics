@@ -1,19 +1,31 @@
 import { useEffect, useState } from "react";
 
-const DEFAULT_BREAKPOINT_PX = 900;
+export const MOBILE_BREAKPOINT_PX = 900;
 
-// Returns true when viewport width is below `breakpoint`. Drives the
-// per-view "panels become sub-tabs" mobile layout. Listens to resize so
-// rotating a tablet between portrait/landscape flips the layout live.
-export function useIsMobile(breakpoint: number = DEFAULT_BREAKPOINT_PX): boolean {
+// Returns true when the viewport matches the mobile media query. Uses
+// matchMedia rather than window.innerWidth because innerWidth on iOS
+// Safari can include the address bar / safe areas inconsistently;
+// matchMedia honors the same rules as CSS @media queries so the JS
+// state stays in sync with stylesheet breakpoints.
+export function useIsMobile(breakpoint: number = MOBILE_BREAKPOINT_PX): boolean {
+  const query = `(max-width: ${breakpoint - 1}px)`;
   const [isMobile, setIsMobile] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    return window.innerWidth < breakpoint;
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+    return window.matchMedia(query).matches;
   });
   useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth < breakpoint);
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, [breakpoint]);
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const mql = window.matchMedia(query);
+    const onChange = (ev: MediaQueryListEvent) => setIsMobile(ev.matches);
+    setIsMobile(mql.matches);
+    if (typeof mql.addEventListener === "function") {
+      mql.addEventListener("change", onChange);
+      return () => mql.removeEventListener("change", onChange);
+    }
+    // Older Safari fallback
+    const legacy = mql as unknown as { addListener(cb: (ev: MediaQueryListEvent) => void): void; removeListener(cb: (ev: MediaQueryListEvent) => void): void };
+    legacy.addListener(onChange);
+    return () => legacy.removeListener(onChange);
+  }, [query]);
   return isMobile;
 }
