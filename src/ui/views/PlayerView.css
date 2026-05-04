@@ -1365,6 +1365,12 @@
 .upgrades-tab {
   display: grid;
   gap: 10px;
+  /* Ship card is flex-column with overflow:hidden — the upgrades tab needs
+     its own scroll context or the slot grid + cargo upgrade list gets
+     clipped when the player has lots of installed/owned upgrades. */
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .upgrade-table {
