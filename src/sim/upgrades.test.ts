@@ -386,3 +386,93 @@ describe("ship upgrades", () => {
     expect(ship.funds - fundsBefore).toBeCloseTo(80, 1);
   });
 });
+
+describe("multi-weapon mounts", () => {
+  it("single-mount ships still install weapons in the primary slot", () => {
+    const world = createWorld();
+    const ship = playerShip(world);
+    ship.funds = 100_000;
+    world.markets.haven.stock.upg_weapon_1 = 1;
+    world.markets.haven.prices.upg_weapon_1 = 12_000;
+
+    const result = installUpgradeFromMarket(world, ship, "upg_weapon_1");
+    expect(result.ok).toBe(true);
+    expect(ship.upgrades?.weapon).toBe("upg_weapon_1");
+    expect(ship.upgrades?.weapon_2).toBeUndefined();
+  });
+
+  it("cruiser ships fill weapon then weapon_2 with two installs", () => {
+    const world = createWorld();
+    const ship = playerShip(world);
+    ship.shipClass = "cruiser";
+    ship.funds = 100_000;
+    world.markets.haven.stock.upg_weapon_1 = 2;
+    world.markets.haven.prices.upg_weapon_1 = 12_000;
+
+    const first = installUpgradeFromMarket(world, ship, "upg_weapon_1");
+    expect(first.ok).toBe(true);
+    expect(ship.upgrades?.weapon).toBe("upg_weapon_1");
+    expect(ship.upgrades?.weapon_2).toBeUndefined();
+
+    const second = installUpgradeFromMarket(world, ship, "upg_weapon_1");
+    expect(second.ok).toBe(true);
+    expect(ship.upgrades?.weapon).toBe("upg_weapon_1");
+    expect(ship.upgrades?.weapon_2).toBe("upg_weapon_1");
+  });
+
+  it("cruiser stacks weaponPower across both mounts", () => {
+    const world = createWorld();
+    const ship = playerShip(world);
+    ship.shipClass = "cruiser";
+    const beforeWeapons = ship.weaponPower ?? 0;
+    ship.funds = 200_000;
+    world.markets.haven.stock.upg_weapon_2 = 2;
+    world.markets.haven.prices.upg_weapon_2 = 36_000;
+
+    installUpgradeFromMarket(world, ship, "upg_weapon_2");
+    installUpgradeFromMarket(world, ship, "upg_weapon_2");
+    // upg_weapon_2 grants +3 weaponPower per copy → +6 total across both mounts.
+    expect((ship.weaponPower ?? 0) - beforeWeapons).toBe(6);
+  });
+
+  it("exotic ships fill all three weapon mounts in order", () => {
+    const world = createWorld();
+    const ship = playerShip(world);
+    ship.shipClass = "exotic";
+    ship.funds = 100_000;
+    world.markets.haven.stock.upg_weapon_1 = 3;
+    world.markets.haven.prices.upg_weapon_1 = 12_000;
+
+    installUpgradeFromMarket(world, ship, "upg_weapon_1");
+    installUpgradeFromMarket(world, ship, "upg_weapon_1");
+    installUpgradeFromMarket(world, ship, "upg_weapon_1");
+
+    expect(ship.upgrades?.weapon).toBe("upg_weapon_1");
+    expect(ship.upgrades?.weapon_2).toBe("upg_weapon_1");
+    expect(ship.upgrades?.weapon_3).toBe("upg_weapon_1");
+  });
+
+  it("fourth weapon install on a cruiser falls back to replacing the primary mount", () => {
+    const world = createWorld();
+    const ship = playerShip(world);
+    ship.shipClass = "cruiser";
+    ship.funds = 200_000;
+    world.markets.haven.stock.upg_weapon_1 = 1;
+    world.markets.haven.prices.upg_weapon_1 = 12_000;
+    world.markets.haven.stock.upg_weapon_2 = 2;
+    world.markets.haven.prices.upg_weapon_2 = 36_000;
+
+    // Pre-fill both mounts with T2 weapons.
+    installUpgradeFromMarket(world, ship, "upg_weapon_2");
+    installUpgradeFromMarket(world, ship, "upg_weapon_2");
+    expect(ship.upgrades?.weapon).toBe("upg_weapon_2");
+    expect(ship.upgrades?.weapon_2).toBe("upg_weapon_2");
+
+    // Install T1 — both mounts full, falls back to primary slot replacement.
+    // The displaced T2 module returns to cargo per the existing replace flow.
+    const result = installUpgradeFromMarket(world, ship, "upg_weapon_1");
+    expect(result.ok).toBe(true);
+    expect(ship.upgrades?.weapon).toBe("upg_weapon_1");
+    expect(ship.upgrades?.weapon_2).toBe("upg_weapon_2");
+  });
+});

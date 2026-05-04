@@ -140,7 +140,10 @@ const CLASS_TEMPLATES: Record<ShipClass, ClassTemplate> = {
       { slot: "engine", ids: ["upg_engine_1", "upg_engine_2", "upg_engine_3"] },
       { slot: "fuel", ids: ["upg_fuel_2", "upg_fuel_3"] },
       { slot: "hull", ids: ["upg_hull_2", "upg_hull_3"] },
-      { slot: "weapon", ids: ["upg_weapon_2"] },
+      // Two weapon mounts. Each rolls independently in the pre-install
+      // pass so a cruiser can ship with one or both turrets armed.
+      { slot: "weapon", ids: ["upg_weapon_1", "upg_weapon_defense_1", "upg_weapon_2"] },
+      { slot: "weapon_2", ids: ["upg_weapon_1", "upg_weapon_defense_1", "upg_weapon_2"] },
       { slot: "systems", ids: ["upg_systems_nav_1", "upg_systems_exchange_2", "upg_systems_oracle_3"] },
     ],
     traitWeights: { "ai-navigator": 0.15, "extra-slot": 0.10 },
@@ -156,7 +159,7 @@ const CLASS_TEMPLATES: Record<ShipClass, ClassTemplate> = {
     baseSpeed: [1.4, 1.9],
     baseFuelCapacity: [40, 70],
     baseHull: [4, 6],
-    baseWeaponPower: [1, 3],
+    baseWeaponPower: [2, 4],
     fuelTypes: ["antimatter", "plasma"],
     basePrice: [6_500_000, 14_500_000],
     preInstalledTiers: { 1: [0, 1], 2: [1, 2], 3: [1, 2] },
@@ -165,6 +168,10 @@ const CLASS_TEMPLATES: Record<ShipClass, ClassTemplate> = {
       { slot: "fuel", ids: ["upg_fuel_2", "upg_fuel_3"] },
       { slot: "hull", ids: ["upg_hull_2", "upg_hull_3"] },
       { slot: "cargo", ids: ["upg_cargo_loader_3"] },
+      // Three weapon mounts — exotics are the apex combat hull.
+      { slot: "weapon", ids: ["upg_weapon_2", "upg_weapon_3", "upg_weapon_emp_3"] },
+      { slot: "weapon_2", ids: ["upg_weapon_2", "upg_weapon_3", "upg_weapon_bounty_2"] },
+      { slot: "weapon_3", ids: ["upg_weapon_2", "upg_weapon_emp_3"] },
       { slot: "systems", ids: ["upg_systems_oracle_3"] },
     ],
     // Exotics carry the headline self-piloted / AI-navigator perks at

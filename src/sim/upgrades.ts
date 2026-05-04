@@ -1,4 +1,4 @@
-import type { CrewModifiers, GoodId, ShipUpgradeSlots, Trader, UpgradeSlot, UpgradeTier } from "./types";
+import type { CrewModifiers, GoodId, ShipClass, ShipUpgradeSlots, Trader, UpgradeSlot, UpgradeTier } from "./types";
 
 export interface ShipUpgradeDef {
   id: GoodId;
@@ -18,8 +18,57 @@ export const UPGRADE_SLOTS: { slot: UpgradeSlot; label: string }[] = [
   { slot: "fuel", label: "Fuel Tanks" },
   { slot: "hull", label: "Hull" },
   { slot: "weapon", label: "Weapons" },
+  { slot: "weapon_2", label: "Weapons II" },
+  { slot: "weapon_3", label: "Weapons III" },
   { slot: "systems", label: "Ship Systems" },
 ];
+
+// Weapon mount counts per ship class. Cruisers carry 2, exotics 3, every
+// other class is a single-mount trader. Drives both the upgrade UI (which
+// slots to render) and the install router (which mount to drop a weapon
+// into when the player clicks Install).
+export function weaponMountsForClass(cls: ShipClass | undefined): number {
+  switch (cls) {
+    case "cruiser": return 2;
+    case "exotic":  return 3;
+    default:        return 1;
+  }
+}
+
+export function weaponMountsForShip(ship: Trader): number {
+  return weaponMountsForClass(ship.shipClass);
+}
+
+// Concrete slot ids for the first N weapon mounts. Always starts with the
+// primary "weapon" slot so single-mount ships work unchanged.
+export function weaponSlotIds(mounts: number): UpgradeSlot[] {
+  if (mounts <= 1) return ["weapon"];
+  if (mounts === 2) return ["weapon", "weapon_2"];
+  return ["weapon", "weapon_2", "weapon_3"];
+}
+
+// Drop a weapon-class upgrade into the first empty mount the ship has, or
+// return the primary "weapon" slot when every mount is already filled (the
+// caller decides whether to refuse, replace, or queue).
+export function firstEmptyWeaponSlot(ship: Trader): UpgradeSlot {
+  const mounts = weaponMountsForShip(ship);
+  for (const slot of weaponSlotIds(mounts)) {
+    if (!ship.upgrades?.[slot]) return slot;
+  }
+  return "weapon";
+}
+
+// Visible upgrade slots for a ship — strips out weapon mounts the ship's
+// class doesn't support so the UI doesn't render orphan slots a freighter
+// can never use.
+export function visibleUpgradeSlots(ship: Trader): { slot: UpgradeSlot; label: string }[] {
+  const mounts = weaponMountsForShip(ship);
+  return UPGRADE_SLOTS.filter(entry => {
+    if (entry.slot === "weapon_2") return mounts >= 2;
+    if (entry.slot === "weapon_3") return mounts >= 3;
+    return true;
+  });
+}
 
 // Catalog notes
 // -----------------------------------------------------------------------------

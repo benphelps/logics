@@ -31,7 +31,7 @@ import { MAINTENANCE_DEBT_TRAVEL_BLOCK } from "../../sim/crew";
 import { listHiresAt } from "../../sim/hires";
 import { listShipyardInventory } from "../../sim/shipyards";
 import { hullRepairCost, selectRefuelType, UNLOAD_TICKS, unloadTicksRemainingFor } from "../../sim/traders";
-import { UPGRADE_SLOTS, installedUpgrade, isUpgradeGood, upgradeDef, upgradeEffectText } from "../../sim/upgrades";
+import { UPGRADE_SLOTS, installedUpgrade, isUpgradeGood, upgradeDef, upgradeEffectText, visibleUpgradeSlots } from "../../sim/upgrades";
 import type { CrewModifiers, CrewRole, Equity } from "../../sim/types";
 import type { CrewMember, GoodId, Job, JobId, LocationDef, LocationId, ShipBlueprint, ShipLogEntry, ShipTrait, StockPosition, Trader, TraderId, UpgradeSlot, World } from "../../sim/types";
 import { parseBasisUnderlying, priceChangePct } from "../../sim/stock";
@@ -2721,7 +2721,9 @@ const UPGRADE_SLOT_RANK: Record<UpgradeSlot, number> = {
   fuel: 2,
   hull: 3,
   weapon: 4,
-  systems: 5,
+  weapon_2: 5,
+  weapon_3: 6,
+  systems: 7,
 };
 
 const UPGRADE_SLOT_ICONS: Record<UpgradeSlot, IconType> = {
@@ -2730,6 +2732,8 @@ const UPGRADE_SLOT_ICONS: Record<UpgradeSlot, IconType> = {
   fuel: GiFuelTank,
   hull: GiAutoRepair,
   weapon: GiCrossedSwords,
+  weapon_2: GiCrossedSwords,
+  weapon_3: GiCrossedSwords,
   systems: GiProcessor,
 };
 
@@ -2783,10 +2787,12 @@ function ShipUpgradesTab({ ship }: { ship: Trader }) {
     .filter(g => isUpgradeGood(g.good))
     .sort((a, b) => compareUpgradeGoods(a.good, b.good));
 
+  const slots = visibleUpgradeSlots(ship);
+
   return (
     <div className="upgrades-tab">
       <div className="upgrade-slot-grid">
-        {UPGRADE_SLOTS.map(({ slot, label }) => {
+        {slots.map(({ slot, label }) => {
           const def = installedUpgrade(ship, slot);
           const Icon = UPGRADE_SLOT_ICONS[slot];
           const rarity = def ? upgradeRarityClass(def.tier) : "common";

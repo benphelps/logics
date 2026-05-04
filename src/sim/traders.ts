@@ -47,7 +47,7 @@ import {
   sellPremiumFraction,
   travelTicksFor,
 } from "./crew";
-import { isUpgradeGood, upgradeDef } from "./upgrades";
+import { firstEmptyWeaponSlot, isUpgradeGood, upgradeDef } from "./upgrades";
 import { buildDestinationLoadoutPlans, buildLocalFetchPlans, type PlannedBuy, type RoutePlanCandidate } from "./loadoutPlans";
 import { incrementManualActions, isMilestoneMet, upgradeTierMilestone, MILESTONES, MILESTONE_LABELS } from "./milestones";
 
@@ -1439,14 +1439,18 @@ export function installUpgradeFromCargo(world: World, trader: Trader, goodId: Go
   if (trader.state !== "idle") return { ok: false, reason: "Can only install upgrades while docked." };
   const def = upgradeDef(goodId);
   if (!def) return { ok: false, reason: "That cargo is not a ship upgrade." };
-  if (trader.upgrades?.[def.slot] === goodId) return { ok: false, reason: `${def.name} is already installed.` };
+  // Weapon-class upgrades route to the first empty weapon mount on a
+  // multi-mount ship; otherwise fall back to the catalog slot. Duplicate
+  // weapons are allowed (you might want two of the same gun).
+  const targetSlot = def.slot === "weapon" ? firstEmptyWeaponSlot(trader) : def.slot;
+  if (def.slot !== "weapon" && trader.upgrades?.[targetSlot] === goodId) return { ok: false, reason: `${def.name} is already installed.` };
   if (cargoQty(trader, goodId) < 1 - 0.001) return { ok: false, reason: `No ${def.name} in cargo.` };
 
   const snap = snapshotUpgradeInstall(trader);
-  const previous = trader.upgrades?.[def.slot];
+  const previous = trader.upgrades?.[targetSlot];
 
   removeCargoUnit(trader, goodId);
-  trader.upgrades = { ...(trader.upgrades ?? {}), [def.slot]: goodId };
+  trader.upgrades = { ...(trader.upgrades ?? {}), [targetSlot]: goodId };
   if (previous) {
     addCargoLot(trader, previous, 1, trader.location, replacedUpgradeCargoPrice(world, trader, previous), world.tick);
   }
@@ -1488,7 +1492,10 @@ export function installUpgradeFromMarket(world: World, trader: Trader, goodId: G
   if (trader.state !== "idle") return { ok: false, reason: "Can only install upgrades while docked." };
   const def = upgradeDef(goodId);
   if (!def) return { ok: false, reason: "That good is not a ship upgrade." };
-  if (trader.upgrades?.[def.slot] === goodId) return { ok: false, reason: `${def.name} is already installed.` };
+  // Weapons route to the first open mount on multi-mount ships; the
+  // duplicate-already-installed rule applies only to non-weapon slots.
+  const targetSlot = def.slot === "weapon" ? firstEmptyWeaponSlot(trader) : def.slot;
+  if (def.slot !== "weapon" && trader.upgrades?.[targetSlot] === goodId) return { ok: false, reason: `${def.name} is already installed.` };
 
   // Belt-and-suspenders milestone gate. Stocking is also gated at the
   // market level (market.stock stays at 0), but if stock is somehow non-zero
@@ -1508,14 +1515,14 @@ export function installUpgradeFromMarket(world: World, trader: Trader, goodId: G
   }
 
   const snap = snapshotUpgradeInstall(trader);
-  const previous = trader.upgrades?.[def.slot];
+  const previous = trader.upgrades?.[targetSlot];
   const stockBefore = stock;
   const treasuryBefore = market.treasury;
 
   market.stock[goodId] = stock - 1;
   const purchase = settlePurchase(market, price, 1);
   trader.funds -= purchase.totalCost;
-  trader.upgrades = { ...(trader.upgrades ?? {}), [def.slot]: goodId };
+  trader.upgrades = { ...(trader.upgrades ?? {}), [targetSlot]: goodId };
   if (previous) {
     addCargoLot(trader, previous, 1, trader.location, replacedUpgradeCargoPrice(world, trader, previous), world.tick);
   }

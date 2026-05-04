@@ -178,7 +178,11 @@ export interface Hire {
   expiresAt: number;
 }
 
-export type UpgradeSlot = "cargo" | "engine" | "fuel" | "hull" | "weapon" | "systems";
+// Upgrade slot keys. Weapon slots are tier-gated by ship class:
+// freighter/courier/hauler get "weapon" only; cruiser adds "weapon_2";
+// exotic adds "weapon_3" on top. Weapon-class upgrade goods are agnostic
+// — installation routes them into the first empty weapon mount.
+export type UpgradeSlot = "cargo" | "engine" | "fuel" | "hull" | "weapon" | "weapon_2" | "weapon_3" | "systems";
 export type UpgradeTier = 1 | 2 | 3 | 4;
 export type ShipUpgradeSlots = Partial<Record<UpgradeSlot, GoodId>>;
 

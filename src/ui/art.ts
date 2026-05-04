@@ -168,6 +168,8 @@ export const UPGRADE_ART: Record<UpgradeSlot, string> = {
   fuel: "/art/upgrades/fuel-tank.webp",
   hull: "/art/upgrades/hull-plating.webp",
   weapon: "/art/upgrades/weapon-mount.webp",
+  weapon_2: "/art/upgrades/weapon-mount.webp",
+  weapon_3: "/art/upgrades/weapon-mount.webp",
   systems: "/art/goods/advanced-goods.webp",
 };
 
