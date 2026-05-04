@@ -516,13 +516,24 @@ export function loadInitialGame(createFallbackWorld: () => World): LoadedGameSes
   const active = registry.saves.find(save => save.id === registry.activeId) ?? registry.saves[0];
   if (active) return loadedFromSave(active, registry, { status: "saved", error: null });
 
+  // True first launch: hold a placeholder world in memory but DON'T
+  // write a save. The new-game wizard sits on top and is non-dismissable
+  // until the player commits a pilot + syndicate; only then do we write
+  // the real save. Without this, cancelling the wizard would leave a
+  // pre-aged "Voyager" save behind that masked the fresh-start path on
+  // the next reload. activeSaveId stays null so the topbar / save
+  // modal know there's no backing slot yet.
   const world = fallbackWorld();
-  const save = makeSave(createSaveId(), "Voyager", "standard", world);
-  const next: SaveRegistry = { version: SAVE_VERSION, activeId: save.id, saves: [save] };
-  const write = writeRegistry(next);
-  // Fresh world with populated rings — pass live so the caller has chart
-  // data immediately without waiting for an IDB hydrate round-trip.
-  return { ...loadedFromSave(save, next, write, world), isFreshStart: true };
+  return {
+    world,
+    activeSaveId: null,
+    gameName: "Voyager",
+    gameKind: "standard",
+    saveSlots: [],
+    saveStatus: "saved",
+    saveError: null,
+    isFreshStart: true,
+  };
 }
 
 export function saveGameSlot(

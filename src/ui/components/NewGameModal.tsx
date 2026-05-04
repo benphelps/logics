@@ -33,6 +33,11 @@ export function NewGameModal() {
   const setDraft = useStore(s => s.setPilotDraft);
   const confirmNewGame = useStore(s => s.confirmNewGame);
   const cancelNewGame = useStore(s => s.cancelNewGame);
+  // Fresh-start signal: no save written yet. The wizard becomes
+  // non-dismissable in this state — there's nothing to fall back to,
+  // so Cancel is hidden and Esc is a no-op until the player commits.
+  const activeSaveId = useStore(s => s.activeSaveId);
+  const dismissable = activeSaveId != null;
 
   const open = pending != null;
   const phase: NewGamePhase = pending?.phase ?? "intro";
@@ -49,6 +54,7 @@ export function NewGameModal() {
   }, [open]);
 
   const handleClose = () => {
+    if (!dismissable) return;
     cancelNewGame();
   };
 
@@ -81,19 +87,27 @@ export function NewGameModal() {
       footer={
         phase === "intro" ? (
           <>
-            <button type="button" className="ui-modal-btn" onClick={handleClose}>
-              Cancel
-            </button>
+            {dismissable && (
+              <button type="button" className="ui-modal-btn" onClick={handleClose}>
+                Cancel
+              </button>
+            )}
             <button type="button" className="ui-modal-btn primary" onClick={() => advance("pilot")}>
               Continue
             </button>
           </>
         ) : phase === "pilot" ? (
-          <PilotFooter draft={draft} onCancel={handleClose} onContinue={() => advance("syndicate")} />
+          <PilotFooter
+            draft={draft}
+            dismissable={dismissable}
+            onCancel={handleClose}
+            onContinue={() => advance("syndicate")}
+          />
         ) : (
           <SyndicateFooter
             picked={pickedSyndicate}
             intent={intent}
+            dismissable={dismissable}
             onCancel={handleClose}
             onBack={() => advance("pilot")}
             onConfirm={() => pickedSyndicate && handleConfirm(pickedSyndicate)}
@@ -420,13 +434,20 @@ function useFakeHeadshotProgress(status: PortraitStatus, subjectId: string): num
   return progress;
 }
 
-function PilotFooter({ draft, onCancel, onContinue }: { draft: PilotDraft | null; onCancel: () => void; onContinue: () => void }) {
+function PilotFooter({ draft, dismissable, onCancel, onContinue }: {
+  draft: PilotDraft | null;
+  dismissable: boolean;
+  onCancel: () => void;
+  onContinue: () => void;
+}) {
   const ready = !!draft && draft.name.trim().length > 0;
   return (
     <>
-      <button type="button" className="ui-modal-btn" onClick={onCancel}>
-        Cancel
-      </button>
+      {dismissable && (
+        <button type="button" className="ui-modal-btn" onClick={onCancel}>
+          Cancel
+        </button>
+      )}
       <button type="button" className="ui-modal-btn primary" disabled={!ready} onClick={onContinue}>
         Continue
       </button>
@@ -486,18 +507,21 @@ function SyndicatePhase({ previewWorld, picked, onPick }: {
   );
 }
 
-function SyndicateFooter({ picked, intent, onCancel, onBack, onConfirm }: {
+function SyndicateFooter({ picked, intent, dismissable, onCancel, onBack, onConfirm }: {
   picked: SyndicateId | null;
   intent: "create" | "reset";
+  dismissable: boolean;
   onCancel: () => void;
   onBack: () => void;
   onConfirm: () => void;
 }) {
   return (
     <>
-      <button type="button" className="ui-modal-btn" onClick={onCancel}>
-        Cancel
-      </button>
+      {dismissable && (
+        <button type="button" className="ui-modal-btn" onClick={onCancel}>
+          Cancel
+        </button>
+      )}
       <button type="button" className="ui-modal-btn" onClick={onBack}>
         Back
       </button>

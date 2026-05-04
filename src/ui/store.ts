@@ -136,7 +136,11 @@ import {
 export type Tab = MainViewTab;
 export type { AtlasMapTab, AtlasSheetTab, FleetTab, CommodityTab, LedgerTab, PanelScrollPosition, PanelScrollPositions, PnoTab, StockKindFilter, ViewTabs };
 
-const initialGame = loadInitialGame(() => createStartingWorld());
+// Cold start fallback world only matters when there's no save to load.
+// On a true fresh start the wizard sits on top until the player commits,
+// so the placeholder is invisible — skip the 90-tick aging cost (the
+// seeding phase later runs its own wall-clock budget after commit).
+const initialGame = loadInitialGame(() => createStartingWorld({ ageTicks: 0 }));
 
 // First-launch UX: if loadInitialGame had to synthesize a save from
 // scratch (no registry / no active slot), open the syndicate picker
@@ -654,6 +658,14 @@ export const useStore = create<UiState>((set, get) => {
 
   const writeCurrentSave = () => {
     const current = get();
+    // No save committed yet (true first-launch placeholder world): skip
+    // the write entirely. Otherwise a tab-switch / beforeunload would
+    // mint a "Voyager" save behind the wizard, undermining the cancel
+    // path. The wizard's confirmNewGame is what creates the first slot.
+    if (current.activeSaveId == null) {
+      lastAutosaveAt = Date.now();
+      return;
+    }
     const saved = saveGameSlot(
       current.activeSaveId,
       current.gameName,
