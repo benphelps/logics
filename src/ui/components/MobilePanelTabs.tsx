@@ -13,27 +13,24 @@ interface MobilePanelTabsProps<TId extends string> {
   className?: string;
 }
 
-// Sub-tab strip that sits below the top-bar view tabs on mobile. One
-// tab per panel; the active panel is rendered solo while the rest are
-// hidden via CSS in the host view.
+// Sub-tab strip rendered below the main view-tabs on mobile. Uses the
+// exact .topbar-tabs / .topbar-tab styling so it visually reads as a
+// second row of the same tab system.
 export function MobilePanelTabs<TId extends string>({ panels, active, onChange, className = "" }: MobilePanelTabsProps<TId>) {
   return (
-    <div className={`bridge-card-tabs mobile-panel-tabs ${className}`} role="tablist" aria-label="Panel selector">
+    <nav className={`topbar-tabs mobile-panel-tabs ${className}`} role="tablist" aria-label="Panel selector">
       {panels.map((panel) => (
         <button
           key={panel.id}
           type="button"
           role="tab"
           aria-selected={active === panel.id}
-          className={`bridge-tab ${active === panel.id ? "active" : ""}`}
+          className={`topbar-tab ${active === panel.id ? "active" : ""}`}
           onClick={() => onChange(panel.id)}
         >
           {panel.label}
-          {panel.count != null && (
-            <span className="bridge-tab-count">{panel.count}</span>
-          )}
         </button>
       ))}
-    </div>
+    </nav>
   );
 }

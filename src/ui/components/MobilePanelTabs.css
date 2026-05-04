@@ -1,19 +1,13 @@
-/* Mobile panel-tab strip sits between the top-bar view tabs and the
-   view content, so each panel can be picked one at a time. Width
-   spans the view and the strip uses the same chrome as the in-view
-   bridge-card-tabs. */
-.bridge-card-tabs.mobile-panel-tabs {
-  flex: 0 0 auto;
+/* Mobile panel-tab strip — second row of the topbar-tabs system,
+   identical chrome to the main view tabs. Spans full topbar width so
+   the equal-flex tabs distribute across the screen. */
+.topbar-tabs.mobile-panel-tabs {
+  display: flex;
   width: 100%;
-  margin-bottom: 8px;
-  border-radius: 6px;
-  border-color: rgba(255, 255, 255, 0.08);
-  border-width: 1px;
-  border-style: solid;
+  flex: 0 0 auto;
 }
 
-.bridge-card-tabs.mobile-panel-tabs .bridge-tab {
+.topbar-tabs.mobile-panel-tabs .topbar-tab {
   flex: 1 1 0;
-  justify-content: center;
   min-width: 0;
 }
