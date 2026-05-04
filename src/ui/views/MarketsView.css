@@ -281,3 +281,11 @@
     min-height: 0;
   }
 }
+
+/* Mobile panel-tabs — Markets reuses the .stocks-view shell rules for
+   the .stocks-info-col detail panel; only the .markets-selector
+   listings panel needs its own show rule keyed off data-mobile-panel. */
+.markets-view.mobile[data-mobile-panel="listings"] .stocks-shell > aside > .markets-selector,
+.markets-view.mobile[data-mobile-panel="listings"] .stocks-shell .markets-selector {
+  display: flex !important;
+}

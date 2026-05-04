@@ -15,6 +15,25 @@ export const MOBILE_PANELS: Partial<Record<MainViewTab, readonly MobilePanelDef[
     { id: "holdings", label: "Holdings" },
     { id: "detail", label: "Detail" },
   ],
+  markets: [
+    { id: "listings", label: "Listings" },
+    { id: "detail", label: "Detail" },
+  ],
+  player: [
+    { id: "fleet", label: "Fleet" },
+    { id: "trade", label: "Trade" },
+    { id: "info", label: "Info" },
+    { id: "travel", label: "Travel" },
+  ],
+  locations: [
+    { id: "map", label: "Map" },
+    { id: "sheet", label: "Sheet" },
+    { id: "detail", label: "Detail" },
+  ],
+  charters: [
+    { id: "records", label: "Records" },
+    { id: "career", label: "Career" },
+  ],
 };
 
 export function defaultMobilePanelId(tab: MainViewTab): string | null {

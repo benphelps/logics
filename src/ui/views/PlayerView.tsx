@@ -16,6 +16,8 @@ import {
   GiTrade,
 } from "react-icons/gi";
 import { useStore, type FleetTab } from "../store";
+import { useIsMobile } from "../useIsMobile";
+import { defaultMobilePanelId } from "../mobilePanels";
 import { distance, reachableNeighbors } from "../../sim/geometry";
 import { describeHint, getGuidedPlan, hintTarget, type GuidedHint, type GuidedPlan, type HintTarget } from "../../sim/suggestions";
 import { DOCKING_FEE_PER_CAPACITY, MAINTENANCE_PER_CAPACITY, SALES_TAX_RATE } from "../../sim/economy";
@@ -71,6 +73,8 @@ export function PlayerView() {
   const selectedTrader = useStore((s) => s.selectedTrader);
   const lastError = useStore((s) => s.lastError);
   const clearError = useStore((s) => s.clearError);
+  const isMobile = useIsMobile();
+  const mobilePanel = useStore(s => s.mobilePanel.player ?? defaultMobilePanelId("player") ?? "fleet");
 
   const player = world.player;
   if (!player) {
@@ -88,7 +92,10 @@ export function PlayerView() {
     : ships[0] ?? null;
 
   return (
-    <section className="player-view">
+    <section
+      className={`player-view ${isMobile ? "mobile" : ""}`}
+      data-mobile-panel={isMobile ? mobilePanel : undefined}
+    >
       {lastError && (
         <div className="player-error" onClick={clearError}>
           <span className="bad">⚠</span> {lastError} <span className="faint">(click to dismiss)</span>

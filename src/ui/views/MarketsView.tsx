@@ -10,6 +10,8 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 import { useStore } from "../store";
+import { useIsMobile } from "../useIsMobile";
+import { defaultMobilePanelId } from "../mobilePanels";
 import type { Good, GoodCategory, GoodId, LocationDef, LocationId, World } from "../../sim/types";
 import { commoditySpotPrice } from "../../sim/stock";
 import { getSpotHistoryWindow } from "../historyDb";
@@ -98,8 +100,14 @@ export function MarketsView() {
   const selected = selectedId ? rows.find(row => row.good.id === selectedId) ?? null : null;
   const tabCounts = useMemo(() => commodityTabCounts(allRows), [allRows]);
 
+  const isMobile = useIsMobile();
+  const mobilePanel = useStore(s => s.mobilePanel.markets ?? defaultMobilePanelId("markets") ?? "listings");
+
   return (
-    <section className="markets-view stocks-view">
+    <section
+      className={`markets-view stocks-view ${isMobile ? "mobile" : ""}`}
+      data-mobile-panel={isMobile ? mobilePanel : undefined}
+    >
       <div className="stocks-shell">
         <aside className="stocks-shell-left">
           <CommoditySelector

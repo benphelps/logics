@@ -572,6 +572,36 @@
   height: 36px;
 }
 
+/* === Mobile single-pane layout =====================================
+   Atlas has 3 panels: map (top-left), sheet (bottom-left), detail
+   (right column). Mobile collapses to one column with the active
+   panel selected by data-mobile-panel. */
+.atlas-view.mobile .atlas-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.atlas-view.mobile .atlas-side {
+  display: contents;
+}
+
+.atlas-view.mobile .atlas-map-panel,
+.atlas-view.mobile .atlas-sheet-panel,
+.atlas-view.mobile .atlas-detail-panel {
+  display: none !important;
+}
+
+.atlas-view.mobile[data-mobile-panel="map"] .atlas-map-panel {
+  display: flex !important;
+}
+
+.atlas-view.mobile[data-mobile-panel="sheet"] .atlas-sheet-panel {
+  display: flex !important;
+}
+
+.atlas-view.mobile[data-mobile-panel="detail"] .atlas-detail-panel {
+  display: flex !important;
+}
+
 .atlas-sheet-table th {
   position: sticky;
   top: 0;

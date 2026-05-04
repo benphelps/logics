@@ -2,6 +2,8 @@ import { memo, useCallback, useMemo, useRef, useState, type CSSProperties, type 
 import type { IconType } from "react-icons";
 import { GiAnvil, GiAtom, GiCampfire, GiMining, GiSpaceship, GiTrade, GiWheat } from "react-icons/gi";
 import { useStore } from "../store";
+import { useIsMobile } from "../useIsMobile";
+import { defaultMobilePanelId } from "../mobilePanels";
 import { findRoutePath, pathDistance, reachableNeighbors, routeDistance, routeSegments } from "../../sim/geometry";
 import { playerReputationWith } from "../../sim/control";
 import type { Equity, LocationDef, LocationId, ShipBlueprint, SyndicateId, Trader, TraderId, World } from "../../sim/types";
@@ -133,6 +135,8 @@ export function LocationsView() {
   const mapTab = useStore((s) => s.atlasMapTab);
   const setMapTab = useStore((s) => s.setAtlasMapTab);
   const newsCount = world.newsEvents?.active.length ?? 0;
+  const isMobile = useIsMobile();
+  const mobilePanel = useStore(s => s.mobilePanel.locations ?? defaultMobilePanelId("locations") ?? "map");
 
   const locations = Object.values(world.locations);
   const playerShipIds = world.player?.shipIds ?? [];
@@ -153,7 +157,10 @@ export function LocationsView() {
   const selectedCounts = selected ? stationCounts(world, selected.id) : { docked: 0, inbound: 0, jobs: 0, routes: 0 };
 
   return (
-    <section className="atlas-view">
+    <section
+      className={`atlas-view ${isMobile ? "mobile" : ""}`}
+      data-mobile-panel={isMobile ? mobilePanel : undefined}
+    >
       <div className="atlas-grid">
         <aside className="atlas-side">
           <section className="atlas-map-panel">

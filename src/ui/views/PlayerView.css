@@ -113,6 +113,41 @@
   grid-template-rows: minmax(0, 3fr) minmax(0, 1fr);
 }
 
+/* === Mobile single-pane layout =====================================
+   Collapse the 2x2 bridge into one column with a single visible card
+   selected by data-mobile-panel. Asides (.bridge-column) become
+   display: contents so cards layout directly under .bridge. */
+.player-view.mobile .bridge {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.player-view.mobile .bridge-column {
+  display: contents;
+}
+
+.player-view.mobile .bridge .ship-card,
+.player-view.mobile .bridge .exchange-card,
+.player-view.mobile .bridge .info-area-card,
+.player-view.mobile .bridge .travel-card {
+  display: none !important;
+}
+
+.player-view.mobile[data-mobile-panel="fleet"] .bridge .ship-card {
+  display: flex !important;
+}
+
+.player-view.mobile[data-mobile-panel="trade"] .bridge .exchange-card {
+  display: flex !important;
+}
+
+.player-view.mobile[data-mobile-panel="info"] .bridge .info-area-card {
+  display: flex !important;
+}
+
+.player-view.mobile[data-mobile-panel="travel"] .bridge .travel-card {
+  display: flex !important;
+}
+
 .bridge-card {
   /* No outer padding: children sit at the card edges. Internal sections that
      want a content indent declare their own padding (--bridge-table-pad-x is

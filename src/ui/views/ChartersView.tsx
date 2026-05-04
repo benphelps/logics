@@ -23,6 +23,8 @@ import {
 } from "react-icons/gi";
 import type { ShipLogEntry, ShipLogTone, Syndicate, TradeRecord, Trader, World } from "../../sim/types";
 import { useStore } from "../store";
+import { useIsMobile } from "../useIsMobile";
+import { defaultMobilePanelId } from "../mobilePanels";
 import { getLogEntriesBefore, getTradeRecordsBefore } from "../historyDb";
 import { listMilestoneProgress, type MilestoneKey, type MilestoneProgress } from "../../sim/milestones";
 import { SYNDICATE_TRAITS } from "../../sim/data/syndicates";
@@ -82,9 +84,14 @@ export function ChartersView() {
     (s, t) => s + (t.log?.length ?? 0) + (t.stockTrades?.length ?? 0),
     0,
   );
+  const isMobile = useIsMobile();
+  const mobilePanel = useStore(s => s.mobilePanel.charters ?? defaultMobilePanelId("charters") ?? "records");
 
   return (
-    <section className="charters-view">
+    <section
+      className={`charters-view ${isMobile ? "mobile" : ""}`}
+      data-mobile-panel={isMobile ? mobilePanel : undefined}
+    >
       {/* Left (wider): tabbed sub-panels — Charters (combined milestones),
           Syndicates (per-faction reputation cards), or Log (consolidated
           fleet history feed). */}
