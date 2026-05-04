@@ -4,7 +4,7 @@ import type { CrewAge, CrewIdentity, CrewRace, CrewSex, Syndicate, SyndicateId, 
 import { CREW_AGES, CREW_RACES, CREW_SEXES } from "../../sim/crewIdentity";
 import { SYNDICATE_TRAITS } from "../../sim/data/syndicates";
 import { useStore, type NewGamePhase, type PilotDraft } from "../store";
-import { useCrewHeadshot, type HeadshotState } from "../headshots";
+import { useCrewHeadshot } from "../headshots";
 import { randomPilotName } from "../pilotNames";
 import { Modal } from "./Modal";
 import "./NewGameModal.css";
@@ -40,15 +40,11 @@ export function NewGameModal() {
   const draft = pending?.pilotDraft ?? null;
 
   const [pickedSyndicate, setPickedSyndicate] = useState<SyndicateId | null>(null);
-  // Bumped each time the player changes identity / clothing / clicks
-  // reroll. Drives the headshot subjectId so we always fetch fresh.
-  const [portraitGenerationId, setPortraitGenerationId] = useState(0);
 
   // Reset transient state when the wizard closes.
   useEffect(() => {
     if (!open) {
       setPickedSyndicate(null);
-      setPortraitGenerationId(0);
     }
   }, [open]);
 
@@ -109,9 +105,7 @@ export function NewGameModal() {
       {phase === "pilot" && draft && (
         <PilotPhase
           draft={draft}
-          generationId={portraitGenerationId}
           onChange={setDraft}
-          onRerollPortrait={() => setPortraitGenerationId(id => id + 1)}
         />
       )}
       {phase === "syndicate" && pending && (
@@ -165,12 +159,10 @@ function IntroTile({ title, body }: { title: string; body: string }) {
 
 interface PilotPhaseProps {
   draft: PilotDraft;
-  generationId: number;
   onChange: (next: PilotDraft) => void;
-  onRerollPortrait: () => void;
 }
 
-function PilotPhase({ draft, generationId, onChange, onRerollPortrait }: PilotPhaseProps) {
+function PilotPhase({ draft, onChange }: PilotPhaseProps) {
   const handleField = <K extends keyof PilotDraft>(key: K, value: PilotDraft[K]) => {
     onChange({ ...draft, [key]: value });
   };
@@ -256,11 +248,7 @@ function PilotPhase({ draft, generationId, onChange, onRerollPortrait }: PilotPh
 
       <PilotPortrait
         draft={draft}
-        generationId={generationId}
-        onReroll={() => {
-          onChange({ ...draft, portraitVariant: draft.portraitVariant + 1 });
-          onRerollPortrait();
-        }}
+        onReroll={() => onChange({ ...draft, portraitVariant: draft.portraitVariant + 1 })}
       />
     </div>
   );
@@ -310,43 +298,58 @@ function pilotClothing(draft: PilotDraft): string {
   return draft.clothing.trim() || "freighter captain coat with subtle ship insignia";
 }
 
-function PilotPortrait({ draft, generationId, onReroll }: { draft: PilotDraft; generationId: number; onReroll: () => void }) {
+type PortraitStatus = "idle" | "loading" | "ready" | "failed";
+
+function PilotPortrait({ draft, onReroll }: { draft: PilotDraft; onReroll: () => void }) {
+  const hasRequested = draft.portraitVariant > 0;
   const subjectId = pilotSubjectId(draft);
   const clothing = pilotClothing(draft);
 
-  // useCrewHeadshot keys its lookup on subject.id — we rebuild the
-  // subject when generationId or identity changes so the hook re-runs
-  // its allocate call. The clothing field forces a unique entry so the
-  // server bypasses pool reuse.
-  const subject = useMemo(() => ({
+  // We only build a non-null subject after the first reroll click —
+  // useCrewHeadshot only fires its allocate effect when subject is
+  // truthy, so the API stays untouched until the player explicitly
+  // asks for a portrait.
+  const subject = useMemo(() => hasRequested ? {
     id: subjectId,
     role: "captain" as const,
     sex: draft.identity.sex,
     age: draft.identity.age,
     race: draft.identity.race,
     clothing,
-  }), [subjectId, draft.identity.sex, draft.identity.age, draft.identity.race, clothing, generationId]);
+  } : null, [hasRequested, subjectId, draft.identity.sex, draft.identity.age, draft.identity.race, clothing]);
 
   const headshot = useCrewHeadshot(null, subject);
-  const status = headshot?.status ?? "loading";
+  const status: PortraitStatus = !hasRequested
+    ? "idle"
+    : (headshot?.status ?? "loading");
   const progress = useFakeHeadshotProgress(status, subjectId);
   const ready = status === "ready";
+  const loading = status === "loading";
+
+  const buttonLabel = status === "idle" ? "Generate portrait"
+    : status === "ready" ? "Reroll portrait"
+    : status === "failed" ? "Try again"
+    : "Generating…";
 
   return (
     <div className="new-game-pilot-portrait">
-      <div className={`new-game-pilot-portrait-frame ${ready ? "ready" : ""}`}>
+      <div className={`new-game-pilot-portrait-frame ${ready ? "ready" : ""} ${loading ? "loading" : ""}`}>
         {ready && headshot && headshot.status === "ready" ? (
           <img
             className="new-game-pilot-portrait-img"
             src={headshot.url}
             alt={`Portrait of ${draft.name || "pilot"}`}
           />
+        ) : status === "idle" ? (
+          <div className="new-game-pilot-portrait-idle" aria-hidden="true">
+            <span>No portrait yet</span>
+          </div>
         ) : (
           <div className="new-game-pilot-portrait-placeholder" aria-hidden="true">
             <div className="new-game-pilot-portrait-shimmer" />
           </div>
         )}
-        {!ready && (
+        {loading && (
           <div className="new-game-pilot-portrait-progress" aria-hidden="true">
             <div className="new-game-pilot-portrait-progress-fill" style={{ width: `${Math.round(progress * 100)}%` }} />
           </div>
@@ -357,14 +360,16 @@ function PilotPortrait({ draft, generationId, onReroll }: { draft: PilotDraft; g
           type="button"
           className="new-game-pilot-reroll"
           onClick={onReroll}
-          disabled={status === "loading" && progress > 0 && progress < 0.95}
-          title="Generate a new portrait with these traits"
+          disabled={loading}
+          title={status === "idle" ? "Generate a portrait with these traits" : "Generate a new portrait with these traits"}
         >
           <MdRefresh aria-hidden="true" focusable="false" />
-          <span>{status === "ready" ? "Reroll portrait" : status === "failed" ? "Try again" : "Generating…"}</span>
+          <span>{buttonLabel}</span>
         </button>
         <p className="new-game-pilot-portrait-hint">
-          The portrait service uses the traits above. Edit any of them and reroll for a new face.
+          {status === "idle"
+            ? "Set your traits, then click to generate a portrait. Takes about 15 seconds."
+            : "Edit any trait above and click reroll for a new face."}
         </p>
       </div>
     </div>
@@ -373,9 +378,9 @@ function PilotPortrait({ draft, generationId, onReroll }: { draft: PilotDraft; g
 
 // Drives a fake progress fill from 0 → 95% over HEADSHOT_FAKE_DURATION_MS,
 // then stalls until the headshot resolves (snaps to 100% on ready, resets
-// on a new subject id). Resets to 0 when the subject id changes so a
-// reroll re-animates from scratch.
-function useFakeHeadshotProgress(status: HeadshotState["status"] | "idle", subjectId: string): number {
+// on a new subject id). Idle state holds at 0; the bar only animates while
+// a request is in flight.
+function useFakeHeadshotProgress(status: PortraitStatus, subjectId: string): number {
   const [progress, setProgress] = useState(0);
   const startedRef = useRef<number | null>(null);
 
@@ -385,6 +390,10 @@ function useFakeHeadshotProgress(status: HeadshotState["status"] | "idle", subje
   }, [subjectId]);
 
   useEffect(() => {
+    if (status === "idle") {
+      setProgress(0);
+      return;
+    }
     if (status === "ready") {
       setProgress(1);
       return;

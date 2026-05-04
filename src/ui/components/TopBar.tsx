@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { MdAdd, MdClose, MdCode, MdMenu, MdPersonOutline, MdRestartAlt, MdSave, MdSkipNext } from "react-icons/md";
+import { MdAdd, MdClose, MdCode, MdMenu, MdRestartAlt, MdSave, MdSkipNext } from "react-icons/md";
 import { useStore, type Speed, type Tab } from "../store";
 import { useIsMobile } from "../useIsMobile";
 import { useCrewHeadshot } from "../headshots";
@@ -49,25 +49,18 @@ export function TopBar() {
   const deleteGame = useStore((s) => s.deleteGame);
   const loadDeveloperState = useStore((s) => s.loadDeveloperState);
   const activeSaveId = useStore((s) => s.activeSaveId);
-  const gameName = useStore((s) => s.gameName);
   const saveSlots = useStore((s) => s.saveSlots);
-  const saveStatus = useStore((s) => s.saveStatus);
   const saveError = useStore((s) => s.saveError);
   const world = useStore((s) => s.world);
   useStore((s) => s.tickEpoch);
 
   const tick = world.tick;
-  const activeSlot = saveSlots.find(slot => slot.id === activeSaveId) ?? null;
   const playerShipIds = world.player?.shipIds ?? [];
   const playerShips = playerShipIds.map(id => world.traders[id]).filter(Boolean);
   const selectedShip = selectedTrader && playerShipIds.includes(selectedTrader)
     ? world.traders[selectedTrader] ?? playerShips[0] ?? null
     : playerShips[0] ?? null;
   const selectedShipId = selectedShip?.id ?? "";
-  const fleet = world.player
-    ? world.player.shipIds.reduce((s, id) => s + (world.traders[id]?.funds ?? 0), 0)
-    : 0;
-  const storageLabel = saveStatus === "saved" ? "Autosaved" : saveStatus === "unavailable" ? "Unsaved" : "Save error";
   const closeShipMenu = () => {
     if (shipMenuRef.current) shipMenuRef.current.open = false;
   };
@@ -180,34 +173,17 @@ export function TopBar() {
       <Modal
         open={saveModalOpen}
         onClose={closeSaveModal}
-        eyebrow="Game"
-        title="Save games"
+        eyebrow="Saved games"
+        title="Continue your run"
         dialogClassName="topbar-save-modal"
       >
-        <header className="topbar-menu-current">
-          <div>
-            <span className="topbar-menu-kicker">Current Game</span>
-            <strong>{gameName}</strong>
-          </div>
-          <span className={`topbar-save-status ${saveStatus}`} title={saveError ?? undefined}>{storageLabel}</span>
-        </header>
         {saveError && (
           <div className="topbar-save-error-detail">
             {saveError}
           </div>
         )}
 
-        <div className="topbar-menu-metrics mono">
-          <Stat label="Tick" value={tick.toLocaleString()} />
-          <Stat label="Fleet" value={`Ç${Math.round(fleet).toLocaleString()}`} />
-          <Stat label="Slots" value={saveSlots.length.toString()} />
-        </div>
-
         <section className="topbar-menu-section">
-          <div className="topbar-menu-heading">
-            <span>Saved Games</span>
-            {activeSlot && <span className="topbar-menu-muted">active · {formatSlotTime(activeSlot.updatedAt)}</span>}
-          </div>
           <div className="topbar-save-list">
             {saveSlots.length === 0 ? (
               <div className="topbar-menu-empty">Browser storage unavailable.</div>
@@ -330,15 +306,11 @@ function SaveSlotRow({ slot, active, canDelete, onLoad, onDelete }: {
         disabled={active}
         aria-label={`Load ${displayName}`}
       >
-        <span className="topbar-save-card-portrait" aria-hidden="true">
-          {!portraitUrl && (
-            <MdPersonOutline aria-hidden="true" focusable="false" />
-          )}
-        </span>
         <span className="topbar-save-card-body">
           <span className="topbar-save-card-name">{displayName}</span>
           <span className="topbar-save-card-meta">
             {isDev && <span className="topbar-save-card-tag">developer</span>}
+            {active && <span className="topbar-save-card-tag active">active</span>}
             <span className="mono">t{slot.tick.toLocaleString()}</span>
             <span>{formatSlotTime(slot.updatedAt)}</span>
           </span>
@@ -366,11 +338,3 @@ function formatSlotTime(timestamp: number): string {
   }).format(new Date(timestamp));
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <span className="topbar-stat">
-      <span className="topbar-stat-label dim">{label}</span>
-      <span className="topbar-stat-value">{value}</span>
-    </span>
-  );
-}

@@ -8,7 +8,8 @@ import type { ActiveNewsEvent, NewsTarget, RecentNewsEvent } from "../sim/news/t
 import { deleteGame as deleteGameHistory, flushHistoryFromWorld } from "./historyDb";
 import { normalizePanelScrollPositions, normalizeViewTabs, type PanelScrollPositions, type ViewTabs } from "./viewTabs";
 
-const SAVE_REGISTRY_KEY = "logics.saveGames.v1";
+const SAVE_REGISTRY_KEY = "ledgway.saveGames.v1";
+const LEGACY_SAVE_REGISTRY_KEYS = ["logics.saveGames.v1"];
 const SAVE_VERSION = 1;
 
 export type SaveGameKind = "standard" | "developer";
@@ -292,18 +293,57 @@ function backfillCrewIdentity(world: World): void {
 // (each holding a full World) under a single key — re-reading it on every
 // autosave means JSON.parse-ing megabytes every 2s, which shows up in
 // profiles as the "every-2s freeze". We're the only writer, so the cache is
-// always authoritative; just keep it warm and skip the parse.
+// usually authoritative; just keep it warm and skip the parse.
 let cachedRegistry: SaveRegistry | null | undefined; // undefined = not yet loaded
+// Set when readRegistry detects that localStorage has been wiped externally
+// (DevTools "Clear site data") while we still hold a non-empty cache. While
+// set, writeRegistry skips the localStorage write so the next autosave
+// doesn't immediately resurrect everything we just cleared. The page must
+// reload to clear this flag — at which point loadInitialGame returns
+// isFreshStart and the new-game wizard re-opens cleanly.
+let registryExternallyCleared = false;
+
+function registryKeyExists(storage: Storage): boolean {
+  if (storage.getItem(SAVE_REGISTRY_KEY) != null) return true;
+  for (const key of LEGACY_SAVE_REGISTRY_KEYS) {
+    if (storage.getItem(key) != null) return true;
+  }
+  return false;
+}
 
 function readRegistry(): SaveRegistry | null {
-  if (cachedRegistry !== undefined) return cachedRegistry;
   const storage = browserStorage();
+  // Detect external storage wipes (DevTools → Clear site data). If we
+  // have non-empty cached state but localStorage no longer has any of
+  // the registry keys, treat this as a clear: drop the cache, raise
+  // the flag so writes don't repopulate localStorage, and return the
+  // empty-registry path. A page reload re-initializes everything.
+  if (
+    storage
+    && cachedRegistry != null
+    && cachedRegistry.saves.length > 0
+    && !registryKeyExists(storage)
+  ) {
+    cachedRegistry = undefined;
+    registryExternallyCleared = true;
+  }
+  if (cachedRegistry !== undefined) return cachedRegistry;
   if (!storage) {
     cachedRegistry = null;
     return null;
   }
   try {
-    const raw = storage.getItem(SAVE_REGISTRY_KEY);
+    let raw = storage.getItem(SAVE_REGISTRY_KEY);
+    let loadedFromLegacy = false;
+    if (!raw) {
+      for (const key of LEGACY_SAVE_REGISTRY_KEYS) {
+        raw = storage.getItem(key);
+        if (raw) {
+          loadedFromLegacy = true;
+          break;
+        }
+      }
+    }
     if (!raw) {
       cachedRegistry = { version: SAVE_VERSION, activeId: null, saves: [] };
       return cachedRegistry;
@@ -316,9 +356,17 @@ function readRegistry(): SaveRegistry | null {
     const saves = parsed.saves.filter(isPersistedSave);
     const activeId = typeof parsed.activeId === "string" ? parsed.activeId : null;
     cachedRegistry = { version: SAVE_VERSION, activeId, saves };
+    if (loadedFromLegacy) {
+      try {
+        storage.setItem(SAVE_REGISTRY_KEY, JSON.stringify(cachedRegistry));
+      } catch {
+        // Keep the in-memory migrated registry even if the browser refuses
+        // the immediate mirror write; the next save will report any error.
+      }
+    }
     return cachedRegistry;
   } catch (error) {
-    console.warn("[logics] Save registry read failed", error);
+    console.warn("[ledgway] Save registry read failed", error);
     cachedRegistry = null;
     return null;
   }
@@ -335,6 +383,13 @@ function writeRegistry(registry: SaveRegistry): SaveWriteResult {
   // Always update the cache so subsequent readRegistry() calls don't have
   // to round-trip through localStorage again.
   cachedRegistry = registry;
+  // After a detected external clear, swallow writes so the next autosave
+  // doesn't resurrect what the user just wiped. The flag clears on
+  // reload (module re-init); explicit "Save now" still writes through
+  // because the user is asking us to.
+  if (registryExternallyCleared) {
+    return { status: "unavailable", error: "Storage was cleared. Reload to start fresh." };
+  }
   const storage = browserStorage();
   if (!storage) return { status: "unavailable", error: "Browser localStorage is unavailable." };
   let payload: string;
@@ -342,7 +397,7 @@ function writeRegistry(registry: SaveRegistry): SaveWriteResult {
     payload = JSON.stringify(registry);
   } catch (error) {
     const detail = `Could not serialize save registry: ${error instanceof Error ? error.message : String(error)}.`;
-    console.warn("[logics] Save serialization failed", { detail, error, slots: registry.saves.length });
+    console.warn("[ledgway] Save serialization failed", { detail, error, slots: registry.saves.length });
     return { status: "error", error: detail };
   }
   try {
@@ -350,7 +405,7 @@ function writeRegistry(registry: SaveRegistry): SaveWriteResult {
     return { status: "saved", error: null };
   } catch (error) {
     const detail = describeSaveError(error, registry, payload.length);
-    console.warn("[logics] Save write failed", {
+    console.warn("[ledgway] Save write failed", {
       detail,
       payloadChars: payload.length,
       slots: registry.saves.length,
