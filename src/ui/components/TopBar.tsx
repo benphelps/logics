@@ -16,12 +16,15 @@ import {
   GiWallet,
 } from "react-icons/gi";
 import { useStore, type Speed, type Tab } from "../store";
+import { useIsMobile } from "../useIsMobile";
+import { MOBILE_PANELS, defaultMobilePanelId } from "../mobilePanels";
 import { cargoMass } from "../../sim/cargo";
 import { hasCrew } from "../../sim/crew";
 import { routeCount } from "../../sim/geometry";
 import { listPositions, portfolioValue, totalUnrealizedPnl } from "../../sim/stock";
 import type { Trader, World } from "../../sim/types";
 import type { SaveSlotSummary } from "../saveGames";
+import { MobilePanelTabs } from "./MobilePanelTabs";
 import "./TopBar.css";
 
 const SPEED_PRESETS: { value: Speed; label: string }[] = [
@@ -44,6 +47,11 @@ export function TopBar() {
   const shipMenuRef = useRef<HTMLDetailsElement>(null);
   const selectedTab = useStore((s) => s.selectedTab);
   const selectTab = useStore((s) => s.selectTab);
+  const isMobile = useIsMobile();
+  const mobilePanel = useStore((s) => s.mobilePanel);
+  const setMobilePanel = useStore((s) => s.setMobilePanel);
+  const mobilePanels = MOBILE_PANELS[selectedTab];
+  const activeMobilePanel = mobilePanel[selectedTab] ?? defaultMobilePanelId(selectedTab) ?? "";
   const selectedTrader = useStore((s) => s.selectedTrader);
   const selectTrader = useStore((s) => s.selectTrader);
   const speed = useStore((s) => s.speed);
@@ -233,6 +241,14 @@ export function TopBar() {
           </div>
         </div>
       </div>
+
+      {isMobile && mobilePanels && mobilePanels.length > 0 && (
+        <MobilePanelTabs
+          panels={mobilePanels}
+          active={activeMobilePanel}
+          onChange={(id) => setMobilePanel(selectedTab, id)}
+        />
+      )}
 
       <div className="topbar-card">
         <details ref={shipMenuRef} className={`topbar-ship-picker ${playerShips.length === 0 ? "is-empty" : ""}`}>

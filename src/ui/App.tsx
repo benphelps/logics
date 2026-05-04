@@ -1,11 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { useStore, type Tab } from "./store";
 import { useTickDriver } from "./useTickDriver";
-import { useIsMobile } from "./useIsMobile";
-import { MOBILE_PANELS, defaultMobilePanelId } from "./mobilePanels";
 import { TopBar } from "./components/TopBar";
 import { BridgeTabScroller } from "./components/BridgeTabScroller";
-import { MobilePanelTabs } from "./components/MobilePanelTabs";
 import { NewGameModal } from "./components/NewGameModal";
 import { SeedingModal } from "./components/SeedingModal";
 import { ChartersView } from "./views/ChartersView";
@@ -38,24 +35,11 @@ export function App() {
     };
   }, [saveCurrentGame]);
 
-  const isMobile = useIsMobile();
-  const mobilePanel = useStore(s => s.mobilePanel);
-  const setMobilePanel = useStore(s => s.setMobilePanel);
-  const panels = MOBILE_PANELS[tab];
-  const activeMobilePanel = mobilePanel[tab] ?? defaultMobilePanelId(tab) ?? "";
-
   return (
     <div className="app">
       <div className="app-body">
         <main className="app-main">
           <TopBar />
-          {isMobile && panels && panels.length > 0 && (
-            <MobilePanelTabs
-              panels={panels}
-              active={activeMobilePanel}
-              onChange={(id) => setMobilePanel(tab, id)}
-            />
-          )}
           <div className="app-view">
             {tab === "markets"   && <MarketsView />}
             {tab === "locations" && <LocationsView />}
