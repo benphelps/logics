@@ -3741,6 +3741,21 @@ button.upgrade-remove-pill {
   color: var(--text);
 }
 
+/* Passive ticks-remaining badge for in-transit auto ships — same slot
+   as the Quick Travel button, no border/hover since there's nothing
+   to click. The bridge-tab-count inside still pops the value. */
+.travel-panel-ticks {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 9px;
+  color: var(--text-dim);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 .travel-table tbody tr.travel-is-poi {
   background: rgba(31, 111, 168, 0.045);
 }

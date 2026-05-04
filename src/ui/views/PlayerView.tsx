@@ -3885,21 +3885,29 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
   const currentPinned = pinnedStations.has(routeFrom);
   const travelSuggested = !inTransit && manualActions && neighborDests.some(d => target.travelTo === d.to && d.canFly);
   const travelHintText = target.travelTo ? cueText.travel[target.travelTo] ?? cueText.sections.travel ?? hintText : hintText;
-  const quickTravelTab = inTransit && manualActions ? (
-    <button
-      className="travel-panel-action"
-      onClick={() => stepN(ship.ticksRemaining)}
-      title={`Advance ${ship.ticksRemaining} ticks until arrival`}
-    >
-      Quick Travel <span className="bridge-tab-count">{ship.ticksRemaining}t</span>
-    </button>
+  // Right-side slot: while in transit, manual ships get a "Quick
+  // Travel" button (ticks live in its bridge-tab-count); auto ships
+  // get a passive ticks-remaining badge in the same slot. Idle ships
+  // get nothing.
+  const transitTab = inTransit ? (
+    manualActions ? (
+      <button
+        className="travel-panel-action"
+        onClick={() => stepN(ship.ticksRemaining)}
+        title={`Advance ${ship.ticksRemaining} ticks until arrival`}
+      >
+        Quick Travel <span className="bridge-tab-count">{ship.ticksRemaining}t</span>
+      </button>
+    ) : (
+      <span className="travel-panel-ticks" title={`${ship.ticksRemaining} ticks until arrival`}>
+        <span className="bridge-tab-count">{ship.ticksRemaining}t</span>
+      </span>
+    )
   ) : null;
-  const travelTitle = inTransit ? "Route origin" : "Current location";
+  const travelTitle = inTransit ? "Route dest" : "Current location";
   const currentMeta = currentStationJobs.length > 0
     ? contractLine(currentStationJobs)
-    : inTransit
-      ? `To ${world.locations[ship.destination ?? loc.id]?.name ?? loc.name} / ${ship.ticksRemaining} tick${ship.ticksRemaining === 1 ? "" : "s"} remaining`
-      : `${neighborDests.length} reachable station${neighborDests.length === 1 ? "" : "s"}`;
+    : `${neighborDests.length} reachable station${neighborDests.length === 1 ? "" : "s"}`;
 
   return (
     <section className="bridge-card travel-card">
@@ -3926,7 +3934,7 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
             <span className="travel-current-name">{currentStationName}</span>
           </button>
         </div>
-        {quickTravelTab}
+        {transitTab}
       </header>
       <div className="travel-table-zone" data-scroll-key={`fleet:${ship.id}:travel`}>
         <SortableRows
