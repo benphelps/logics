@@ -995,7 +995,7 @@ function SectorMap({
           peakLaneDanger={peakLaneDanger}
           hoveredLane={hoveredLane}
         />
-        {mapTab !== "syndicates" && encounterPings.length > 0 && (
+        {mapTab === "logistics" && encounterPings.length > 0 && (
           <PingsLayer pings={encounterPings} />
         )}
         {displayedRoute && displayedRoute.length >= 2 && (
@@ -1409,8 +1409,8 @@ const PingsLayer = memo(function PingsLayer({ pings }: { pings: EncounterPing[] 
             transform={`translate(${p.x}, ${p.y})`}
             style={{ opacity: lifeFrac } as CSSProperties}
           >
-            <circle r="1.4" className="atlas-ping-ring" />
-            <circle r="0.7" className="atlas-ping-core" />
+            <circle r="2.4" className="atlas-ping-ring" />
+            <circle r="1.2" className="atlas-ping-core" />
           </g>
         );
       })}
