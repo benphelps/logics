@@ -70,10 +70,14 @@ export function upgradeTierMilestone(tier: number): MilestoneKey | null {
 }
 
 // Map a crew role to its milestone key.
-export function crewRoleMilestone(role: "captain" | "navigator" | "mechanic"): MilestoneKey {
+export function crewRoleMilestone(role: import("./types").CrewRole): MilestoneKey {
   if (role === "captain")   return "captainOffers";
   if (role === "navigator") return "navigatorOffers";
-  return "mechanicOffers";
+  if (role === "mechanic")  return "mechanicOffers";
+  // Mercenary: routed to the captain milestone as a placeholder until Phase 2
+  // adds a dedicated mercenaryOffers gate. v1 doesn't actually post mercenary
+  // hires, so this branch is never reached at runtime.
+  return "captainOffers";
 }
 
 export interface MilestoneProgress {

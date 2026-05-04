@@ -19,6 +19,10 @@ const MOD_POOL_BY_ROLE: Record<CrewRole, (keyof CrewModifiers)[]> = {
   captain:   ["speedBonus", "rangeEfficiency", "sellPremium", "buyDiscount", "dockingDiscount", "dividendBonus"],
   navigator: ["fuelCapacityBonus", "rangeEfficiency", "contractRewardBonus", "treasuryYield"],
   mechanic:  ["cargoCapacityBonus", "maintenanceDiscount", "fuelCapacityBonus", "unloadSpeedBonus", "fuelRegenIdle"],
+  // Mercenary — combat support. Phase 2 lights this up via ROLE_WEIGHTS;
+  // v1 keeps the modifier pool defined for type completeness but never
+  // posts mercenary offers.
+  mercenary: ["weaponPowerBonus", "hullBonus"],
 };
 
 // Per-modifier roll envelope. value = lerp(min, max, tierFraction * variance).
@@ -82,11 +86,13 @@ const BASE_HIRE_BY_ROLE: Record<CrewRole, number> = {
   captain:   90_000,
   navigator: 45_000,
   mechanic:  40_000,
+  mercenary: 60_000,                  // placeholder until Phase 2 tunes
 };
 const BASE_WAGE_BY_ROLE: Record<CrewRole, number> = {
   captain:   9,
   navigator: 3,
   mechanic:  3,
+  mercenary: 6,                       // placeholder until Phase 2 tunes
 };
 
 // Tier multipliers stack on top of base + modifier-derived cost.

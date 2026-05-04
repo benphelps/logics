@@ -1,0 +1,160 @@
+.ui-modal-dialog.encounter-dialog {
+  width: min(680px, 100%);
+}
+
+.encounter-grid {
+  display: grid;
+  gap: 14px;
+  padding-top: 12px;
+}
+
+/* ----- Ship comparison -------------------------------------------------- */
+
+.encounter-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.encounter-stats-col {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px 12px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  min-width: 0;
+}
+
+.encounter-stats-head {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+  margin-bottom: 2px;
+  /* Long pirate names ("Splintered Axiom") shouldn't push the column wider
+     or wrap awkwardly. Truncate with ellipsis when the column is tight. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.encounter-stat {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.encounter-stat-label {
+  color: var(--text-dim);
+}
+
+.encounter-stat-value {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  text-transform: capitalize;
+}
+
+.encounter-stat.muted .encounter-stat-value {
+  color: var(--text-dim);
+}
+
+@media (max-width: 540px) {
+  .encounter-stats {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ----- Actions ---------------------------------------------------------- */
+
+.encounter-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+@media (max-width: 540px) {
+  .encounter-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.encounter-action {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px 14px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-family: inherit;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, transform 80ms ease;
+  min-width: 0;
+}
+
+.encounter-action:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: var(--border-strong);
+}
+
+.encounter-action:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.encounter-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.encounter-action.recommended {
+  border-color: rgba(118, 199, 255, 0.5);
+  background: color-mix(in srgb, rgba(31, 111, 168, 0.5) 12%, var(--bg-1));
+}
+
+.encounter-action-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.encounter-action-label {
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.encounter-action-tag {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(118, 199, 255, 0.85);
+}
+
+.encounter-action-band {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* Band tints — a light wash on the band label so the player can scan
+   "very_likely" vs "longshot" without reading. */
+.encounter-action.band-very_likely .encounter-action-band { color: #7ed4a3; }
+.encounter-action.band-likely      .encounter-action-band { color: #b8d97a; }
+.encounter-action.band-even        .encounter-action-band { color: var(--text-dim); }
+.encounter-action.band-risky       .encounter-action-band { color: #e4a86b; }
+.encounter-action.band-longshot    .encounter-action-band { color: #d97a7a; }
+
+.encounter-action-risk {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  line-height: 1.4;
+}

@@ -3,6 +3,7 @@ import { useStore, type Tab } from "./store";
 import { useTickDriver } from "./useTickDriver";
 import { TopBar } from "./components/TopBar";
 import { BridgeTabScroller } from "./components/BridgeTabScroller";
+import { EncounterModal } from "./components/EncounterModal";
 import { NewGameModal } from "./components/NewGameModal";
 import { SaveLoadingModal } from "./components/SaveLoadingModal";
 import { SeedingModal } from "./components/SeedingModal";
@@ -54,6 +55,7 @@ export function App() {
       <NewGameModal />
       <SeedingModal />
       <SaveLoadingModal />
+      <EncounterModal />
       <BridgeTabScroller />
     </div>
   );

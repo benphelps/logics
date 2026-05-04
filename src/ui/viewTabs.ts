@@ -7,7 +7,7 @@ export type CommodityTab = "all" | "food" | "raw" | "intermediate" | "luxury" | 
 export type PnoTab = "positions" | "orders" | "futures" | "history" | "insights";
 export type AtlasSheetTab = "systems" | "ships" | "news";
 export type AtlasMapTab = "stations" | "syndicates" | "logistics";
-export type LedgerTab = "charters" | "syndicates" | "log";
+export type LedgerTab = "charters" | "syndicates" | "combat" | "log";
 export type StockKindFilter = "all" | "positions" | "station" | "syndicate" | "commodity" | "basis" | "futures" | "index";
 export type MainViewTab = "player" | "markets" | "locations" | "stocks" | "charters";
 export interface PanelScrollPosition {
@@ -43,7 +43,7 @@ const COMMODITY_TABS: readonly CommodityTab[] = ["all", "food", "raw", "intermed
 const PNO_TABS: readonly PnoTab[] = ["positions", "orders", "futures", "history", "insights"];
 const ATLAS_SHEET_TABS: readonly AtlasSheetTab[] = ["systems", "ships", "news"];
 const ATLAS_MAP_TABS: readonly AtlasMapTab[] = ["stations", "syndicates", "logistics"];
-const LEDGER_TABS: readonly LedgerTab[] = ["charters", "syndicates", "log"];
+const LEDGER_TABS: readonly LedgerTab[] = ["charters", "syndicates", "combat", "log"];
 const STOCK_KIND_FILTERS: readonly StockKindFilter[] = ["all", "positions", "station", "syndicate", "commodity", "basis", "futures", "index"];
 
 export function normalizeViewTabs(input: unknown): ViewTabs {

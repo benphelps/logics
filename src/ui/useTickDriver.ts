@@ -18,12 +18,17 @@ export function useTickDriver(): void {
       return (t.unloadingCargo?.length ?? 0) > 0;
     });
   });
+  // Halt ticking entirely while a combat encounter is awaiting the player's
+  // choice. The unload override doesn't bypass this — the modal blocks the
+  // entire game state until it resolves.
+  const encounterPending = useStore((s) => !!s.world.pendingEncounter);
 
   useEffect(() => {
+    if (encounterPending) return;
     const effective = Math.max(speed, playerUnloading ? 1 : 0);
     if (effective === 0) return;
     const intervalMs = 1000 / effective;
     const id = setInterval(step, intervalMs);
     return () => clearInterval(id);
-  }, [speed, playerUnloading, step]);
+  }, [speed, playerUnloading, step, encounterPending]);
 }

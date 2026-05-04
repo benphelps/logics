@@ -169,6 +169,8 @@ function tryAutoHire(world: World, ship: Trader, record: Map<CrewKey, CrewRecord
   // Note all observed offer prices for the audit, regardless of whether
   // we hire (some seeds will never have funds for them — that's data).
   for (const h of offersHere) {
+    // Mercenary offers aren't part of the progression audit yet — Phase 2.
+    if (h.role === "mercenary") continue;
     const tier = (h.tier as 1 | 2 | 3);
     if (tier !== 1 && tier !== 2 && tier !== 3) continue;
     const k: CrewKey = `${h.role}_T${tier}`;
@@ -205,7 +207,10 @@ function tryAutoHire(world: World, ship: Trader, record: Map<CrewKey, CrewRecord
     if (!candidate) continue;
     const r = hireCrew(world, ship, candidate.id);
     if (r.ok) {
-      const k: CrewKey = `${candidate.role}_T${candidate.tier as 1 | 2 | 3}`;
+      // `role` is the narrowed audit role; `candidate.role` is the broader
+      // CrewRole. Use the loop variable so the CrewKey template stays
+      // type-safe.
+      const k: CrewKey = `${role}_T${candidate.tier as 1 | 2 | 3}`;
       const rec = record.get(k);
       if (rec) {
         const last = rec.hiredTicks[rec.hiredTicks.length - 1];

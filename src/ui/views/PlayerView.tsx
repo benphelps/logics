@@ -3817,7 +3817,7 @@ function HireOfferCard({
 }
 
 const ROLE_SHORT: Record<CrewRole, string> = {
-  captain: "Pilot", navigator: "Navigator", mechanic: "Mechanic",
+  captain: "Pilot", navigator: "Navigator", mechanic: "Mechanic", mercenary: "Mercenary",
 };
 
 function tierClass(tier: number): "high" | "medium" | "low" {

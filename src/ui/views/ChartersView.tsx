@@ -21,7 +21,7 @@ import {
   GiPathDistance,
   GiProcessor,
 } from "react-icons/gi";
-import type { ShipLogEntry, ShipLogTone, Syndicate, TradeRecord, Trader, World } from "../../sim/types";
+import type { Encounter, ShipLogEntry, ShipLogTone, Syndicate, TradeRecord, Trader, World } from "../../sim/types";
 import { useStore } from "../store";
 import { useIsMobile } from "../useIsMobile";
 import { defaultMobilePanelId } from "../mobilePanels";
@@ -77,6 +77,7 @@ export function ChartersView() {
   const playerShips = (world.player?.shipIds ?? [])
     .map(id => world.traders[id])
     .filter((t): t is Trader => Boolean(t));
+  const encounterCount = world.encounterHistory?.length ?? 0;
   // Count ship.log + ship.stockTrades — the Ledger Log feed shows both,
   // so the badge needs to reflect both. Older archived entries live in
   // IDB and are paginated in lazily.
@@ -113,6 +114,13 @@ export function ChartersView() {
           </button>
           <button
             type="button"
+            className={`bridge-tab ${ledgerTab === "combat" ? "active" : ""}`}
+            onClick={() => setLedgerTab("combat")}
+          >
+            Combat <span className="bridge-tab-count">{encounterCount}</span>
+          </button>
+          <button
+            type="button"
             className={`bridge-tab ${ledgerTab === "log" ? "active" : ""}`}
             onClick={() => setLedgerTab("log")}
           >
@@ -121,6 +129,7 @@ export function ChartersView() {
         </div>
         {ledgerTab === "charters" && <ChartersTabBody world={world} progress={progress} />}
         {ledgerTab === "syndicates" && <SyndicatesTabBody world={world} syndicates={syndicates} />}
+        {ledgerTab === "combat" && <CombatTabBody world={world} />}
         {ledgerTab === "log" && <LogTabBody ships={playerShips} />}
       </section>
 
@@ -425,6 +434,81 @@ function SyndicateRepCard({ syndicate, isPlayer, reputation }: {
     </div>
   );
 }
+
+// --- Combat tab (encounter feed) ---------------------------------------
+
+function CombatTabBody({ world }: { world: World }) {
+  const history = world.encounterHistory ?? [];
+  // Newest-first.
+  const entries = useMemo(() => [...history].reverse(), [history]);
+  const headArt = headerArtUrl("contractBoard");
+  return (
+    <>
+      <div className="charters-badges-head" style={artCardStyle(headArt)}>
+        <div className="charters-badges-head-main">
+          <span className="charters-badges-eyebrow">Hostile contacts · resolutions</span>
+          <span className="charters-badges-name">Combat</span>
+        </div>
+        <div className="charters-badges-head-stat">
+          <span className="charters-badges-head-stat-num mono">{history.length}</span>
+          <span className="charters-badges-head-stat-label">encounters</span>
+        </div>
+      </div>
+      <div className="charters-badges-body ledger-log-body" data-scroll-key="ledger:combat">
+        {entries.length === 0 ? (
+          <p className="ledger-log-empty dim">No combat on record. Encounters happen during transit — keep an eye out at borders, with valuable cargo, or in foreign territory.</p>
+        ) : (
+          <ol className="ledger-log-list">
+            {entries.map((enc) => (
+              <CombatEntry key={enc.id} world={world} encounter={enc} />
+            ))}
+          </ol>
+        )}
+      </div>
+    </>
+  );
+}
+
+function CombatEntry({ world, encounter }: { world: World; encounter: Encounter }) {
+  const r = encounter.resolution;
+  const tone: ShipLogTone = !r ? "warn"
+    : r.outcome === "won" || r.outcome === "escaped" ? "good"
+    : r.outcome === "lost" || r.outcome === "negotiated_fail" ? "bad"
+    : "warn";
+  const ship = world.traders[encounter.shipId];
+  const shipName = ship?.name ?? "—";
+  const route = `${world.locations[encounter.fromLocation]?.name ?? encounter.fromLocation} → ${world.locations[encounter.toLocation]?.name ?? encounter.toLocation}`;
+  const outcomeLabel = !r ? "pending" : OUTCOME_LABEL[r.outcome];
+  const choiceLabel = !r ? "—" : r.choice;
+  const lossText = (() => {
+    if (!r?.loss) return "no losses";
+    const parts: string[] = [];
+    for (const c of r.loss.cargo) parts.push(`${c.qty} ${world.goods[c.good]?.name ?? c.good}`);
+    if (r.loss.credits > 0) parts.push(`Ç${Math.round(r.loss.credits).toLocaleString()}`);
+    if (r.loss.hull > 0) parts.push(`${r.loss.hull} hull`);
+    return parts.length > 0 ? parts.join(", ") : "no losses";
+  })();
+  return (
+    <li className={`ledger-log-entry tone-${tone}`}>
+      <span className="ledger-log-tick mono">t{r?.tick ?? encounter.spawnedAt}</span>
+      <span className="ledger-log-ship" title={shipName}>{shipName}</span>
+      <span className="ledger-log-kind">{choiceLabel} · {outcomeLabel}</span>
+      <span className="ledger-log-msg">
+        {encounter.attacker.name} {route} — {lossText}
+      </span>
+    </li>
+  );
+}
+
+const OUTCOME_LABEL: Record<NonNullable<Encounter["resolution"]>["outcome"], string> = {
+  won: "won",
+  lost: "lost",
+  escaped: "escaped",
+  fled_damaged: "fled, damaged",
+  negotiated_peace: "talked down",
+  negotiated_partial: "paid off",
+  negotiated_fail: "negotiation failed",
+};
 
 // --- right-side player info panel -------------------------------------
 

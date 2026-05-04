@@ -42,6 +42,10 @@ import { randomPilotName } from "./pilotNames";
 import { rollCrewIdentity } from "../sim/crewIdentity";
 import { mulberry32 } from "../sim/gen/rng";
 import { generateShipName } from "../sim/gen/names";
+import { resolvePendingEncounter as simResolvePendingEncounter } from "../sim/combat/encounters";
+import { encounterLogMessage, encounterLogTone } from "../sim/combat/log";
+import { pushShipLog } from "../sim/log";
+import type { EncounterChoice } from "../sim/types";
 
 export type Speed = 0 | 1 | 4 | 16;
 
@@ -517,6 +521,11 @@ interface UiState {
   togglePause: () => void;
   step: () => void;
   stepN: (n: number) => void;
+  // Resolve a pending combat encounter with the player's choice. No-op when
+  // there's no pending encounter. Mutates ship state, records the encounter
+  // in world.encounterHistory, and clears world.pendingEncounter so the tick
+  // driver resumes.
+  resolveEncounter: (choice: EncounterChoice) => void;
   reset: () => void;
   saveCurrentGame: () => void;
   createGame: () => void;
@@ -835,6 +844,10 @@ export const useStore = create<UiState>((set, get) => {
     togglePause: () => set({ speed: get().speed === 0 ? 1 : 0 }),
     step: () => {
       const w = get().world;
+      // Combat encounters block tick advance until the player resolves them.
+      // The tick driver gates on this too, but step is also called manually
+      // from "Step" buttons — guard at the source.
+      if (w.pendingEncounter) return;
       const report = tickWorld(w);
       if (report.hiresExpired.length > 0) {
         releaseCrewHeadshots(get().activeSaveId, report.hiresExpired);
@@ -849,6 +862,9 @@ export const useStore = create<UiState>((set, get) => {
       const expired: string[] = [];
       const newsSpawned: ActiveNewsEvent[] = [];
       for (let i = 0; i < n; i++) {
+        // Stop early if an encounter spawned mid-batch (transit ticks roll
+        // for encounters; the modal needs to interrupt the rest of the run).
+        if (w.pendingEncounter) break;
         const report = tickWorld(w);
         if (report.hiresExpired.length > 0) expired.push(...report.hiresExpired);
         if (report.newsSpawned.length > 0) newsSpawned.push(...report.newsSpawned);
@@ -857,6 +873,26 @@ export const useStore = create<UiState>((set, get) => {
       if (newsSpawned.length > 0) {
         set({ newsToasts: [...get().newsToasts, ...newsSpawned].slice(-6) });
       }
+      persistCurrentGame();
+    },
+    resolveEncounter: (choice) => {
+      const w = get().world;
+      if (!w.pendingEncounter) return;
+      const encounter = simResolvePendingEncounter(w, choice);
+      if (encounter) {
+        const ship = w.traders[encounter.shipId];
+        if (ship) {
+          pushShipLog(ship, {
+            tick: w.tick,
+            kind: "encounter",
+            message: encounterLogMessage(w, encounter),
+            tone: encounterLogTone(encounter),
+          });
+        }
+      }
+      // World is mutated in place (same ref) — bump tickEpoch so memoized
+      // selectors that key off it recompute their snapshots.
+      set({ tickEpoch: get().tickEpoch + 1 });
       persistCurrentGame();
     },
     dismissNewsToast: (uid) => {
