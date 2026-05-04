@@ -92,6 +92,11 @@ export interface CargoLot {
   unitPrice: number;        // weighted-average cost basis per unit
   purchasedAt: number;      // tick of first purchase (oldest, for age calculations)
   unloadTicksRemaining?: number; // only set for lots in trader.unloadingCargo — each lot drips on its own schedule
+  // Drip-aggregation fields. Set when the lot enters unloadingCargo so we
+  // can emit ONE "sold N at avg price" event once the drip completes,
+  // instead of N "sold 0/sold 1" entries while it's in flight.
+  unloadOriginalQty?: number;
+  unloadProceedsSum?: number;
 }
 
 export type CrewRole = "captain" | "navigator" | "mechanic";    // captain is displayed as Pilot; mercenary reserved for combat-era

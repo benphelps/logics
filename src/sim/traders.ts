@@ -304,7 +304,15 @@ function settleUnloadedCargo(world: World, trader: Trader, lot: CargoLot, qty: n
   const settlement = settleSale(dstMarket, unitPrice, qty);
   trader.funds += settlement.traderRevenue;
   noteSyndicateRevenue(world, trader.id, settlement.traderRevenue);
-  events.push({ trader: trader.id, kind: "sell", good: lot.good, qty, unitPrice: settlement.effectiveUnitPrice, to: trader.location });
+  // Drip-aggregated path: when the lot tracks unloadOriginalQty, we
+  // accumulate proceeds and only emit a single sell event when the lot
+  // fully drains (handled by the caller). Otherwise (instant unload)
+  // emit one event per call as before.
+  if (lot.unloadOriginalQty != null) {
+    lot.unloadProceedsSum = (lot.unloadProceedsSum ?? 0) + settlement.traderRevenue;
+  } else {
+    events.push({ trader: trader.id, kind: "sell", good: lot.good, qty, unitPrice: settlement.effectiveUnitPrice, to: trader.location });
+  }
   creditJobOnDelivery(world, trader.id, trader.location, lot.good, qty);
   // Selling cargo at a station counts as activity by the trader's
   // syndicate — bumps territory control by trade volume. Player sells
@@ -328,7 +336,10 @@ function beginUnloadLots(world: World, trader: Trader, lots: CargoLot[], events:
     for (const lot of lots) settleUnloadedCargo(world, trader, lot, lot.qty, events);
     return;
   }
-  const movedLots = lots.map(l => ({ ...l, unloadTicksRemaining: ticks }));
+  // Snapshot the lot's original qty so we can emit ONE summary "sold N
+  // at avg Ç" event once the drip completes, instead of one per drip
+  // tick (which would round to "Sold 0" for fractional drip amounts).
+  const movedLots = lots.map(l => ({ ...l, unloadTicksRemaining: ticks, unloadOriginalQty: l.qty, unloadProceedsSum: 0 }));
   trader.unloadingCargo = [...(trader.unloadingCargo ?? []), ...movedLots];
 }
 
@@ -1015,6 +1026,15 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
       settleUnloadedCargo(world, trader, lot, dripQty, events);
       lot.qty -= dripQty;
       lot.unloadTicksRemaining = ticksLeft - 1;
+      // Lot finished draining — emit one summary "sold N at avg Ç" event
+      // for the entire unload using the snapshot we took at begin time.
+      const lotDone = lot.qty <= 0.001 || (lot.unloadTicksRemaining ?? 0) <= 0;
+      if (lotDone && lot.unloadOriginalQty != null) {
+        const totalQty = lot.unloadOriginalQty;
+        const totalProceeds = lot.unloadProceedsSum ?? 0;
+        const avgUnit = totalQty > 0 ? totalProceeds / totalQty : 0;
+        events.push({ trader: trader.id, kind: "sell", good: lot.good, qty: totalQty, unitPrice: avgUnit, to: trader.location });
+      }
     }
     trader.unloadingCargo = buf.filter(l => l.qty > 0.001 && (l.unloadTicksRemaining ?? 0) > 0);
     if (trader.unloadingCargo.length === 0) trader.unloadingCargo = undefined;

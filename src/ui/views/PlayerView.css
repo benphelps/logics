@@ -515,7 +515,7 @@
 }
 
 .ship-pilot-entry::before {
-  background: rgba(96, 106, 118, 0.10);
+  background: rgba(96, 106, 118, 0.1);
   width: 0;
 }
 
@@ -2662,7 +2662,7 @@ button.upgrade-remove-pill {
 }
 
 .exchange-section-title {
-  padding: 2px var(--bridge-table-pad-x) 0;
+  padding: 2px;
   color: var(--text-faint);
   font-size: 9px;
   font-weight: 750;
@@ -2733,6 +2733,14 @@ button.upgrade-remove-pill {
   align-content: flex-start;
   margin: 0 0 16px;
   padding-bottom: 14px;
+}
+
+/* When no meta row is rendered (e.g. ship info panel), give the
+   scrolling content a top buffer so it sits clear of the art splash
+   gradient. */
+.info-area-card.art-card:has(.info-panel-fixed:not(:has(.trade-helper-meta)))
+  .info-panel-scroll {
+  padding-top: 20px;
 }
 
 .info-area-card {
@@ -2861,7 +2869,6 @@ button.upgrade-remove-pill {
   position: relative;
   z-index: 2;
   flex: 0 0 auto;
-  /* Match the table-cell horizontal indent (28px) for the panel header. */
   padding: 0 var(--bridge-table-pad-x);
 }
 
@@ -2943,6 +2950,124 @@ button.upgrade-remove-pill {
   margin-top: -4px;
 }
 
+/* Ship info card — wallet "price" badge in the panel header (mirrors
+   the Exchange listing's right-side price quote). */
+.ship-info-quote {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.ship-info-quote .price.big {
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* Mini list sections used inside the ship info card body for held
+   stock positions and the most recent ship actions. Compact rows so
+   they stack neatly without stealing scroll space from the metrics. */
+.ship-info-list-section {
+  margin: 0;
+  padding-top: 12px;
+}
+
+.ship-info-mini-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.ship-info-mini-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 22px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.025);
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.ship-info-mini-side {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0;
+  background: rgba(108, 217, 154, 0.15);
+  color: #6cd99a;
+}
+
+.ship-info-mini-side.short {
+  background: rgba(239, 111, 125, 0.15);
+  color: #ef6f7d;
+}
+
+.ship-info-mini-ticker {
+  flex: 0 0 auto;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+}
+
+.ship-info-mini-meta,
+.ship-info-mini-message {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+}
+
+.ship-info-mini-value {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ship-info-mini-value.good {
+  color: var(--good, #6cd99a);
+}
+
+.ship-info-mini-value.bad {
+  color: var(--bad, #ef6f7d);
+}
+
+.ship-info-mini-tick {
+  flex: 0 0 auto;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.ship-info-mini-kind {
+  flex: 0 0 auto;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.ship-info-list-empty {
+  padding: 6px 0;
+  font-size: 11px;
+  font-style: italic;
+}
+
 /* Syndicate ownership chip in the station-info meta row. Keys off the
    syndicate's accent (set inline via borderColor + color) so the tag
    reads as the controlling faction's brand mark. */
@@ -3017,6 +3142,10 @@ button.upgrade-remove-pill {
   min-width: 0;
 }
 
+.info-panel-scroll:has(.station-info-grid) {
+  margin-top: 42px;
+}
+
 .trade-helper-section {
   display: grid;
   gap: 7px;
@@ -3026,7 +3155,7 @@ button.upgrade-remove-pill {
 }
 
 .trade-helper-section .exchange-section-title {
-  padding: 0;
+  padding: 2px;
 }
 
 .trade-helper-line {
@@ -3820,8 +3949,13 @@ button.upgrade-remove-pill {
 }
 
 @keyframes btn-suggested-pulse-hint {
-  0%, 100% { box-shadow: 0 0 0 2px rgba(79, 182, 255, 0.32); }
-  50% { box-shadow: 0 0 0 4px rgba(79, 182, 255, 0); }
+  0%,
+  100% {
+    box-shadow: 0 0 0 2px rgba(79, 182, 255, 0.32);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(79, 182, 255, 0);
+  }
 }
 
 /* Critical-suggested = urgent action (e.g. low fuel / hull) — same
@@ -3844,8 +3978,13 @@ button.upgrade-remove-pill {
 }
 
 @keyframes btn-suggested-pulse-critical {
-  0%, 100% { box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.32); }
-  50% { box-shadow: 0 0 0 4px rgba(248, 113, 113, 0); }
+  0%,
+  100% {
+    box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.32);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(248, 113, 113, 0);
+  }
 }
 
 .btn-suggested-critical .ship-meter-label {
@@ -4106,7 +4245,9 @@ button.upgrade-remove-pill {
 
 /* Acquire actions — green */
 .upgrade-table .btn-action.primary,
-.player-view .upgrade-card-actions .btn-action.primary:not(.upgrade-sell-action),
+.player-view
+  .upgrade-card-actions
+  .btn-action.primary:not(.upgrade-sell-action),
 .player-view .crew-card-actions .btn-action.crew-card-action.primary,
 .crew-table .btn-action.primary {
   background: rgba(108, 217, 154, 0.15) !important;
@@ -4117,8 +4258,12 @@ button.upgrade-remove-pill {
 }
 
 .upgrade-table .btn-action.primary:hover:not(:disabled),
-.player-view .upgrade-card-actions .btn-action.primary:not(.upgrade-sell-action):hover:not(:disabled),
-.player-view .crew-card-actions .btn-action.crew-card-action.primary:hover:not(:disabled),
+.player-view
+  .upgrade-card-actions
+  .btn-action.primary:not(.upgrade-sell-action):hover:not(:disabled),
+.player-view
+  .crew-card-actions
+  .btn-action.crew-card-action.primary:hover:not(:disabled),
 .crew-table .btn-action.primary:hover:not(:disabled) {
   background: rgba(108, 217, 154, 0.24) !important;
   border-color: #6cd99a !important;
@@ -4127,7 +4272,9 @@ button.upgrade-remove-pill {
 
 /* Release actions — red */
 .player-view .upgrade-card-actions .btn-action.upgrade-sell-action,
-.player-view .crew-card-actions .btn-action.crew-card-action:not(.primary):not(.btn-suggested) {
+.player-view
+  .crew-card-actions
+  .btn-action.crew-card-action:not(.primary):not(.btn-suggested) {
   background: rgba(239, 111, 125, 0.15) !important;
   border-color: #ef6f7d !important;
   color: #ef6f7d !important;
@@ -4135,8 +4282,14 @@ button.upgrade-remove-pill {
   box-shadow: none !important;
 }
 
-.player-view .upgrade-card-actions .btn-action.upgrade-sell-action:hover:not(:disabled),
-.player-view .crew-card-actions .btn-action.crew-card-action:not(.primary):not(.btn-suggested):hover:not(:disabled) {
+.player-view
+  .upgrade-card-actions
+  .btn-action.upgrade-sell-action:hover:not(:disabled),
+.player-view
+  .crew-card-actions
+  .btn-action.crew-card-action:not(.primary):not(.btn-suggested):hover:not(
+    :disabled
+  ) {
   background: rgba(239, 111, 125, 0.24) !important;
   border-color: #ef6f7d !important;
   color: #ef6f7d !important;

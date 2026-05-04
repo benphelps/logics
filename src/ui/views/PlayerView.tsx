@@ -33,7 +33,7 @@ import { listShipyardInventory } from "../../sim/shipyards";
 import { selectRefuelType, UNLOAD_TICKS, unloadTicksRemainingFor } from "../../sim/traders";
 import { UPGRADE_SLOTS, installedUpgrade, isUpgradeGood, upgradeDef, upgradeEffectText } from "../../sim/upgrades";
 import type { CrewModifiers, CrewRole, Equity } from "../../sim/types";
-import type { CrewMember, GoodId, Job, JobId, LocationDef, LocationId, ShipBlueprint, ShipLogEntry, ShipTrait, Trader, TraderId, UpgradeSlot, World } from "../../sim/types";
+import type { CrewMember, GoodId, Job, JobId, LocationDef, LocationId, ShipBlueprint, ShipLogEntry, ShipTrait, StockPosition, Trader, TraderId, UpgradeSlot, World } from "../../sim/types";
 import { parseBasisUnderlying, priceChangePct } from "../../sim/stock";
 import { useCrewHeadshot } from "../headshots";
 import { goodArtUrl, shipArtUrl, stationArtUrl, stationKind, stationKindLabel, stationScale, stationScaleLabel, stationSubtype, stationSubtypeLabel } from "../art";
@@ -948,7 +948,7 @@ function InfoPanelFrame({ eyebrow, title, badge, meta, metaClassName = "", child
   eyebrow: string;
   title: string;
   badge?: ReactNode;
-  meta: ReactNode;
+  meta?: ReactNode;
   metaClassName?: string;
   children: ReactNode;
 }) {
@@ -963,9 +963,11 @@ function InfoPanelFrame({ eyebrow, title, badge, meta, metaClassName = "", child
           {badge}
         </header>
 
-        <div className={`trade-helper-meta ${metaClassName}`}>
-          {meta}
-        </div>
+        {meta != null && (
+          <div className={`trade-helper-meta ${metaClassName}`}>
+            {meta}
+          </div>
+        )}
       </div>
 
       <div className="info-panel-scroll" data-scroll-key={`fleet:info:${eyebrow}:${title}`}>
@@ -2202,67 +2204,111 @@ function ShipInfoPanelContent({ ship, world }: { ship: Trader; world: World }) {
   const installedCount = Object.keys(ship.upgrades ?? {}).length;
   const crewCount = Object.keys(ship.crew ?? {}).length;
   const fuelQty = ship.currentFuel?.qty ?? 0;
-  const fuelName = ship.currentFuel ? world.goods[ship.currentFuel.good]?.name ?? ship.currentFuel.good : "No fuel";
   const debt = ship.maintenanceDebt ?? 0;
   const hullDamagePct = Math.max(0, Math.min(100, (debt / MAINTENANCE_DEBT_TRAVEL_BLOCK) * 100));
-  const locationName = ship.state === "transit"
-    ? world.locations[ship.destination!]?.name ?? ship.destination
-    : world.locations[ship.location]?.name ?? ship.location;
   const wage = totalCrewWage(ship);
+  const positions = Object.values(ship.stockPositions ?? {});
+  const recentActions = (ship.log ?? []).slice(-5).reverse();
 
   return (
     <InfoPanelFrame
       eyebrow="Ship info"
       title={ship.name}
-      badge={<span className="station-kind-pill station-kind-frontier">{ship.pilot}</span>}
-      metaClassName="station-info-tags"
-      meta={(
-        <>
-          <span>{ship.state}</span>
-          <span>{locationName}</span>
-          <span>{fuelName}</span>
-        </>
+      badge={(
+        <div className="ship-info-quote">
+          <span className="price big mono">Ç{Math.round(ship.funds).toLocaleString()}</span>
+        </div>
       )}
     >
       {ship.state === "transit" && <TransitProgress ship={ship} world={world} />}
 
       <dl className="trade-helper-grid station-info-grid">
-        <Stat label="wallet" value={`Ç${Math.round(ship.funds).toLocaleString()}`} />
         <Stat label="cargo" value={`${cargoUsed.toFixed(0)} / ${ship.capacity}`} />
         <Stat label="fuel" value={`${fuelQty.toFixed(0)} / ${ship.fuelCapacity}`} />
         <Stat label="hull damage" value={`${Math.round(hullDamagePct)}%`} />
-        <Stat label="speed" value={ship.speed.toLocaleString()} />
         <Stat label="hull" value={(ship.hull ?? ship.baseHull ?? 1).toLocaleString()} />
+        <Stat label="speed" value={ship.speed.toLocaleString()} />
+        <Stat label="weapons" value={(ship.weaponPower ?? ship.baseWeaponPower ?? 0).toLocaleString()} />
+        <Stat label="upgrades" value={`${installedCount} / 5`} />
+        <Stat label="crew" value={`${crewCount} / 3`} />
+        <Stat label="service debt" value={`Ç${Math.round(debt).toLocaleString()}`} />
+        <Stat label="wages" value={`Ç${Math.round(wage).toLocaleString()}/t`} />
       </dl>
 
-      <div className="trade-helper-section">
-        <div className="exchange-section-title">Systems</div>
-        <div className="trade-helper-line">
-          <span><IconLabel icon={GiFactory}>Upgrade slots</IconLabel></span>
-          <span className="mono">{installedCount} / 5</span>
-        </div>
-        <div className="trade-helper-line">
-          <span><IconLabel icon={GiAstronautHelmet}>Crew</IconLabel></span>
-          <span className="mono">{crewCount} / 3</span>
-        </div>
-        <div className="trade-helper-line">
-          <span><IconLabel icon={GiRadarSweep}>Weapons</IconLabel></span>
-          <span className="mono">{(ship.weaponPower ?? ship.baseWeaponPower ?? 0).toLocaleString()}</span>
-        </div>
-      </div>
-
-      <div className="trade-helper-section">
-        <div className="exchange-section-title">Upkeep</div>
-        <div className="trade-helper-line">
-          <span>Service debt</span>
-          <span className={`mono ${debt > 0 ? "warn" : ""}`}>Ç{Math.round(debt).toLocaleString()}</span>
-        </div>
-        <div className="trade-helper-line">
-          <span>Crew wages</span>
-          <span className="mono">Ç{Math.round(wage).toLocaleString()}/t</span>
-        </div>
-      </div>
+      <ShipActionsList entries={recentActions} />
+      <ShipPositionsList positions={positions} world={world} />
     </InfoPanelFrame>
+  );
+}
+
+function ShipPositionsList({ positions, world }: { positions: StockPosition[]; world: World }) {
+  type Enriched = { pos: StockPosition; eq: typeof world.equities[string]; pnl: number; pnlPct: number };
+  const enriched: Enriched[] = [];
+  for (const pos of positions) {
+    const eq = world.equities[pos.equityId];
+    if (!eq) continue;
+    const direction = pos.kind === "long" ? 1 : -1;
+    const pnl = (eq.price - pos.avgEntryPrice) * pos.shares * direction;
+    const basis = pos.avgEntryPrice * pos.shares;
+    const pnlPct = basis > 0 ? (pnl / basis) * 100 : 0;
+    enriched.push({ pos, eq, pnl, pnlPct });
+  }
+  enriched.sort((a, b) => b.pnlPct - a.pnlPct);
+  const TOP_N = 10;
+  const top = enriched.slice(0, TOP_N);
+  const rest = enriched.slice(TOP_N);
+  const restPnl = rest.reduce((s, e) => s + e.pnl, 0);
+  const restTone = restPnl > 0 ? "good" : restPnl < 0 ? "bad" : "";
+
+  return (
+    <section className="ship-info-list-section">
+      <div className="exchange-section-title">Positions</div>
+      {enriched.length === 0 ? (
+        <div className="ship-info-list-empty dim">No open positions.</div>
+      ) : (
+        <ul className="ship-info-mini-list">
+          {top.map(({ pos, eq, pnl, pnlPct }) => {
+            const tone = pnl > 0 ? "good" : pnl < 0 ? "bad" : "";
+            return (
+              <li key={pos.equityId} className="ship-info-mini-row">
+                <span className={`ship-info-mini-side ${pos.kind}`}>{pos.kind === "long" ? "L" : "S"}</span>
+                <span className="ship-info-mini-ticker mono">{eq.ticker}</span>
+                <span className="ship-info-mini-meta dim mono">{pos.shares.toLocaleString()} sh @ Ç{pos.avgEntryPrice.toFixed(2)}</span>
+                <span className={`ship-info-mini-value mono ${tone}`}>{pnl >= 0 ? "+" : ""}Ç{Math.round(pnl).toLocaleString()} ({pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(1)}%)</span>
+              </li>
+            );
+          })}
+          {rest.length > 0 && (
+            <li className="ship-info-mini-row ship-info-mini-summary">
+              <span className="ship-info-mini-ticker dim">+{rest.length} more</span>
+              <span className="ship-info-mini-meta dim mono">{rest.length === 1 ? "position" : "positions"}</span>
+              <span className={`ship-info-mini-value mono ${restTone}`}>{restPnl >= 0 ? "+" : ""}Ç{Math.round(restPnl).toLocaleString()}</span>
+            </li>
+          )}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function ShipActionsList({ entries }: { entries: ShipLogEntry[] }) {
+  return (
+    <section className="ship-info-list-section">
+      <div className="exchange-section-title">Actions</div>
+      {entries.length === 0 ? (
+        <div className="ship-info-list-empty dim">No recorded actions yet.</div>
+      ) : (
+        <ul className="ship-info-mini-list">
+          {entries.map((entry, i) => (
+            <li key={`${entry.tick}-${i}`} className={`ship-info-mini-row ${entry.tone ?? ""}`}>
+              <span className="ship-info-mini-tick mono dim">t{entry.tick.toLocaleString()}</span>
+              <span className="ship-info-mini-kind dim">{entry.kind}</span>
+              <span className="ship-info-mini-message">{entry.message}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
