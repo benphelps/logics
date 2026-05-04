@@ -35,6 +35,7 @@ import {
   resolveEncounter,
 } from "./combat/encounters";
 import { encounterLogMessage, encounterLogTone } from "./combat/log";
+import { DEV_MODE } from "../ui/devMode";
 import {
   buyDiscountFraction,
   combinedShipModifiers,
@@ -1022,7 +1023,13 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
     if (isPlayerShip(world, trader) && !world.pendingEncounter) {
       const encounter = maybeSpawnEncounter(world, trader);
       if (encounter) {
-        if (trader.pilot === "manual") {
+        // Dev affordance: when ?dev=1 and the ship has no mercenary aboard,
+        // surface the modal even on autopilot so the encounter is visible
+        // without having to swap to manual every time. Production play with
+        // autopilot still resolves silently via policy.
+        const devPauseOnAuto = DEV_MODE && !trader.crew?.mercenary;
+        const shouldPause = trader.pilot === "manual" || devPauseOnAuto;
+        if (shouldPause) {
           // Stamp pending — modal handles the choice; the encounter consumes
           // this transit tick, so don't decrement ticksRemaining.
           world.pendingEncounter = encounter;
