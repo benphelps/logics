@@ -345,9 +345,27 @@ export interface TraderEvent {
   to?: LocationId;
 }
 
+export interface Pilot {
+  // Display name; also seeds the save game name on creation.
+  name: string;
+  identity: CrewIdentity;
+  // Optional free-text outfit/vibe the player wrote into the wizard.
+  // Forwarded to the headshot API as the `clothing` field so the
+  // generated face matches what they imagined.
+  clothing?: string;
+  // Stable subjectId for headshot lookup. We bind this to the saved pilot
+  // so the same face renders in the save card across reloads, and so the
+  // headshot service caches one image per pilot per save.
+  portraitId: string;
+}
+
 export interface Player {
   funds: number;
   shipIds: TraderId[];
+  // The captain at the helm of this save. Optional for back-compat with
+  // saves that pre-date the new-player wizard — older slots fall back to
+  // a silhouette + the slot name in the save card.
+  pilot?: Pilot;
   // Long-only legacy holdings, kept around for save migration. Replaced by
   // `positions`. New writes always go through positions; this field is
   // backfilled from positions on read so downstream readers don't break

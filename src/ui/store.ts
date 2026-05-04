@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { CrewMember, CrewRole, Equity, EquityId, Job, World, LocationId, GoodId, JobId, SyndicateId, Trader, TraderId, UpgradeSlot } from "../sim/types";
+import type { CrewMember, CrewRole, Equity, EquityId, Job, World, LocationId, GoodId, JobId, Pilot, SyndicateId, Trader, TraderId, UpgradeSlot } from "../sim/types";
 import type { ActiveNewsEvent } from "../sim/news/types";
 import { createStartingWorld, DEFAULT_STARTING_WORLD, randomStartingWorldSeed } from "../sim/start";
 import { generateWorld } from "../sim/gen/world";
@@ -38,12 +38,32 @@ import {
   type SaveSlotSummary,
   type SaveStatus,
 } from "./saveGames";
+import { randomPilotName } from "./pilotNames";
+import { rollCrewIdentity } from "../sim/crewIdentity";
+import { mulberry32 } from "../sim/gen/rng";
 
 export type Speed = 0 | 1 | 4 | 16;
 
 // Whether the new-game picker is replacing the current save (reset) or
 // minting a new slot (create). Drives what confirmNewGame does on commit.
 export type NewGameIntent = "create" | "reset";
+
+// Phases of the new-game wizard. The intro phase only fires on a true
+// first launch (no prior saves); reset / create-from-menu skip it since
+// the player already knows the game.
+export type NewGamePhase = "intro" | "pilot" | "syndicate";
+
+// Editable pilot draft held during the wizard. Bound to a stable
+// portraitId per session so the headshot service caches one image per
+// pilot per save; rerolling the portrait bumps the variant counter to
+// force a fresh subjectId.
+export interface PilotDraft {
+  name: string;
+  identity: import("../sim/types").CrewIdentity;
+  clothing: string;
+  portraitId: string;
+  portraitVariant: number;
+}
 
 export interface PendingNewGame {
   intent: NewGameIntent;
@@ -54,6 +74,8 @@ export interface PendingNewGame {
   // seed); confirmNewGame re-runs the seed through createStartingWorld
   // with the chosen syndicateId to produce the real, ageed world.
   previewWorld: World;
+  phase: NewGamePhase;
+  pilotDraft: PilotDraft;
 }
 
 // "Seeding world" overlay state. After a syndicate is picked we run
@@ -122,6 +144,23 @@ const initialGame = loadInitialGame(() => createStartingWorld());
 // generated world sits behind the modal as a placeholder; confirming
 // the picker re-rolls the world with the chosen syndicate. Cancelling
 // keeps the placeholder world (a sensible default).
+function makePilotDraft(): PilotDraft {
+  // Identity is rolled with a fresh rng so the wizard opens with sensible
+  // defaults (race/sex/age toggles can re-roll). The portraitId carries a
+  // random suffix because the headshot service keys uniqueness on
+  // (gameId, subjectId) and the gameId isn't decided until the save is
+  // committed; using a random local id keeps preview generations from
+  // colliding across multiple wizard sessions.
+  const rng = mulberry32(Date.now() ^ Math.floor(Math.random() * 0x7fffffff));
+  return {
+    name: randomPilotName(),
+    identity: rollCrewIdentity(rng),
+    clothing: "",
+    portraitId: `pilot_${Math.random().toString(36).slice(2, 10)}`,
+    portraitVariant: 0,
+  };
+}
+
 function buildFreshStartPending(): PendingNewGame {
   const seed = randomStartingWorldSeed();
   const previewWorld = generateWorld({
@@ -130,7 +169,13 @@ function buildFreshStartPending(): PendingNewGame {
     traderCount: DEFAULT_STARTING_WORLD.traderCount,
     player: null,
   });
-  return { intent: "create", seed, previewWorld };
+  return {
+    intent: "create",
+    seed,
+    previewWorld,
+    phase: "intro",
+    pilotDraft: makePilotDraft(),
+  };
 }
 const initialPendingNewGame: PendingNewGame | null = initialGame.isFreshStart
   ? buildFreshStartPending()
@@ -431,6 +476,12 @@ interface UiState {
   createGame: () => void;
   confirmNewGame: (syndicateId: SyndicateId) => void;
   cancelNewGame: () => void;
+  // Wizard-internal navigation. advanceNewGamePhase moves to a specific
+  // phase (no auto-stepping — caller knows where it wants to go).
+  // setPilotDraft replaces the draft in flight; callers pass the next
+  // shape, not a partial.
+  advanceNewGamePhase: (phase: NewGamePhase) => void;
+  setPilotDraft: (draft: PilotDraft) => void;
   loadGame: (id: string) => void;
   deleteGame: (id: string) => void;
   loadDeveloperState: () => void;
@@ -507,7 +558,7 @@ export const useStore = create<UiState>((set, get) => {
     void flushHistoryFromWorld(world)
       .then(() => hydrateHistoryRings(world))
       .then(() => set({ tickEpoch: get().tickEpoch + 1 }))
-      .catch((err) => { console.warn("[logics] history hydrate failed", err); });
+      .catch((err) => { console.warn("[ledgway] history hydrate failed", err); });
   };
 
   // Run a chunked tickWorld loop in the background while pendingSeed is
@@ -633,11 +684,12 @@ export const useStore = create<UiState>((set, get) => {
     stockGuideEnabled: state.stockGuideEnabled,
   });
 
-  // Open the syndicate picker. Generates a preview world (without aging,
-  // since we only need the syndicate roster for the picker) using a fresh
-  // seed; confirmNewGame later re-runs the same seed through
+  // Open the new-game wizard. Generates a preview world (without aging,
+  // since we only need the syndicate roster for the syndicate phase)
+  // using a fresh seed; confirmNewGame later re-runs the same seed through
   // createStartingWorld so the committed world matches what the player
-  // saw in the picker.
+  // saw in the picker. Reset / create-from-menu both skip the intro
+  // (player has played already) and open straight into pilot creation.
   const openNewGameDialog = (intent: NewGameIntent) => {
     const seed = randomStartingWorldSeed();
     const previewWorld = generateWorld({
@@ -646,7 +698,15 @@ export const useStore = create<UiState>((set, get) => {
       traderCount: DEFAULT_STARTING_WORLD.traderCount,
       player: null,
     });
-    set({ pendingNewGame: { intent, seed, previewWorld } });
+    set({
+      pendingNewGame: {
+        intent,
+        seed,
+        previewWorld,
+        phase: "pilot",
+        pilotDraft: makePilotDraft(),
+      },
+    });
   };
 
   const persistCurrentGame = (updates: Partial<Pick<UiState, "lastError" | "speed">> = {}, bumpEpoch = true, immediate = false) => {
@@ -740,13 +800,24 @@ export const useStore = create<UiState>((set, get) => {
     confirmNewGame: (syndicateId) => {
       const pending = get().pendingNewGame;
       if (!pending) return;
+      const draft = pending.pilotDraft;
+      const pilot: Pilot = {
+        name: draft.name.trim() || "Captain",
+        identity: draft.identity,
+        clothing: draft.clothing.trim() || undefined,
+        portraitId: draft.portraitId,
+      };
       // Skip the synchronous tickN aging — the seeding-world phase below
       // runs the same kind of warm-up against a real wall-clock budget,
       // chunked through setTimeout so the UI doesn't freeze.
-      const world = createStartingWorld({ seed: pending.seed, syndicateId, ageTicks: 0 });
+      const world = createStartingWorld({ seed: pending.seed, syndicateId, ageTicks: 0, pilot });
       const intent = pending.intent;
       const slots = get().saveSlots;
-      const name = intent === "create" ? nextSaveName(slots, "Voyager") : get().gameName;
+      // The save name takes the pilot's name on a fresh game so the save
+      // card and the pilot read as the same person; reset keeps the
+      // existing save name (the pilot is the one being recreated, not
+      // the slot).
+      const name = intent === "create" ? nextSaveName(slots, pilot.name) : get().gameName;
       const targetSaveId = intent === "create" ? null : get().activeSaveId;
 
       clearPendingAutosave();
@@ -767,6 +838,16 @@ export const useStore = create<UiState>((set, get) => {
       runSeedingLoop(world, intent, targetSaveId, name);
     },
     cancelNewGame: () => set({ pendingNewGame: null }),
+    advanceNewGamePhase: (phase) => {
+      const pending = get().pendingNewGame;
+      if (!pending) return;
+      set({ pendingNewGame: { ...pending, phase } });
+    },
+    setPilotDraft: (draft) => {
+      const pending = get().pendingNewGame;
+      if (!pending) return;
+      set({ pendingNewGame: { ...pending, pilotDraft: draft } });
+    },
     loadGame: (id) => {
       clearPendingAutosave();
       const session = loadGameSlot(id);
@@ -1013,12 +1094,12 @@ export const useStore = create<UiState>((set, get) => {
 
 declare global {
   interface Window {
-    __LOGICS_CAPTURE_STORE__?: typeof useStore;
+    __LEDGWAY_CAPTURE_STORE__?: typeof useStore;
   }
 }
 
 if (typeof window !== "undefined" && import.meta.env.DEV) {
-  window.__LOGICS_CAPTURE_STORE__ = useStore;
+  window.__LEDGWAY_CAPTURE_STORE__ = useStore;
 }
 
 // Kick off history hydration for the world that was loaded during module
@@ -1028,5 +1109,5 @@ if (typeof window !== "undefined") {
   void flushHistoryFromWorld(initialGame.world)
     .then(() => hydrateHistoryRings(initialGame.world))
     .then(() => useStore.setState({ tickEpoch: useStore.getState().tickEpoch + 1 }))
-    .catch((err) => { console.warn("[logics] history hydrate failed", err); });
+    .catch((err) => { console.warn("[ledgway] history hydrate failed", err); });
 }

@@ -1,4 +1,4 @@
-import type { LocationId, SyndicateId, World } from "./types";
+import type { LocationId, Pilot, SyndicateId, World } from "./types";
 import { DEFAULT_PLAYER_SEED, makePlayer } from "./data/player";
 import { generateWorld } from "./gen/world";
 import { recomputeShipStats } from "./crew";
@@ -19,6 +19,9 @@ export interface StartingWorldOptions {
   // has an outpost) used as the default starting location so a fresh
   // game opens at the player's faction HQ.
   syndicateId?: SyndicateId;
+  // The pilot the player built in the wizard. Stamped onto Player.pilot
+  // so the save card can render their portrait + name.
+  pilot?: Pilot;
 }
 
 export const DEFAULT_STARTING_WORLD = {
@@ -91,5 +94,6 @@ export function createStartingWorld(opts: StartingWorldOptions = {}): World {
   }
   world.traders[made.ship.id] = made.ship;
   world.player = made.player;
+  if (opts.pilot) world.player.pilot = opts.pilot;
   return world;
 }

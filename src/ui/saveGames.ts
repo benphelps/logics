@@ -26,6 +26,11 @@ export interface SaveSlotSummary {
   tick: number;
   createdAt: number;
   updatedAt: number;
+  // Pilot fields surface in the save card without needing to rehydrate
+  // the full world. Optional for back-compat with older saves that
+  // pre-date the new-game wizard.
+  pilotName?: string;
+  pilotPortraitId?: string;
 }
 
 interface PersistedSaveGame extends SaveSlotSummary {
@@ -356,6 +361,7 @@ function writeRegistry(registry: SaveRegistry): SaveWriteResult {
 }
 
 function summarize(save: PersistedSaveGame): SaveSlotSummary {
+  const pilot = save.world.player?.pilot;
   return {
     id: save.id,
     name: save.name,
@@ -363,6 +369,8 @@ function summarize(save: PersistedSaveGame): SaveSlotSummary {
     tick: save.world.tick,
     createdAt: save.createdAt,
     updatedAt: save.updatedAt,
+    pilotName: pilot?.name,
+    pilotPortraitId: pilot?.portraitId,
   };
 }
 
