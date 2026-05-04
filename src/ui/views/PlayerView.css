@@ -71,16 +71,20 @@
   color: white;
 }
 
+/* Default primary action — Exchange-style flat surface bg with the
+   blue accent on the outline + label. Specific contexts (cargo, market
+   tables, upgrade install / sell, crew hire / fire) override the tint
+   to green or red below. */
 .player-view button.primary {
-  background: var(--ship-action-blue);
+  background: rgba(79, 182, 255, 0.14);
   border-color: var(--ship-action-blue-line);
-  color: white;
+  color: #d8efff;
 }
 
 .player-view button.primary:hover:not(:disabled) {
-  background: var(--ship-action-blue-hover);
+  background: rgba(79, 182, 255, 0.22);
   border-color: var(--ship-action-blue-line-hover);
-  color: white;
+  color: #fff;
 }
 
 /* ---- bridge: primary operations layout ---- */
@@ -3242,19 +3246,22 @@ button.upgrade-remove-pill {
   width: auto;
 }
 .col-num {
-  width: 64px;
+  width: 76px;
 }
 .col-held {
-  width: 58px;
+  width: 62px;
 }
 .col-net-sell {
-  width: 84px;
+  width: 96px;
 }
 .col-action {
   width: 296px;
 }
 .market-table .col-action {
-  width: 176px;
+  /* Wide enough for: cell padding-left (9) + +10 button (48) + gap (6) +
+     BUY MAX button (112) + cell padding-right (12) + a few px slack
+     so the right edge mirrors the GOOD column's left padding. */
+  width: 192px;
 }
 .travel-table .col-action {
   width: 132px;
@@ -3744,34 +3751,52 @@ button.upgrade-remove-pill {
 
 /* Button highlight when it is the suggested target. Row-wide hints stay off. */
 
+/* Suggested actions wear the hint-blue accent — surface tint + bright
+   border + pulsing ring to call out a single recommended next step. */
 .btn-suggested {
-  background: var(--ship-action-blue) !important;
-  color: white !important;
-  border-color: var(--ship-action-blue-line) !important;
-  font-weight: 600;
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
-  box-shadow: 0 0 0 2px rgba(31, 111, 168, 0.32);
+  background: rgba(79, 182, 255, 0.16) !important;
+  color: #d8efff !important;
+  border-color: #4fb6ff !important;
+  font-weight: 700;
+  text-shadow: none;
+  box-shadow: 0 0 0 2px rgba(79, 182, 255, 0.32);
+  animation: btn-suggested-pulse-hint 2.4s ease-in-out infinite;
 }
 
 .btn-suggested:hover:not(:disabled) {
-  background: var(--ship-action-blue-hover) !important;
-  border-color: var(--ship-action-blue-line-hover) !important;
-  box-shadow: 0 0 0 2px rgba(42, 117, 173, 0.36);
+  background: rgba(79, 182, 255, 0.24) !important;
+  border-color: #74c4f2 !important;
+  color: #fff !important;
+  box-shadow: 0 0 0 2px rgba(79, 182, 255, 0.4);
 }
 
+@keyframes btn-suggested-pulse-hint {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(79, 182, 255, 0.32); }
+  50% { box-shadow: 0 0 0 4px rgba(79, 182, 255, 0); }
+}
+
+/* Critical-suggested = urgent action (e.g. low fuel / hull) — same
+   shape but red tone. */
 .btn-suggested-critical {
-  background: #7f2f35 !important;
-  color: #fff5f5 !important;
-  border-color: rgba(248, 113, 113, 0.72) !important;
-  font-weight: 600;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.38);
-  box-shadow: 0 0 0 2px rgba(127, 47, 53, 0.38);
+  background: rgba(248, 113, 113, 0.16) !important;
+  color: #ffd0d0 !important;
+  border-color: rgba(248, 113, 113, 0.85) !important;
+  font-weight: 700;
+  text-shadow: none;
+  box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.32);
+  animation: btn-suggested-pulse-critical 2.4s ease-in-out infinite;
 }
 
 .btn-suggested-critical:hover:not(:disabled) {
-  background: #913942 !important;
-  border-color: rgba(255, 151, 151, 0.82) !important;
-  box-shadow: 0 0 0 2px rgba(145, 57, 66, 0.44);
+  background: rgba(248, 113, 113, 0.26) !important;
+  border-color: rgba(255, 151, 151, 0.95) !important;
+  color: #fff !important;
+  box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.4);
+}
+
+@keyframes btn-suggested-pulse-critical {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.32); }
+  50% { box-shadow: 0 0 0 4px rgba(248, 113, 113, 0); }
 }
 
 .btn-suggested-critical .ship-meter-label {
@@ -3869,9 +3894,15 @@ button.upgrade-remove-pill {
 /* unified action button — fixed dimensions across every table */
 .btn-action {
   font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   padding: 0 10px;
   height: 28px;
   width: 108px;
+  background: var(--ship-surface);
+  border: 1px solid var(--ship-line);
+  color: var(--text-dim);
   display: inline-flex;
   align-items: center;
   justify-content: space-between; /* label left, count right */
@@ -3879,12 +3910,233 @@ button.upgrade-remove-pill {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
-  border-radius: 5px;
+  border-radius: 4px;
+}
+
+.btn-action:hover:not(:disabled) {
+  background: var(--ship-surface-raised);
+  color: var(--text);
 }
 
 .btn-action.btn-narrow {
   width: 52px;
   justify-content: center;
+}
+
+/* --- Exchange-style action buttons inside cargo + market tables ---
+   Mirrors .stocks-order-side-btn (StockMarketView): 32px height, flat
+   surface bg, 1px outline, 11px 700 uppercase text, 4px radius. Buy
+   actions on the market table carry a permanent green tint; sell
+   actions on the cargo table carry red. The .btn-suggested pulse ring
+   still rides on top to mark recommended actions. */
+.market-table tbody tr .btn-action,
+.cargo-table tbody tr .btn-action {
+  height: 24px;
+  width: auto;
+  min-width: 84px;
+  padding: 0 10px;
+  background: var(--ship-surface);
+  border: 1px solid var(--ship-line);
+  color: var(--text-dim);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 4px;
+  justify-content: space-between;
+}
+
+/* +10 step button: centered, no count column. */
+.market-table tbody tr .btn-action.btn-narrow,
+.cargo-table tbody tr .btn-action.btn-narrow {
+  width: 48px;
+  min-width: 48px;
+  padding: 0 6px;
+  justify-content: center;
+}
+
+/* Primary + suggested share an identical width so a row's main action
+   button doesn't shrink/grow with its label — wide enough to fit
+   "BUY MAX 9999" cleanly. The action column itself is sized to
+   guarantee these buttons fit inside the cell padding (see below). */
+.market-table tbody tr .btn-action.primary,
+.market-table tbody tr .btn-action.btn-suggested,
+.cargo-table tbody tr .btn-action.primary,
+.cargo-table tbody tr .btn-action.btn-suggested {
+  width: 112px;
+  min-width: 112px;
+}
+
+/* Action column gets a fixed width that fits +10 + gap + BUY MAX +
+   left/right cell padding. The GOOD column (no explicit width) absorbs
+   the leftover space, so reducing its content lets the action column
+   sit cleanly with proper edge breathing room — no fighting the
+   browser's auto-table-layout. */
+.market-table th[data-row-action-cell],
+.market-table td[data-row-action-cell] {
+  width: 188px;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.bridge-card .market-table td[data-row-action-cell],
+.bridge-card .market-table th[data-row-action-cell] {
+  padding-right: var(--bridge-table-pad-x) !important;
+}
+
+.market-table td[data-row-action-cell] .buy-sell {
+  display: inline-flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+/* Cargo table sell column: same fixed width as market so the right
+   edge lines up. Sell button takes the column's content width. */
+.cargo-table th[data-row-action-cell],
+.cargo-table td[data-row-action-cell] {
+  width: 188px;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.bridge-card .cargo-table td[data-row-action-cell],
+.bridge-card .cargo-table th[data-row-action-cell] {
+  padding-right: var(--bridge-table-pad-x) !important;
+}
+
+.cargo-table td[data-row-action-cell] .btn-action {
+  width: 100%;
+  min-width: 0;
+}
+
+.market-table tbody tr .btn-action:hover:not(:disabled),
+.cargo-table tbody tr .btn-action:hover:not(:disabled) {
+  background: var(--ship-surface-raised);
+  color: var(--text);
+}
+
+/* Buy: permanent green tint on the primary + suggested variants. The
+   !important wins over the global .btn-suggested blue (which is also
+   !important). */
+.market-table tbody tr .btn-action.primary,
+.market-table tbody tr .btn-action.btn-suggested {
+  background: rgba(108, 217, 154, 0.15) !important;
+  border-color: #6cd99a !important;
+  color: #6cd99a !important;
+  text-shadow: none !important;
+  box-shadow: none !important;
+}
+
+.market-table tbody tr .btn-action.primary:hover:not(:disabled),
+.market-table tbody tr .btn-action.btn-suggested:hover:not(:disabled) {
+  background: rgba(108, 217, 154, 0.24) !important;
+  border-color: #6cd99a !important;
+  color: #6cd99a !important;
+  box-shadow: none !important;
+}
+
+/* Sell: permanent red tint on cargo-table buttons. */
+.cargo-table tbody tr .btn-action.primary,
+.cargo-table tbody tr .btn-action.btn-suggested {
+  background: rgba(239, 111, 125, 0.15) !important;
+  border-color: #ef6f7d !important;
+  color: #ef6f7d !important;
+  text-shadow: none !important;
+  box-shadow: none !important;
+}
+
+.cargo-table tbody tr .btn-action.primary:hover:not(:disabled),
+.cargo-table tbody tr .btn-action.btn-suggested:hover:not(:disabled) {
+  background: rgba(239, 111, 125, 0.24) !important;
+  border-color: #ef6f7d !important;
+  color: #ef6f7d !important;
+  box-shadow: none !important;
+}
+
+/* btn-suggested in tables uses the global hint-blue rule defined
+   below in the suggested-styles block — same shape, same pulse —
+   no per-table override needed. */
+
+/* === Per-context action-button tints =================================
+   Default .btn-action.primary is the hint blue (set on .player-view
+   button.primary). The contexts below recolor "buy / install / hire"
+   actions to green and "sell / uninstall / fire" actions to red so the
+   semantics read at a glance. Identical surface+outline shape; only
+   the tint changes. */
+
+/* Acquire actions — green */
+.upgrade-table .btn-action.primary,
+.player-view .upgrade-card-actions .btn-action.primary:not(.upgrade-sell-action),
+.player-view .crew-card-actions .btn-action.crew-card-action.primary,
+.crew-table .btn-action.primary {
+  background: rgba(108, 217, 154, 0.15) !important;
+  border-color: #6cd99a !important;
+  color: #6cd99a !important;
+  text-shadow: none !important;
+  box-shadow: none !important;
+}
+
+.upgrade-table .btn-action.primary:hover:not(:disabled),
+.player-view .upgrade-card-actions .btn-action.primary:not(.upgrade-sell-action):hover:not(:disabled),
+.player-view .crew-card-actions .btn-action.crew-card-action.primary:hover:not(:disabled),
+.crew-table .btn-action.primary:hover:not(:disabled) {
+  background: rgba(108, 217, 154, 0.24) !important;
+  border-color: #6cd99a !important;
+  color: #6cd99a !important;
+}
+
+/* Release actions — red */
+.player-view .upgrade-card-actions .btn-action.upgrade-sell-action,
+.player-view .crew-card-actions .btn-action.crew-card-action:not(.primary):not(.btn-suggested) {
+  background: rgba(239, 111, 125, 0.15) !important;
+  border-color: #ef6f7d !important;
+  color: #ef6f7d !important;
+  text-shadow: none !important;
+  box-shadow: none !important;
+}
+
+.player-view .upgrade-card-actions .btn-action.upgrade-sell-action:hover:not(:disabled),
+.player-view .crew-card-actions .btn-action.crew-card-action:not(.primary):not(.btn-suggested):hover:not(:disabled) {
+  background: rgba(239, 111, 125, 0.24) !important;
+  border-color: #ef6f7d !important;
+  color: #ef6f7d !important;
+}
+
+/* Label hugs the left, count hugs the right — same layout regardless
+   of label length so BUY and BUY MAX read consistently. */
+.market-table tbody tr .btn-action .btn-label,
+.cargo-table tbody tr .btn-action .btn-label {
+  flex: 1 1 auto;
+  text-align: left;
+}
+
+.market-table tbody tr .btn-action.btn-narrow .btn-label,
+.cargo-table tbody tr .btn-action.btn-narrow .btn-label {
+  flex: 0 0 auto;
+  text-align: center;
+}
+
+.market-table tbody tr .btn-action .btn-count,
+.cargo-table tbody tr .btn-action .btn-count {
+  flex: 0 0 auto;
+  margin-left: 6px;
+  color: inherit;
+  opacity: 0.78;
+}
+
+/* Disabled state — strip the colored tint and just dim the base
+   surface+outline shape via opacity (matches the global +10 ghost
+   state). Identical for narrow and primary so a row with nothing to
+   act on reads uniformly off. */
+.market-table tbody tr .btn-action:disabled,
+.cargo-table tbody tr .btn-action:disabled {
+  background: var(--ship-surface) !important;
+  border-color: var(--ship-line) !important;
+  color: var(--text-dim) !important;
+  box-shadow: none !important;
+  animation: none !important;
+  opacity: 0.32 !important;
+  cursor: not-allowed;
 }
 
 /* Disabled primary action buttons (Buy/Sell/etc. with nothing to act on) sit
@@ -4036,24 +4288,10 @@ button.upgrade-remove-pill {
   color: rgba(244, 235, 222, 0.94);
 }
 
-.player-view
-  .upgrade-card-actions
-  .btn-action.primary:not(.cargo-sell-progress),
-.player-view .upgrade-card-actions .btn-action.btn-suggested {
-  background: var(--ship-action-blue) !important;
-  border-color: var(--ship-action-blue-line) !important;
-  color: white !important;
-}
-
-.player-view
-  .upgrade-card-actions
-  .btn-action.primary:not(.cargo-sell-progress):hover:not(:disabled),
-.player-view
-  .upgrade-card-actions
-  .btn-action.btn-suggested:hover:not(:disabled) {
-  background: var(--ship-action-blue-hover) !important;
-  border-color: var(--ship-action-blue-line-hover) !important;
-}
+/* Install / suggested upgrade buttons inherit the unified Exchange-
+   style tints — install gets the green "acquire" tone (handled by the
+   per-context tint rule earlier), suggested gets the global hint blue
+   pulse. The previous solid-blue treatment has been removed. */
 
 .player-view
   .upgrade-card-actions
