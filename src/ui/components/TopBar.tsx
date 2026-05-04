@@ -97,7 +97,6 @@ export function TopBar() {
   return (
     <section className={`topbar-shell ${isMobile ? "topbar-mobile" : ""}`} aria-label="Game controls">
       <div className="topbar-nav-row">
-        <div className="topbar-nav-left">
           <div className="topbar-tabs topbar-save-tabs">
             <details ref={menuRef} className="topbar-menu topbar-game-menu">
               <summary className={`topbar-tab topbar-game-tab ${gameKind === "developer" ? "has-kind" : ""}`}>
@@ -209,26 +208,17 @@ export function TopBar() {
             </details>
           </div>
 
-          <nav className="topbar-tabs topbar-view-tabs" aria-label="Game views">
-            {TABS.map(tab => (
-              <button
-                key={tab.id}
-                className={`topbar-tab ${selectedTab === tab.id ? "active" : ""}`}
-                onClick={() => selectTab(tab.id)}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </nav>
-        </div>
-
-        {isMobile && mobilePanels && mobilePanels.length > 0 && (
-          <MobilePanelTabs
-            panels={mobilePanels}
-            active={activeMobilePanel}
-            onChange={(id) => setMobilePanel(selectedTab, id)}
-          />
-        )}
+        <nav className="topbar-tabs topbar-view-tabs" aria-label="Game views">
+          {TABS.map(tab => (
+            <button
+              key={tab.id}
+              className={`topbar-tab ${selectedTab === tab.id ? "active" : ""}`}
+              onClick={() => selectTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
 
         <div className="topbar-run-controls">
           <span className="topbar-tick-pill mono" aria-label={`Tick ${tick.toLocaleString()}`}>
@@ -248,6 +238,14 @@ export function TopBar() {
             ))}
           </div>
         </div>
+
+        {isMobile && mobilePanels && mobilePanels.length > 0 && (
+          <MobilePanelTabs
+            panels={mobilePanels}
+            active={activeMobilePanel}
+            onChange={(id) => setMobilePanel(selectedTab, id)}
+          />
+        )}
       </div>
 
       <div className="topbar-card">

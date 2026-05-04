@@ -15,37 +15,60 @@
   min-width: 0;
 }
 
-/* Stack the three nav-row siblings (nav-left → panel-tabs → run-controls)
-   on mobile. Triggered by both the @media query and the JS-applied
-   .topbar-mobile class so ?mobile=1 testing on a wide viewport works
-   identically to a real narrow phone. */
-.topbar-mobile .topbar-nav-row,
-.topbar-shell:where(.topbar-mobile) .topbar-nav-row {
+/* Mobile layout for the topbar — save menu + run controls share row 1,
+   view tabs get row 2 (full width), panel tabs get row 3 (full width).
+   Driven by both the .topbar-mobile JS class and an @media query so
+   ?mobile=1 force-testing on desktop matches real-phone behavior. */
+.topbar-mobile .topbar-nav-row {
   flex-wrap: wrap;
 }
 
-.topbar-mobile .topbar-nav-row > .topbar-nav-left,
-.topbar-mobile .topbar-nav-row > .mobile-panel-tabs,
-.topbar-mobile .topbar-nav-row > .topbar-run-controls {
-  flex-basis: 100%;
-  width: 100%;
+.topbar-mobile .topbar-save-tabs {
+  flex: 0 0 auto;
+  order: 1;
 }
 
-.topbar-mobile .topbar-nav-row > .topbar-run-controls {
+.topbar-mobile .topbar-run-controls {
+  flex: 1 1 auto;
+  order: 2;
+  margin-left: auto;
   justify-content: flex-end;
+}
+
+.topbar-mobile .topbar-view-tabs {
+  flex-basis: 100%;
+  width: 100%;
+  order: 3;
+}
+
+.topbar-mobile .mobile-panel-tabs {
+  flex-basis: 100%;
+  width: 100%;
+  order: 4;
 }
 
 @media (max-width: 899px) {
   .topbar-nav-row {
     flex-wrap: wrap;
   }
-  .topbar-nav-row > .topbar-nav-left,
-  .topbar-nav-row > .mobile-panel-tabs,
-  .topbar-nav-row > .topbar-run-controls {
+  .topbar-save-tabs {
+    flex: 0 0 auto;
+    order: 1;
+  }
+  .topbar-run-controls {
+    flex: 1 1 auto;
+    order: 2;
+    margin-left: auto;
+    justify-content: flex-end;
+  }
+  .topbar-view-tabs {
     flex-basis: 100%;
     width: 100%;
+    order: 3;
   }
-  .topbar-nav-row > .topbar-run-controls {
-    justify-content: flex-end;
+  .mobile-panel-tabs {
+    flex-basis: 100%;
+    width: 100%;
+    order: 4;
   }
 }

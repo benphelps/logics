@@ -11,9 +11,16 @@
 .topbar-nav-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
   min-width: 0;
+}
+
+/* Run controls (Tick + speed buttons) hug the right edge on desktop so
+   save/view tabs sit together at the left. On mobile the .topbar-mobile
+   rules in MobilePanelTabs.css reorder them onto a shared row. */
+.topbar-run-controls {
+  margin-left: auto;
 }
 
 .topbar-nav-left {
