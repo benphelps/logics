@@ -1,6 +1,6 @@
-![Logics gameplay screenshot](public/site/screenshots/readme-ui-composite.png)
+![Ledgway gameplay screenshot](public/site/screenshots/readme-ui-composite.png)
 
-Logics is a browser game about running a space trucking outfit inside a living station economy. You start with one ship, one wallet, and a simple question: what should I buy here, and where can I sell it for more?
+Ledgway is a browser game about running a space trucking outfit inside a living station economy. You start with one ship, one wallet, and a simple question: what should I buy here, and where can I sell it for more?
 
 The loop grows from hands-on cargo runs into fleet coordination, staged crew automation, ship upgrades, and a simulated market desk where the same economy can be traded through station shares, syndicates, commodities, basis pairs, futures, and indices. It is part spreadsheet, part clicker, part idler, and part Wall Street terminal for a sector you can physically move goods through.
 

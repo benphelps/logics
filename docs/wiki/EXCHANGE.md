@@ -1,6 +1,6 @@
 # Exchange
 
-Exchange is the market screen for trading Logics assets from the selected player ship. It now covers station shares, syndicate shares, commodity spot listings, station basis pairs, futures contracts, and indices.
+Exchange is the market screen for trading Ledgway assets from the selected player ship. It now covers station shares, syndicate shares, commodity spot listings, station basis pairs, futures contracts, and indices.
 
 The screen is not a separate bank. Order entry, margin, short proceeds, fees, and settlement cash all use the active ship's wallet.
 

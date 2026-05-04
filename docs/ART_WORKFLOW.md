@@ -80,7 +80,7 @@ endpoint for ship art at `/api/ship-art/generate`. The body shape:
 
 The server builds a class-tuned prompt from `server/ship-art.ts`'s
 `CLASS_PROMPTS` / `FAMILY_FALLBACK_PROMPTS` / `TRAIT_PROMPTS` blocks.
-Each successful generation persists to `.logics-cache/ship-art/`
+Each successful generation persists to `.ledgway-cache/ship-art/`
 keyed by provider + class + family + traits hash; subsequent calls
 with the same key can either reuse the cached entry or generate a
 fresh one.

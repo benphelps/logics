@@ -449,9 +449,9 @@ export function Wiki() {
   return (
     <main className="wiki-shell">
       <header className="wiki-topbar">
-        <a className="site-brand wiki-brand" href="/website.html" aria-label="Logics website home">
-          <img className="site-brand-wordmark" src="/site/logics-wordmark.svg" alt="" />
-          <img className="site-brand-mark" src="/site/logics-mark.svg" alt="" />
+        <a className="site-brand wiki-brand" href="/website.html" aria-label="Ledgway website home">
+          <img className="site-brand-wordmark" src="/site/ledgway-wordmark.svg" alt="" />
+          <img className="site-brand-mark" src="/site/ledgway-mark.svg" alt="" />
         </a>
         <nav className="wiki-top-links" aria-label="Wiki navigation">
           <a href="/website.html">Website</a>

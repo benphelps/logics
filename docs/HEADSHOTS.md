@@ -1,6 +1,6 @@
 # Headshot Generation
 
-Logics has a local OpenAI-backed headshot cache for crew and character portraits. Generated files are cached at the OpenAI source size, currently `1024x1024`, under `.logics-cache/headshots`.
+Ledgway has a local OpenAI-backed headshot cache for crew and character portraits. Generated files are cached at the OpenAI source size, currently `1024x1024`, under `.ledgway-cache/headshots`.
 
 The cache is shared across games, but allocation is tracked by numeric game id.
 
@@ -16,7 +16,7 @@ Optional environment values:
 
 - `HEADSHOT_IMAGE_MODEL`: OpenAI image model. Default: `gpt-image-1.5`.
 - `HEADSHOT_IMAGE_FORMAT`: output format for cached files. Default: `webp`.
-- `HEADSHOT_CACHE_DIR`: cache directory. Default: `.logics-cache/headshots`.
+- `HEADSHOT_CACHE_DIR`: cache directory. Default: `.ledgway-cache/headshots`.
 
 Generation defaults are fixed in the service:
 

@@ -33,7 +33,7 @@ const DEFAULTS: CliOptions = {
   contextWindow: 10,
   model: "gpt-5-mini",
   out: resolve(process.cwd(), "public/news-events.json"),
-  state: resolve(process.cwd(), ".logics-cache/news-state.json"),
+  state: resolve(process.cwd(), ".ledgway-cache/news-state.json"),
   dryRun: false,
   help: false,
 };
@@ -328,7 +328,7 @@ Options:
   --context-window <n>     Prior templates passed for thematic continuity (default ${DEFAULTS.contextWindow}).
   --model <id>             Model id (default ${DEFAULTS.model}).
   --out <path>             Pool path (default public/news-events.json).
-  --state <path>           Rolling state seed (default .logics-cache/news-state.json).
+  --state <path>           Rolling state seed (default .ledgway-cache/news-state.json).
   --dry-run                Print the plan + first prompt; don't call OpenAI.
   -h, --help               Show this help.
 

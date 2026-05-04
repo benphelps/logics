@@ -602,7 +602,7 @@ function UniverseSpotChart({ goodId, history, basePrice }: {
         })
         .catch(err => {
           fetchingRef.current = false;
-          console.warn("[logics] markets chart IDB backfill failed", err);
+          console.warn("[ledgway] markets chart IDB backfill failed", err);
         });
     };
     ts.subscribeVisibleLogicalRangeChange(handler);

@@ -6,7 +6,7 @@ import { handleHeadshotRequest } from "./headshots.js";
 import { handleShipArtRequest } from "./ship-art.js";
 import { handleSyndicateInsigniaRequest } from "./syndicate-insignia.js";
 
-const DIST_DIR = resolve(process.cwd(), process.env.LOGICS_DIST_DIR ?? "dist");
+const DIST_DIR = resolve(process.cwd(), process.env.LEDGWAY_DIST_DIR ?? process.env.LOGICS_DIST_DIR ?? "dist");
 const PORT = Number(process.env.PORT ?? 3000);
 const HOST = process.env.HOST ?? "0.0.0.0";
 
@@ -33,7 +33,7 @@ const server = createServer((req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`Logics production server listening on http://${HOST}:${PORT}`);
+  console.log(`Ledgway production server listening on http://${HOST}:${PORT}`);
   console.log(`Serving static assets from ${DIST_DIR}`);
 });
 

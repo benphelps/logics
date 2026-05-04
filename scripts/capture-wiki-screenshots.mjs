@@ -20,7 +20,7 @@ const captureView = args.view ?? args.page ?? "my-fleet";
 if (!DEFAULT_OUT_DIRS[captureView]) {
   throw new Error(`Unknown wiki screenshot view "${captureView}". Expected one of: ${Object.keys(DEFAULT_OUT_DIRS).join(", ")}`);
 }
-const targetUrl = await resolveTargetUrl(args.url ?? process.env.LOGICS_CAPTURE_URL);
+const targetUrl = await resolveTargetUrl(args.url ?? process.env.LEDGWAY_CAPTURE_URL ?? process.env.LOGICS_CAPTURE_URL);
 const outDir = path.resolve(args.out ?? DEFAULT_OUT_DIRS[captureView]);
 const keepBrowser = args.keepBrowser === "true";
 
@@ -507,13 +507,13 @@ const readmeFullShots = [
     label: "My Fleet",
     title: "Full My Fleet UI",
     text: "Full-viewport My Fleet operations screen for README composition.",
-    alt: "Full Logics UI showing My Fleet ship operations, station travel, dockside markets, and ship context",
+    alt: "Full Ledgway UI showing My Fleet ship operations, station travel, dockside markets, and ship context",
     selector: ".app",
     pad: 0,
     maxHeight: DEFAULT_VIEWPORT.height,
     pre: async (page) => {
       await page.evaluate(() => {
-        const useStore = window.__LOGICS_CAPTURE_STORE__;
+        const useStore = window.__LEDGWAY_CAPTURE_STORE__;
         if (!useStore) return;
         const state = useStore.getState();
         useStore.setState({
@@ -538,7 +538,7 @@ const readmeFullShots = [
     label: "Exchange",
     title: "Full Exchange UI",
     text: "Full-viewport Exchange market desk for README composition.",
-    alt: "Full Logics UI showing the Exchange listing browser, positions, market detail, order book, tape, and order form",
+    alt: "Full Ledgway UI showing the Exchange listing browser, positions, market detail, order book, tape, and order form",
     selector: ".app",
     pad: 0,
     maxHeight: DEFAULT_VIEWPORT.height,
@@ -565,7 +565,7 @@ main().catch((error) => {
 
 async function main() {
   const port = await findFreePort();
-  const userDataDir = await mkdtemp(path.join(os.tmpdir(), "logics-capture-"));
+  const userDataDir = await mkdtemp(path.join(os.tmpdir(), "ledgway-capture-"));
   const chromePath = findChromePath();
   const chrome = spawn(chromePath, [
     "--headless=new",
@@ -655,7 +655,7 @@ async function loadDeveloperState(page) {
 
 async function enrichMyFleetDeveloperState(page) {
   const result = await page.evaluate(async () => {
-    const useStore = window.__LOGICS_CAPTURE_STORE__;
+    const useStore = window.__LEDGWAY_CAPTURE_STORE__;
     if (!useStore) return { ok: false, reason: "capture store hook unavailable" };
     const state = useStore.getState();
     const world = state.world;
@@ -807,7 +807,7 @@ async function enrichMyFleetDeveloperState(page) {
 
 async function enrichExchangeDeveloperState(page) {
   const result = await page.evaluate(async () => {
-    const useStore = window.__LOGICS_CAPTURE_STORE__;
+    const useStore = window.__LEDGWAY_CAPTURE_STORE__;
     if (!useStore) return { ok: false, reason: "capture store hook unavailable" };
     const state = useStore.getState();
     const world = state.world;
@@ -993,7 +993,7 @@ async function enrichExchangeDeveloperState(page) {
       syndicate: syndicateEq?.id,
       index: indexEq?.id,
     };
-    window.__LOGICS_CAPTURE_EXCHANGE_IDS__ = ids;
+    window.__LEDGWAY_CAPTURE_EXCHANGE_IDS__ = ids;
 
     useStore.setState({
       world,
@@ -1192,8 +1192,8 @@ async function selectExchangeListing(page, kind) {
       futures: "Futures",
       index: "Indices",
     };
-    const ids = window.__LOGICS_CAPTURE_EXCHANGE_IDS__ ?? {};
-    const useStore = window.__LOGICS_CAPTURE_STORE__;
+    const ids = window.__LEDGWAY_CAPTURE_EXCHANGE_IDS__ ?? {};
+    const useStore = window.__LEDGWAY_CAPTURE_STORE__;
     if (useStore && requestedKind !== "all" && ids[requestedKind]) {
       useStore.getState().selectEquity(ids[requestedKind]);
     }

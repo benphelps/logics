@@ -12,6 +12,7 @@ dist
 dist-server
 dist-ssr
 .logics-cache
+.ledgway-cache
 *.local
 my-notes.md
 

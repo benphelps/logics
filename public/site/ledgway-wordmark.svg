@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc" viewBox="0 0 240 64">
+  <title id="title">Ledgway Ledger Wordmark</title>
+  <desc id="desc">A Ledgway wordmark concept combining exchange chart bars with a rising signal line.</desc>
+  <defs>
+    <linearGradient id="ledger-bg" x1="7" y1="8" x2="57" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#121a1d"/>
+      <stop offset="1" stop-color="#06090b"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="6" width="52" height="52" rx="8" fill="url(#ledger-bg)" stroke="#33424a" stroke-width="2"/>
+  <path d="M13 21h30M13 31h30M13 41h30" stroke="#24333b" stroke-width="1.8" stroke-linecap="round"/>
+  <path d="M17 45V34M26 45V24M35 45V29M44 45V18" stroke="#e4edf3" stroke-width="4.2" stroke-linecap="square"/>
+  <path d="M14 41c8-12 17 1 29-17" fill="none" stroke="#55c7a5" stroke-width="2.8" stroke-linecap="round"/>
+  <circle cx="14" cy="41" r="2.8" fill="#d9a24b"/>
+  <circle cx="43" cy="24" r="2.8" fill="#55c7a5"/>
+  <text x="68" y="39" fill="#edf6ff" font-family="ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace" font-size="27" font-weight="800" letter-spacing="1.6">LEDGWAY</text>
+  <path d="M70 48h82" stroke="#55c7a5" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M160 48h26" stroke="#d9a24b" stroke-width="2.4" stroke-linecap="round"/>
+</svg>

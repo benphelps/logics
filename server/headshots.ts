@@ -90,7 +90,7 @@ interface OpenAIImageResponse {
 }
 
 const CACHE_VERSION = 6;
-const CACHE_ROOT = resolve(process.cwd(), process.env.HEADSHOT_CACHE_DIR ?? ".logics-cache/headshots");
+const CACHE_ROOT = resolve(process.cwd(), process.env.HEADSHOT_CACHE_DIR ?? ".ledgway-cache/headshots");
 const CACHE_INDEX_PATH = join(CACHE_ROOT, "index.json");
 const IMAGE_DIR = join(CACHE_ROOT, "images");
 const DEFAULT_MODEL = process.env.HEADSHOT_IMAGE_MODEL ?? "gpt-image-1.5";
@@ -196,7 +196,7 @@ const ROLE_PROMPTS: Record<string, {
 
 export function headshotDevServerPlugin(): Plugin {
   return {
-    name: "logics-headshot-api",
+    name: "ledgway-headshot-api",
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
         void handleHeadshotRequest(req, res).then((handled) => {
@@ -571,7 +571,7 @@ function buildPrompt(input: NormalizedHeadshotInput): string {
     : "Species design: human, grounded facial structure, believable skin texture, natural expression.";
 
   return [
-    "Create one original fictional character headshot for Logics, a sci-fi spreadsheet trading sim.",
+    "Create one original fictional character headshot for Ledgway, a sci-fi spreadsheet trading sim.",
     "Style: consistent dark cinematic space-station concept art, semi-realistic digital painting, subtle painterly texture, cool industrial lighting, restrained teal and amber accents, polished game portrait.",
     `Subject: ${identityDescription(input)} ${input.role}. Unique fictional face, not resembling any real person or celebrity.`,
     `Identity details: race ${input.race}; age band ${input.age}; sex or gender presentation ${input.sex}. Show the age band naturally through facial structure and styling, without caricature.`,

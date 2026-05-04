@@ -108,7 +108,7 @@ interface GeminiContentResponse {
 }
 
 const CACHE_VERSION = 1;
-const CACHE_ROOT = resolve(process.cwd(), process.env.SHIP_ART_CACHE_DIR ?? ".logics-cache/ship-art");
+const CACHE_ROOT = resolve(process.cwd(), process.env.SHIP_ART_CACHE_DIR ?? ".ledgway-cache/ship-art");
 const CACHE_INDEX_PATH = join(CACHE_ROOT, "index.json");
 const IMAGE_DIR = join(CACHE_ROOT, "images");
 const DEFAULT_OPENAI_MODEL = process.env.SHIP_ART_OPENAI_MODEL ?? process.env.SHIP_ART_IMAGE_MODEL ?? "gpt-image-1.5";
@@ -226,7 +226,7 @@ const TRAIT_PROMPTS: Record<ShipArtTrait, string> = {
 
 export function shipArtDevServerPlugin(): Plugin {
   return {
-    name: "logics-ship-art-api",
+    name: "ledgway-ship-art-api",
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
         void handleShipArtRequest(req, res).then((handled) => {
@@ -449,7 +449,7 @@ function buildShipArtPrompt(input: NormalizedShipArtInput): string {
   const nameLine = input.name ? `\nShip identity hint (non-text): ${input.name} — informs proportions and silhouette personality only; the image must NOT include readable hull markings.` : "";
 
   return [
-    "Create a subtle faded UI info-card background image for Logics, a sci-fi spreadsheet trading sim.",
+    "Create a subtle faded UI info-card background image for Ledgway, a sci-fi spreadsheet trading sim.",
     "Style: dark cinematic space-station concept art, semi-realistic digital painting, painterly texture, cool industrial lighting, restrained teal and amber accents, polished game backdrop.",
     `Subject class: ${input.class}.`,
     `Silhouette: ${block.silhouette}.`,

@@ -1,19 +1,19 @@
 # Website
 
-`website.html` is a standalone single-page site for Logics. It is built by Vite alongside the playable game and intentionally keeps the game at `/`.
+`website.html` is a standalone single-page site for Ledgway. It is built by Vite alongside the playable game and intentionally keeps the game at `/`.
 
 ## Files
 
 - `website.html` — HTML entry point
 - `src/site/Site.tsx` — static React content for the page
 - `src/site/site.css` — website styling
-- `public/site/logics-mark.svg` — compact mark for small sizes and favicon use
-- `public/site/logics-wordmark.svg` — horizontal wordmark for the website header/footer
+- `public/site/ledgway-mark.svg` — compact mark for small sizes and favicon use
+- `public/site/ledgway-wordmark.svg` — horizontal wordmark for the website header/footer
 - `public/site/screenshots/*.png` — gameplay screenshots used by the page
 
 ## Direction
 
-The site presents Logics as a space logistics trading idle clicker:
+The site presents Ledgway as a space logistics trading idle clicker:
 
 - easy first action: buy cargo, ship it, sell it
 - trading layer: markets, contracts, prices, and shortages
@@ -42,7 +42,7 @@ Use the capture script for reusable wiki screenshots:
 ```sh
 npm run screenshots:wiki
 npm run screenshots:wiki:exchange
-node scripts/capture-wiki-screenshots.mjs --view=readme-full --out=/tmp/logics-readme-full
+node scripts/capture-wiki-screenshots.mjs --view=readme-full --out=/tmp/ledgway-readme-full
 ```
 
 The script tries the common Vite ports from 5173 through 5179. Pass `--url=http://127.0.0.1:5176/` when you need a specific server. It launches a temporary headless Chrome session, loads the game's developer state, shapes it into a documentation-ready scenario for the requested wiki view, captures focused UI elements, and writes images plus `manifest.json` under that view's folder in `public/site/screenshots/wiki/`.

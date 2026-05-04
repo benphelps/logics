@@ -224,7 +224,7 @@ function LogTabBody({ ships }: { ships: Trader[] }) {
         setOlderEntries(prev => [...prev, ...fetched]);
       }).catch(err => {
         fetchingRef.current = false;
-        console.warn("[logics] fleet log backfill failed", err);
+        console.warn("[ledgway] fleet log backfill failed", err);
       });
     }, { rootMargin: "200px" });
     obs.observe(sentinel);

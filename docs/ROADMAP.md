@@ -6,7 +6,7 @@ What's done, what's next, and the pile of things we've talked about and shelved 
 
 ## Current direction
 
-Logics is moving toward a public-facing browser game about space trucking, fleet coordination, and market speculation. The first loop is intentionally direct: control one ship, buy goods, move them between stations, sell into demand, and take contracts. The long loop is staged delegation: unlock guidance, hire a navigator, hire a mechanic, hire a pilot, upgrade the ship, and eventually hand routine work to a crew while the player moves on to larger ships, more ships, and higher-risk market decisions.
+Ledgway is moving toward a public-facing browser game about space trucking, fleet coordination, and market speculation. The first loop is intentionally direct: control one ship, buy goods, move them between stations, sell into demand, and take contracts. The long loop is staged delegation: unlock guidance, hire a navigator, hire a mechanic, hire a pilot, upgrade the ship, and eventually hand routine work to a crew while the player moves on to larger ships, more ships, and higher-risk market decisions.
 
 The app should keep that promise clear:
 
@@ -58,7 +58,7 @@ Listed in commit order. Each was scoped tight, landed with tests, and updated th
 | Contract-aware engine | `listTradeOptions` folds in unaccepted-shortage bonuses for player ships that can realize them (manual or auto+nav). Accepted-contract bonus uses `(reward + penalty)/qty` so commitment carries weight. `cargoLoadedCandidates` does the same for travel-to-sell. New remote-Case-A: when carrying a contract good, surface "Accept and head to X" as a candidate. Honor-commitments override force-promotes at-destination contract sells. Sell hint targets a specific good (not all cargo). |
 | Auto-pilot multi-good loadout | With a navigator, `stepTrader` pre-loads accepted-contract goods (high-tier first) before the primary buy when a buy_for_route's destination matches an accepted contract for a different good. One trip, multiple contracts fulfilled. |
 | Cargo reservation in `listTradeOptions` | When sizing the primary buy for manual guidance or auto+navigator, the engine reserves cargo for accepted-contract goods at the same destination available at this source. Recommended `hint.qty` shrinks; the suggested Buy button uses it (not bay-max), leaving room for the contract good. |
-| Single-page website + logo | Added `website.html` with a standalone React/CSS site that presents Logics as a space logistics trading idle clicker. Added compact SVG logo assets in `public/site/` and captured live gameplay screenshots into `public/site/screenshots/`. |
+| Single-page website + logo | Added `website.html` with a standalone React/CSS site that presents Ledgway as a space logistics trading idle clicker. Added compact SVG logo assets in `public/site/` and captured live gameplay screenshots into `public/site/screenshots/`. |
 | Expanded Exchange instruments | Exchange now covers station shares, syndicates, commodity spot listings, station basis pairs, futures contracts, and indices, with order books, positions, orders, futures P&L, history, settlement handling, and navigator trade insights. |
 | Ship upgrades as real cargo/modules | Station upgrade stock, carried module goods, install/remove/replace flows, slot-specific effects, and shared crew/upgrade modifiers are in the player loop. |
 | Save slots + app shell | Local save slots, autosave status, new game/load/delete controls, developer state, per-tab scroll memory, and the five-tab app shell are in the UI. |
@@ -127,7 +127,7 @@ Needed:
 - fleet exception queue for ships needing player attention
 
 ### Route danger and dangerous work
-Danger should add tension to trucking routes without turning Logics into an RTS. It belongs in lanes, jobs, ship stats, crew decisions, and insurance-like market consequences.
+Danger should add tension to trucking routes without turning Ledgway into an RTS. It belongs in lanes, jobs, ship stats, crew decisions, and insurance-like market consequences.
 
 Needed:
 - danger rating on lanes and Atlas filters

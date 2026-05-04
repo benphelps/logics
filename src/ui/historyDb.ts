@@ -1,6 +1,8 @@
 import type { BookTrade, Equity, EquityId, GoodId, ShipLogEntry, TradeRecord, TraderId, World } from "../sim/types";
 import type { RecentNewsEvent } from "../sim/news/types";
 
+// Preserve the pre-rename IndexedDB name so existing local history streams
+// stay attached to migrated Ledgway saves.
 const DB_NAME = "logics-history";
 const DB_VERSION = 4;
 const STORE_HISTORY = "equityHistory";
@@ -124,7 +126,7 @@ export function openHistoryDb(): Promise<IDBDatabase | null> {
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => {
-      console.warn("[logics] historyDb open failed", req.error);
+      console.warn("[ledgway] historyDb open failed", req.error);
       resolve(null);
     };
   });
@@ -395,7 +397,7 @@ async function doFlush(world: World): Promise<void> {
       }) : Promise.resolve(),
     ]);
   } catch (error) {
-    console.warn("[logics] historyDb flush failed", error);
+    console.warn("[ledgway] historyDb flush failed", error);
   }
 }
 

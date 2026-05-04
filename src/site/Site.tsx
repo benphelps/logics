@@ -116,9 +116,9 @@ export function Site() {
     <main className="site-shell">
       <section className="site-hero" aria-labelledby="site-title">
         <header className="site-nav" aria-label="Website navigation">
-          <a className="site-brand" href="/website.html" aria-label="Logics website home">
-            <img className="site-brand-wordmark" src="/site/logics-wordmark.svg" alt="" />
-            <img className="site-brand-mark" src="/site/logics-mark.svg" alt="" />
+          <a className="site-brand" href="/website.html" aria-label="Ledgway website home">
+            <img className="site-brand-wordmark" src="/site/ledgway-wordmark.svg" alt="" />
+            <img className="site-brand-mark" src="/site/ledgway-mark.svg" alt="" />
           </a>
           <nav className="site-nav-links" aria-label="Page sections">
             <a href="#screens">Screens</a>
@@ -135,7 +135,7 @@ export function Site() {
         <div className="site-hero-content">
           <div className="site-hero-copy">
             <span className="site-kicker">Space trucking, coordination, and markets</span>
-            <h1 id="site-title">Logics</h1>
+            <h1 id="site-title">Ledgway</h1>
             <p>
               An easy-to-play space logistics game about running cargo, reading a living station economy,
               hiring the crew that takes over routine work, and trading the market built on top of it.
@@ -206,7 +206,7 @@ export function Site() {
             <span className="site-kicker">Gameplay loop</span>
             <h2 id="loop-title">Simple actions, compounding systems</h2>
             <p>
-              Logics starts like a clicker: make clear, satisfying shipping decisions. The depth comes from
+              Ledgway starts like a clicker: make clear, satisfying shipping decisions. The depth comes from
               deciding which repeated moves deserve a crew, a better ship, or a market position.
             </p>
           </div>
@@ -277,8 +277,8 @@ export function Site() {
       <footer className="site-footer" aria-label="Footer">
         <div className="site-footer-inner">
           <div className="footer-brand-block">
-            <a className="footer-brand" href="/website.html" aria-label="Logics website home">
-              <img src="/site/logics-wordmark.svg" alt="" />
+            <a className="footer-brand" href="/website.html" aria-label="Ledgway website home">
+              <img src="/site/ledgway-wordmark.svg" alt="" />
             </a>
             <p>
               Space logistics trading, shipping, and automation in a compact browser idle game.
@@ -297,7 +297,7 @@ export function Site() {
           </nav>
         </div>
         <div className="site-footer-bottom">
-          <span>Copyright 2026 Logics</span>
+          <span>Copyright 2026 Ledgway</span>
           <span>Gameplay screenshots captured from the current local build.</span>
         </div>
       </footer>

@@ -1239,7 +1239,7 @@ function PinTabs({ pinnedIds, activePinnedId, world, onSelectPin, onClosePin }: 
   );
 }
 
-function InfoColumn({ row, world, shipId, docked, hint, selectedHint, activeHint, guideEnabled, emptyText, pinnedIds, activePinnedId, hoveredId, onSelectPin, onClosePin }: {
+function InfoColumn({ row, world, shipId, docked, hint, selectedHint, activeHint, guideEnabled, emptyText, pinnedIds, activePinnedId, onSelectPin, onClosePin }: {
   row: EquityRow;
   world: World;
   shipId?: string;
@@ -2764,7 +2764,7 @@ function TradesList({ trades, shipId, onSelect }: { trades: TradeRecord[]; shipI
         })
         .catch(err => {
           fetchingRef.current = false;
-          console.warn("[logics] trade ledger backfill failed", err);
+          console.warn("[ledgway] trade ledger backfill failed", err);
         });
     }, { rootMargin: "200px" });
     obs.observe(sentinel);
@@ -3376,7 +3376,7 @@ export function Sparkline({ equity, position }: { equity: Equity; position: Stoc
         })
         .catch(err => {
           fetchingRef.current = false;
-          console.warn("[logics] chart IDB backfill failed", err);
+          console.warn("[ledgway] chart IDB backfill failed", err);
         });
     };
     ts.subscribeVisibleLogicalRangeChange(handler);

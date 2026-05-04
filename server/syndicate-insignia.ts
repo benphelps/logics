@@ -81,7 +81,7 @@ interface GeminiContentResponse {
 }
 
 const CACHE_VERSION = 1;
-const CACHE_ROOT = resolve(process.cwd(), process.env.SYNDICATE_INSIGNIA_CACHE_DIR ?? ".logics-cache/syndicate-insignia");
+const CACHE_ROOT = resolve(process.cwd(), process.env.SYNDICATE_INSIGNIA_CACHE_DIR ?? ".ledgway-cache/syndicate-insignia");
 const CACHE_INDEX_PATH = join(CACHE_ROOT, "index.json");
 const IMAGE_DIR = join(CACHE_ROOT, "images");
 const DEFAULT_OPENAI_MODEL = process.env.SYNDICATE_INSIGNIA_OPENAI_MODEL ?? process.env.SHIP_ART_OPENAI_MODEL ?? "gpt-image-1.5";
@@ -105,7 +105,7 @@ class InsigniaRequestError extends Error {
 
 export function syndicateInsigniaDevServerPlugin(): Plugin {
   return {
-    name: "logics-syndicate-insignia-api",
+    name: "ledgway-syndicate-insignia-api",
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
         void handleSyndicateInsigniaRequest(req, res).then((handled) => {

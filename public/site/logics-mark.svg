@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Logics" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="12" fill="#070b0f"/>
-  <path d="M18 15h9v25h20v9H18V15Z" fill="#dce8f5"/>
-  <path d="M31 15h16v9H31v-9Z" fill="#5bbdf5"/>
-  <path d="M40 29h7v7h-7v-7Z" fill="#d7a04f"/>
-  <path d="M18 52h29" stroke="#5bbdf5" stroke-width="3" stroke-linecap="round"/>
-  <path d="M11 38c5-4 10-6 17-6h12" fill="none" stroke="#5bbdf5" stroke-width="3" stroke-linecap="round" stroke-dasharray="3 6"/>
-  <path d="M11 38h7" stroke="#d7a04f" stroke-width="3" stroke-linecap="round"/>
-</svg>

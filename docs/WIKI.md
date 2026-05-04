@@ -1,6 +1,6 @@
 # Game Wiki
 
-This wiki explains Logics as it exists in the current build: what each main tab is for, what the player can do there, and which sim rules drive the UI.
+This wiki explains Ledgway as it exists in the current build: what each main tab is for, what the player can do there, and which sim rules drive the UI.
 
 ## Main Tabs
 
