@@ -1017,18 +1017,20 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
       return;
     }
 
-    // Roll for an encounter. Player ships only in v1; NPC encounters happen
-    // abstractly via the lane heatmap (Phase 3) rather than as full sim
-    // events. Skip if there's already a pending encounter (one at a time).
-    if (isPlayerShip(world, trader) && !world.pendingEncounter) {
+    // Roll for an encounter. All ships (player + NPC) participate so the
+    // sector reads as alive — NPC fights flow into the heatmap and the
+    // ledger's "All ships" view. The player-modal pause path is gated on
+    // (a) not already having a pending encounter and (b) the ship being
+    // the player's; NPC encounters always auto-resolve in-place.
+    if (!world.pendingEncounter) {
       const encounter = maybeSpawnEncounter(world, trader);
       if (encounter) {
-        // Dev affordance: when ?dev=1 and the ship has no mercenary aboard,
-        // surface the modal even on autopilot so the encounter is visible
-        // without having to swap to manual every time. Production play with
-        // autopilot still resolves silently via policy.
+        const isPlayer = isPlayerShip(world, trader);
+        // Dev affordance: when ?dev=1 and the player ship has no mercenary,
+        // surface the modal even under autopilot so the encounter is visible
+        // without having to swap to manual every time.
         const devPauseOnAuto = DEV_MODE && !trader.crew?.mercenary;
-        const shouldPause = trader.pilot === "manual" || devPauseOnAuto;
+        const shouldPause = isPlayer && (trader.pilot === "manual" || devPauseOnAuto);
         if (shouldPause) {
           // Stamp pending — modal handles the choice; the encounter consumes
           // this transit tick, so don't decrement ticksRemaining.
@@ -1041,7 +1043,8 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
           });
           return;
         }
-        // Auto pilot resolves immediately. Encounter consumes the tick.
+        // Auto-resolve (covers player-auto + every NPC). Encounter consumes
+        // the tick.
         const choice = encounterAutopilotPolicy(trader, encounter);
         resolveEncounter(world, trader, encounter, choice, true);
         recordEncounter(world, encounter);

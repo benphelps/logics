@@ -440,9 +440,22 @@ function SyndicateRepCard({ syndicate, isPlayer, reputation }: {
 // --- Combat tab (encounter feed) ---------------------------------------
 
 function CombatTabBody({ world }: { world: World }) {
+  const [scope, setScope] = useState<"mine" | "all">("mine");
   const history = world.encounterHistory ?? [];
-  // Newest-first.
-  const entries = useMemo(() => [...history].reverse(), [history]);
+  const playerShipIds = useMemo(
+    () => new Set(world.player?.shipIds ?? []),
+    [world.player?.shipIds],
+  );
+  const filtered = useMemo(() => {
+    if (scope === "all") return history;
+    return history.filter(enc => playerShipIds.has(enc.shipId));
+  }, [history, scope, playerShipIds]);
+  // Newest-first within the chosen scope.
+  const entries = useMemo(() => [...filtered].reverse(), [filtered]);
+  const mineCount = useMemo(
+    () => history.filter(enc => playerShipIds.has(enc.shipId)).length,
+    [history, playerShipIds],
+  );
   const headArt = headerArtUrl("contractBoard");
   return (
     <>
@@ -452,13 +465,33 @@ function CombatTabBody({ world }: { world: World }) {
           <span className="charters-badges-name">Combat</span>
         </div>
         <div className="charters-badges-head-stat">
-          <span className="charters-badges-head-stat-num mono">{history.length}</span>
+          <span className="charters-badges-head-stat-num mono">{filtered.length}</span>
           <span className="charters-badges-head-stat-label">encounters</span>
         </div>
       </div>
+      <div className="charters-combat-scope">
+        <button
+          type="button"
+          className={`bridge-tab ${scope === "mine" ? "active" : ""}`}
+          onClick={() => setScope("mine")}
+        >
+          Mine <span className="bridge-tab-count">{mineCount}</span>
+        </button>
+        <button
+          type="button"
+          className={`bridge-tab ${scope === "all" ? "active" : ""}`}
+          onClick={() => setScope("all")}
+        >
+          All ships <span className="bridge-tab-count">{history.length}</span>
+        </button>
+      </div>
       <div className="charters-badges-body ledger-log-body" data-scroll-key="ledger:combat">
         {entries.length === 0 ? (
-          <p className="ledger-log-empty dim">No combat on record. Encounters happen during transit — keep an eye out at borders, with valuable cargo, or in foreign territory.</p>
+          <p className="ledger-log-empty dim">
+            {scope === "mine"
+              ? "No combat on record. Encounters happen during transit — keep an eye out at borders, with valuable cargo, or in foreign territory."
+              : "No fleet-wide combat yet. NPC raids start showing up here as ships start crossing busy lanes."}
+          </p>
         ) : (
           <ol className="ledger-log-list">
             {entries.map((enc) => (

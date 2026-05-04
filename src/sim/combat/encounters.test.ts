@@ -4,6 +4,7 @@ import { tickN } from "../tick";
 import {
   autopilotPolicy,
   ENCOUNTER_COOLDOWN_TICKS,
+  ENCOUNTER_HISTORY_CAP,
   encounterChance,
   MAX_ENCOUNTER_CHANCE,
   MIN_ENCOUNTER_CHANCE,
@@ -345,16 +346,17 @@ describe("recordEncounter", () => {
   it("caps history length", () => {
     const w = freshWorld();
     const ship = playerShip(w);
-    for (let i = 0; i < 250; i++) {
+    const overflow = 80;
+    for (let i = 0; i < ENCOUNTER_HISTORY_CAP + overflow; i++) {
       const enc = fakeEncounter(w, ship, { id: `enc-${i}` });
       enc.resolution = {
         choice: "flee", outcome: "escaped", tick: w.tick, autoResolved: true,
       };
       recordEncounter(w, enc);
     }
-    expect(w.encounterHistory!.length).toBe(200);
-    // Oldest entries should have rolled off the front.
-    expect(w.encounterHistory![0].id).toBe("enc-50");
+    expect(w.encounterHistory!.length).toBe(ENCOUNTER_HISTORY_CAP);
+    // Oldest `overflow` entries should have rolled off the front.
+    expect(w.encounterHistory![0].id).toBe(`enc-${overflow}`);
   });
 });
 
@@ -397,6 +399,32 @@ describe("encounter integration", () => {
     for (const enc of w.encounterHistory ?? []) {
       expect(enc.resolution).toBeDefined();
       expect(enc.resolution?.autoResolved).toBe(true);
+    }
+  });
+
+  it("NPC ships also accumulate resolved encounters in the shared history", () => {
+    // Long enough horizon that NPC traffic + 5% per-tick encounter chance
+    // produces several rolls. This is integration: we want NPC entries
+    // present alongside any player ones.
+    const w = freshWorld();
+    tickN(w, 500);
+    const history = w.encounterHistory ?? [];
+    // Hard not to fire any encounter across 500 ticks of full-fleet traffic.
+    expect(history.length).toBeGreaterThan(0);
+    const playerIds = new Set(w.player?.shipIds ?? []);
+    const npcEntries = history.filter(e => !playerIds.has(e.shipId));
+    // At least some non-player encounters must have landed in the shared log.
+    expect(npcEntries.length).toBeGreaterThan(0);
+  });
+
+  it("NPC encounters are pirate-only (rivals are gated to player ships)", () => {
+    const w = freshWorld();
+    tickN(w, 500);
+    const history = w.encounterHistory ?? [];
+    const playerIds = new Set(w.player?.shipIds ?? []);
+    for (const enc of history) {
+      if (playerIds.has(enc.shipId)) continue;
+      expect(enc.attacker.kind).toBe("pirate");
     }
   });
 });

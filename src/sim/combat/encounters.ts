@@ -32,7 +32,17 @@ const CARGO_VALUE_BONUS_PER_CREDIT = 4e-7;
 // 3-tick lane" frustration.
 export const ENCOUNTER_COOLDOWN_TICKS = 8;
 
-export const ENCOUNTER_HISTORY_CAP = 200;
+// New worlds get a brief honeymoon — no encounters fire while the player is
+// learning the basics. Also makes deterministic trader/economy tests stable
+// across the first ~hundred ticks since NPC encounter losses no longer
+// perturb early-game market state.
+export const ENCOUNTER_WARMUP_TICKS = 100;
+
+// Capped sliding window of resolved encounters across the whole sector.
+// Bumped past the player-only era's 200 once NPC fights started recording
+// here too — the heatmap window is 1000 ticks, so 500 entries gives the
+// log + heatmap room to feel populated without unbounded growth.
+export const ENCOUNTER_HISTORY_CAP = 500;
 
 const FIGHT_LOSS_CARGO_MASS_FRACTION = 0.30;
 const NEGOTIATE_PARTIAL_FRACTION = 0.12;
@@ -65,6 +75,8 @@ const AUTO_NEGOTIATE_MIN_P = 0.50;
 export function maybeSpawnEncounter(world: World, ship: Trader): Encounter | null {
   if (ship.state !== "transit") return null;
   if (!ship.destination) return null;
+  // Honeymoon: no encounters in the first ~100 ticks of a fresh world.
+  if (world.tick < ENCOUNTER_WARMUP_TICKS) return null;
 
   const lastTick = ship.lastEncounterTick ?? Number.NEGATIVE_INFINITY;
   if (world.tick - lastTick < ENCOUNTER_COOLDOWN_TICKS) return null;
@@ -292,13 +304,14 @@ const RIVAL_NAMES: readonly string[] = [
 function generateAttacker(world: World, ship: Trader, rng: Rng): EncounterAttacker {
   const ownSynd = ship.syndicateId;
   const toSynd = ship.destination ? world.locations[ship.destination]?.traits.faction : undefined;
+  const isPlayer = world.player?.shipIds.includes(ship.id) ?? false;
+  // Rival-syndicate attackers are a player-side narrative — they pivot on
+  // the player's reputation with the destination's syndicate. NPCs face
+  // pirates only; their cross-syndicate friction is modelled abstractly
+  // through the existing control / reputation systems instead.
   const playerRep = world.player?.reputation ?? {};
   const repWithDest = toSynd ? (playerRep[toSynd] ?? 0) : 0;
-
-  // Rival-syndicate attackers only show up when the player is foreign at the
-  // destination AND their reputation with the destination's syndicate is low.
-  // High reputation = rivals don't bother you. Pirates fill the gap otherwise.
-  const canRival = !!ownSynd && !!toSynd && toSynd !== ownSynd && repWithDest < 0.4;
+  const canRival = isPlayer && !!ownSynd && !!toSynd && toSynd !== ownSynd && repWithDest < 0.4;
   const isRival = canRival && rng() < 0.35;
 
   const baseWeapon = ship.weaponPower ?? ship.baseWeaponPower ?? 1;

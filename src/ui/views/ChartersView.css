@@ -76,6 +76,19 @@
   min-height: 0;
 }
 
+/* Mine / All ships filter inside the Combat tab. Sub-tabs that scope the
+   encounter feed without leaving the surrounding ledger tab. */
+.charters-combat-scope {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px 0;
+  flex: 0 0 auto;
+}
+
+.charters-combat-scope .bridge-tab {
+  flex: 0 0 auto;
+}
+
 .charters-badges-tabs {
   /* The shared .bridge-card-tabs default is flex: 1 for horizontal layouts.
      Inside a column flex card it would stretch vertically and leave a gap;
