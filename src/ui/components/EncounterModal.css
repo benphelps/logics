@@ -191,6 +191,8 @@
 .encounter-action-pills {
   display: flex;
   flex-wrap: wrap;
+  align-content: flex-start;
+  justify-content: flex-start;
   gap: 4px;
   margin-top: 2px;
 }

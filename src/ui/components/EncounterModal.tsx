@@ -32,7 +32,13 @@ function lossPills(world: World, loss: EncounterLoss): LossPill[] {
   }
   if (loss.credits > 0) pills.push({ id: "credits", text: `Ç${Math.round(loss.credits).toLocaleString()}` });
   if (loss.hull > 0) pills.push({ id: "hull", text: `${loss.hull} hull` });
-  return pills;
+  // Sort longest-first so flex-wrap fills leftover space with the short pills
+  // instead of orphaning a long one on its own line.
+  return sortPillsForPacking(pills);
+}
+
+function sortPillsForPacking(pills: LossPill[]): LossPill[] {
+  return [...pills].sort((a, b) => b.text.length - a.text.length);
 }
 
 function attackerArtUrl(kind: EncounterKind): string {
@@ -64,7 +70,7 @@ export function EncounterModal() {
         pills.push({ id: `np-${c.good}`, text: `${c.qty} ${world.goods[c.good]?.name ?? c.good}` });
       }
     }
-    return pills;
+    return sortPillsForPacking(pills);
   })();
 
   const playerArt = shipArtUrl(ship);
