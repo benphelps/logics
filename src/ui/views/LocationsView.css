@@ -1058,6 +1058,7 @@
    underneath at the crossing; the inner stroke is what survives. */
 .atlas-lane {
   --lane-traffic-intensity: 0;
+  --lane-danger-intensity: 0;
 }
 
 .atlas-lane-outline {
@@ -1099,6 +1100,26 @@
 }
 .atlas-lane.dimmer.traffic .atlas-lane-inner {
   stroke-opacity: calc(0.08 + var(--lane-traffic-intensity) * 0.08);
+}
+
+/* Danger heatmap — lanes with recent encounter activity tint red on the
+   logistics tab. The intensity mixes a saturated red into the inner stroke
+   in proportion to encounter density. Hostile corridors stand out without
+   overwhelming the rest of the map. */
+.atlas-lane.danger .atlas-lane-inner {
+  stroke: color-mix(
+    in srgb,
+    rgba(248, 113, 113, 1) calc(var(--lane-danger-intensity) * 100%),
+    var(--atlas-ink)
+  );
+  stroke-opacity: calc(0.55 + var(--lane-danger-intensity) * 0.4);
+  stroke-width: calc(1.0 + var(--lane-danger-intensity) * 0.6);
+}
+
+.atlas-lane.danger.traffic .atlas-lane-inner {
+  /* When a lane has both traffic and danger, danger color wins so the player
+     sees the hazard cue rather than the prosperous-corridor cue. */
+  stroke-opacity: calc(0.6 + var(--lane-danger-intensity) * 0.4);
 }
 
 /* Crosshair: fine dashed lines from the hovered station spanning the

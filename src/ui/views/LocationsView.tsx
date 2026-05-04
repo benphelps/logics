@@ -74,6 +74,17 @@ interface LaneTraffic {
   ships: TraderId[];
 }
 
+interface LaneDanger {
+  // Encounters along this lane within the recent window — drives the
+  // logistics tab's lane heatmap. Direction-agnostic: A→B and B→A coalesce.
+  count: number;
+}
+
+// How far back (in ticks) the lane danger heatmap looks. ~1000 ticks is the
+// rolling window — older encounters fade out so the map shows current
+// hotspots, not archaeological ones.
+const LANE_DANGER_WINDOW_TICKS = 1000;
+
 interface MarketRow {
   good: string;
   name: string;
@@ -153,6 +164,7 @@ export function LocationsView() {
   const links = useMemo(() => buildAtlasLinks(world, locations), [world, locations]);
   const ships = useMemo(() => buildShipMarkers(world, projectedById, links), [world, projectedById, links]);
   const laneTraffic = useMemo(() => buildLaneTraffic(world), [world]);
+  const laneDanger = useMemo(() => buildLaneDanger(world), [world]);
   const selectedMarket = selected ? marketRows(world, selected).slice(0, 9) : [];
   const selectedCounts = selected ? stationCounts(world, selected.id) : { docked: 0, inbound: 0, jobs: 0, routes: 0 };
 
@@ -194,6 +206,7 @@ export function LocationsView() {
               links={links}
               ships={ships}
               laneTraffic={laneTraffic}
+              laneDanger={laneDanger}
               selectedId={selected?.id ?? null}
               playerLocation={playerShip?.location ?? null}
               playerDestination={playerShip?.state === "transit" ? playerShip.destination : null}
@@ -334,6 +347,7 @@ function SectorMap({
   links,
   ships,
   laneTraffic,
+  laneDanger,
   selectedId,
   playerLocation,
   playerDestination,
@@ -351,6 +365,9 @@ function SectorMap({
   links: AtlasLink[];
   ships: ShipMarker[];
   laneTraffic: Map<string, LaneTraffic>;
+  // Per-lane recent-encounter density. Tints lanes red on the logistics
+  // tab to flag dangerous corridors.
+  laneDanger: Map<string, LaneDanger>;
   selectedId: LocationId | null;
   playerLocation: LocationId | null;
   playerDestination: LocationId | null;
@@ -399,6 +416,7 @@ function SectorMap({
   };
 
   const peakLaneTraffic = Math.max(1, ...Array.from(laneTraffic.values()).map(t => t.count));
+  const peakLaneDanger = Math.max(1, ...Array.from(laneDanger.values()).map(d => d.count));
 
   // Syndicate accent map — used by the control-bubble field, station
   // border tints, and ship chevron tints. Keyed by SyndicateId so each
@@ -729,7 +747,7 @@ function SectorMap({
       if (bestKey && bestLink) {
         const a = projectedById.get(bestLink.a)!;
         const b = projectedById.get(bestLink.b)!;
-        onLaneEnter(bestKey, a, b, bestLink.dist, laneTraffic.get(bestKey));
+        onLaneEnter(bestKey, a, b, bestLink.dist, laneTraffic.get(bestKey), laneDanger.get(bestKey));
       } else if (hoveredLane) {
         setHoveredLane(null);
         setHover(null);
@@ -759,9 +777,9 @@ function SectorMap({
   // close over `world`/`onSelect`/`onSelectTrader` so they need to
   // re-create when those change, but not when vbox or hover state
   // changes — which is the whole point of memoising the layers.
-  const onLaneEnter = useCallback((key: string, a: ProjectedLocation, b: ProjectedLocation, dist: number, traffic: LaneTraffic | undefined) => {
+  const onLaneEnter = useCallback((key: string, a: ProjectedLocation, b: ProjectedLocation, dist: number, traffic: LaneTraffic | undefined, danger: LaneDanger | undefined) => {
     setHoveredLane(key);
-    showTip(buildLaneTip(world, a, b, dist, traffic));
+    showTip(buildLaneTip(world, a, b, dist, traffic, danger));
   }, [world, showTip]);
 
   const onEnterStation = useCallback((p: ProjectedLocation) => {
@@ -955,6 +973,8 @@ function SectorMap({
           projectedById={projectedById}
           laneTraffic={laneTraffic}
           peakLaneTraffic={peakLaneTraffic}
+          laneDanger={laneDanger}
+          peakLaneDanger={peakLaneDanger}
           hoveredLane={hoveredLane}
         />
         {displayedRoute && displayedRoute.length >= 2 && (
@@ -1294,6 +1314,8 @@ interface LanesLayerProps {
   projectedById: Map<LocationId, ProjectedLocation>;
   laneTraffic: Map<string, LaneTraffic>;
   peakLaneTraffic: number;
+  laneDanger: Map<string, LaneDanger>;
+  peakLaneDanger: number;
   hoveredLane: string | null;
   // Lane keys that should render at the "second step" tier (softer)
   // and the "third step" tier (softer still). Used by the stations
@@ -1308,7 +1330,7 @@ interface LanesLayerProps {
 // can't both highlight at once. Per-line SVG hit-zones were removed
 // for the same reason.
 const LanesLayer = memo(function LanesLayer({
-  orderedLinks, projectedById, laneTraffic, peakLaneTraffic, hoveredLane, dimLanes, dimmerLanes,
+  orderedLinks, projectedById, laneTraffic, peakLaneTraffic, laneDanger, peakLaneDanger, hoveredLane, dimLanes, dimmerLanes,
 }: LanesLayerProps) {
   return (
     <g className="atlas-lanes" pointerEvents="none">
@@ -1319,10 +1341,15 @@ const LanesLayer = memo(function LanesLayer({
         const key = laneKey(link.a, link.b);
         const traffic = laneTraffic.get(key);
         const intensity = traffic ? Math.min(1, 0.5 + (traffic.count / peakLaneTraffic) * 0.5) : 0;
+        const danger = laneDanger.get(key);
+        const dangerIntensity = danger && peakLaneDanger > 0
+          ? Math.min(1, 0.4 + (danger.count / peakLaneDanger) * 0.6)
+          : 0;
         const isHovered = hoveredLane === key;
         const cls = [
           "atlas-lane",
           traffic && traffic.count > 0 ? "traffic" : null,
+          danger && danger.count > 0 ? "danger" : null,
           isHovered ? "hovered" : null,
           dimLanes.has(key) ? "dim" : null,
           dimmerLanes.has(key) ? "dimmer" : null,
@@ -1331,7 +1358,10 @@ const LanesLayer = memo(function LanesLayer({
           <g
             key={key}
             className={cls}
-            style={{ "--lane-traffic-intensity": intensity } as CSSProperties}
+            style={{
+              "--lane-traffic-intensity": intensity,
+              "--lane-danger-intensity": dangerIntensity,
+            } as CSSProperties}
           >
             <line className="atlas-lane-outline" x1={a.x} y1={a.y} x2={b.x} y2={b.y} />
             <line className="atlas-lane-inner" x1={a.x} y1={a.y} x2={b.x} y2={b.y} />
@@ -1585,11 +1615,19 @@ function buildLaneTip(
   b: ProjectedLocation,
   dist: number,
   traffic: LaneTraffic | undefined,
+  danger: LaneDanger | undefined,
 ): Omit<HoverTip, "px" | "py"> {
   const rows: HoverTipRow[] = [
     { label: "distance", value: `${dist.toFixed(0)}u` },
     { label: "traffic", value: traffic ? `${traffic.count} ship${traffic.count === 1 ? "" : "s"}` : "none", tone: traffic && traffic.count > 0 ? "good" : undefined },
   ];
+  if (danger && danger.count > 0) {
+    rows.push({
+      label: "danger",
+      value: `${danger.count} encounter${danger.count === 1 ? "" : "s"} recently`,
+      tone: "bad",
+    });
+  }
   if (traffic && traffic.ships.length > 0) {
     const names = traffic.ships
       .map(id => world.traders[id]?.name)
@@ -1813,6 +1851,19 @@ function buildLaneTraffic(world: World): Map<string, LaneTraffic> {
     const cur = map.get(key) ?? { count: 0, ships: [] };
     cur.count += 1;
     cur.ships.push(t.id);
+    map.set(key, cur);
+  }
+  return map;
+}
+
+function buildLaneDanger(world: World): Map<string, LaneDanger> {
+  const map = new Map<string, LaneDanger>();
+  const since = world.tick - LANE_DANGER_WINDOW_TICKS;
+  for (const enc of world.encounterHistory ?? []) {
+    if (enc.spawnedAt < since) continue;
+    const key = laneKey(enc.fromLocation, enc.toLocation);
+    const cur = map.get(key) ?? { count: 0 };
+    cur.count += 1;
     map.set(key, cur);
   }
   return map;
