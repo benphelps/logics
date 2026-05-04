@@ -106,7 +106,7 @@
 }
 
 .bridge-right {
-  grid-template-rows: minmax(0, 1fr) minmax(0, 3fr);
+  grid-template-rows: minmax(0, 3fr) minmax(0, 1fr);
 }
 
 .bridge-card {
@@ -261,32 +261,16 @@
   min-width: 0;
 }
 
-.station-name-with-pin,
-.row-title-with-pin {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
-  max-width: 100%;
-  vertical-align: middle;
-}
-
 .info-focus-trigger {
   appearance: none;
-  padding: 2px 4px;
-  margin: -2px -4px;
+  padding: 0;
+  margin: 0;
   border: 0;
-  border-radius: 4px;
   background: transparent;
   color: inherit;
   font: inherit;
   text-align: left;
   cursor: pointer;
-  text-decoration-line: underline;
-  text-decoration-style: dotted;
-  text-decoration-thickness: 1px;
-  text-decoration-color: rgba(157, 215, 255, 0.58);
-  text-underline-offset: 2px;
 }
 
 .info-focus-trigger:hover:not(:disabled),
@@ -296,29 +280,19 @@
   background: transparent;
   border-color: transparent;
   color: var(--text);
-  text-decoration-style: solid;
-  text-decoration-color: currentColor;
-  text-underline-offset: 2px;
   outline: none;
 }
 
 .info-focus-trigger:focus-visible {
-  box-shadow: none;
+  outline: 1px solid rgba(79, 182, 255, 0.48);
+  outline-offset: 2px;
 }
 
-.station-name-with-pin > span,
-.row-title-with-pin > span {
+.info-focus-trigger > span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.row-pin-icon {
-  flex: 0 0 auto;
-  color: var(--text-dim);
-  font-size: 13px;
-  opacity: 0.86;
 }
 
 .station-tags {
@@ -2674,14 +2648,6 @@ button.upgrade-remove-pill {
   filter: saturate(1.12) contrast(1.04);
 }
 
-.info-area-card.art-card.is-entering::before {
-  animation: info-area-art-enter 105ms ease-out both;
-}
-
-.info-area-card.art-card.is-exiting::before {
-  animation: info-area-art-exit 70ms ease-in both;
-}
-
 .info-area-card.art-card .bridge-card-head {
   min-height: 42px;
   margin-bottom: 12px;
@@ -2746,7 +2712,7 @@ button.upgrade-remove-pill {
 .info-area-tabs-empty {
   pointer-events: none;
   margin-left: 8px;
-  color: rgba(142, 154, 174, 0.68);
+  color: var(--text-faint);
   font-size: 10px;
   font-weight: 650;
   letter-spacing: 0.08em;
@@ -2815,14 +2781,6 @@ button.upgrade-remove-pill {
   overscroll-behavior: contain;
 }
 
-.info-area-content.is-entering {
-  animation: info-area-panel-enter 105ms ease-out both;
-}
-
-.info-area-content.is-exiting {
-  animation: info-area-panel-exit 70ms ease-in both;
-}
-
 .info-area-values {
   position: relative;
   height: 100%;
@@ -2869,174 +2827,9 @@ button.upgrade-remove-pill {
   scrollbar-gutter: stable;
 }
 
-.info-area-values
-  :is(
-    .trade-helper-good,
-    .trade-helper-suggested,
-    .trade-helper-meta span,
-    .cargo-stat dd,
-    .trade-helper-stock-head span:last-child,
-    .trade-helper-line > span:last-child,
-    .trade-helper-flow span,
-    .station-flow-pills span,
-    .trade-helper-contract,
-    .trade-helper-note,
-    .trade-helper-market-table tbody,
-    .transit-progress-meta span:not(.dim):not(.transit-progress-spacer)
-  ) {
-  animation: info-area-value-refresh 95ms ease-out both;
-}
-
-.info-area-content.is-entering
-  .info-area-values
-  :is(
-    .trade-helper-good,
-    .trade-helper-suggested,
-    .trade-helper-meta span,
-    .cargo-stat dd,
-    .trade-helper-stock-head span:last-child,
-    .trade-helper-line > span:last-child,
-    .trade-helper-flow span,
-    .station-flow-pills span,
-    .trade-helper-contract,
-    .trade-helper-note,
-    .trade-helper-market-table tbody,
-    .transit-progress-meta span:not(.dim):not(.transit-progress-spacer)
-  ) {
-  animation: info-area-value-enter 130ms 65ms ease-out both;
-}
-
-.info-area-content.is-exiting
-  .info-area-values
-  :is(
-    .trade-helper-good,
-    .trade-helper-suggested,
-    .trade-helper-meta span,
-    .cargo-stat dd,
-    .trade-helper-stock-head span:last-child,
-    .trade-helper-line > span:last-child,
-    .trade-helper-flow span,
-    .station-flow-pills span,
-    .trade-helper-contract,
-    .trade-helper-note,
-    .trade-helper-market-table tbody,
-    .transit-progress-meta span:not(.dim):not(.transit-progress-spacer)
-  ) {
-  animation: none;
-}
-
 .info-area-values .trade-helper-bar-fill,
 .info-area-values .vital-bar-fill {
   transform-origin: left center;
-  transition: width 180ms ease-out;
-  animation: info-area-bar-refresh 140ms ease-out both;
-}
-
-.info-area-content.is-entering .trade-helper-bar-fill,
-.info-area-content.is-entering .vital-bar-fill {
-  animation: info-area-bar-enter 185ms 60ms ease-out both;
-}
-
-@keyframes info-area-art-enter {
-  from {
-    opacity: 0.48;
-  }
-  to {
-    opacity: var(--card-art-opacity);
-  }
-}
-
-@keyframes info-area-art-exit {
-  from {
-    opacity: var(--card-art-opacity);
-  }
-  to {
-    opacity: 0.24;
-  }
-}
-
-@keyframes info-area-panel-enter {
-  from {
-    opacity: 0.78;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes info-area-panel-exit {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0.32;
-  }
-}
-
-@keyframes info-area-value-enter {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes info-area-value-refresh {
-  from {
-    opacity: 0.52;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes info-area-bar-enter {
-  from {
-    opacity: 0;
-    transform: scaleX(0);
-  }
-  to {
-    opacity: 1;
-    transform: scaleX(1);
-  }
-}
-
-@keyframes info-area-bar-refresh {
-  from {
-    opacity: 0.55;
-    transform: scaleX(0.92);
-  }
-  to {
-    opacity: 1;
-    transform: scaleX(1);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .info-area-content.is-entering,
-  .info-area-content.is-exiting,
-  .info-area-values
-    :is(
-      .trade-helper-good,
-      .trade-helper-suggested,
-      .trade-helper-meta span,
-      .cargo-stat dd,
-      .trade-helper-stock-head span:last-child,
-      .trade-helper-line > span:last-child,
-      .trade-helper-flow span,
-      .station-flow-pills span,
-      .trade-helper-contract,
-      .trade-helper-note,
-      .trade-helper-market-table tbody,
-      .transit-progress-meta span:not(.dim):not(.transit-progress-spacer)
-    ),
-  .info-area-values .trade-helper-bar-fill,
-  .info-area-values .vital-bar-fill {
-    animation-delay: 0ms;
-    animation-duration: 1ms;
-    transition-duration: 1ms;
-  }
 }
 
 .trade-helper-good {
@@ -3530,7 +3323,8 @@ button.upgrade-remove-pill {
 .upgrade-table tbody tr,
 .crew-table tbody tr,
 .cargo-table tbody tr {
-  height: 48px;
+  height: 36px;
+  line-height: 1.2;
 }
 
 .market-table td,
@@ -3540,11 +3334,11 @@ button.upgrade-remove-pill {
 .upgrade-table td,
 .crew-table td,
 .cargo-table td {
-  padding: 7px 9px;
+  padding: 4px 9px;
   border-bottom: 1px solid var(--border);
   font-variant-numeric: tabular-nums;
   vertical-align: middle;
-  height: 34px;
+  height: 36px;
 }
 
 .bridge-card
@@ -3716,16 +3510,17 @@ button.upgrade-remove-pill {
 .travel-current-station.info-focus-trigger {
   margin: 0;
   padding: 0;
-  text-decoration-line: none;
+  border-radius: 4px;
 }
 
 .travel-current-station.info-focus-trigger:hover,
 .travel-current-station.info-focus-trigger:focus-visible,
 .travel-current-station.info-focus-trigger[aria-pressed="true"] {
   color: #eef6ff;
-  text-decoration-line: underline;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 3px;
+}
+
+.travel-current-station.info-focus-trigger.is-pinned {
+  background: rgba(79, 182, 255, 0.12);
 }
 
 .travel-current-name {
@@ -3789,15 +3584,11 @@ button.upgrade-remove-pill {
   flex-direction: column;
   gap: 2px;
   min-width: 0;
-  /* Don't let children stretch to fill the cell — the dest-title button
-     should only be as wide as its text + pin so hover/focus triggers
-     don't fire over empty cell space. */
   align-items: flex-start;
 }
 
 .travel-dest-title-poi {
   color: #d8efff;
-  text-decoration-color: rgba(157, 215, 255, 0.78);
 }
 
 .travel-dest-name {
@@ -3883,6 +3674,69 @@ button.upgrade-remove-pill {
 .market-table tbody tr,
 .travel-table tbody tr {
   cursor: default;
+}
+
+.market-table tbody tr.info-focus-row,
+.travel-table tbody tr.info-focus-row,
+.cargo-table tbody tr.info-focus-row {
+  cursor: pointer;
+}
+
+.market-table tbody tr.info-focus-row:hover,
+.market-table tbody tr.info-focus-row:focus-visible,
+.market-table tbody tr.info-focus-row:focus-within,
+.travel-table tbody tr.info-focus-row:hover,
+.travel-table tbody tr.info-focus-row:focus-visible,
+.travel-table tbody tr.info-focus-row:focus-within,
+.cargo-table tbody tr.info-focus-row:hover,
+.cargo-table tbody tr.info-focus-row:focus-visible,
+.cargo-table tbody tr.info-focus-row:focus-within {
+  background: rgba(79, 182, 255, 0.055);
+  outline: none;
+}
+
+.market-table tbody tr.info-focus-row[aria-selected="true"],
+.travel-table tbody tr.info-focus-row[aria-selected="true"],
+.cargo-table tbody tr.info-focus-row[aria-selected="true"] {
+  background: rgba(79, 182, 255, 0.075);
+}
+
+.market-table tbody tr.info-focus-row.is-pinned,
+.travel-table tbody tr.info-focus-row.is-pinned,
+.cargo-table tbody tr.info-focus-row.is-pinned {
+  background: rgba(79, 182, 255, 0.105);
+}
+
+.market-table tbody tr.info-focus-row.is-pinned:hover,
+.market-table tbody tr.info-focus-row.is-pinned:focus-visible,
+.market-table tbody tr.info-focus-row.is-pinned:focus-within,
+.travel-table tbody tr.info-focus-row.is-pinned:hover,
+.travel-table tbody tr.info-focus-row.is-pinned:focus-visible,
+.travel-table tbody tr.info-focus-row.is-pinned:focus-within,
+.cargo-table tbody tr.info-focus-row.is-pinned:hover,
+.cargo-table tbody tr.info-focus-row.is-pinned:focus-visible,
+.cargo-table tbody tr.info-focus-row.is-pinned:focus-within {
+  background: rgba(79, 182, 255, 0.145);
+}
+
+.market-table tbody tr.info-focus-row:focus-visible td:first-child,
+.travel-table tbody tr.info-focus-row:focus-visible td:first-child,
+.cargo-table tbody tr.info-focus-row:focus-visible td:first-child {
+  box-shadow: inset 3px 0 0 rgba(157, 215, 255, 0.56);
+}
+
+.good-name,
+.shipyard-row-name,
+.travel-dest-title {
+  display: inline-block;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  white-space: nowrap;
 }
 
 /* ---- guided-hint highlights ---- */
@@ -4371,7 +4225,7 @@ button.upgrade-remove-pill {
 }
 
 .cargo-table tbody tr.cargo-row {
-  cursor: default;
+  cursor: pointer;
 }
 
 .cargo-table td.numeric {
@@ -4381,6 +4235,21 @@ button.upgrade-remove-pill {
 .cargo-row-name {
   color: var(--text);
   font-weight: 500;
+}
+
+/* Two-line cell stack for commodity rows: good name + category sub. */
+.good-name-cell {
+  display: inline-flex;
+  flex-direction: column;
+  min-width: 0;
+  vertical-align: middle;
+  line-height: 1.15;
+}
+
+.good-name-sub {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 
 .cargo-row-lots {

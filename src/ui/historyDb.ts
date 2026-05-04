@@ -1,13 +1,14 @@
-import type { BookTrade, Equity, EquityId, ShipLogEntry, TradeRecord, TraderId, World } from "../sim/types";
+import type { BookTrade, Equity, EquityId, GoodId, ShipLogEntry, TradeRecord, TraderId, World } from "../sim/types";
 import type { RecentNewsEvent } from "../sim/news/types";
 
 const DB_NAME = "logics-history";
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const STORE_HISTORY = "equityHistory";
 const STORE_TRADES = "equityTrades";
 const STORE_LOG = "traderLog";
 const STORE_LEDGER = "tradeLedger";
 const STORE_NEWS = "newsEvents";
+const STORE_SPOT_HISTORY = "commoditySpotHistory";
 const IDX_TRADES = "byEquityTick";
 const IDX_LOG = "byTraderTick";
 const IDX_LEDGER_SHIP = "byShipTick";
@@ -17,6 +18,16 @@ const IDX_NEWS_GAME = "byGameTick";
 export interface HistorySample {
   gameId: string;
   equityId: EquityId;
+  tick: number;
+  price: number;
+}
+
+// Per-good universe-wide volume-weighted spot price samples — physical
+// commodity pricing, separate from the Exchange's commodity equity series.
+// Markets view chart reads from this store.
+export interface SpotHistorySample {
+  gameId: string;
+  goodId: GoodId;
   tick: number;
   price: number;
 }
@@ -53,6 +64,7 @@ const tradesHighWater = new Map<string, number>();
 const logHighWater = new Map<string, number>();
 const ledgerHighWater = new Map<string, number>();
 const newsHighWater = new Map<string, number>();
+const spotHighWater = new Map<string, number>();
 
 // Per-gameId chain of pending flushes. Two saves in quick succession serialize
 // rather than racing the same high-water mark. hydrateHistoryRings awaits the
@@ -106,6 +118,9 @@ export function openHistoryDb(): Promise<IDBDatabase | null> {
         const news = db.createObjectStore(STORE_NEWS, { keyPath: ["gameId", "uid"] });
         news.createIndex(IDX_NEWS_GAME, ["gameId", "tick"], { unique: false });
       }
+      if (!db.objectStoreNames.contains(STORE_SPOT_HISTORY)) {
+        db.createObjectStore(STORE_SPOT_HISTORY, { keyPath: ["gameId", "goodId", "tick"] });
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => {
@@ -127,6 +142,7 @@ export async function __resetHistoryDbForTests(): Promise<void> {
   logHighWater.clear();
   ledgerHighWater.clear();
   newsHighWater.clear();
+  spotHighWater.clear();
   pendingFlushes.clear();
   if (existing) {
     try {
@@ -196,6 +212,16 @@ export async function putTradeRecords(records: PersistedTradeRecord[]): Promise<
   await txDone(tx);
 }
 
+export async function putSpotHistory(samples: SpotHistorySample[]): Promise<void> {
+  if (samples.length === 0) return;
+  const db = await openHistoryDb();
+  if (!db) return;
+  const tx = db.transaction(STORE_SPOT_HISTORY, "readwrite");
+  const store = tx.objectStore(STORE_SPOT_HISTORY);
+  for (const s of samples) store.put(s);
+  await txDone(tx);
+}
+
 export async function putNewsEvents(events: PersistedNewsEvent[]): Promise<void> {
   if (events.length === 0) return;
   const db = await openHistoryDb();
@@ -230,14 +256,16 @@ async function doFlush(world: World): Promise<void> {
   const lastL = logHighWater.get(gameId) ?? -1;
   const lastLedger = ledgerHighWater.get(gameId) ?? -1;
   const lastNews = newsHighWater.get(gameId) ?? -1;
+  const lastSpot = spotHighWater.get(gameId) ?? -1;
 
   const history: HistorySample[] = [];
   const trades: PersistedTrade[] = [];
   const log: PersistedLogEntry[] = [];
   const ledger: PersistedTradeRecord[] = [];
   const news: PersistedNewsEvent[] = [];
+  const spot: SpotHistorySample[] = [];
 
-  let maxH = lastH, maxT = lastT, maxL = lastL, maxLedger = lastLedger, maxNews = lastNews;
+  let maxH = lastH, maxT = lastT, maxL = lastL, maxLedger = lastLedger, maxNews = lastNews, maxSpot = lastSpot;
 
   for (const eq of Object.values(world.equities ?? {})) {
     if (eq.history) {
@@ -288,6 +316,19 @@ async function doFlush(world: World): Promise<void> {
     }
   }
 
+  // Universe spot-price samples per good. Same high-water pattern as the
+  // equity history ring above — only flush ticks past the last write.
+  if (world.commoditySpotHistory) {
+    for (const [goodId, ring] of Object.entries(world.commoditySpotHistory)) {
+      for (const point of ring) {
+        if (point.tick > lastSpot) {
+          spot.push({ gameId, goodId, tick: point.tick, price: point.price });
+          if (point.tick > maxSpot) maxSpot = point.tick;
+        }
+      }
+    }
+  }
+
   // Update high-water only after a successful write — failures keep the
   // previous mark so the next save retries the same range.
   // After a successful write the entries up to the new high-water are
@@ -304,6 +345,7 @@ async function doFlush(world: World): Promise<void> {
   const TRADES_KEEP = 100;
   const LOG_KEEP = 100;
   const LEDGER_KEEP = 100;
+  const SPOT_KEEP = 100;
   try {
     await Promise.all([
       history.length > 0 ? putHistory(history).then(() => {
@@ -343,6 +385,14 @@ async function doFlush(world: World): Promise<void> {
         // No in-memory trim — news.recent is already capped at 64 by
         // tickNewsEvents; that's our display window.
       }) : Promise.resolve(),
+      spot.length > 0 ? putSpotHistory(spot).then(() => {
+        spotHighWater.set(gameId, maxSpot);
+        if (world.commoditySpotHistory) {
+          for (const ring of Object.values(world.commoditySpotHistory)) {
+            if (ring.length > SPOT_KEEP) ring.splice(0, ring.length - SPOT_KEEP);
+          }
+        }
+      }) : Promise.resolve(),
     ]);
   } catch (error) {
     console.warn("[logics] historyDb flush failed", error);
@@ -359,6 +409,7 @@ export function primeHighWater(gameId: string, tick: number): void {
   logHighWater.set(gameId, tick);
   ledgerHighWater.set(gameId, tick);
   newsHighWater.set(gameId, tick);
+  spotHighWater.set(gameId, tick);
 }
 
 // Refill the in-memory rings on a freshly-loaded world. Pulls bounded
@@ -391,6 +442,8 @@ export async function hydrateHistoryRings(
 
   const equityIds = Object.keys(world.equities ?? {});
   const traderIds = Object.keys(world.traders ?? {});
+  const goodIds = Object.keys(world.goods ?? {});
+  const spotLimit = opts?.historyLimit ?? 100;
 
   await Promise.all([
     ...equityIds.map(async (eqId) => {
@@ -426,6 +479,11 @@ export async function hydrateHistoryRings(
         .filter(e => e.tick <= snapshotTick)
         .map(e => ({ uid: e.uid, templateId: e.templateId, tick: e.tick, effects: e.effects }));
     })(),
+    ...goodIds.map(async (goodId) => {
+      if (!world.commoditySpotHistory) world.commoditySpotHistory = {};
+      const samples = await getRecentSpotHistory(gameId, goodId, spotLimit, snapshotTick);
+      world.commoditySpotHistory[goodId] = samples.map(s => ({ tick: s.tick, price: s.price }));
+    }),
   ]);
 
   primeHighWater(gameId, snapshotTick);
@@ -493,6 +551,72 @@ export async function getRecentHistory(gameId: string, equityId: EquityId, limit
         cursor.continue();
       } else {
         out.reverse();
+        resolve(out);
+      }
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+// Read the most recent N universe-spot samples for a good, oldest-first.
+// `atOrBeforeTick` (default ∞) clamps the upper bound at IDB query time so
+// hydrate after a load doesn't pick up samples written by a later session
+// that ran past the snapshot tick.
+export async function getRecentSpotHistory(
+  gameId: string,
+  goodId: GoodId,
+  limit: number,
+  atOrBeforeTick: number = Number.POSITIVE_INFINITY,
+): Promise<SpotHistorySample[]> {
+  if (limit <= 0) return [];
+  const db = await openHistoryDb();
+  if (!db) return [];
+  const tx = db.transaction(STORE_SPOT_HISTORY, "readonly");
+  const store = tx.objectStore(STORE_SPOT_HISTORY);
+  const range = IDBKeyRange.bound(
+    [gameId, goodId, Number.NEGATIVE_INFINITY],
+    [gameId, goodId, atOrBeforeTick],
+  );
+  const out: SpotHistorySample[] = [];
+  return new Promise<SpotHistorySample[]>((resolve, reject) => {
+    const req = store.openCursor(range, "prev");
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (cursor && out.length < limit) {
+        out.push(cursor.value as SpotHistorySample);
+        cursor.continue();
+      } else {
+        out.reverse();
+        resolve(out);
+      }
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+// Inclusive [fromTick, toTick] window for a good — used by chart pan-left
+// lazy backfill, mirroring getHistoryWindow.
+export async function getSpotHistoryWindow(
+  gameId: string,
+  goodId: GoodId,
+  fromTick: number,
+  toTick: number,
+): Promise<SpotHistorySample[]> {
+  if (toTick < fromTick) return [];
+  const db = await openHistoryDb();
+  if (!db) return [];
+  const tx = db.transaction(STORE_SPOT_HISTORY, "readonly");
+  const store = tx.objectStore(STORE_SPOT_HISTORY);
+  const range = IDBKeyRange.bound([gameId, goodId, fromTick], [gameId, goodId, toTick]);
+  const out: SpotHistorySample[] = [];
+  return new Promise<SpotHistorySample[]>((resolve, reject) => {
+    const req = store.openCursor(range);
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (cursor) {
+        out.push(cursor.value as SpotHistorySample);
+        cursor.continue();
+      } else {
         resolve(out);
       }
     };
@@ -807,13 +931,14 @@ export async function deleteGame(gameId: string): Promise<void> {
   if (!gameId) return;
   const db = await openHistoryDb();
   if (!db) return;
-  const tx = db.transaction([STORE_HISTORY, STORE_TRADES, STORE_LOG, STORE_LEDGER, STORE_NEWS], "readwrite");
+  const tx = db.transaction([STORE_HISTORY, STORE_TRADES, STORE_LOG, STORE_LEDGER, STORE_NEWS, STORE_SPOT_HISTORY], "readwrite");
   await Promise.all([
     deleteByGameId(tx.objectStore(STORE_HISTORY), gameId, "history"),
     deleteByGameId(tx.objectStore(STORE_TRADES), gameId, "trades"),
     deleteByGameId(tx.objectStore(STORE_LOG), gameId, "log"),
     deleteByGameId(tx.objectStore(STORE_LEDGER), gameId, "ledger"),
     deleteByGameId(tx.objectStore(STORE_NEWS), gameId, "news"),
+    deleteByGameId(tx.objectStore(STORE_SPOT_HISTORY), gameId, "spot"),
   ]);
   await txDone(tx);
   historyHighWater.delete(gameId);
@@ -821,17 +946,19 @@ export async function deleteGame(gameId: string): Promise<void> {
   logHighWater.delete(gameId);
   ledgerHighWater.delete(gameId);
   newsHighWater.delete(gameId);
+  spotHighWater.delete(gameId);
 }
 
 function deleteByGameId(
   store: IDBObjectStore,
   gameId: string,
-  kind: "history" | "trades" | "log" | "ledger" | "news",
+  kind: "history" | "trades" | "log" | "ledger" | "news" | "spot",
 ): Promise<void> {
-  // history + news use compound primary keys whose first element is gameId;
-  // range-delete on the primary key directly. The auto-key / id-key stores
-  // walk the matching index and call cursor.delete() row by row.
-  if (kind === "history") {
+  // history + news + spot use compound primary keys whose first element is
+  // gameId; range-delete on the primary key directly. The auto-key /
+  // id-key stores walk the matching index and call cursor.delete() row by
+  // row.
+  if (kind === "history" || kind === "spot") {
     const range = IDBKeyRange.bound(
       [gameId, "", Number.NEGATIVE_INFINITY],
       [gameId, "￿", Number.POSITIVE_INFINITY],

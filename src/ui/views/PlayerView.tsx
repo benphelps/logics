@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState, type AnimationEvent, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { IconType } from "react-icons";
-import { MdPushPin } from "react-icons/md";
 import {
   GiAstronautHelmet,
   GiAutoRepair,
@@ -433,26 +432,11 @@ type StationInfoFocus = { kind: "station"; loc: LocationId; source: "station" | 
 // panel renders blueprint-shaped content, not goods-shaped content.
 type ShipBlueprintInfoFocus = { kind: "ship-blueprint"; blueprintId: string };
 type InfoFocus = GoodInfoFocus | StationInfoFocus | ShipBlueprintInfoFocus;
-type InfoPanelKind = "ship" | "station" | "good" | "ship-blueprint";
-type InfoPanelPhase = "idle" | "exiting" | "entering";
-type InfoPanelTransition = {
-  renderedFocus: InfoFocus | null;
-  renderedKey: string;
-  renderedKind: InfoPanelKind;
-  pendingFocus: InfoFocus | null;
-  pendingKey: string | null;
-  pendingKind: InfoPanelKind | null;
-  phase: InfoPanelPhase;
-};
 
 function infoFocusKey(focus: InfoFocus): string {
   if (focus.kind === "good") return `good:${focus.source}:${focus.good}`;
   if (focus.kind === "ship-blueprint") return `blueprint:${focus.blueprintId}`;
   return `station:${focus.loc}`;
-}
-
-function infoPanelKind(focus: InfoFocus | null): InfoPanelKind {
-  return focus == null ? "ship" : focus.kind;
 }
 
 function infoPanelKey(focus: InfoFocus | null): string {
@@ -469,6 +453,25 @@ function infoFocusLabel(focus: InfoFocus, world: World): string {
     return bp ? `${bp.name} (${bp.classLabel})` : focus.blueprintId;
   }
   return world.locations[focus.loc]?.name ?? focus.loc;
+}
+
+function infoFocusRowClass(pinned: boolean, extra = ""): string {
+  return `info-focus-row ${pinned ? "is-pinned" : ""} ${extra}`.trim();
+}
+
+function eventTargetsRowControl(event: { target: EventTarget; currentTarget: HTMLElement }): boolean {
+  if (!(event.target instanceof Element)) return false;
+  const control = event.target.closest(
+    "button, a, input, select, textarea, summary, [contenteditable='true'], [role='button'], [tabindex]:not([tabindex='-1']), [data-row-action-cell]",
+  );
+  return control != null && control !== event.currentTarget;
+}
+
+function handleInfoRowKeyDown(event: KeyboardEvent<HTMLTableRowElement>, onSelect: () => void) {
+  if (eventTargetsRowControl(event)) return;
+  if (event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault();
+  onSelect();
 }
 
 // Helper for label lookup — the focus only carries a blueprint id; the
@@ -618,6 +621,19 @@ function DockedView({ ship, world, loc, guidedPlan, hint, target, hintText, cueT
           />
         </div>
         <div className="bridge-column bridge-right">
+          <InfoAreaCard
+            ship={ship}
+            world={world}
+            loc={loc}
+            focus={activeFocus}
+            pinnedFocuses={pinnedFocuses}
+            activePinnedKey={activePinnedKey}
+            onSelectPinned={setActivePinnedKey}
+            onClosePinned={closePinnedFocus}
+            onClearFocus={clearInfoFocus}
+            target={target}
+            hint={hint}
+          />
           <TravelOptions
             ship={ship}
             world={world}
@@ -634,19 +650,6 @@ function DockedView({ ship, world, loc, guidedPlan, hint, target, hintText, cueT
               else clearHoverFocus();
             }}
             onPulseSuggestions={pulseSuggestionActions}
-          />
-          <InfoAreaCard
-            ship={ship}
-            world={world}
-            loc={loc}
-            focus={activeFocus}
-            pinnedFocuses={pinnedFocuses}
-            activePinnedKey={activePinnedKey}
-            onSelectPinned={setActivePinnedKey}
-            onClosePinned={closePinnedFocus}
-            onClearFocus={clearInfoFocus}
-            target={target}
-            hint={hint}
           />
         </div>
       </div>
@@ -1855,22 +1858,28 @@ function MarketTableBody({ ship, world, loc, target, hintText, cueText, selected
                 return (
                   <tr
                     key={gid}
+                    className={infoFocusRowClass(pinned)}
                     aria-selected={selectedGood === gid}
+                    tabIndex={0}
+                    onMouseEnter={() => onHoverGood(gid)}
+                    onMouseLeave={() => onHoverGood(null)}
+                    onFocus={(event) => {
+                      if (!eventTargetsRowControl(event)) onHoverGood(gid);
+                    }}
+                    onBlur={(event) => {
+                      const next = event.relatedTarget;
+                      if (!(next instanceof Node) || !event.currentTarget.contains(next)) onHoverGood(null);
+                    }}
+                    onClick={(event) => {
+                      if (!eventTargetsRowControl(event)) onSelectGood(gid);
+                    }}
+                    onKeyDown={(event) => handleInfoRowKeyDown(event, () => onSelectGood(gid))}
                   >
                     <td>
-                      <button
-                        type="button"
-                        className="row-title-with-pin info-focus-trigger"
-                        aria-pressed={pinned}
-                        onMouseEnter={() => onHoverGood(gid)}
-                        onMouseLeave={() => onHoverGood(null)}
-                        onFocus={() => onHoverGood(gid)}
-                        onBlur={() => onHoverGood(null)}
-                        onClick={() => onSelectGood(gid)}
-                      >
+                      <span className="good-name-cell">
                         <span className="good-name">{world.goods[gid].name}</span>
-                        {pinned && <MdPushPin className="ui-icon row-pin-icon" aria-hidden="true" focusable="false" />}
-                      </button>
+                        <span className="good-name-sub dim">{world.goods[gid].category}</span>
+                      </span>
                       {isFuel && <span className="row-meta-pill muted">fuel</span>}
                     </td>
                     <td className="numeric mono">{stock.toFixed(0)}</td>
@@ -1878,7 +1887,7 @@ function MarketTableBody({ ship, world, loc, target, hintText, cueText, selected
                     <td className="numeric mono">Ç{price.toFixed(1)}</td>
                     <td className="numeric mono dim">Ç{netSell.toFixed(1)}</td>
                     {manualActions && (
-                      <td>
+                      <td data-row-action-cell>
                         <BuyControls
                           ship={ship}
                           world={world}
@@ -2062,57 +2071,7 @@ function InfoAreaCard({ ship, world, loc, focus, pinnedFocuses, activePinnedKey,
   hint: GuidedHint;
 }) {
   const requestedKey = infoPanelKey(focus);
-  const requestedKind = infoPanelKind(focus);
-  const [transition, setTransition] = useState<InfoPanelTransition>(() => ({
-    renderedFocus: focus,
-    renderedKey: requestedKey,
-    renderedKind: requestedKind,
-    pendingFocus: null,
-    pendingKey: null,
-    pendingKind: null,
-    phase: "entering",
-  }));
-
-  if (transition.phase === "exiting") {
-    if (requestedKind === transition.renderedKind) {
-      setTransition({
-        renderedFocus: focus,
-        renderedKey: requestedKey,
-        renderedKind: requestedKind,
-        pendingFocus: null,
-        pendingKey: null,
-        pendingKind: null,
-        phase: "idle",
-      });
-    } else if (requestedKey !== transition.pendingKey || requestedKind !== transition.pendingKind) {
-      setTransition({
-        ...transition,
-        pendingFocus: focus,
-        pendingKey: requestedKey,
-        pendingKind: requestedKind,
-      });
-    }
-  } else if (requestedKind !== transition.renderedKind) {
-    setTransition({
-      ...transition,
-      pendingFocus: focus,
-      pendingKey: requestedKey,
-      pendingKind: requestedKind,
-      phase: "exiting",
-    });
-  } else if (requestedKey !== transition.renderedKey) {
-    setTransition({
-      renderedFocus: focus,
-      renderedKey: requestedKey,
-      renderedKind: requestedKind,
-      pendingFocus: null,
-      pendingKey: null,
-      pendingKind: null,
-      phase: "idle",
-    });
-  }
-
-  const renderedFocus = transition.renderedFocus;
+  const renderedFocus = focus;
   const stationLoc = renderedFocus?.kind === "station" ? world.locations[renderedFocus.loc] ?? loc : loc;
   // Ship-art API hooks. When the ship view is the active focus, we
   // ask for a class-aware splash for the actively-controlled ship;
@@ -2144,31 +2103,10 @@ function InfoAreaCard({ ship, world, loc, focus, pinnedFocuses, activePinnedKey,
   // came from the ship-art API so the ship is actually visible
   // inside the card's painter slot.
   const usingDynamicArt = dynamicArtUrl != null && infoArtUrl === dynamicArtUrl;
-  const phaseClass = transition.phase === "idle" ? "" : `is-${transition.phase}`;
-  const handleInfoAnimationEnd = (event: AnimationEvent<HTMLDivElement>) => {
-    if (event.target !== event.currentTarget) return;
-    setTransition(prev => {
-      if (prev.phase === "exiting" && prev.pendingKey != null && prev.pendingKind != null) {
-        return {
-          renderedFocus: prev.pendingFocus,
-          renderedKey: prev.pendingKey,
-          renderedKind: prev.pendingKind,
-          pendingFocus: null,
-          pendingKey: null,
-          pendingKind: null,
-          phase: "entering",
-        };
-      }
-      if (prev.phase === "entering") {
-        return { ...prev, phase: "idle" };
-      }
-      return prev;
-    });
-  };
 
   return (
     <section
-      className={`bridge-card trade-helper-card info-area-card ${infoArtUrl ? "art-card" : ""} ${phaseClass} ${renderedFocus == null || renderedFocus.kind === "station" ? "station-info-helper" : ""}`}
+      className={`bridge-card trade-helper-card info-area-card ${infoArtUrl ? "art-card" : ""} ${renderedFocus == null || renderedFocus.kind === "station" ? "station-info-helper" : ""}`}
       style={infoArtUrl
         ? {
             ...artCardStyle(infoArtUrl),
@@ -2184,7 +2122,7 @@ function InfoAreaCard({ ship, world, loc, focus, pinnedFocuses, activePinnedKey,
         }}
       >
         {pinnedFocuses.length === 0 ? (
-          <span className="info-area-tabs-empty">Click an entry to pin it</span>
+          <span className="info-area-tabs-empty">Hover to inspect · click to pin</span>
         ) : pinnedFocuses.map(pinned => {
           const key = infoFocusKey(pinned);
           const active = requestedKey === key || (!focus && activePinnedKey === key);
@@ -2214,8 +2152,8 @@ function InfoAreaCard({ ship, world, loc, focus, pinnedFocuses, activePinnedKey,
           );
         })}
       </div>
-      <div className={`info-area-content ${phaseClass}`} onAnimationEnd={handleInfoAnimationEnd}>
-        <div key={transition.renderedKey} className="info-area-values">
+      <div className="info-area-content">
+        <div key={requestedKey} className="info-area-values">
           <div className="info-area-detail">
             {renderedFocus == null ? (
               <ShipInfoPanelContent ship={ship} world={world} />
@@ -2987,23 +2925,25 @@ function ShipyardMarketBody({ ship, loc, blueprints, interactionLocked, selected
                 return (
                   <tr
                     key={bp.id}
-                    className="shipyard-market-row"
+                    className={infoFocusRowClass(pinned, "shipyard-market-row")}
                     aria-selected={selectedBlueprintId === bp.id}
+                    tabIndex={0}
+                    onMouseEnter={() => onHoverBlueprint(bp.id)}
+                    onMouseLeave={() => onHoverBlueprint(null)}
+                    onFocus={(event) => {
+                      if (!eventTargetsRowControl(event)) onHoverBlueprint(bp.id);
+                    }}
+                    onBlur={(event) => {
+                      const next = event.relatedTarget;
+                      if (!(next instanceof Node) || !event.currentTarget.contains(next)) onHoverBlueprint(null);
+                    }}
+                    onClick={(event) => {
+                      if (!eventTargetsRowControl(event)) onSelectBlueprint(bp.id);
+                    }}
+                    onKeyDown={(event) => handleInfoRowKeyDown(event, () => onSelectBlueprint(bp.id))}
                   >
                     <td>
-                      <button
-                        type="button"
-                        className="row-title-with-pin info-focus-trigger"
-                        aria-pressed={pinned}
-                        onMouseEnter={() => onHoverBlueprint(bp.id)}
-                        onMouseLeave={() => onHoverBlueprint(null)}
-                        onFocus={() => onHoverBlueprint(bp.id)}
-                        onBlur={() => onHoverBlueprint(null)}
-                        onClick={() => onSelectBlueprint(bp.id)}
-                      >
-                        <span className="shipyard-row-name">{bp.name}</span>
-                        {pinned && <MdPushPin className="ui-icon row-pin-icon" aria-hidden="true" focusable="false" />}
-                      </button>
+                      <span className="shipyard-row-name">{bp.name}</span>
                       {bp.traits.length > 0 && (
                         <span className="shipyard-row-trait dim"> · {bp.traits.length} trait{bp.traits.length === 1 ? "" : "s"}</span>
                       )}
@@ -3016,13 +2956,14 @@ function ShipyardMarketBody({ ship, loc, blueprints, interactionLocked, selected
                     <td className="numeric mono">{bp.baseHull}</td>
                     <td className="numeric mono">{fmtPrice(bp.price)}</td>
                     {canBuy && (
-                      <td>
+                      <td data-row-action-cell>
                         <button
                           type="button"
                           className="btn-action btn-buy-ship"
                           disabled={!affordable}
                           title={blockedReason}
-                          onClick={() => {
+                          onClick={(event) => {
+                            event.stopPropagation();
                             if (!affordable) return;
                             setBuyTargetId(bp.id);
                           }}
@@ -3402,23 +3343,28 @@ function CargoRow({ group, ship, world, refLocId, inTransit, suggested, hintText
 
   return (
     <tr
-      className="cargo-row"
+      className={infoFocusRowClass(pinned, "cargo-row")}
       aria-selected={selected}
+      tabIndex={0}
+      onMouseEnter={() => onHover(group.good)}
+      onMouseLeave={() => onHover(null)}
+      onFocus={(event) => {
+        if (!eventTargetsRowControl(event)) onHover(group.good);
+      }}
+      onBlur={(event) => {
+        const next = event.relatedTarget;
+        if (!(next instanceof Node) || !event.currentTarget.contains(next)) onHover(null);
+      }}
+      onClick={(event) => {
+        if (!eventTargetsRowControl(event)) onSelect();
+      }}
+      onKeyDown={(event) => handleInfoRowKeyDown(event, onSelect)}
     >
       <td>
-        <button
-          type="button"
-          className="row-title-with-pin info-focus-trigger"
-          aria-pressed={pinned}
-          onMouseEnter={() => onHover(group.good)}
-          onMouseLeave={() => onHover(null)}
-          onFocus={() => onHover(group.good)}
-          onBlur={() => onHover(null)}
-          onClick={onSelect}
-        >
+        <span className="good-name-cell">
           <span className="cargo-row-name">{good.name}</span>
-          {pinned && <MdPushPin className="ui-icon row-pin-icon" aria-hidden="true" focusable="false" />}
-        </button>
+          <span className="good-name-sub dim">{good.category}</span>
+        </span>
         {group.lots.length > 1 && <span className="row-meta-pill cargo-row-lots">{group.lots.length} lots</span>}
       </td>
       <td className="numeric mono">{totalOnShip.toFixed(0)}</td>
@@ -3427,7 +3373,7 @@ function CargoRow({ group, ship, world, refLocId, inTransit, suggested, hintText
         <span className="dim"> ({pnl >= 0 ? "+" : ""}{pnlPct.toFixed(0)}%)</span>
       </td>
       {showAction && (
-        <td>
+        <td data-row-action-cell>
           <ActionCell suggested={suggested} hintText={hintText}>
             {isUnloading ? (
               <button
@@ -3903,7 +3849,7 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
           </span>
           <button
             type="button"
-            className="travel-current-station row-title-with-pin info-focus-trigger"
+            className={`travel-current-station info-focus-trigger ${currentPinned ? "is-pinned" : ""}`}
             aria-pressed={currentPinned}
             onMouseEnter={() => onHoverStation(routeFrom)}
             onMouseLeave={() => onHoverStation(null)}
@@ -3912,7 +3858,6 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
             onClick={() => onSelectStation(routeFrom)}
           >
             <span className="travel-current-name">{currentStationName}</span>
-            {currentPinned && <MdPushPin className="ui-icon row-pin-icon" aria-hidden="true" focusable="false" />}
           </button>
         </div>
         {quickTravelTab}
@@ -3957,24 +3902,28 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
                   return (
                     <tr
                       key={d.to}
-                      className={`${isPoi ? "travel-is-poi" : ""} ${destinationJobs.length > 0 ? "travel-has-contract" : ""}`}
+                      className={infoFocusRowClass(pinned, `${isPoi ? "travel-is-poi" : ""} ${destinationJobs.length > 0 ? "travel-has-contract" : ""}`)}
                       aria-selected={selectedStation === d.to}
+                      tabIndex={0}
+                      onMouseEnter={() => onHoverStation(d.to)}
+                      onMouseLeave={() => onHoverStation(null)}
+                      onFocus={(event) => {
+                        if (!eventTargetsRowControl(event)) onHoverStation(d.to);
+                      }}
+                      onBlur={(event) => {
+                        const next = event.relatedTarget;
+                        if (!(next instanceof Node) || !event.currentTarget.contains(next)) onHoverStation(null);
+                      }}
+                      onClick={(event) => {
+                        if (!eventTargetsRowControl(event)) onSelectStation(d.to);
+                      }}
+                      onKeyDown={(event) => handleInfoRowKeyDown(event, () => onSelectStation(d.to))}
                     >
                       <td>
                         <div className="travel-dest-cell">
-                          <button
-                            type="button"
-                            className={`row-title-with-pin travel-dest-title info-focus-trigger ${isPoi ? "travel-dest-title-poi" : ""}`}
-                            aria-pressed={pinned}
-                            onMouseEnter={() => onHoverStation(d.to)}
-                            onMouseLeave={() => onHoverStation(null)}
-                            onFocus={() => onHoverStation(d.to)}
-                            onBlur={() => onHoverStation(null)}
-                            onClick={() => onSelectStation(d.to)}
-                          >
+                          <span className={`travel-dest-title ${isPoi ? "travel-dest-title-poi" : ""}`}>
                             <span className="travel-dest-name">{d.name}</span>
-                            {pinned && <MdPushPin className="ui-icon row-pin-icon" aria-hidden="true" focusable="false" />}
-                          </button>
+                          </span>
                           {(travelLabel || destinationJobs.length > 0) && (
                             <span className="travel-contract-line">
                               {travelLabel && <span className="travel-poi-label">{travelLabel}</span>}
@@ -3987,7 +3936,7 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
                       <td className={`numeric mono ${!d.canFly ? "bad" : ""}`}>{d.fuelNeeded.toFixed(1)}</td>
                       <td className="numeric mono">{d.travelTicks}t</td>
                       {manualActions && (
-                        <td>
+                        <td data-row-action-cell>
                           <ActionCell suggested={!inTransit && suggested && d.canFly} hintText={cueText.travel[d.to] ?? hintText}>
                             <button
                               onClick={(event) => {

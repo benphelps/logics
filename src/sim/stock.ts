@@ -440,7 +440,7 @@ function commodityFundamental(world: World, eq: Equity): number {
   return commoditySpotPrice(world, eq.underlyingId, eq.anchorPrice);
 }
 
-function commoditySpotPrice(world: World, goodId: string, fallback: number): number {
+export function commoditySpotPrice(world: World, goodId: string, fallback: number): number {
   let numerator = 0;
   let denom = 0;
   const base = world.goods[goodId]?.basePrice ?? fallback;

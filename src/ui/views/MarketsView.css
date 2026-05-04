@@ -1,8 +1,19 @@
 .markets-view {
-  --market-surface: #15191f;
-  --market-surface-soft: #101419;
-  --market-surface-raised: #1b2026;
-  --market-line: rgba(255, 255, 255, 0.08);
+  /* Inherit the Exchange shell palette so .stocks-shell-* / .stocks-info-*
+     rules in StockMarketView.css resolve cleanly when used here. */
+  --stock-surface: #15181d;
+  --stock-surface-soft: #101317;
+  --stock-surface-raised: #1b2026;
+  --stock-line: rgba(255, 255, 255, 0.08);
+  --stock-up: #6cd99a;
+  --stock-down: #ef6f7d;
+  --stock-flat: #9aa3b2;
+  --ship-surface-soft: var(--stock-surface-soft);
+  --ship-surface-raised: var(--stock-surface-raised);
+  --ship-line: var(--stock-line);
+  --bridge-table-pad-x: 28px;
+
+  /* Commodity category palette — used by category pills + icons. */
   --market-food: #7bcf98;
   --market-raw: #e5b86b;
   --market-intermediate: #9dd7ff;
@@ -10,6 +21,7 @@
   --market-advanced: #d58bdc;
   --market-luxury: #f0b37e;
   --market-upgrade: #ffffff;
+
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -19,397 +31,213 @@
   margin: 0 auto;
 }
 
-.markets-header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 18px;
+/* --- Selector (left) ---------------------------------------------------- */
+
+.markets-selector {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
-.markets-eyebrow,
-.markets-panel-label,
-.markets-section-title {
-  display: block;
-  color: var(--accent);
-  font-size: 10px;
-  font-weight: 750;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.markets-header h2,
-.commodity-detail-head h3 {
-  margin: 0;
-  color: var(--text);
-  font-weight: 650;
-  letter-spacing: 0;
-}
-
-.markets-header h2 {
-  font-size: 22px;
-}
-
-.commodity-detail-head h3 {
-  overflow: hidden;
-  font-size: 18px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.markets-summary {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.markets-summary-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-  height: 34px;
-  padding: 0 10px;
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid var(--market-line);
-  border-radius: 6px;
-}
-
-.markets-summary-item > span {
-  display: grid;
-  gap: 1px;
-}
-
-.markets-summary-label {
-  color: var(--text-faint);
-  font-size: 8px;
-  font-weight: 750;
-  letter-spacing: 0.07em;
-  line-height: 1;
-  text-transform: uppercase;
-}
-
-.markets-summary-value {
-  color: var(--text);
-  font-size: 12px;
-  font-weight: 650;
-  line-height: 1.1;
-  white-space: nowrap;
-}
-
-.markets-icon {
-  width: 1em;
-  height: 1em;
+.bridge-card-tabs.markets-tabs {
   flex: 0 0 auto;
-  color: #9dd7ff;
-  font-size: 15px;
-  opacity: 0.72;
-}
-
-.markets-layout {
-  flex: 1;
-  display: grid;
-  grid-template-columns: minmax(760px, 1fr) minmax(300px, 0.32fr);
-  /* Constrain the grid row to the layout's flex-allocated height. Without
-     this, the row defaults to `auto` and stretches with content — making
-     .commodity-scroll effectively unbounded so the table never scrolls. */
-  grid-template-rows: minmax(0, 1fr);
-  gap: 14px;
-  min-height: 0;
-}
-
-.commodity-board,
-.commodity-detail {
-  min-width: 0;
-  min-height: 0;
-  background: var(--market-surface);
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
-}
-
-.commodity-board {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.markets-card-tabs {
-  display: inline-flex;
-  align-items: stretch;
-  gap: 2px;
-  padding: 3px;
-  min-width: 0;
-  background: var(--market-surface-soft);
-  border-bottom: 1px solid var(--market-line);
-}
-
-.commodity-tabs {
   width: 100%;
-  overflow-x: auto;
+  border-radius: 0;
+  border-width: 0;
+  border-top-width: 1px;
 }
 
-.commodity-tab {
-  appearance: none;
-  flex: 1 0 auto;
+.bridge-card-tabs.markets-tabs .bridge-tab {
+  flex: 1 0 max-content;
   justify-content: center;
-  min-width: 86px;
-  background: transparent;
-  border: none;
-  color: var(--text-dim);
-  padding: 7px 10px;
-  border-radius: 4px;
+  min-width: var(--bridge-tab-min-width, 92px);
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.markets-view .bridge-tab .bridge-tab-count {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: 18px;
+  padding: 0 6px;
+  line-height: 1;
+}
+
+/* Sortable header + row grid — 8 columns, multi-line cells. */
+.markets-selector-header,
+.markets-selector-row {
+  display: grid;
+  grid-template-columns:
+    minmax(140px, 1.6fr) /* commodity name */
+    minmax(80px, 0.9fr)  /* spot price */
+    minmax(72px, 0.8fr)  /* depth */
+    minmax(76px, 0.85fr) /* low ask */
+    minmax(76px, 0.85fr) /* high bid */
+    minmax(68px, 0.7fr); /* spread */
+  align-items: center;
+  gap: 10px;
+}
+
+.markets-selector-header {
+  padding: 6px 12px;
+  background: var(--stock-surface-soft);
+  border-top: 1px solid var(--stock-line);
+  border-bottom: 1px solid var(--stock-line);
+  color: var(--text-faint);
   font-size: 11px;
-  font-weight: 600;
-  line-height: 1.2;
+  font-weight: 750;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  cursor: pointer;
-  white-space: nowrap;
 }
 
-.commodity-tab:hover {
-  color: var(--text);
-  background: var(--market-surface-raised);
+.markets-selector-header .sortable-th-button {
+  justify-self: start;
 }
 
-.commodity-tab.active {
-  color: var(--text);
-  background: var(--market-surface-raised);
-}
-
-.commodity-tab-count {
-  color: var(--text-faint);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0;
-}
-
-.commodity-tab.active .commodity-tab-count {
-  color: var(--text-dim);
-}
-
-.commodity-detail {
-  position: relative;
-  padding: 14px;
-  overflow-x: hidden;
-  overflow-y: auto;
-}
-
-.commodity-detail.market-info-card {
-  --card-art-height: 152px;
-  --card-art-position: center 12%;
-}
-
-.commodity-detail.market-info-card::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto;
-  height: var(--card-art-height);
-  background-image:
-    linear-gradient(to bottom, rgba(12, 15, 20, 0.14), rgba(12, 15, 20, 0.34) 56%, rgba(21, 24, 29, 0.88) 100%),
-    linear-gradient(90deg, rgba(12, 15, 20, 0.70), rgba(12, 15, 20, 0.24) 52%, rgba(12, 15, 20, 0.76)),
-    var(--card-art);
-  background-position: var(--card-art-position);
-  background-size: cover;
-  box-shadow: inset 0 -1px rgba(138, 158, 178, 0.22), 0 1px 0 rgba(0, 0, 0, 0.28);
-  filter: saturate(1.12) contrast(1.04);
-  pointer-events: none;
-  z-index: 0;
-}
-
-.commodity-detail > * {
-  position: relative;
-  z-index: 1;
-}
-
-.market-info-card .commodity-detail-head,
-.market-info-card .category-pill {
-  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.82), 0 0 1px rgba(0, 0, 0, 0.9);
-}
-
-.market-info-card .category-pill {
-  background: transparent;
-  border-color: rgba(220, 235, 250, 0.34);
-  color: rgba(228, 238, 248, 0.86);
-}
-
-.markets-panel-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px;
-  border-bottom: 0;
-}
-
-.markets-panel-head.art-panel-head {
-  min-height: 62px;
-  /* Dimming gradient ramps to fully opaque at the bottom edge to kill the
-     1px art bleed that used to show just above the border-bottom.
-     background-clip padding-box stops the art at the inside of the border
-     so it never paints under the 1px border-bottom. */
-  background-image:
-    linear-gradient(to bottom, rgba(13, 17, 22, 0.12) 0%, rgba(13, 17, 22, 0.78) 88%, rgba(13, 17, 22, 1) 100%),
-    linear-gradient(90deg, rgba(13, 17, 22, 0.86), rgba(13, 17, 22, 0.40) 58%, rgba(13, 17, 22, 0.84)),
-    var(--card-art);
-  background-position: center center, center center, var(--header-art-pan-x, 50%) var(--header-art-pan-y, 50%);
-  background-repeat: no-repeat;
-  background-size: 100% 100%, 100% 100%, 104% auto;
-  background-clip: padding-box;
-  box-shadow: none;
-}
-
-.markets-panel-head.art-panel-head,
-.markets-panel-head.art-panel-head .dim,
-.markets-panel-head.art-panel-head .markets-legend {
-  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.88), 0 0 1px rgba(0, 0, 0, 0.95);
-}
-
-.markets-panel-head .dim {
-  display: block;
-  margin-top: 2px;
-  font-size: 11px;
-}
-
-.markets-legend {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+.markets-selector-header .sortable-th-button.numeric {
+  justify-self: end;
   justify-content: flex-end;
-  gap: 10px;
-  color: var(--text-dim);
-  font-size: 10px;
-  white-space: nowrap;
-}
-
-.market-dot {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  margin-right: 5px;
-  border-radius: 50%;
-  vertical-align: middle;
-}
-
-.market-dot.short { background: var(--bad); }
-.market-dot.surplus { background: var(--good); }
-.market-dot.upgrade { background: var(--market-upgrade); }
-
-.commodity-scroll {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-}
-
-.commodity-table {
-  width: 100%;
-  min-width: 840px;
-  border-collapse: collapse;
-  table-layout: fixed;
-  font-size: 12px;
-}
-
-.commodity-table .col-good { width: 196px; }
-.commodity-table .col-cat { width: 100px; }
-.commodity-table .col-price { width: 92px; }
-.commodity-table .col-depth { width: 100px; }
-.commodity-table .col-quote { width: 154px; }
-.commodity-table .col-market { width: 90px; }
-
-.commodity-table th,
-.commodity-table td {
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--market-line);
-  vertical-align: middle;
-}
-
-.commodity-table th {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  background: var(--market-surface-soft);
-  border-top: 1px solid var(--market-line);
-  color: var(--text-dim);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-align: left;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.commodity-table th.numeric,
-.commodity-table td.numeric {
   text-align: right;
 }
 
-.commodity-table tbody tr {
+.markets-selector-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.markets-selector-row {
+  min-height: 36px;
+  padding: 6px 12px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--stock-line);
   cursor: pointer;
+  text-align: left;
+  font-size: 11px;
+  color: var(--text);
 }
 
-.commodity-table tbody tr.short {
-  background: rgba(248, 113, 113, 0.035);
+.markets-selector-row .numeric {
+  text-align: right;
+  font-size: 11px;
 }
 
-.commodity-table tbody tr.surplus {
-  background: rgba(74, 222, 128, 0.025);
+.markets-selector-row .numeric.good { color: var(--stock-up); }
+.markets-selector-row .numeric.dim { color: var(--text-faint); }
+
+.markets-selector-row:hover {
+  background: rgba(255, 255, 255, 0.025);
 }
 
-.commodity-table tbody tr:hover,
-.commodity-table tbody tr.active {
-  background: rgba(79, 182, 255, 0.07);
+.markets-selector-row.selected {
+  background: rgba(79, 182, 255, 0.08);
 }
 
-.commodity-table tbody tr.active {
-  box-shadow: inset 3px 0 0 var(--accent);
+.markets-selector-row.short {
+  background: rgba(248, 113, 113, 0.05);
 }
 
-.commodity-name-cell {
+.markets-selector-row.short.selected {
+  background: rgba(248, 113, 113, 0.10);
+}
+
+.markets-selector-row.surplus {
+  background: rgba(74, 222, 128, 0.04);
+}
+
+.markets-selector-row.surplus.selected {
+  background: rgba(74, 222, 128, 0.10);
+}
+
+.markets-selector-row .ticker {
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.markets-selector-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.15;
+}
+
+.markets-selector-name .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.markets-selector-name .kind {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* --- Info column (right) ------------------------------------------------ */
+
+.markets-info-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* Give section titles a little breathing room above the label text. The
+   shared .stocks-info-body rule zeros section padding; this nudges the
+   eyebrow down so it doesn't kiss the divider above. */
+.markets-view .stocks-info-body .exchange-section-title {
+  padding-top: 6px;
+  margin-bottom: 4px;
+}
+
+
+/* Quote / producer / consumer / tape rows inside the info column. */
+.markets-quote-list {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 2px;
+}
+
+.markets-quote-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 70px 82px;
   gap: 8px;
   align-items: center;
-  min-width: 0;
+  min-height: 28px;
+  padding: 0 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--text-dim);
+  font-size: 11px;
 }
 
-.commodity-name-cell > span:last-child {
-  display: grid;
-  min-width: 0;
+.markets-quote-row .mono {
+  text-align: right;
 }
 
-.commodity-name {
+.markets-quote-station {
   overflow: hidden;
   color: var(--text);
-  font-weight: 650;
+  font-weight: 550;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.commodity-id {
-  overflow: hidden;
-  font-size: 10px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.markets-quote-row .mono.good { color: var(--stock-up); }
+.markets-quote-row .mono.bad { color: var(--stock-down); }
+
+.markets-quote-empty {
+  min-height: 28px;
+  padding: 6px 8px;
+  font-size: 11px;
 }
 
-.commodity-icon {
-  width: 1em;
-  height: 1em;
-  color: var(--text-faint);
-  font-size: 16px;
-}
-
-.commodity-icon.category-food { color: var(--market-food); }
-.commodity-icon.category-raw { color: var(--market-raw); }
-.commodity-icon.category-intermediate { color: var(--market-intermediate); }
-.commodity-icon.category-fuel { color: var(--market-fuel); }
-.commodity-icon.category-advanced { color: var(--market-advanced); }
-.commodity-icon.category-luxury { color: var(--market-luxury); }
-.commodity-icon.category-upgrade { color: var(--market-upgrade); }
+/* --- Category pills + icons (commodity-specific) ------------------------ */
 
 .category-pill {
   display: inline-flex;
@@ -438,130 +266,18 @@
 .category-pill.category-luxury { color: var(--market-luxury); }
 .category-pill.category-upgrade { color: var(--market-upgrade); }
 
-.quote-cell {
-  display: grid;
-  gap: 2px;
-  align-items: center;
-  min-width: 0;
-}
-
-.quote-station {
-  overflow: hidden;
-  color: var(--text);
-  font-weight: 550;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.commodity-table .quote-station {
-  color: var(--text-dim);
-}
-
-.commodity-table .good {
-  color: var(--good);
-}
-
-.market-stack {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-  color: var(--text);
-  line-height: 1.25;
-}
-
-.commodity-detail-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.commodity-detail-stats {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.commodity-detail-stats .markets-summary-item {
-  justify-content: flex-start;
-}
-
-.commodity-depth {
-  margin-top: 14px;
-}
-
-.markets-section-title {
-  margin-bottom: 8px;
-  color: var(--text-dim);
-}
-
-.quote-list {
-  display: grid;
-  gap: 2px;
-}
-
-.quote-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 70px 82px;
-  gap: 8px;
-  align-items: center;
-  min-height: 30px;
-  padding: 0 8px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.025);
-  color: var(--text-dim);
-  font-size: 11px;
-}
-
-.quote-row .mono {
-  text-align: right;
-}
-
-.quote-empty {
-  min-height: 30px;
-  padding: 7px 8px;
-  color: var(--text-faint);
-  font-size: 11px;
+.markets-view .stocks-info-col .stocks-panel-head .category-pill {
+  background: transparent;
+  border-color: rgba(220, 235, 250, 0.34);
+  color: rgba(228, 238, 248, 0.86);
+  text-shadow:
+    0 1px 10px rgba(0, 0, 0, 0.82),
+    0 0 1px rgba(0, 0, 0, 0.9);
 }
 
 @media (max-width: 1180px) {
   .markets-view {
     height: auto;
     min-height: 0;
-  }
-
-  .markets-header {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .markets-summary {
-    justify-content: flex-start;
-  }
-
-  .markets-layout {
-    grid-template-columns: 1fr;
-    height: auto;
-  }
-}
-
-@media (max-width: 640px) {
-  .markets-panel-head {
-    flex-direction: column;
-  }
-
-  .markets-legend {
-    justify-content: flex-start;
-  }
-
-  .markets-summary {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    width: 100%;
-  }
-
-  .commodity-detail-stats {
-    grid-template-columns: 1fr;
   }
 }

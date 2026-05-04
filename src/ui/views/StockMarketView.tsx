@@ -103,6 +103,18 @@ export function StockMarketView() {
   const [focusedPositionId, setFocusedPositionId] = useState<string | null>(null);
   const [activePanel, setActivePanel] = useState<"tape" | "positions" | "trades">("tape");
 
+  // Pin/inspect model — mirrors the Fleet view's DockedView pattern.
+  // Hover an equity row to preview it in the info column; click pins it
+  // as a tab in the info-column head. Clicking a pinned row again unpins
+  // it. Pins persist across re-renders; hover takes priority over the
+  // active pin for what's actually displayed.
+  const [hoveredEquityId, setHoveredEquityId] = useState<string | null>(null);
+  const [pinnedEquityIds, setPinnedEquityIds] = useState<string[]>([]);
+  const hoverClearTimer = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (hoverClearTimer.current != null) window.clearTimeout(hoverClearTimer.current);
+  }, []);
+
   const rows = useMemo(() => buildRows(world), [world, tickEpoch]);
   const playerShipIds = world.player?.shipIds ?? [];
   const playerShip = selectedTrader && playerShipIds.includes(selectedTrader)
@@ -111,10 +123,62 @@ export function StockMarketView() {
   const playerShipId = playerShip?.id;
   const stockGuidanceUnlocked = playerShip ? hasCrew(playerShip, "navigator") : false;
   const tapeRows = useMemo(() => splitRowsByAccess(world, rows, playerShipId), [world, rows, playerShipId]);
-  const selectedId = selected && rows.some(r => r.equity.id === selected)
-    ? selected
-    : tapeRows.reachable[0]?.equity.id ?? rows[0]?.equity.id ?? null;
+  // Resolve the displayed equity. Order: hover preview → store-selected
+  // (= active pin) → first reachable row.
+  const activePinnedId = selected && rows.some(r => r.equity.id === selected) ? selected : null;
+  const fallbackId = tapeRows.reachable[0]?.equity.id ?? rows[0]?.equity.id ?? null;
+  const selectedId = hoveredEquityId && rows.some(r => r.equity.id === hoveredEquityId)
+    ? hoveredEquityId
+    : activePinnedId ?? fallbackId;
   const detail = selectedId ? rows.find(r => r.equity.id === selectedId) ?? null : null;
+
+  const setHoverEquity = useCallback((eqId: string | null) => {
+    if (hoverClearTimer.current != null) {
+      window.clearTimeout(hoverClearTimer.current);
+      hoverClearTimer.current = null;
+    }
+    if (eqId == null) {
+      hoverClearTimer.current = window.setTimeout(() => {
+        setHoveredEquityId(null);
+        hoverClearTimer.current = null;
+      }, 150);
+    } else {
+      setHoveredEquityId(eqId);
+    }
+  }, []);
+
+  // Click toggles the pin: adds the equity to the pin tab strip if it
+  // isn't there yet (and makes it active), or removes it if it already
+  // is. Removing the active pin falls back to the most recent remaining
+  // pin or null.
+  const togglePin = useCallback((eqId: string) => {
+    setPinnedEquityIds(prev => {
+      if (prev.includes(eqId)) {
+        const next = prev.filter(id => id !== eqId);
+        if (selected === eqId) select(next[next.length - 1] ?? null);
+        return next;
+      }
+      select(eqId);
+      return [...prev, eqId];
+    });
+  }, [selected, select]);
+
+  const closePin = useCallback((eqId: string) => {
+    setPinnedEquityIds(prev => {
+      const next = prev.filter(id => id !== eqId);
+      if (selected === eqId) select(next[next.length - 1] ?? null);
+      return next;
+    });
+  }, [selected, select]);
+
+  // Keep pinnedEquityIds in sync with the world: drop pins for equities
+  // that no longer exist (e.g., expired futures contracts).
+  useEffect(() => {
+    setPinnedEquityIds(prev => {
+      const filtered = prev.filter(id => world.equities[id]);
+      return filtered.length === prev.length ? prev : filtered;
+    });
+  }, [world.equities]);
   const exchangeHints = useMemo(
     () => stockGuidanceUnlocked ? listStockExchangeHints(world, playerShipId, rows.length) : [],
     [world, playerShipId, rows, tickEpoch, stockGuidanceUnlocked],
@@ -193,12 +257,14 @@ export function StockMarketView() {
             rows={rows}
             tapeRows={tapeRows}
             selectedId={selectedId}
+            pinnedIds={pinnedEquityIds}
             activeHint={activeTradeHint}
             bestHint={topTradeHint}
             guideEnabled={guidedTradeEnabled}
             emptyText={stockGuidanceUnlocked ? "No actionable exchange trade right now." : "Hire a navigator for exchange insights."}
             onGuideToggle={() => stockGuidanceUnlocked && setStockGuideEnabled(!stockGuideEnabled)}
-            onSelect={select}
+            onTogglePin={togglePin}
+            onHover={setHoverEquity}
           />
           <PnoPanel
             world={world}
@@ -231,6 +297,11 @@ export function StockMarketView() {
               activeHint={activeTradeHint}
               guideEnabled={guidedTradeEnabled}
               emptyText={stockGuidanceUnlocked ? "No listing insights" : "Hire a navigator for listing insights."}
+              pinnedIds={pinnedEquityIds}
+              activePinnedId={activePinnedId}
+              hoveredId={hoveredEquityId}
+              onSelectPin={select}
+              onClosePin={closePin}
             />
           ) : (
             <div className="stocks-detail-empty dim">No listed equities.</div>
@@ -350,17 +421,20 @@ const KIND_FILTER_LABEL: Record<KindFilter, string> = {
   index: "Indices",
 };
 
-function EquitySelector({ rows, tapeRows, selectedId, activeHint, bestHint, guideEnabled, emptyText, onGuideToggle, onSelect }: {
+function EquitySelector({ rows, tapeRows, selectedId, pinnedIds, activeHint, bestHint, guideEnabled, emptyText, onGuideToggle, onTogglePin, onHover }: {
   rows: EquityRow[];
   tapeRows: { reachable: EquityRow[]; far: EquityRow[] };
   selectedId: string | null;
+  pinnedIds: string[];
   activeHint: StockExchangeHint | null;
   bestHint: StockExchangeHint | null;
   guideEnabled: boolean;
   emptyText: string;
   onGuideToggle: () => void;
-  onSelect: (eqId: string) => void;
+  onTogglePin: (eqId: string) => void;
+  onHover: (eqId: string | null) => void;
 }) {
+  const pinnedSet = useMemo(() => new Set(pinnedIds), [pinnedIds]);
   const kindFilter = useStore((s) => s.stockKindFilter);
   const setKindFilter = useStore((s) => s.setStockKindFilter);
   const filterRow = (r: EquityRow) => kindFilter === "all"
@@ -425,8 +499,10 @@ function EquitySelector({ rows, tapeRows, selectedId, activeHint, bestHint, guid
                   key={r.equity.id}
                   row={r}
                   selected={r.equity.id === selectedId}
+                  pinned={pinnedSet.has(r.equity.id)}
                   activeHint={activeHint}
-                  onSelect={onSelect}
+                  onTogglePin={onTogglePin}
+                  onHover={onHover}
                 />
               ))}
               {sortedFar.length > 0 && (
@@ -437,8 +513,10 @@ function EquitySelector({ rows, tapeRows, selectedId, activeHint, bestHint, guid
                       key={r.equity.id}
                       row={r}
                       selected={r.equity.id === selectedId}
+                      pinned={pinnedSet.has(r.equity.id)}
                       activeHint={activeHint}
-                      onSelect={onSelect}
+                      onTogglePin={onTogglePin}
+                      onHover={onHover}
                       farRow
                     />
                   ))}
@@ -464,11 +542,13 @@ function EquitySelector({ rows, tapeRows, selectedId, activeHint, bestHint, guid
 // (every selectedId change) used to re-render every row. With memo, only the
 // previously-selected row and the newly-selected row re-render; the other
 // 100+ skip. That's the bulk of the equity-switch click cost in dev mode.
-const SelectorRow = memo(function SelectorRow({ row, selected, activeHint, onSelect, farRow = false }: {
+const SelectorRow = memo(function SelectorRow({ row, selected, pinned, activeHint, onTogglePin, onHover, farRow = false }: {
   row: EquityRow;
   selected: boolean;
+  pinned: boolean;
   activeHint: StockExchangeHint | null;
-  onSelect: (eqId: string) => void;
+  onTogglePin: (eqId: string) => void;
+  onHover: (eqId: string | null) => void;
   farRow?: boolean;
 }) {
   const eq = row.equity;
@@ -478,8 +558,12 @@ const SelectorRow = memo(function SelectorRow({ row, selected, activeHint, onSel
   return (
     <button
       type="button"
-      className={`stocks-selector-row ${selected ? "selected" : ""} ${tone} ${ownedTone} ${farRow ? "far" : ""}`}
-      onClick={() => onSelect(eq.id)}
+      className={`stocks-selector-row ${selected ? "selected" : ""} ${pinned ? "is-pinned" : ""} ${tone} ${ownedTone} ${farRow ? "far" : ""}`}
+      onClick={() => onTogglePin(eq.id)}
+      onMouseEnter={() => onHover(eq.id)}
+      onMouseLeave={() => onHover(null)}
+      onFocus={() => onHover(eq.id)}
+      onBlur={() => onHover(null)}
     >
       <StockGuidanceCell
         guided={isGuidedTicker}
@@ -1113,7 +1197,63 @@ function OrderAccordionItem({ world, order, isOpen, onToggle, onCancel, onAdjust
 
 // --- info column (right) -----------------------------------------------
 
-function InfoColumn({ row, world, shipId, docked, hint, selectedHint, activeHint, guideEnabled, emptyText }: {
+function PinTabs({ pinnedIds, activePinnedId, hoveredId, world, onSelectPin, onClosePin }: {
+  pinnedIds: string[];
+  activePinnedId: string | null;
+  hoveredId: string | null;
+  world: World;
+  onSelectPin: (eqId: string) => void;
+  onClosePin: (eqId: string) => void;
+}) {
+  if (pinnedIds.length === 0) {
+    return (
+      <div className="stocks-pin-tabs empty">
+        <span className="stocks-pin-tabs-empty">Hover to inspect · click to pin</span>
+      </div>
+    );
+  }
+  return (
+    <div className="stocks-pin-tabs" aria-label="Pinned listings">
+      {pinnedIds.map(id => {
+        const eq = world.equities[id];
+        if (!eq) return null;
+        // The active tab is the one currently driving the info column.
+        // Hover preview overrides the active pin visually so the user
+        // can always tell which row is being previewed.
+        const isHoverPreview = hoveredId != null && hoveredId === id && id !== activePinnedId;
+        const active = isHoverPreview || (!hoveredId && activePinnedId === id);
+        return (
+          <div
+            key={id}
+            className={`stocks-pin-tab ${active ? "active" : ""}`}
+            title={`${eq.ticker} · ${eq.name}`}
+          >
+            <button
+              type="button"
+              className="stocks-pin-tab-main"
+              onClick={() => onSelectPin(id)}
+            >
+              <span>{eq.ticker}</span>
+            </button>
+            <button
+              type="button"
+              className="stocks-pin-tab-close"
+              aria-label={`Unpin ${eq.ticker}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                onClosePin(id);
+              }}
+            >
+              x
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function InfoColumn({ row, world, shipId, docked, hint, selectedHint, activeHint, guideEnabled, emptyText, pinnedIds, activePinnedId, hoveredId, onSelectPin, onClosePin }: {
   row: EquityRow;
   world: World;
   shipId?: string;
@@ -1123,6 +1263,11 @@ function InfoColumn({ row, world, shipId, docked, hint, selectedHint, activeHint
   activeHint: StockExchangeHint | null;
   guideEnabled: boolean;
   emptyText: string;
+  pinnedIds: string[];
+  activePinnedId: string | null;
+  hoveredId: string | null;
+  onSelectPin: (eqId: string) => void;
+  onClosePin: (eqId: string) => void;
 }) {
   const eq = row.equity;
   const access = exchangeAccess(world, eq, shipId);
@@ -1141,10 +1286,20 @@ function InfoColumn({ row, world, shipId, docked, hint, selectedHint, activeHint
   };
 
   return (
-    <section className="stocks-shell-panel stocks-info-col">
+    <section
+      className={`stocks-shell-panel stocks-info-col ${artUrl ? "has-art" : ""}`}
+      style={artUrl ? artCardStyle(artUrl) : undefined}
+    >
+      <PinTabs
+        pinnedIds={pinnedIds}
+        activePinnedId={activePinnedId}
+        hoveredId={hoveredId}
+        world={world}
+        onSelectPin={onSelectPin}
+        onClosePin={onClosePin}
+      />
       <div
         className={`stocks-panel-head art-panel-head ${artUrl ? "" : "no-art"}`}
-        style={artUrl ? artCardStyle(artUrl) : undefined}
       >
         <div className="stocks-info-title">
           <span className="stocks-info-eyebrow">{`Listed ${KIND_LABEL[eq.kind].toLowerCase()}`}</span>
@@ -1355,7 +1510,7 @@ function KpiPanel({ row, world }: { row: EquityRow; world: World }) {
 // Mirrors the Stat component used by the fleet view — same classes
 // (.cargo-stat with dim label + mono value) so the visual style is
 // guaranteed identical across views.
-function FleetStat({ label, value }: { label: string; value: string }) {
+export function FleetStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="cargo-stat">
       <dt className="dim">{label}</dt>
@@ -2874,7 +3029,7 @@ function ActionTag({ action, trigger }: { action: TradeRecord["action"]; trigger
   );
 }
 
-function ChangeCell({ pct, big = false }: { pct: number; big?: boolean }) {
+export function ChangeCell({ pct, big = false }: { pct: number; big?: boolean }) {
   const formatted = `${pct >= 0 ? "+" : ""}${(pct * 100).toFixed(2)}%`;
   const cls = pct > 0.0005 ? "up" : pct < -0.0005 ? "down" : "flat";
   const Icon = pct > 0.0005 ? MdArrowDropUp : pct < -0.0005 ? MdArrowDropDown : MdRemove;
@@ -2914,7 +3069,7 @@ function normalizeSparklineHistory(history: { tick: number; price: number }[]): 
 // price scale via createPriceLine. Tick numbers are mapped to integer
 // time units and the time formatter renders them as "T1234" so the chart
 // reads as ticks rather than dates.
-function Sparkline({ equity, position }: { equity: Equity; position: StockPosition | null }) {
+export function Sparkline({ equity, position }: { equity: Equity; position: StockPosition | null }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const priceSeriesRef = useRef<ISeriesApi<"Area"> | null>(null);
@@ -3742,17 +3897,17 @@ function exchangeAccess(world: World, eq: Equity, shipId?: string): { ok: boolea
   };
 }
 
-function fmtPrice(n: number): string {
+export function fmtPrice(n: number): string {
   if (n >= 1000) return n.toFixed(0);
   if (n >= 100) return n.toFixed(1);
   return n.toFixed(2);
 }
 
-function fmtPct(n: number): string {
+export function fmtPct(n: number): string {
   return `${n >= 0 ? "+" : ""}${(n * 100).toFixed(2)}%`;
 }
 
-function fmtBig(n: number): string {
+export function fmtBig(n: number): string {
   if (Math.abs(n) >= 1_000_000) return (n / 1_000_000).toFixed(2) + "M";
   if (Math.abs(n) >= 1_000) return (n / 1_000).toFixed(1) + "k";
   return n.toFixed(0);

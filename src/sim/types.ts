@@ -643,6 +643,12 @@ export interface World {
   // organically over the first few ticks.
   shipyardInventory?: Record<LocationId, ShipBlueprint[]>;
   nextShipBlueprintId?: number;
+  // Per-good universe-wide volume-weighted spot price samples, capped at
+  // COMMODITY_SPOT_HISTORY_DEPTH. Updated each tick after station price
+  // recompute. Drives the Markets view chart and is intentionally
+  // independent of the Exchange's commodity equity (which smooths via
+  // EMA). Optional for back-compat; readers fall back to empty.
+  commoditySpotHistory?: Record<GoodId, { tick: number; price: number }[]>;
 }
 
 // --- order book ----------------------------------------------------------

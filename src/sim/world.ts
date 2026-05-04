@@ -72,6 +72,7 @@ export function createWorld(opts?: {
     jobs: {}, nextJobId: 1, hires: {}, nextHireId: 1,
     equities: {}, syndicates: opts?.syndicates ?? {},
     newsEvents: createNewsEventsState(),
+    commoditySpotHistory: {},
   };
   ensureStockMarket(world);
   return world;

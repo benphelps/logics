@@ -644,8 +644,9 @@
   display: grid;
   grid-template-columns: 48px 130px 92px 1fr;
   gap: 12px;
-  align-items: baseline;
-  padding: 9px 4px;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 4px;
   border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.06));
   /* Subtle accent stripe on the left, coloured by tone — keeps the
      row scannable at a glance without the kind-label having to fight

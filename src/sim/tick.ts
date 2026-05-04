@@ -7,7 +7,21 @@ import { expireJobs, generateJobs, type JobExpiryEvent } from "./jobs";
 import { expireHires, generateHires } from "./hires";
 import { tickShipyards } from "./shipyards";
 import { replenishUnlockedUpgrades } from "./milestones";
-import { tickStockMarket } from "./stock";
+import { commoditySpotPrice, tickStockMarket } from "./stock";
+
+const COMMODITY_SPOT_HISTORY_DEPTH = 100;
+
+function tickCommoditySpotHistory(world: World): void {
+  if (!world.commoditySpotHistory) world.commoditySpotHistory = {};
+  for (const good of Object.values(world.goods)) {
+    const price = commoditySpotPrice(world, good.id, good.basePrice);
+    const ring = world.commoditySpotHistory[good.id] ?? (world.commoditySpotHistory[good.id] = []);
+    ring.push({ tick: world.tick, price });
+    if (ring.length > COMMODITY_SPOT_HISTORY_DEPTH) {
+      ring.splice(0, ring.length - COMMODITY_SPOT_HISTORY_DEPTH);
+    }
+  }
+}
 import { runPlayerStockAutopilot } from "./stock/playerAutopilot";
 import { getNewsPool, tickNewsEvents } from "./news";
 import type { ActiveNewsEvent } from "./news/types";
@@ -95,6 +109,12 @@ export function tickWorld(world: World): TickReport {
   // sole money source in the closed-loop model; it has to balance the
   // sinks (maintenance + crew wages) at steady state.
   tickTreasuries(world);
+
+  // Sample the per-good universe spot price into a small ring buffer.
+  // Done after station price recompute so the sample reflects this tick's
+  // freshly-evolved local prices, and before tickStockMarket so equity
+  // evaluations and the spot ring see the same snapshot.
+  tickCommoditySpotHistory(world);
 
   // Stock market: recompute share prices from underlying signals (treasury
   // health for stations, fleet wealth for syndicates). Pays quarterly

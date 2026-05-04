@@ -558,13 +558,18 @@
   border-collapse: collapse;
   table-layout: fixed;
   font-size: 12px;
+  line-height: 1.15;
 }
 
 .atlas-sheet-table th,
 .atlas-sheet-table td {
-  padding: 7px 10px;
+  padding: 4px 10px;
   border-bottom: 1px solid var(--atlas-line);
   vertical-align: middle;
+}
+
+.atlas-sheet-table tbody tr {
+  height: 36px;
 }
 
 .atlas-sheet-table th {
@@ -815,13 +820,16 @@
   overflow: hidden;
   color: var(--text);
   font-weight: 650;
+  font-size: 11px;
+  line-height: 1.15;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .atlas-station-sub {
   overflow: hidden;
-  font-size: 10px;
+  font-size: 9px;
+  line-height: 1.15;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
