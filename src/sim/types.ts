@@ -99,7 +99,7 @@ export interface CargoLot {
   unloadProceedsSum?: number;
 }
 
-export type CrewRole = "captain" | "navigator" | "mechanic";    // captain is displayed as Pilot; mercenary reserved for combat-era
+export type CrewRole = "captain" | "navigator" | "mechanic" | "mercenary";    // captain is displayed as Pilot
 
 // Identity attributes — drive crew portrait generation via the headshot
 // service. Values are kept identical to the headshot API contract so they
@@ -253,6 +253,7 @@ export interface Trader {
   pilot: PilotMode;
   stuckTicks?: number;              // ticks the trader has been stuck (out of fuel + isolated). Drives rescue-job tier.
   noOpportunityTicks?: number;      // autonomous idle streak after finding no profitable work; drives repositioning.
+  lastEncounterTick?: number;       // tick of the last combat encounter — drives a per-ship cooldown so spawns don't bunch.
   log: ShipLogEntry[];              // capped action history (oldest entries dropped). Drives the per-ship log card.
   crew?: ShipCrew;                  // player-only — NPCs operate without a crew model.
   maintenanceDebt?: number;         // accrued unpaid maintenance for player ships missing a mechanic.
@@ -602,6 +603,81 @@ export interface Job {
   postedBy?: SyndicateId;
 }
 
+// --- combat encounters ---------------------------------------------------
+// An encounter spawns probabilistically while a player ship is in transit.
+// Manual ships pause and surface a modal; auto ships resolve via policy.
+// Pirates are syndicate-less attackers; rival_syndicate attackers belong to
+// the station-owner of the destination when the player is foreign + their
+// reputation with that syndicate is low.
+
+export type EncounterKind = "pirate" | "rival_syndicate";
+export type EncounterChoice = "fight" | "flee" | "negotiate";
+export type EncounterOutcome =
+  | "won"                  // fight succeeded, attacker driven off, no loss
+  | "lost"                 // fight failed, took the full fight loss
+  | "escaped"              // flee succeeded, no loss
+  | "fled_damaged"         // flee failed, took hull damage
+  | "negotiated_partial"   // negotiate succeeded, paid bribe + handed over partial cargo
+  | "negotiated_peace"     // negotiate succeeded with rival syndicate, no cargo loss
+  | "negotiated_fail";     // negotiate failed, fell back to lost-fight outcome
+
+// Fuzzy label band shown in the UI. The numeric probability is hidden so
+// the player gets a sense of the odds without being able to min-max around
+// exact percentages.
+export type OddsBand = "very_likely" | "likely" | "even" | "risky" | "longshot";
+
+// What gets taken from the ship for a given outcome. Cargo lots are listed
+// concretely (the actual lots that would be removed) so the modal can show
+// "12 medkits + 4 nanofiber" instead of a percentage. Computed at spawn
+// time and locked so re-renders don't reroll the displayed risk.
+export interface EncounterLoss {
+  credits: number;
+  cargo: { good: GoodId; qty: number }[];
+  hull: number;
+}
+
+export interface EncounterAttacker {
+  name: string;
+  kind: EncounterKind;
+  syndicateId?: SyndicateId;
+  weaponPower: number;
+  hull: number;
+  speed: number;
+  // Synthetic 0..1 crew quality used for narration ("veteran" / "regulars" /
+  // "green") and as a tie-breaker in odds math.
+  crewLevel: number;
+}
+
+export interface Encounter {
+  id: string;                             // "enc-{nextEncounterId}"
+  spawnedAt: number;                      // world.tick at spawn
+  shipId: TraderId;                       // defender — always a player ship in v1
+  fromLocation: LocationId;
+  toLocation: LocationId;
+  attacker: EncounterAttacker;
+  // Hidden numeric success probabilities (0..1). Used by autopilot policy
+  // and resolution; UI reads only the bands below.
+  pFight: number;
+  pFlee: number;
+  pNegotiate: number;
+  oddsFight: OddsBand;
+  oddsFlee: OddsBand;
+  oddsNegotiate: OddsBand;
+  // Concrete losses computed at spawn. Sharp numbers (q2: fuzzy odds, clear loss).
+  fightLossOnFail: EncounterLoss;
+  fleeLossOnFail: EncounterLoss;          // hull damage only in v1
+  negotiateBribe: number;                 // up-front credit cost if you choose this path
+  negotiatePartialCargo: { good: GoodId; qty: number }[];
+  // Stamped after resolution; absent means encounter is still pending.
+  resolution?: {
+    choice: EncounterChoice;
+    outcome: EncounterOutcome;
+    tick: number;
+    loss?: EncounterLoss;                 // actual loss applied (subset of *OnFail or partial)
+    autoResolved: boolean;                // true when autopilot picked the choice
+  };
+}
+
 export interface World {
   // Stable per-world identifier, generated at world creation. Used to
   // partition IndexedDB rows for chart history / trades / ship logs so
@@ -672,6 +748,16 @@ export interface World {
   // independent of the Exchange's commodity equity (which smooths via
   // EMA). Optional for back-compat; readers fall back to empty.
   commoditySpotHistory?: Record<GoodId, { tick: number; price: number }[]>;
+  // Active encounter awaiting player resolution. Set by the combat trigger
+  // when a player ship in manual pilot mode catches a roll. While present
+  // the simulator pauses ship transit advance for that ship (the encounter
+  // modal blocks until resolved). Auto-piloted ships resolve in-place and
+  // never set this field. At most one pending encounter at a time.
+  pendingEncounter?: Encounter;
+  // Capped history of resolved encounters (oldest dropped). Drives the
+  // ledger feed + the atlas lane danger heatmap (Phase 3).
+  encounterHistory?: Encounter[];
+  nextEncounterId?: number;
 }
 
 // --- order book ----------------------------------------------------------

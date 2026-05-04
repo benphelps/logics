@@ -22,7 +22,11 @@ export type NewsScope =
   | "commodity_index_price"
   | "basis_price"
   | "futures_price"
-  | "dividend";
+  | "dividend"
+  // Multiplier on encounter spawn probability per transit tick. ctx.locationId
+  // is the destination, ctx.syndicateId is the player's syndicate. Resolves to
+  // 1 when no template references this scope (Phase 1 ships without templates).
+  | "encounter_chance";
 
 export type NewsTargetKind = "good" | "location" | "syndicate" | "index" | "global";
 

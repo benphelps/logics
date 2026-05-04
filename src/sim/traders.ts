@@ -27,7 +27,14 @@ import {
   tollForArrival,
 } from "./control";
 import { noteSyndicateRevenue } from "./stock";
-import { pushNote, pushTraderEvent } from "./log";
+import { pushNote, pushShipLog, pushTraderEvent } from "./log";
+import {
+  autopilotPolicy as encounterAutopilotPolicy,
+  maybeSpawnEncounter,
+  recordEncounter,
+  resolveEncounter,
+} from "./combat/encounters";
+import { encounterLogMessage, encounterLogTone } from "./combat/log";
 import {
   buyDiscountFraction,
   combinedShipModifiers,
@@ -1002,6 +1009,45 @@ function executeAutoLoadoutPlan(
 
 function stepTrader(world: World, trader: Trader, events: TraderEvent[], inflight: Map<string, number>): void {
   if (trader.state === "transit") {
+    // If a pending encounter is targeting this ship, freeze its transit step
+    // until the player resolves the modal. Defensive — the tick driver also
+    // pauses globally while pendingEncounter is set.
+    if (world.pendingEncounter && world.pendingEncounter.shipId === trader.id) {
+      return;
+    }
+
+    // Roll for an encounter. Player ships only in v1; NPC encounters happen
+    // abstractly via the lane heatmap (Phase 3) rather than as full sim
+    // events. Skip if there's already a pending encounter (one at a time).
+    if (isPlayerShip(world, trader) && !world.pendingEncounter) {
+      const encounter = maybeSpawnEncounter(world, trader);
+      if (encounter) {
+        if (trader.pilot === "manual") {
+          // Stamp pending — modal handles the choice; the encounter consumes
+          // this transit tick, so don't decrement ticksRemaining.
+          world.pendingEncounter = encounter;
+          pushShipLog(trader, {
+            tick: world.tick,
+            kind: "encounter",
+            message: `Hostile contact — ${encounter.attacker.name} intercepts route.`,
+            tone: "warn",
+          });
+          return;
+        }
+        // Auto pilot resolves immediately. Encounter consumes the tick.
+        const choice = encounterAutopilotPolicy(trader, encounter);
+        resolveEncounter(world, trader, encounter, choice, true);
+        recordEncounter(world, encounter);
+        pushShipLog(trader, {
+          tick: world.tick,
+          kind: "encounter",
+          message: encounterLogMessage(world, encounter),
+          tone: encounterLogTone(encounter),
+        });
+        return;
+      }
+    }
+
     trader.ticksRemaining -= 1;
     if (trader.ticksRemaining > 0) return;
 
