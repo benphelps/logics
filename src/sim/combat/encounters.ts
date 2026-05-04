@@ -36,10 +36,14 @@ export const ENCOUNTER_HISTORY_CAP = 200;
 
 const FIGHT_LOSS_CARGO_MASS_FRACTION = 0.30;
 const NEGOTIATE_PARTIAL_FRACTION = 0.12;
+// Credit loss on a fight failure: a small fraction of the ship's wallet
+// (cargo loss is the main hit; this is "ship damage / boarding spoils").
+// Capped flat so a wealthy player isn't bankrupted by a single bad roll.
 const FIGHT_LOSS_CREDIT_FRACTION = 0.05;
-const FIGHT_LOSS_CREDIT_CARGO_FRACTION = 0.02;
+const FIGHT_LOSS_CREDIT_CAP = 25_000;
 const NEGOTIATE_BRIBE_BASE = 1500;
 const NEGOTIATE_BRIBE_PER_CARGO_VALUE = 0.04;
+const NEGOTIATE_BRIBE_CAP = 50_000;
 const FIGHT_LOSS_HULL_FRACTION_OF_BASE = 0.25;
 const FLEE_LOSS_HULL_FRACTION_OF_BASE = 0.10;
 
@@ -406,13 +410,15 @@ export function selectCargoLossLightFirst(
   return [...out.entries()].map(([good, qty]) => ({ good, qty }));
 }
 
-function computeFightLoss(world: World, ship: Trader, cargoValue: number): EncounterLoss {
+function computeFightLoss(world: World, ship: Trader, _cargoValue: number): EncounterLoss {
   const cargoMass = totalCargoMassOf(ship, world);
   const targetMass = Math.floor(cargoMass * FIGHT_LOSS_CARGO_MASS_FRACTION);
   const cargo = selectCargoLossLightFirst(ship, world, targetMass);
+  // Cargo loss is the headline hit; the credit portion is a much smaller
+  // "boarding spoils" tax. Capped flat so rich players aren't bankrupted.
   const credits = Math.round(Math.min(
     ship.funds,
-    ship.funds * FIGHT_LOSS_CREDIT_FRACTION + cargoValue * FIGHT_LOSS_CREDIT_CARGO_FRACTION,
+    Math.min(FIGHT_LOSS_CREDIT_CAP, ship.funds * FIGHT_LOSS_CREDIT_FRACTION),
   ));
   const baseHull = ship.baseHull ?? ship.hull ?? 30;
   const hull = Math.round(baseHull * FIGHT_LOSS_HULL_FRACTION_OF_BASE);
@@ -432,7 +438,10 @@ function computePartialCargoLoss(world: World, ship: Trader): { good: GoodId; qt
 }
 
 function computeBribe(cargoValue: number): number {
-  return Math.round(NEGOTIATE_BRIBE_BASE + cargoValue * NEGOTIATE_BRIBE_PER_CARGO_VALUE);
+  return Math.round(Math.min(
+    NEGOTIATE_BRIBE_CAP,
+    NEGOTIATE_BRIBE_BASE + cargoValue * NEGOTIATE_BRIBE_PER_CARGO_VALUE,
+  ));
 }
 
 // --- application ---------------------------------------------------------

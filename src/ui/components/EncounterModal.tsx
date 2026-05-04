@@ -1,7 +1,9 @@
+import type { CSSProperties } from "react";
 import { useStore } from "../store";
 import { Modal } from "./Modal";
 import { autopilotPolicy } from "../../sim/combat/encounters";
-import type { EncounterChoice, EncounterLoss, OddsBand, World } from "../../sim/types";
+import { SHIP_ART, shipArtUrl } from "../art";
+import type { EncounterChoice, EncounterKind, EncounterLoss, OddsBand, World } from "../../sim/types";
 import "./EncounterModal.css";
 
 const ODDS_LABEL: Record<OddsBand, string> = {
@@ -24,8 +26,15 @@ function lossSummary(world: World, loss: EncounterLoss): string {
     parts.push(`${c.qty} ${world.goods[c.good]?.name ?? c.good}`);
   }
   if (loss.credits > 0) parts.push(`Ç${Math.round(loss.credits).toLocaleString()}`);
-  if (loss.hull > 0) parts.push(`${loss.hull} hull`);
-  return parts.length > 0 ? parts.join(", ") : "—";
+  if (loss.hull > 0) parts.push(`${loss.hull} hull damage`);
+  return parts.length > 0 ? parts.join(" + ") : "—";
+}
+
+function attackerArtUrl(kind: EncounterKind): string {
+  // No bespoke pirate / rival art yet — both reuse the scout silhouette,
+  // which reads as a small combat ship.
+  void kind;
+  return SHIP_ART.scout;
 }
 
 export function EncounterModal() {
@@ -47,10 +56,13 @@ export function EncounterModal() {
     }
     const cargoText = encounter.negotiatePartialCargo
       .map(c => `${c.qty} ${world.goods[c.good]?.name ?? c.good}`)
-      .join(", ");
+      .join(" + ");
     if (!cargoText) return `Ç${encounter.negotiateBribe.toLocaleString()} bribe`;
     return `Ç${encounter.negotiateBribe.toLocaleString()} + ${cargoText}`;
   })();
+
+  const playerArt = shipArtUrl(ship);
+  const enemyArt = attackerArtUrl(encounter.attacker.kind);
 
   const cantBribe = ship.funds < encounter.negotiateBribe;
 
@@ -65,41 +77,47 @@ export function EncounterModal() {
     >
       <div className="encounter-grid">
         <section className="encounter-stats">
-          <div className="encounter-stats-col">
-            <header className="encounter-stats-head">YOU</header>
+          <article
+            className="encounter-stats-col art-card"
+            style={{ "--card-art": `url("${playerArt}")` } as CSSProperties}
+          >
+            <header className="encounter-stats-head">{ship.name}</header>
             <Stat label="Weapons" value={ship.weaponPower ?? 0} />
             <Stat label="Hull" value={ship.hull ?? 0} />
             <Stat label="Speed" value={ship.speed} />
             <Stat label="Mercenary" value={merc ? `tier ${merc.tier}` : "—"} muted={!merc} />
-          </div>
-          <div className="encounter-stats-col">
+          </article>
+          <article
+            className="encounter-stats-col art-card enemy"
+            style={{ "--card-art": `url("${enemyArt}")` } as CSSProperties}
+          >
             <header className="encounter-stats-head">{encounter.attacker.name}</header>
             <Stat label="Weapons" value={encounter.attacker.weaponPower} />
             <Stat label="Hull" value={encounter.attacker.hull} />
             <Stat label="Speed" value={encounter.attacker.speed} />
             <Stat label="Crew" value={crewLevelLabel(encounter.attacker.crewLevel)} />
-          </div>
+          </article>
         </section>
 
         <section className="encounter-actions">
           <ActionCard
             label="Fight"
             band={encounter.oddsFight}
-            risk={`risk ${lossSummary(world, encounter.fightLossOnFail)}`}
+            risk={`if you lose: ${lossSummary(world, encounter.fightLossOnFail)}`}
             recommended={recommended === "fight"}
             onClick={() => resolve("fight")}
           />
           <ActionCard
             label="Flee"
             band={encounter.oddsFlee}
-            risk={`risk ${lossSummary(world, encounter.fleeLossOnFail)}`}
+            risk={`if you fail: ${lossSummary(world, encounter.fleeLossOnFail)}`}
             recommended={recommended === "flee"}
             onClick={() => resolve("flee")}
           />
           <ActionCard
             label={encounter.attacker.kind === "pirate" ? "Bribe" : "Negotiate"}
             band={encounter.oddsNegotiate}
-            risk={cantBribe ? "insufficient funds" : partialLossText}
+            risk={cantBribe ? "insufficient funds" : `pay: ${partialLossText}`}
             recommended={recommended === "negotiate"}
             disabled={cantBribe}
             onClick={() => resolve("negotiate")}
