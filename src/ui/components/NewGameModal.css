@@ -95,9 +95,6 @@
 .new-game-intro-phase {
   display: grid;
   gap: 14px;
-  /* Modal body dropped its top padding; restore breathing room here so
-     the lead paragraph isn't flush with the head's bottom border. */
-  padding-top: 12px;
 }
 
 .new-game-intro {

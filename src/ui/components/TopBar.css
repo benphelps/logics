@@ -386,11 +386,6 @@
   }
 }
 
-.topbar-save-modal {
-  display: grid;
-  gap: 14px;
-}
-
 .topbar-menu-current {
   display: flex;
   align-items: flex-start;
@@ -470,7 +465,7 @@
 
 .topbar-menu-section {
   display: grid;
-  gap: 8px;
+  gap: 14px;
 }
 
 .topbar-menu-heading {
