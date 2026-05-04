@@ -41,6 +41,7 @@ import {
 import { randomPilotName } from "./pilotNames";
 import { rollCrewIdentity } from "../sim/crewIdentity";
 import { mulberry32 } from "../sim/gen/rng";
+import { generateShipName } from "../sim/gen/names";
 
 export type Speed = 0 | 1 | 4 | 16;
 
@@ -238,15 +239,32 @@ function devContractDestination(world: World, origin: LocationId): LocationId {
   return Object.keys(world.locations).find(id => id !== origin) ?? origin;
 }
 
+// Pulls a random ship name from the shared NPC name pool that doesn't
+// collide with anything already in the world. generateShipName keys
+// uniqueness on `t_<slug>` ids; player ships use `p_<slug>`, so we
+// translate existing player ids into the t_ form before passing the
+// used set so the picker never returns the same slug as another ship.
+function pickDevShipName(world: World, used: Set<string>): string {
+  const fakeUsed = new Set<string>();
+  for (const id of Object.keys(world.traders)) fakeUsed.add(id.replace(/^p_/, "t_"));
+  for (const slug of used) fakeUsed.add(slug);
+  const rng = mulberry32(Date.now() ^ Math.floor(Math.random() * 0x7fffffff));
+  const { name, id } = generateShipName(rng, fakeUsed);
+  used.add(id);
+  return name;
+}
+
 // Two extra ships in the dev fleet so the multi-ship features
 // (per-ship wallets, picker, per-ship stock positions, shipyard
 // purchase flow) all have something to test against from a fresh dev
 // state. Each ship has its own wallet, crew, and a distinct loadout
-// so they're easy to tell apart at a glance.
-function spawnDeveloperFleet(world: World, location: LocationId): void {
+// so they're easy to tell apart at a glance. Names come from the same
+// pool the NPCs draw from so the picker doesn't read "Dev Hauler".
+function spawnDeveloperFleet(world: World, location: LocationId, usedNameIds: Set<string>): void {
   if (!world.player) return;
-  const haulerId = makePlayerShipId(world, "Dev Hauler");
-  const hauler = makeStartingShip("Dev Hauler", location, 180_000);
+  const haulerName = pickDevShipName(world, usedNameIds);
+  const haulerId = makePlayerShipId(world, haulerName);
+  const hauler = makeStartingShip(haulerName, location, 180_000);
   hauler.id = haulerId;
   hauler.pilot = "manual";
   hauler.shipClass = "hauler";
@@ -261,15 +279,16 @@ function spawnDeveloperFleet(world: World, location: LocationId): void {
   hauler.currentFuel = { good: hauler.fuelTypes[0].good, qty: hauler.fuelCapacity };
   hauler.upgrades = { cargo: "upg_cargo_2", hull: "upg_hull_1" };
   hauler.crew = {
-    captain: devCrew("captain", "Dev Hauler Pilot", 1, { speedBonus: 0.2 }),
-    mechanic: devCrew("mechanic", "Dev Hauler Mechanic", 1, { maintenanceDiscount: 0.25 }),
+    captain: devCrew("captain", `${haulerName} Pilot`, 1, { speedBonus: 0.2 }),
+    mechanic: devCrew("mechanic", `${haulerName} Mechanic`, 1, { maintenanceDiscount: 0.25 }),
   };
   recomputeShipStats(hauler);
   world.traders[hauler.id] = hauler;
   world.player.shipIds.push(hauler.id);
 
-  const courierId = makePlayerShipId(world, "Dev Courier");
-  const courier = makeStartingShip("Dev Courier", location, 95_000);
+  const courierName = pickDevShipName(world, usedNameIds);
+  const courierId = makePlayerShipId(world, courierName);
+  const courier = makeStartingShip(courierName, location, 95_000);
   courier.id = courierId;
   courier.pilot = "manual";
   courier.shipClass = "courier";
@@ -285,8 +304,8 @@ function spawnDeveloperFleet(world: World, location: LocationId): void {
   courier.upgrades = { engine: "upg_engine_1", systems: "upg_systems_nav_1" };
   courier.traits = ["fuel-efficient"];
   courier.crew = {
-    captain: devCrew("captain", "Dev Courier Pilot", 1, { speedBonus: 0.4 }),
-    navigator: devCrew("navigator", "Dev Courier Nav", 1, { rangeEfficiency: 0.12 }),
+    captain: devCrew("captain", `${courierName} Pilot`, 1, { speedBonus: 0.4 }),
+    navigator: devCrew("navigator", `${courierName} Nav`, 1, { rangeEfficiency: 0.12 }),
   };
   recomputeShipStats(courier);
   world.traders[courier.id] = courier;
@@ -401,14 +420,28 @@ function createDeveloperWorld(): World {
   const ship = playerShip(world);
   if (!ship) return world;
 
+  // Rename the player's primary ship from the hardcoded "Voyager" so
+  // every dev load reads as a fresh fleet. The id moves with the name
+  // (player.shipIds[0] tracks it) so existing dev cargo / contract /
+  // positions seeding all keep referring to the same ship instance.
+  const usedNameIds = new Set<string>();
+  const primaryName = pickDevShipName(world, usedNameIds);
+  const oldId = ship.id;
+  const newId = makePlayerShipId(world, primaryName);
+  delete world.traders[oldId];
+  ship.id = newId;
+  ship.name = primaryName;
+  world.traders[newId] = ship;
+  if (world.player) world.player.shipIds[0] = newId;
+
   ship.funds = 100_000_000;
   ship.pilot = "manual";
   ship.crew = {
-    navigator: devCrew("navigator", "Dev Navigator", 1, { rangeEfficiency: 0.08 }),
-    mechanic: devCrew("mechanic", "Dev Mechanic", 1, { maintenanceDiscount: 0.45 }),
-    captain: devCrew("captain", "Dev Pilot", 2, { speedBonus: 0.5 }),
+    navigator: devCrew("navigator", `${primaryName} Navigator`, 1, { rangeEfficiency: 0.08 }),
+    mechanic: devCrew("mechanic", `${primaryName} Mechanic`, 1, { maintenanceDiscount: 0.45 }),
+    captain: devCrew("captain", `${primaryName} Pilot`, 2, { speedBonus: 0.5 }),
   };
-  spawnDeveloperFleet(world, ship.location);
+  spawnDeveloperFleet(world, ship.location, usedNameIds);
   // Top-tier loadout — every slot gets the highest-tier (T4 legendary)
   // variant available, so the dev state shows what a fully kitted ship
   // does to stats, capacity, and the rarity-colored catalog.
