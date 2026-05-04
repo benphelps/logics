@@ -37,8 +37,23 @@ function lossPills(world: World, loss: EncounterLoss): LossPill[] {
   return sortPillsForPacking(pills);
 }
 
+// Interleave longest with shortest so flex-wrap packs tighter. Pure
+// descending-length leaves long pills stacking on adjacent rows when a short
+// one could've squeezed in beside them — this picks alternately from the
+// long end and the short end so each row gets a long+short pair.
 function sortPillsForPacking(pills: LossPill[]): LossPill[] {
-  return [...pills].sort((a, b) => b.text.length - a.text.length);
+  if (pills.length <= 1) return pills;
+  const sorted = [...pills].sort((a, b) => b.text.length - a.text.length);
+  const out: LossPill[] = [];
+  let lo = 0;
+  let hi = sorted.length - 1;
+  let takeLong = true;
+  while (lo <= hi) {
+    if (takeLong) out.push(sorted[lo++]);
+    else out.push(sorted[hi--]);
+    takeLong = !takeLong;
+  }
+  return out;
 }
 
 function attackerArtUrl(kind: EncounterKind): string {
