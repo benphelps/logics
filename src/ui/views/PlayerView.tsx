@@ -3895,14 +3895,11 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
     </button>
   ) : null;
   const travelTitle = inTransit ? "Route origin" : "Current location";
-  const travelSubtitle = inTransit
-    ? `To ${world.locations[ship.destination ?? loc.id]?.name ?? loc.name} / ${ship.ticksRemaining} tick${ship.ticksRemaining === 1 ? "" : "s"} remaining`
-    : `${neighborDests.length} reachable station${neighborDests.length === 1 ? "" : "s"}`;
   const currentMeta = currentStationJobs.length > 0
     ? contractLine(currentStationJobs)
     : inTransit
-      ? "Route origin"
-      : travelSubtitle;
+      ? `To ${world.locations[ship.destination ?? loc.id]?.name ?? loc.name} / ${ship.ticksRemaining} tick${ship.ticksRemaining === 1 ? "" : "s"} remaining`
+      : `${neighborDests.length} reachable station${neighborDests.length === 1 ? "" : "s"}`;
 
   return (
     <section className="bridge-card travel-card">
@@ -3915,10 +3912,7 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
           <div className="travel-panel-kicker">
             <span className="travel-panel-label">{travelTitle}</span>
           </div>
-          <span className="travel-current-meta">
-            <span>{currentMeta}</span>
-            {currentMeta !== travelSubtitle && <span className="travel-panel-subtitle dim">{travelSubtitle}</span>}
-          </span>
+          <span className="travel-current-meta">{currentMeta}</span>
           <button
             type="button"
             className={`travel-current-station info-focus-trigger ${currentPinned ? "is-pinned" : ""}`}
