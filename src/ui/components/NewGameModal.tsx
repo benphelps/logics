@@ -1,5 +1,7 @@
+import type { ComponentType, SVGProps } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MdCasino, MdRefresh } from "react-icons/md";
+import { GiPathDistance, GiReceiveMoney, GiShipWheel } from "react-icons/gi";
 import type { CrewAge, CrewIdentity, CrewRace, CrewSex, Syndicate, SyndicateId, World } from "../../sim/types";
 import { CREW_AGES, CREW_RACES, CREW_SEXES } from "../../sim/crewIdentity";
 import { SYNDICATE_TRAITS } from "../../sim/data/syndicates";
@@ -69,7 +71,7 @@ export function NewGameModal() {
       : (intent === "reset" ? "Restart this game" : "Choose your syndicate");
 
   const title = phase === "intro"
-    ? "Ledgway — a sci-fi spreadsheet"
+    ? "Run the route, hire the crew, trade the economy"
     : phase === "pilot"
       ? "Who's at the helm?"
       : "Pick a syndicate";
@@ -135,37 +137,67 @@ export function NewGameModal() {
 
 // ----- Intro --------------------------------------------------------------
 
+const INTRO_LOOP: { icon: ComponentType<SVGProps<SVGSVGElement>>; title: string; body: string }[] = [
+  {
+    icon: GiReceiveMoney,
+    title: "Click the profitable move",
+    body: "Read prices, buy low, haul cargo, and sell into demand. Pick up contracts on the side for the bonus.",
+  },
+  {
+    icon: GiShipWheel,
+    title: "Delegate the routine",
+    body: "Hire a navigator for guidance, a mechanic for upkeep, and a captain when the route is ready for auto-pilot.",
+  },
+  {
+    icon: GiPathDistance,
+    title: "Scale into logistics",
+    body: "Grow from one hauler into a managed fleet that feeds shortages, rescues stranded traders, and supplies advanced chains.",
+  },
+];
+
 function IntroPhase() {
   return (
     <div className="new-game-intro-phase">
       <p className="new-game-intro">
-        A trading sim played at the keyboard. Move goods, build a fleet, and
-        bet on the markets that move with you.
+        An easy-to-play space logistics game about running cargo, reading a
+        living station economy, hiring the crew that takes over routine work,
+        and trading the market built on top of it.
       </p>
       <div className="new-game-intro-grid">
-        <IntroTile
-          title="Trade"
-          body="Buy goods cheap at one station, sell them dear at another. Watch the spread."
-        />
-        <IntroTile
-          title="Fleet"
-          body="Each ship has its own wallet, crew, and cargo. Hire pilots to run routes for you."
-        />
-        <IntroTile
-          title="Speculate"
-          body="The Exchange lets you go long, short, or write futures on stations and commodities."
-        />
+        {INTRO_LOOP.map((step, i) => (
+          <IntroTile
+            key={step.title}
+            index={i + 1}
+            icon={step.icon}
+            title={step.title}
+            body={step.body}
+          />
+        ))}
       </div>
+      <p className="new-game-intro-foot">
+        Ledgway starts like a clicker — clear, satisfying shipping decisions.
+        The depth comes from deciding which repeated moves deserve a crew, a
+        better ship, or a market position.
+      </p>
     </div>
   );
 }
 
-function IntroTile({ title, body }: { title: string; body: string }) {
+function IntroTile({ index, icon: Icon, title, body }: {
+  index: number;
+  icon: ComponentType<SVGProps<SVGSVGElement>>;
+  title: string;
+  body: string;
+}) {
   return (
-    <div className="new-game-intro-tile">
+    <article className="new-game-intro-tile">
+      <header className="new-game-intro-tile-head">
+        <span className="new-game-intro-tile-index mono">{String(index).padStart(2, "0")}</span>
+        <Icon className="new-game-intro-tile-icon" aria-hidden="true" focusable="false" />
+      </header>
       <div className="new-game-intro-tile-title">{title}</div>
       <div className="new-game-intro-tile-body">{body}</div>
-    </div>
+    </article>
   );
 }
 

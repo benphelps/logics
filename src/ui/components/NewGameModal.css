@@ -1,5 +1,5 @@
 .ui-modal-dialog.new-game-dialog {
-  width: min(720px, 100%);
+  width: min(760px, 100%);
 }
 
 .ui-modal-dialog.new-game-dialog-pilot {
@@ -94,7 +94,20 @@
 
 .new-game-intro-phase {
   display: grid;
-  gap: 12px;
+  gap: 14px;
+}
+
+.new-game-intro {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.55;
+}
+
+.new-game-intro-foot {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.55;
 }
 
 .new-game-intro-grid {
@@ -105,19 +118,42 @@
 
 .new-game-intro-tile {
   display: grid;
-  gap: 6px;
-  padding: 12px;
+  gap: 8px;
+  padding: 14px 14px 16px;
   background: var(--bg-1);
   border: 1px solid var(--border);
   border-radius: 5px;
+  position: relative;
+}
+
+.new-game-intro-tile-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--accent);
+}
+
+.new-game-intro-tile-index {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--text-dim);
+  opacity: 0.75;
+}
+
+.new-game-intro-tile-icon {
+  width: 22px;
+  height: 22px;
+  color: var(--accent);
+  opacity: 0.9;
 }
 
 .new-game-intro-tile-title {
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 650;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--text);
 }
 
 .new-game-intro-tile-body {
