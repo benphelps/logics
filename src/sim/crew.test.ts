@@ -313,7 +313,11 @@ describe("hires: dynamic pool", () => {
     tickN(w, 400);
     const all = Object.values(w.hires);
     expect(all.length).toBeGreaterThan(0);
-    const integerMods = new Set(["cargoCapacityBonus", "fuelCapacityBonus", "speedBonus"]);
+    const integerMods = new Set([
+      "cargoCapacityBonus", "fuelCapacityBonus", "speedBonus",
+      // Mercenary modifiers — flat integer additive bonuses to combat stats.
+      "hullBonus", "weaponPowerBonus",
+    ]);
     const flatRateMods = new Set(["fuelRegenIdle"]);
     for (const h of all) {
       expect(h.hireCost).toBeGreaterThan(0);

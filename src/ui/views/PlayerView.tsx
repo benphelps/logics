@@ -30,7 +30,7 @@ import { effectivePerDistance, hasCrew, ignoresFuel, totalCrewWage, travelTicksF
 import { MAINTENANCE_DEBT_TRAVEL_BLOCK } from "../../sim/crew";
 import { listHiresAt } from "../../sim/hires";
 import { listShipyardInventory } from "../../sim/shipyards";
-import { selectRefuelType, UNLOAD_TICKS, unloadTicksRemainingFor } from "../../sim/traders";
+import { hullRepairCost, selectRefuelType, UNLOAD_TICKS, unloadTicksRemainingFor } from "../../sim/traders";
 import { UPGRADE_SLOTS, installedUpgrade, isUpgradeGood, upgradeDef, upgradeEffectText } from "../../sim/upgrades";
 import type { CrewModifiers, CrewRole, Equity } from "../../sim/types";
 import type { CrewMember, GoodId, Job, JobId, LocationDef, LocationId, ShipBlueprint, ShipLogEntry, ShipTrait, StockPosition, Trader, TraderId, UpgradeSlot, World } from "../../sim/types";
@@ -1305,7 +1305,9 @@ function ShipCard({ ship, world, loc, guidedPlan, target, hintText, cueText, cri
   const setShipTab = useStore((s) => s.setFleetTab);
 
   const debt = ship.maintenanceDebt ?? 0;
-  const canRepair = debt > 0 && ship.state === "idle";
+  const hullCost = hullRepairCost(ship);
+  const totalRepairCost = debt + hullCost;
+  const canRepair = totalRepairCost > 0 && ship.state === "idle";
 
   return (
     <section className="bridge-card ship-card">
@@ -1338,7 +1340,10 @@ function ShipCard({ ship, world, loc, guidedPlan, target, hintText, cueText, cri
         />
         <ShipPilotStatusEntry ship={ship} />
         <ShipMaintenanceStatusEntry
+          ship={ship}
           debt={debt}
+          hullCost={hullCost}
+          totalCost={totalRepairCost}
           canRepair={canRepair}
           onRepair={() => repairShip(ship.id)}
         />
@@ -1418,24 +1423,39 @@ function ShipFuelStatusEntry({ ship, world, target, hintText, critical, inTransi
   );
 }
 
-function ShipMaintenanceStatusEntry({ debt, canRepair, onRepair }: {
+function ShipMaintenanceStatusEntry({ ship, debt, hullCost, totalCost, canRepair, onRepair }: {
+  ship: Trader;
   debt: number;
+  hullCost: number;
+  totalCost: number;
   canRepair: boolean;
   onRepair: () => void;
 }) {
-  const damagePct = Math.max(0, Math.min(100, (debt / MAINTENANCE_DEBT_TRAVEL_BLOCK) * 100));
+  const debtPct = (debt / MAINTENANCE_DEBT_TRAVEL_BLOCK) * 100;
+  const baseHull = ship.baseHull ?? ship.hull ?? 1;
+  const curHull = ship.hull ?? baseHull;
+  const hullPct = baseHull > 0 ? ((baseHull - curHull) / baseHull) * 100 : 0;
+  const damagePct = Math.max(0, Math.min(100, Math.max(debtPct, hullPct)));
   const conditionPct = Math.max(0, 100 - damagePct);
+  // Grounded only by maintenance debt — hull damage degrades odds but
+  // doesn't physically prevent travel in v1.
   const grounded = debt >= MAINTENANCE_DEBT_TRAVEL_BLOCK;
   const tone = grounded ? "bad" : conditionPct <= 30 ? "warn" : "";
   const attention = conditionPct <= 30;
-  const hasDebt = debt > 0.001;
+  const hasCost = totalCost > 0.001;
   const percentText = `${Math.round(damagePct)}%`;
+  const breakdown = (() => {
+    const parts: string[] = [];
+    if (debt > 0) parts.push(`maintenance Ç${Math.round(debt).toLocaleString()}`);
+    if (hullCost > 0) parts.push(`hull Ç${Math.round(hullCost).toLocaleString()}`);
+    return parts.join(" + ");
+  })();
   const status = grounded
-    ? `Grounded · hull damage Ç${Math.round(debt).toLocaleString()}`
-    : hasDebt
-      ? `Hull damage Ç${Math.round(debt).toLocaleString()}`
+    ? `Grounded · ${breakdown || "repairs needed"}`
+    : hasCost
+      ? `Repairs Ç${Math.round(totalCost).toLocaleString()}${breakdown ? ` (${breakdown})` : ""}`
       : "Hull clear";
-  const clickable = hasDebt && canRepair;
+  const clickable = hasCost && canRepair;
 
   return (
     <ActionCell suggested={grounded} hintText="Repair hull damage before travel." critical>
@@ -1444,7 +1464,7 @@ function ShipMaintenanceStatusEntry({ debt, canRepair, onRepair }: {
         style={meterTabStyle(damagePct)}
         onClick={onRepair}
         disabled={!clickable}
-        title={`${status}${hasDebt ? canRepair ? " · Repair ship" : " · Dock to repair" : ""}`}
+        title={`${status}${hasCost ? canRepair ? " · Repair ship" : " · Dock to repair" : ""}`}
       >
         <span className="ship-meter-label">Hull Damage</span>
         <span className="ship-meter-percent">{percentText}</span>
@@ -2205,7 +2225,12 @@ function ShipInfoPanelContent({ ship, world }: { ship: Trader; world: World }) {
   const crewCount = Object.keys(ship.crew ?? {}).length;
   const fuelQty = ship.currentFuel?.qty ?? 0;
   const debt = ship.maintenanceDebt ?? 0;
-  const hullDamagePct = Math.max(0, Math.min(100, (debt / MAINTENANCE_DEBT_TRAVEL_BLOCK) * 100));
+  const debtPct = (debt / MAINTENANCE_DEBT_TRAVEL_BLOCK) * 100;
+  const baseHull = ship.baseHull ?? ship.hull ?? 1;
+  const curHull = ship.hull ?? baseHull;
+  const hullPct = baseHull > 0 ? ((baseHull - curHull) / baseHull) * 100 : 0;
+  const hullDamagePct = Math.max(0, Math.min(100, Math.max(debtPct, hullPct)));
+  const hullCost = hullRepairCost(ship);
   const wage = totalCrewWage(ship);
   const positions = Object.values(ship.stockPositions ?? {});
   const recentActions = (ship.log ?? []).slice(-5).reverse();
@@ -2231,7 +2256,7 @@ function ShipInfoPanelContent({ ship, world }: { ship: Trader; world: World }) {
         <Stat label="weapons" value={(ship.weaponPower ?? ship.baseWeaponPower ?? 0).toLocaleString()} />
         <Stat label="upgrades" value={`${installedCount} / 5`} />
         <Stat label="crew" value={`${crewCount} / 3`} />
-        <Stat label="service debt" value={`Ç${Math.round(debt).toLocaleString()}`} />
+        <Stat label="service debt" value={`Ç${Math.round(debt + hullCost).toLocaleString()}`} />
         <Stat label="wages" value={`Ç${Math.round(wage).toLocaleString()}/t`} />
       </dl>
 
@@ -3526,6 +3551,7 @@ function CrewTab({ ship }: { ship: Trader }) {
     { role: "captain",   label: "Pilot" },
     { role: "navigator", label: "Navigator" },
     { role: "mechanic",  label: "Mechanic" },
+    { role: "mercenary", label: "Mercenary" },
   ];
 
   return (

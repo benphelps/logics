@@ -24,6 +24,10 @@ export const MILESTONES = {
   navigatorOffers: 50,
   mechanicOffers:  100,
   captainOffers:   250,
+  // Mercenaries are a Phase 2 combat unlock — they post after the player
+  // has weathered enough manual play to have hit at least a few encounters
+  // and feel the sting of running unarmed.
+  mercenaryOffers: 350,
 } as const;
 
 export type MilestoneKey = keyof typeof MILESTONES;
@@ -36,6 +40,7 @@ export const MILESTONE_LABELS: Record<MilestoneKey, { label: string; description
   navigatorOffers: { label: "Navigator's Guild",  description: "Stations post navigator offers — guidance hints unlock once one is hired." },
   mechanicOffers:  { label: "Mechanic's Guild",   description: "Stations post mechanic offers — keeps maintenance debt off your back." },
   captainOffers:   { label: "Pilot's Guild",      description: "Stations post captain offers — autopilot trading unlocks once one is hired." },
+  mercenaryOffers: { label: "Mercenary Hall",     description: "Stations post mercenary offers — improves your odds in combat encounters." },
 };
 
 export function manualActions(world: World): number {
@@ -74,10 +79,7 @@ export function crewRoleMilestone(role: import("./types").CrewRole): MilestoneKe
   if (role === "captain")   return "captainOffers";
   if (role === "navigator") return "navigatorOffers";
   if (role === "mechanic")  return "mechanicOffers";
-  // Mercenary: routed to the captain milestone as a placeholder until Phase 2
-  // adds a dedicated mercenaryOffers gate. v1 doesn't actually post mercenary
-  // hires, so this branch is never reached at runtime.
-  return "captainOffers";
+  return "mercenaryOffers";
 }
 
 export interface MilestoneProgress {

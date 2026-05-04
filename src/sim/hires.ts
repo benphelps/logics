@@ -101,11 +101,13 @@ const TIER_WAGE_MULT: Record<number, number> = { 1: 1.0, 2: 1.6, 3: 2.4 };
 const MOD_COUNT_BY_TIER: Record<number, number> = { 1: 0, 2: 1, 3: 2 };
 
 // Role posting weights — navigators are the early on-ramp, mechanics stay
-// common, pilots are rarer because they unlock automation.
+// common, pilots are rarer because they unlock automation. Mercenaries are
+// the final unlock and post sparingly — they're a combat-only specialist.
 const ROLE_WEIGHTS: { role: CrewRole; weight: number }[] = [
   { role: "navigator", weight: 5 },
   { role: "mechanic",  weight: 3 },
   { role: "captain",   weight: 2 },
+  { role: "mercenary", weight: 2 },
 ];
 
 // --- name pool -------------------------------------------------------------

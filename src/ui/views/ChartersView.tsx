@@ -18,6 +18,7 @@ import {
   GiCargoCrate,
   GiCrossedSwords,
   GiFactory,
+  GiHelmet,
   GiPathDistance,
   GiProcessor,
 } from "react-icons/gi";
@@ -41,12 +42,13 @@ const MILESTONE_ICONS: Record<MilestoneKey, IconType> = {
   navigatorOffers: GiPathDistance,
   mechanicOffers:  GiAutoRepair,
   captainOffers:   GiAstronautHelmet,
+  mercenaryOffers: GiHelmet,
 };
 
 function milestoneRarity(key: MilestoneKey): "common" | "uncommon" | "rare" | "legendary" {
   if (key === "upgradeTier1") return "common";
   if (key === "upgradeTier2" || key === "navigatorOffers" || key === "mechanicOffers") return "uncommon";
-  if (key === "upgradeTier3" || key === "captainOffers") return "rare";
+  if (key === "upgradeTier3" || key === "captainOffers" || key === "mercenaryOffers") return "rare";
   return "legendary";
 }
 

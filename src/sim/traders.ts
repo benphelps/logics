@@ -1706,19 +1706,41 @@ export function travelTo(world: World, trader: Trader, dst: LocationId): Execute
   return { ok: true, events };
 }
 
-// Pay off accumulated maintenance debt. Player-only — debt only accrues for
-// player ships missing a mechanic. Charged to the ship's own wallet.
+// Per-hull-point repair cost for combat damage. Repair fees flow to the
+// station's local treasury (closed loop, like other settlement rails).
+export const HULL_REPAIR_PER_POINT = 200;
+
+export function hullRepairCost(trader: Trader): number {
+  const base = trader.baseHull ?? trader.hull ?? 0;
+  const cur = trader.hull ?? base;
+  const damage = Math.max(0, base - cur);
+  return Math.round(damage * HULL_REPAIR_PER_POINT);
+}
+
+// Pay off both maintenance debt and combat hull damage in one settlement.
+// Maintenance debt only accrues for player ships missing a mechanic; combat
+// damage hits any player ship that took losses or fled-damaged. Charged to
+// the ship's own wallet; hull-damage portion is deposited into the docking
+// station's treasury.
 export function repairShip(world: World, trader: Trader): { ok: true; paid: number } | { ok: false; reason: string } {
   if (trader.state !== "idle") return { ok: false, reason: "Can only repair while docked." };
   const debt = trader.maintenanceDebt ?? 0;
-  if (debt <= 0) return { ok: false, reason: "Ship is in good repair — nothing to fix." };
-  if (trader.funds < debt) {
-    return { ok: false, reason: `Need Ç${Math.round(debt).toLocaleString()} to repair, ship has Ç${Math.round(trader.funds).toLocaleString()}.` };
+  const hullCost = hullRepairCost(trader);
+  const total = debt + hullCost;
+  if (total <= 0) return { ok: false, reason: "Ship is in good repair — nothing to fix." };
+  if (trader.funds < total) {
+    return { ok: false, reason: `Need Ç${Math.round(total).toLocaleString()} to repair, ship has Ç${Math.round(trader.funds).toLocaleString()}.` };
   }
-  trader.funds -= debt;
-  trader.maintenanceDebt = 0;
-  pushNote(world, trader, `Repaired ship — Ç${Math.round(debt).toLocaleString()} paid`, "good");
-  return { ok: true, paid: debt };
+  trader.funds -= total;
+  if (debt > 0) trader.maintenanceDebt = 0;
+  if (hullCost > 0) {
+    trader.hull = trader.baseHull ?? trader.hull;
+    // Hull-repair portion deposits into the docking station's treasury.
+    const market = world.markets[trader.location];
+    if (market) market.treasury += hullCost;
+  }
+  pushNote(world, trader, `Repaired ship — Ç${Math.round(total).toLocaleString()} paid`, "good");
+  return { ok: true, paid: total };
 }
 
 export function stepTraders(world: World): TraderEvent[] {
