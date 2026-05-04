@@ -4,7 +4,11 @@ import { warmUpBook } from "../sim/stock/agents";
 import { createGameId } from "../sim/world";
 import { deriveCrewIdentity } from "../sim/crewIdentity";
 import { createNewsEventsState } from "../sim/news/tick";
-import type { ActiveNewsEvent, NewsTarget, RecentNewsEvent } from "../sim/news/types";
+import type {
+  ActiveNewsEvent,
+  NewsTarget,
+  RecentNewsEvent,
+} from "../sim/news/types";
 import {
   deleteGame as deleteGameHistory,
   deleteSaveWorld,
@@ -12,7 +16,12 @@ import {
   getSaveWorld,
   putSaveWorld,
 } from "./historyDb";
-import { normalizePanelScrollPositions, normalizeViewTabs, type PanelScrollPositions, type ViewTabs } from "./viewTabs";
+import {
+  normalizePanelScrollPositions,
+  normalizeViewTabs,
+  type PanelScrollPositions,
+  type ViewTabs,
+} from "./viewTabs";
 
 const SAVE_REGISTRY_KEY = "ledgway.saveGames.v1";
 const LEGACY_SAVE_REGISTRY_KEYS = ["logics.saveGames.v1"];
@@ -110,7 +119,9 @@ function flushSaveWorld(saveId: string, world: World): Promise<void> {
 // when the tab goes away.
 export function awaitPendingSaveWorldWrites(): Promise<void> {
   if (pendingWorldWrites.size === 0) return Promise.resolve();
-  return Promise.allSettled([...pendingWorldWrites.values()]).then(() => undefined);
+  return Promise.allSettled([...pendingWorldWrites.values()]).then(
+    () => undefined,
+  );
 }
 
 function browserStorage(): Storage | null {
@@ -135,18 +146,15 @@ function isPersistedSave(value: unknown): value is PersistedSaveGame {
   // World moved to IDB — accept records both with (legacy) and without
   // (post-migration) an embedded world. The other summary fields stay
   // mandatory since they drive the save card UI.
-  return value.version === SAVE_VERSION
-    && typeof value.id === "string"
-    && typeof value.name === "string"
-    && isSaveKind(value.kind)
-    && typeof value.tick === "number"
-    && typeof value.createdAt === "number"
-    && typeof value.updatedAt === "number";
-}
-
-function cloneWorld(world: World): World {
-  if (typeof structuredClone === "function") return structuredClone(world) as World;
-  return JSON.parse(JSON.stringify(world)) as World;
+  return (
+    value.version === SAVE_VERSION &&
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    isSaveKind(value.kind) &&
+    typeof value.tick === "number" &&
+    typeof value.createdAt === "number" &&
+    typeof value.updatedAt === "number"
+  );
 }
 
 // Compact a world before serializing to localStorage. The save snapshot is
@@ -182,8 +190,8 @@ function compactWorldForSave(world: World): World {
     for (const [id, book] of Object.entries(orderBooks)) {
       next[id] = {
         ...book,
-        bids: book.bids.filter(o => o.ttl == null),
-        asks: book.asks.filter(o => o.ttl == null),
+        bids: book.bids.filter((o) => o.ttl == null),
+        asks: book.asks.filter((o) => o.ttl == null),
       };
     }
     orderBooks = next;
@@ -196,7 +204,6 @@ function compactWorldForSave(world: World): World {
   const player = world.player ? { ...world.player, trades: [] } : world.player;
   return { ...world, equities, traders, orderBooks, player };
 }
-
 
 // Saves predating later mechanics (treasuries, stock market, long/short
 // positions) won't have those fields. Backfill on load so the rest of the
@@ -225,7 +232,7 @@ function migrateLoadedWorld(world: World): World {
     if (world.player.portfolio) {
       for (const [eqId, shares] of Object.entries(world.player.portfolio)) {
         if (typeof shares !== "number" || shares <= 0) continue;
-        if (world.player.positions[eqId]) continue;       // already has a real position
+        if (world.player.positions[eqId]) continue; // already has a real position
         const eq = world.equities[eqId];
         if (!eq) continue;
         world.player.positions[eqId] = {
@@ -255,19 +262,35 @@ function migratePlayerStockToShips(world: World): void {
   const firstShip = firstShipId ? world.traders[firstShipId] : null;
   if (!firstShip) return;
 
-  if (player.positions && Object.keys(player.positions).length > 0 && !firstShip.stockPositions) {
+  if (
+    player.positions &&
+    Object.keys(player.positions).length > 0 &&
+    !firstShip.stockPositions
+  ) {
     firstShip.stockPositions = { ...player.positions };
   }
   if (player.trades && player.trades.length > 0 && !firstShip.stockTrades) {
     firstShip.stockTrades = [...player.trades];
   }
-  if (player.reservedShares && Object.keys(player.reservedShares).length > 0 && !firstShip.reservedShares) {
+  if (
+    player.reservedShares &&
+    Object.keys(player.reservedShares).length > 0 &&
+    !firstShip.reservedShares
+  ) {
     firstShip.reservedShares = { ...player.reservedShares };
   }
-  if (player.futures && Object.keys(player.futures).length > 0 && !firstShip.futures) {
+  if (
+    player.futures &&
+    Object.keys(player.futures).length > 0 &&
+    !firstShip.futures
+  ) {
     firstShip.futures = { ...player.futures };
   }
-  if (player.reservedFutures && Object.keys(player.reservedFutures).length > 0 && !firstShip.reservedFutures) {
+  if (
+    player.reservedFutures &&
+    Object.keys(player.reservedFutures).length > 0 &&
+    !firstShip.reservedFutures
+  ) {
     firstShip.reservedFutures = { ...player.reservedFutures };
   }
 }
@@ -283,13 +306,23 @@ function backfillNewsEvents(world: World): void {
   }
   const state = world.newsEvents;
   state.enabled = state.enabled ?? true;
-  state.active = Array.isArray(state.active) ? state.active.filter(ev => allTargetsValid(world, ev)) : [];
-  state.recent = Array.isArray(state.recent) ? state.recent.filter(ev => allTargetsValid(world, ev)) : [];
+  state.active = Array.isArray(state.active)
+    ? state.active.filter((ev) => allTargetsValid(world, ev))
+    : [];
+  state.recent = Array.isArray(state.recent)
+    ? state.recent.filter((ev) => allTargetsValid(world, ev))
+    : [];
   state.bias = state.bias && typeof state.bias === "object" ? state.bias : {};
-  state.nextEventId = typeof state.nextEventId === "number" && state.nextEventId > 0 ? state.nextEventId : 1;
+  state.nextEventId =
+    typeof state.nextEventId === "number" && state.nextEventId > 0
+      ? state.nextEventId
+      : 1;
 }
 
-function allTargetsValid(world: World, ev: ActiveNewsEvent | RecentNewsEvent): boolean {
+function allTargetsValid(
+  world: World,
+  ev: ActiveNewsEvent | RecentNewsEvent,
+): boolean {
   for (const eff of ev.effects) {
     if (!targetIsValid(world, eff.target)) return false;
   }
@@ -300,11 +333,16 @@ function targetIsValid(world: World, target: NewsTarget): boolean {
   if (target.kind === "global") return true;
   if (!target.id) return true; // category-only targets don't depend on a specific id
   switch (target.kind) {
-    case "good":      return world.goods[target.id] != null;
-    case "location":  return world.locations[target.id] != null;
-    case "syndicate": return world.syndicates[target.id] != null;
-    case "index":     return world.equities[target.id] != null;
-    default:          return false;
+    case "good":
+      return world.goods[target.id] != null;
+    case "location":
+      return world.locations[target.id] != null;
+    case "syndicate":
+      return world.syndicates[target.id] != null;
+    case "index":
+      return world.equities[target.id] != null;
+    default:
+      return false;
   }
 }
 
@@ -314,17 +352,20 @@ function targetIsValid(world: World, target: NewsTarget): boolean {
 function backfillCrewIdentity(world: World): void {
   const fillCrew = (member: CrewMember): void => {
     if (member.sex && member.age && member.race) return;
-    const id = member.sex ?? member.age ?? member.race ? `${member.id}-fill` : member.id;
+    const id =
+      (member.sex ?? member.age ?? member.race)
+        ? `${member.id}-fill`
+        : member.id;
     const identity = deriveCrewIdentity(id);
-    if (!member.sex)  member.sex = identity.sex;
-    if (!member.age)  member.age = identity.age;
+    if (!member.sex) member.sex = identity.sex;
+    if (!member.age) member.age = identity.age;
     if (!member.race) member.race = identity.race;
   };
   const fillHire = (hire: Hire): void => {
     if (hire.sex && hire.age && hire.race) return;
     const identity = deriveCrewIdentity(hire.id);
-    if (!hire.sex)  hire.sex = identity.sex;
-    if (!hire.age)  hire.age = identity.age;
+    if (!hire.sex) hire.sex = identity.sex;
+    if (!hire.age) hire.age = identity.age;
     if (!hire.race) hire.race = identity.race;
   };
   for (const trader of Object.values(world.traders)) {
@@ -368,10 +409,10 @@ function readRegistry(): SaveRegistry | null {
   // the flag so writes don't repopulate localStorage, and return the
   // empty-registry path. A page reload re-initializes everything.
   if (
-    storage
-    && cachedRegistry != null
-    && cachedRegistry.saves.length > 0
-    && !registryKeyExists(storage)
+    storage &&
+    cachedRegistry != null &&
+    cachedRegistry.saves.length > 0 &&
+    !registryKeyExists(storage)
   ) {
     cachedRegistry = undefined;
     registryExternallyCleared = true;
@@ -398,12 +439,17 @@ function readRegistry(): SaveRegistry | null {
       return cachedRegistry;
     }
     const parsed = JSON.parse(raw) as unknown;
-    if (!isRecord(parsed) || parsed.version !== SAVE_VERSION || !Array.isArray(parsed.saves)) {
+    if (
+      !isRecord(parsed) ||
+      parsed.version !== SAVE_VERSION ||
+      !Array.isArray(parsed.saves)
+    ) {
       cachedRegistry = null;
       return null;
     }
     const saves = parsed.saves.filter(isPersistedSave);
-    const activeId = typeof parsed.activeId === "string" ? parsed.activeId : null;
+    const activeId =
+      typeof parsed.activeId === "string" ? parsed.activeId : null;
     cachedRegistry = { version: SAVE_VERSION, activeId, saves };
     if (loadedFromLegacy) {
       try {
@@ -421,7 +467,11 @@ function readRegistry(): SaveRegistry | null {
   }
 }
 
-function describeSaveError(error: unknown, registry: SaveRegistry, payloadChars: number): string {
+function describeSaveError(
+  error: unknown,
+  registry: SaveRegistry,
+  payloadChars: number,
+): string {
   const errorName = error instanceof Error ? error.name : typeof error;
   const message = error instanceof Error ? error.message : String(error);
   const sizeMb = (payloadChars / (1024 * 1024)).toFixed(2);
@@ -437,16 +487,27 @@ function writeRegistry(registry: SaveRegistry): SaveWriteResult {
   // reload (module re-init); explicit "Save now" still writes through
   // because the user is asking us to.
   if (registryExternallyCleared) {
-    return { status: "unavailable", error: "Storage was cleared. Reload to start fresh." };
+    return {
+      status: "unavailable",
+      error: "Storage was cleared. Reload to start fresh.",
+    };
   }
   const storage = browserStorage();
-  if (!storage) return { status: "unavailable", error: "Browser localStorage is unavailable." };
+  if (!storage)
+    return {
+      status: "unavailable",
+      error: "Browser localStorage is unavailable.",
+    };
   let payload: string;
   try {
     payload = JSON.stringify(registry);
   } catch (error) {
     const detail = `Could not serialize save registry: ${error instanceof Error ? error.message : String(error)}.`;
-    console.warn("[ledgway] Save serialization failed", { detail, error, slots: registry.saves.length });
+    console.warn("[ledgway] Save serialization failed", {
+      detail,
+      error,
+      slots: registry.saves.length,
+    });
     return { status: "error", error: detail };
   }
   try {
@@ -488,7 +549,7 @@ export function createSaveId(prefix = "game"): string {
 }
 
 export function nextSaveName(slots: SaveSlotSummary[], base: string): string {
-  const names = new Set(slots.map(slot => slot.name));
+  const names = new Set(slots.map((slot) => slot.name));
   if (!names.has(base)) return base;
   for (let i = 2; i < 1000; i++) {
     const candidate = `${base} ${i}`;
@@ -519,7 +580,9 @@ function makeSave(
     pilotName: pilot?.name,
     pilotPortraitId: pilot?.portraitId,
     viewTabs,
-    panelScrollPositions: panelScrollPositions ? normalizePanelScrollPositions(panelScrollPositions) : undefined,
+    panelScrollPositions: panelScrollPositions
+      ? normalizePanelScrollPositions(panelScrollPositions)
+      : undefined,
   };
 }
 
@@ -562,11 +625,15 @@ function loadedFromSave(
     saveStatus: write.status,
     saveError: write.error,
     viewTabs: save.viewTabs ? normalizeViewTabs(save.viewTabs) : undefined,
-    panelScrollPositions: save.panelScrollPositions ? normalizePanelScrollPositions(save.panelScrollPositions) : undefined,
+    panelScrollPositions: save.panelScrollPositions
+      ? normalizePanelScrollPositions(save.panelScrollPositions)
+      : undefined,
   };
 }
 
-export function loadInitialGame(createFallbackWorld: () => World): LoadedGameSession {
+export function loadInitialGame(
+  createFallbackWorld: () => World,
+): LoadedGameSession {
   const registry = readRegistry();
   const fallbackWorld = () => createFallbackWorld();
   if (!registry) {
@@ -577,13 +644,24 @@ export function loadInitialGame(createFallbackWorld: () => World): LoadedGameSes
       gameKind: "standard",
       saveSlots: [],
       saveStatus: browserStorage() ? "error" : "unavailable",
-      saveError: browserStorage() ? "Could not read save registry from localStorage." : "Browser localStorage is unavailable.",
+      saveError: browserStorage()
+        ? "Could not read save registry from localStorage."
+        : "Browser localStorage is unavailable.",
       isFreshStart: true,
     };
   }
 
-  const active = registry.saves.find(save => save.id === registry.activeId) ?? registry.saves[0];
-  if (active) return loadedFromSave(active, registry, { status: "saved", error: null }, undefined, fallbackWorld);
+  const active =
+    registry.saves.find((save) => save.id === registry.activeId) ??
+    registry.saves[0];
+  if (active)
+    return loadedFromSave(
+      active,
+      registry,
+      { status: "saved", error: null },
+      undefined,
+      fallbackWorld,
+    );
 
   // True first launch: hold a placeholder world in memory but DON'T
   // write a save. The new-game wizard sits on top and is non-dismissable
@@ -622,7 +700,9 @@ export function saveGameSlot(
       gameKind: kind,
       saveSlots: [],
       saveStatus: browserStorage() ? "error" : "unavailable",
-      saveError: browserStorage() ? "Could not read save registry from localStorage." : "Browser localStorage is unavailable.",
+      saveError: browserStorage()
+        ? "Could not read save registry from localStorage."
+        : "Browser localStorage is unavailable.",
       viewTabs,
       panelScrollPositions,
     };
@@ -635,13 +715,24 @@ export function saveGameSlot(
   void flushHistoryFromWorld(world);
 
   const saveId = id ?? createSaveId(kind === "developer" ? "dev" : "game");
-  const existing = registry.saves.find(save => save.id === saveId);
-  const save = makeSave(saveId, name, kind, world, existing?.createdAt, viewTabs, panelScrollPositions);
-  const filteredExisting = kind === "developer"
-    ? registry.saves.filter(item => item.kind !== "developer" || item.id === saveId)
-    : registry.saves;
+  const existing = registry.saves.find((save) => save.id === saveId);
+  const save = makeSave(
+    saveId,
+    name,
+    kind,
+    world,
+    existing?.createdAt,
+    viewTabs,
+    panelScrollPositions,
+  );
+  const filteredExisting =
+    kind === "developer"
+      ? registry.saves.filter(
+          (item) => item.kind !== "developer" || item.id === saveId,
+        )
+      : registry.saves;
   const saves = existing
-    ? filteredExisting.map(item => item.id === saveId ? save : item)
+    ? filteredExisting.map((item) => (item.id === saveId ? save : item))
     : [...filteredExisting, save];
   const next: SaveRegistry = { version: SAVE_VERSION, activeId: saveId, saves };
   const write = writeRegistry(next);
@@ -655,21 +746,35 @@ export function saveGameSlot(
   return loadedFromSave(save, next, write, world, () => world);
 }
 
-export function createGameSlot(name: string, kind: SaveGameKind, world: World): LoadedGameSession {
+export function createGameSlot(
+  name: string,
+  kind: SaveGameKind,
+  world: World,
+): LoadedGameSession {
   return saveGameSlot(null, name, kind, world);
 }
 
-export function loadGameSlot(id: string, createFallbackWorld: () => World): LoadedGameSession | null {
+export function loadGameSlot(
+  id: string,
+  createFallbackWorld: () => World,
+): LoadedGameSession | null {
   const registry = readRegistry();
   if (!registry) return null;
-  const save = registry.saves.find(item => item.id === id);
+  const save = registry.saves.find((item) => item.id === id);
   if (!save) return null;
-  const next: SaveRegistry = { version: SAVE_VERSION, activeId: id, saves: registry.saves };
+  const next: SaveRegistry = {
+    version: SAVE_VERSION,
+    activeId: id,
+    saves: registry.saves,
+  };
   const write = writeRegistry(next);
   return loadedFromSave(save, next, write, undefined, createFallbackWorld);
 }
 
-export function deleteGameSlot(id: string, createFallbackWorld: () => World): LoadedGameSession {
+export function deleteGameSlot(
+  id: string,
+  createFallbackWorld: () => World,
+): LoadedGameSession {
   const registry = readRegistry();
   if (!registry) {
     return {
@@ -679,7 +784,9 @@ export function deleteGameSlot(id: string, createFallbackWorld: () => World): Lo
       gameKind: "standard",
       saveSlots: [],
       saveStatus: browserStorage() ? "error" : "unavailable",
-      saveError: browserStorage() ? "Could not read save registry from localStorage." : "Browser localStorage is unavailable.",
+      saveError: browserStorage()
+        ? "Could not read save registry from localStorage."
+        : "Browser localStorage is unavailable.",
     };
   }
 
@@ -693,17 +800,26 @@ export function deleteGameSlot(id: string, createFallbackWorld: () => World): Lo
   void deleteSaveWorld(id);
   worldCache.delete(id);
 
-  const saves = registry.saves.filter(save => save.id !== id);
-  const active = saves.find(save => save.id === registry.activeId) ?? saves[0];
+  const saves = registry.saves.filter((save) => save.id !== id);
+  const active =
+    saves.find((save) => save.id === registry.activeId) ?? saves[0];
   if (active) {
-    const next: SaveRegistry = { version: SAVE_VERSION, activeId: active.id, saves };
+    const next: SaveRegistry = {
+      version: SAVE_VERSION,
+      activeId: active.id,
+      saves,
+    };
     const write = writeRegistry(next);
     return loadedFromSave(active, next, write, undefined, createFallbackWorld);
   }
 
   // No surviving saves: blank registry, hand back a placeholder world
   // and let the fresh-start UI take over.
-  const next: SaveRegistry = { version: SAVE_VERSION, activeId: null, saves: [] };
+  const next: SaveRegistry = {
+    version: SAVE_VERSION,
+    activeId: null,
+    saves: [],
+  };
   const write = writeRegistry(next);
   return {
     world: createFallbackWorld(),
