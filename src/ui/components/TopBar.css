@@ -471,8 +471,6 @@
 .topbar-menu-section {
   display: grid;
   gap: 8px;
-  padding-top: 11px;
-  border-top: 1px solid rgba(255, 255, 255, 0.065);
 }
 
 .topbar-menu-heading {
