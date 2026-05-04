@@ -1187,6 +1187,14 @@ function SectorMap({
                 </li>
               ))}
             </ul>
+            <span className="atlas-legend-title">Lane danger</span>
+            <div className="atlas-legend-ramp">
+              <div className="atlas-legend-ramp-bar" aria-hidden="true" />
+              <div className="atlas-legend-ramp-labels">
+                <span>calm</span>
+                <span>hotspot</span>
+              </div>
+            </div>
           </>
         )}
       </div>

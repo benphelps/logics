@@ -1502,6 +1502,37 @@
   list-style: none;
 }
 
+/* Heat-ramp swatch for the lane-danger legend. Mirrors the lane CSS:
+   neutral atlas ink at the calm end, color-mixed red at the hotspot end,
+   with a midpoint sample so the gradient curve reads non-linearly. */
+.atlas-legend-ramp {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  min-width: 96px;
+}
+
+.atlas-legend-ramp-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(
+    90deg,
+    var(--atlas-ink),
+    color-mix(in srgb, rgba(248, 113, 113, 1) 45%, var(--atlas-ink)) 50%,
+    rgba(248, 113, 113, 1)
+  );
+  opacity: 0.85;
+}
+
+.atlas-legend-ramp-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9.5px;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
 .atlas-legend-row {
   display: inline-flex;
   align-items: center;
