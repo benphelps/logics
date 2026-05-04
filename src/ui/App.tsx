@@ -4,6 +4,7 @@ import { useTickDriver } from "./useTickDriver";
 import { TopBar } from "./components/TopBar";
 import { BridgeTabScroller } from "./components/BridgeTabScroller";
 import { NewGameModal } from "./components/NewGameModal";
+import { SaveLoadingModal } from "./components/SaveLoadingModal";
 import { SeedingModal } from "./components/SeedingModal";
 import { ChartersView } from "./views/ChartersView";
 import { MarketsView } from "./views/MarketsView";
@@ -52,6 +53,7 @@ export function App() {
       <NewsToast />
       <NewGameModal />
       <SeedingModal />
+      <SaveLoadingModal />
       <BridgeTabScroller />
     </div>
   );

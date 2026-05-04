@@ -5,7 +5,13 @@ import { createGameId } from "../sim/world";
 import { deriveCrewIdentity } from "../sim/crewIdentity";
 import { createNewsEventsState } from "../sim/news/tick";
 import type { ActiveNewsEvent, NewsTarget, RecentNewsEvent } from "../sim/news/types";
-import { deleteGame as deleteGameHistory, flushHistoryFromWorld } from "./historyDb";
+import {
+  deleteGame as deleteGameHistory,
+  deleteSaveWorld,
+  flushHistoryFromWorld,
+  getSaveWorld,
+  putSaveWorld,
+} from "./historyDb";
 import { normalizePanelScrollPositions, normalizeViewTabs, type PanelScrollPositions, type ViewTabs } from "./viewTabs";
 
 const SAVE_REGISTRY_KEY = "ledgway.saveGames.v1";
@@ -36,7 +42,6 @@ export interface SaveSlotSummary {
 
 interface PersistedSaveGame extends SaveSlotSummary {
   version: typeof SAVE_VERSION;
-  world: World;
   // Optional so older saves load cleanly — the store falls back to
   // defaults when missing.
   viewTabs?: ViewTabs;
@@ -51,6 +56,12 @@ interface SaveRegistry {
 
 export interface LoadedGameSession {
   world: World;
+  // When the active save's world isn't yet in memory (cold start, or
+  // load-from-menu on a slot we haven't fetched), this resolves with
+  // the real world from IDB. The caller renders the placeholder world
+  // behind a "Loading save…" splash and swaps when this resolves.
+  // Undefined when the world handed back is already authoritative.
+  worldPromise?: Promise<World>;
   activeSaveId: string | null;
   gameName: string;
   gameKind: SaveGameKind;
@@ -64,6 +75,42 @@ export interface LoadedGameSession {
   // the new-game picker so the player still gets to choose their
   // syndicate on the very first launch.
   isFreshStart?: boolean;
+}
+
+// In-memory cache of save worlds keyed by saveId. Populated:
+//   - From legacy localStorage entries on first read (lazy migration)
+//   - From IDB via async load on cold start / loadGame
+//   - From new save commits (createGameSlot / saveGameSlot)
+// Acts as the authoritative live reference for active saves so the
+// store keeps history rings and other in-memory mutations attached.
+const worldCache = new Map<string, World>();
+
+// Per-saveId queue of pending IDB writes. Coalesces concurrent saves
+// (autosave + manual save fired close together) so we always end up
+// with the latest world at rest, and lets the page-close path await
+// any in-flight writes (best-effort).
+const pendingWorldWrites = new Map<string, Promise<void>>();
+
+function flushSaveWorld(saveId: string, world: World): Promise<void> {
+  const prior = pendingWorldWrites.get(saveId) ?? Promise.resolve();
+  const next = prior
+    .catch(() => undefined)
+    .then(() => putSaveWorld(saveId, world));
+  pendingWorldWrites.set(saveId, next);
+  void next.finally(() => {
+    if (pendingWorldWrites.get(saveId) === next) {
+      pendingWorldWrites.delete(saveId);
+    }
+  });
+  return next;
+}
+
+// Best-effort wait for any in-flight world writes to land. The store
+// hooks this from the page-close path so we don't lose the last save
+// when the tab goes away.
+export function awaitPendingSaveWorldWrites(): Promise<void> {
+  if (pendingWorldWrites.size === 0) return Promise.resolve();
+  return Promise.allSettled([...pendingWorldWrites.values()]).then(() => undefined);
 }
 
 function browserStorage(): Storage | null {
@@ -85,14 +132,16 @@ function isSaveKind(value: unknown): value is SaveGameKind {
 
 function isPersistedSave(value: unknown): value is PersistedSaveGame {
   if (!isRecord(value)) return false;
+  // World moved to IDB — accept records both with (legacy) and without
+  // (post-migration) an embedded world. The other summary fields stay
+  // mandatory since they drive the save card UI.
   return value.version === SAVE_VERSION
     && typeof value.id === "string"
     && typeof value.name === "string"
     && isSaveKind(value.kind)
     && typeof value.tick === "number"
     && typeof value.createdAt === "number"
-    && typeof value.updatedAt === "number"
-    && isRecord(value.world);
+    && typeof value.updatedAt === "number";
 }
 
 function cloneWorld(world: World): World {
@@ -416,16 +465,15 @@ function writeRegistry(registry: SaveRegistry): SaveWriteResult {
 }
 
 function summarize(save: PersistedSaveGame): SaveSlotSummary {
-  const pilot = save.world.player?.pilot;
   return {
     id: save.id,
     name: save.name,
     kind: save.kind,
-    tick: save.world.tick,
+    tick: save.tick,
     createdAt: save.createdAt,
     updatedAt: save.updatedAt,
-    pilotName: pilot?.name,
-    pilotPortraitId: pilot?.portraitId,
+    pilotName: save.pilotName,
+    pilotPortraitId: save.pilotPortraitId,
   };
 }
 
@@ -459,6 +507,7 @@ function makeSave(
   panelScrollPositions?: PanelScrollPositions,
 ): PersistedSaveGame {
   const now = Date.now();
+  const pilot = world.player?.pilot;
   return {
     version: SAVE_VERSION,
     id,
@@ -467,7 +516,8 @@ function makeSave(
     tick: world.tick,
     createdAt,
     updatedAt: now,
-    world: compactWorldForSave(world),
+    pilotName: pilot?.name,
+    pilotPortraitId: pilot?.portraitId,
     viewTabs,
     panelScrollPositions: panelScrollPositions ? normalizePanelScrollPositions(panelScrollPositions) : undefined,
   };
@@ -476,16 +526,35 @@ function makeSave(
 // `liveWorld`, when provided, overrides the cloned-from-snapshot world. Save
 // paths pass the original (still-mutating) world so the store keeps the
 // reference it was already using and the in-memory history rings survive
-// the save round-trip. Load paths omit it and get a fresh stripped clone
-// the caller hydrates from IndexedDB.
+// the save round-trip. Load paths omit it; the caller fetches the world
+// from IDB asynchronously via worldPromise, with a fallback world rendered
+// in the meantime behind the loading splash.
 function loadedFromSave(
   save: PersistedSaveGame,
   registry: SaveRegistry,
   write: SaveWriteResult,
-  liveWorld?: World,
+  liveWorld: World | undefined,
+  fallbackWorld: () => World,
 ): LoadedGameSession {
+  let world: World;
+  let worldPromise: Promise<World> | undefined;
+  if (liveWorld) {
+    world = liveWorld;
+  } else if (worldCache.has(save.id)) {
+    world = worldCache.get(save.id)!;
+  } else {
+    world = fallbackWorld();
+    worldPromise = (async () => {
+      const fetched = await getSaveWorld(save.id);
+      if (!fetched) return fallbackWorld();
+      const migrated = migrateLoadedWorld(fetched);
+      worldCache.set(save.id, migrated);
+      return migrated;
+    })();
+  }
   return {
-    world: liveWorld ?? migrateLoadedWorld(cloneWorld(save.world)),
+    world,
+    worldPromise,
     activeSaveId: save.id,
     gameName: save.name,
     gameKind: save.kind,
@@ -514,7 +583,7 @@ export function loadInitialGame(createFallbackWorld: () => World): LoadedGameSes
   }
 
   const active = registry.saves.find(save => save.id === registry.activeId) ?? registry.saves[0];
-  if (active) return loadedFromSave(active, registry, { status: "saved", error: null });
+  if (active) return loadedFromSave(active, registry, { status: "saved", error: null }, undefined, fallbackWorld);
 
   // True first launch: hold a placeholder world in memory but DON'T
   // write a save. The new-game wizard sits on top and is non-dismissable
@@ -561,18 +630,13 @@ export function saveGameSlot(
 
   // Flush in-memory history rings (Equity.history, Equity.recentTrades,
   // Trader.log) into IndexedDB before we strip them from the snapshot.
-  // Fire-and-forget — localStorage is the source of truth for what loads,
-  // and the chart layer falls back gracefully when IDB lags by a tick.
+  // Fire-and-forget — localStorage carries the registry summary; the
+  // world body lives in IDB now.
   void flushHistoryFromWorld(world);
 
   const saveId = id ?? createSaveId(kind === "developer" ? "dev" : "game");
   const existing = registry.saves.find(save => save.id === saveId);
   const save = makeSave(saveId, name, kind, world, existing?.createdAt, viewTabs, panelScrollPositions);
-  // Other slots in the registry were already compacted when they were saved
-  // (their world.equity rings are empty; their world.traders[].log is empty).
-  // Don't run compactPersistedSave on them every autosave — it allocates new
-  // shallow copies for every equity + trader in every other save and does a
-  // ton of redundant work. Just keep their existing references.
   const filteredExisting = kind === "developer"
     ? registry.saves.filter(item => item.kind !== "developer" || item.id === saveId)
     : registry.saves;
@@ -581,25 +645,28 @@ export function saveGameSlot(
     : [...filteredExisting, save];
   const next: SaveRegistry = { version: SAVE_VERSION, activeId: saveId, saves };
   const write = writeRegistry(next);
-  // Pass the live world so the in-memory history rings (which we just flushed
-  // to IDB) survive the save round-trip. Without this, the caller would
-  // receive the stripped snapshot and lose chart history until the next tick.
-  return loadedFromSave(save, next, write, world);
+  // Park the live reference in the cache so subsequent reads don't have
+  // to wait on IDB. The async putSaveWorld writes a compacted snapshot
+  // — equity rings + ship logs already live in their own IDB stores.
+  worldCache.set(saveId, world);
+  void flushSaveWorld(saveId, compactWorldForSave(world));
+  // Pass the live world so the caller keeps the same reference (history
+  // rings, mutating order books) without round-tripping through IDB.
+  return loadedFromSave(save, next, write, world, () => world);
 }
 
 export function createGameSlot(name: string, kind: SaveGameKind, world: World): LoadedGameSession {
   return saveGameSlot(null, name, kind, world);
 }
 
-export function loadGameSlot(id: string): LoadedGameSession | null {
+export function loadGameSlot(id: string, createFallbackWorld: () => World): LoadedGameSession | null {
   const registry = readRegistry();
   if (!registry) return null;
   const save = registry.saves.find(item => item.id === id);
   if (!save) return null;
-  // Slots are stored already-compacted; no need to re-walk every world.
   const next: SaveRegistry = { version: SAVE_VERSION, activeId: id, saves: registry.saves };
   const write = writeRegistry(next);
-  return loadedFromSave(save, next, write);
+  return loadedFromSave(save, next, write, undefined, createFallbackWorld);
 }
 
 export function deleteGameSlot(id: string, createFallbackWorld: () => World): LoadedGameSession {
@@ -616,25 +683,36 @@ export function deleteGameSlot(id: string, createFallbackWorld: () => World): Lo
     };
   }
 
-  const removed = registry.saves.find(save => save.id === id);
-  // Cascade-delete the slot's IndexedDB rows (chart history, trades, ship
-  // log). Fire-and-forget — the registry write is what makes the slot
-  // "gone" from the user's perspective; IDB cleanup just reclaims space.
-  if (removed?.world.gameId) void deleteGameHistory(removed.world.gameId);
+  // Cascade-delete the slot's IDB rows (world body + history streams).
+  // Fire-and-forget — the registry write is what makes the slot "gone"
+  // from the user's perspective; IDB cleanup just reclaims space. The
+  // gameId for history-store cleanup lives on the world, so we pull it
+  // from the cache (or fall through quietly if the world wasn't loaded).
+  const cachedWorld = worldCache.get(id);
+  if (cachedWorld?.gameId) void deleteGameHistory(cachedWorld.gameId);
+  void deleteSaveWorld(id);
+  worldCache.delete(id);
 
-  // Same as loadGameSlot — surviving slots are already compacted.
   const saves = registry.saves.filter(save => save.id !== id);
   const active = saves.find(save => save.id === registry.activeId) ?? saves[0];
   if (active) {
     const next: SaveRegistry = { version: SAVE_VERSION, activeId: active.id, saves };
     const write = writeRegistry(next);
-    return loadedFromSave(active, next, write);
+    return loadedFromSave(active, next, write, undefined, createFallbackWorld);
   }
 
-  const world = createFallbackWorld();
-  const save = makeSave(createSaveId(), "Voyager", "standard", world);
-  const next: SaveRegistry = { version: SAVE_VERSION, activeId: save.id, saves: [save] };
+  // No surviving saves: blank registry, hand back a placeholder world
+  // and let the fresh-start UI take over.
+  const next: SaveRegistry = { version: SAVE_VERSION, activeId: null, saves: [] };
   const write = writeRegistry(next);
-  // Fresh world after deleting the only save — same reasoning as above.
-  return loadedFromSave(save, next, write, world);
+  return {
+    world: createFallbackWorld(),
+    activeSaveId: null,
+    gameName: "Voyager",
+    gameKind: "standard",
+    saveSlots: [],
+    saveStatus: write.status,
+    saveError: write.error,
+    isFreshStart: true,
+  };
 }

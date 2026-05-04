@@ -416,7 +416,10 @@ function createDeveloperWorld(): World {
   // each "Load Developer State" click. Production saves still use the
   // fixed DEFAULT_STARTING_WORLD.seed for determinism.
   const seed = Math.floor(Math.random() * 0x7fffffff);
-  const world = createStartingWorld({ startingFunds: 250_000, seed });
+  // Dev state pre-stocks the player with crew, fleet, cargo, contracts,
+  // and stock positions, so the 90-tick warm-up adds no value — just
+  // delay. Skip aging for an instant load.
+  const world = createStartingWorld({ startingFunds: 250_000, seed, ageTicks: 0 });
   const ship = playerShip(world);
   if (!ship) return world;
 
@@ -503,6 +506,12 @@ interface UiState {
   // activity. The seeding modal reads this to render itself + rotate
   // through its quotes; the seeding loop clears it when finished.
   pendingSeed: PendingSeed | null;
+  // True while we're asynchronously fetching the active save's world
+  // body from IndexedDB on cold start or when loading a different save
+  // mid-session. App.tsx renders a "Loading save…" splash while this is
+  // set; the placeholder world behind the splash keeps memoized
+  // selectors stable until the real one swaps in.
+  pendingWorldLoad: boolean;
 
   setSpeed: (s: Speed) => void;
   togglePause: () => void;
@@ -685,8 +694,21 @@ export const useStore = create<UiState>((set, get) => {
       stockGuideEnabled: tabs.stockGuideEnabled,
       panelScrollPositions: { ...scrollPositions },
       lastError: null,
+      pendingWorldLoad: session.worldPromise != null,
     });
-    kickoffHistoryHydration(session.world);
+    if (session.worldPromise) {
+      const targetSaveId = session.activeSaveId;
+      void session.worldPromise.then((world) => {
+        // Bail if the user has loaded another save in the meantime —
+        // dropping a stale world swap is cheaper than tracking the
+        // pending fetches per-save.
+        if (get().activeSaveId !== targetSaveId) return;
+        set({ world, pendingWorldLoad: false, tickEpoch: get().tickEpoch + 1 });
+        kickoffHistoryHydration(world);
+      });
+    } else {
+      kickoffHistoryHydration(session.world);
+    }
   };
 
   const writeCurrentSave = () => {
@@ -807,6 +829,7 @@ export const useStore = create<UiState>((set, get) => {
     newsToasts: [],
     pendingNewGame: initialPendingNewGame,
     pendingSeed: null,
+    pendingWorldLoad: initialGame.worldPromise != null,
 
     setSpeed: (s) => set({ speed: s }),
     togglePause: () => set({ speed: get().speed === 0 ? 1 : 0 }),
@@ -900,14 +923,14 @@ export const useStore = create<UiState>((set, get) => {
     },
     loadGame: (id) => {
       clearPendingAutosave();
-      const session = loadGameSlot(id);
+      const session = loadGameSlot(id, () => createStartingWorld({ ageTicks: 0 }));
       if (!session) {
         set({ lastError: "Save slot no longer exists.", saveStatus: "error", saveError: "Save slot no longer exists." });
         return;
       }
       applyLoadedGame(session);
     },
-    deleteGame: (id) => applyLoadedGame(deleteGameSlot(id, () => createStartingWorld())),
+    deleteGame: (id) => applyLoadedGame(deleteGameSlot(id, () => createStartingWorld({ ageTicks: 0 }))),
     loadDeveloperState: () => {
       clearPendingAutosave();
       const slots = get().saveSlots;
@@ -1154,10 +1177,33 @@ if (typeof window !== "undefined" && import.meta.env.DEV) {
 
 // Kick off history hydration for the world that was loaded during module
 // init (loadInitialGame ran before the store factory). applyLoadedGame
-// handles every other load path; this catches the cold start.
+// handles every other load path; this catches the cold start. When the
+// initial session carries a worldPromise (active save's body lives in
+// IDB and hasn't loaded yet), wait for the real world to land before
+// hydrating its history rings — the placeholder world has no gameId
+// our IDB rows belong to.
 if (typeof window !== "undefined") {
-  void flushHistoryFromWorld(initialGame.world)
-    .then(() => hydrateHistoryRings(initialGame.world))
-    .then(() => useStore.setState({ tickEpoch: useStore.getState().tickEpoch + 1 }))
-    .catch((err) => { console.warn("[ledgway] history hydrate failed", err); });
+  const targetSaveId = initialGame.activeSaveId;
+  if (initialGame.worldPromise) {
+    void initialGame.worldPromise.then((world) => {
+      if (useStore.getState().activeSaveId !== targetSaveId) return;
+      useStore.setState({
+        world,
+        pendingWorldLoad: false,
+        tickEpoch: useStore.getState().tickEpoch + 1,
+      });
+      void flushHistoryFromWorld(world)
+        .then(() => hydrateHistoryRings(world))
+        .then(() => useStore.setState({ tickEpoch: useStore.getState().tickEpoch + 1 }))
+        .catch((err) => { console.warn("[ledgway] history hydrate failed", err); });
+    }).catch((err) => {
+      console.warn("[ledgway] save world load failed", err);
+      useStore.setState({ pendingWorldLoad: false });
+    });
+  } else {
+    void flushHistoryFromWorld(initialGame.world)
+      .then(() => hydrateHistoryRings(initialGame.world))
+      .then(() => useStore.setState({ tickEpoch: useStore.getState().tickEpoch + 1 }))
+      .catch((err) => { console.warn("[ledgway] history hydrate failed", err); });
+  }
 }

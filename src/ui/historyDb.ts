@@ -4,13 +4,18 @@ import type { RecentNewsEvent } from "../sim/news/types";
 // Preserve the pre-rename IndexedDB name so existing local history streams
 // stay attached to migrated Ledgway saves.
 const DB_NAME = "logics-history";
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 const STORE_HISTORY = "equityHistory";
 const STORE_TRADES = "equityTrades";
 const STORE_LOG = "traderLog";
 const STORE_LEDGER = "tradeLedger";
 const STORE_NEWS = "newsEvents";
 const STORE_SPOT_HISTORY = "commoditySpotHistory";
+// Save world payloads. Keyed on the save slot id (string). Worlds got too
+// big for localStorage's ~5 MB per-origin quota once cargo lots, positions,
+// and contracts accumulated; IDB has no such practical cap. localStorage
+// keeps only the small slot-summary registry now.
+const STORE_SAVE_WORLDS = "saveWorlds";
 const IDX_TRADES = "byEquityTick";
 const IDX_LOG = "byTraderTick";
 const IDX_LEDGER_SHIP = "byShipTick";
@@ -122,6 +127,12 @@ export function openHistoryDb(): Promise<IDBDatabase | null> {
       }
       if (!db.objectStoreNames.contains(STORE_SPOT_HISTORY)) {
         db.createObjectStore(STORE_SPOT_HISTORY, { keyPath: ["gameId", "goodId", "tick"] });
+      }
+      if (!db.objectStoreNames.contains(STORE_SAVE_WORLDS)) {
+        // World payload per save slot. Key is the slot id (string). Value
+        // is the compacted World JSON; the slot summary stays in
+        // localStorage so cold-start can render the save list synchronously.
+        db.createObjectStore(STORE_SAVE_WORLDS);
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -996,4 +1007,41 @@ function deleteByGameId(
     };
     req.onerror = () => reject(req.error);
   });
+}
+
+// ----- save world payloads --------------------------------------------------
+//
+// World JSON for save slots used to live in localStorage alongside the
+// summary registry. With cargo lots, positions, and contracts piling up
+// during a long run, single-save payloads can exceed 1.5 MB — past the
+// per-origin localStorage cap. We keep the small summary in localStorage
+// (so cold-start can render the save list synchronously) and stash the
+// world body here in IDB.
+
+export async function putSaveWorld(saveId: string, world: World): Promise<void> {
+  if (!saveId) return;
+  const db = await openHistoryDb();
+  if (!db) return;
+  const tx = db.transaction(STORE_SAVE_WORLDS, "readwrite");
+  await reqAsPromise(tx.objectStore(STORE_SAVE_WORLDS).put(world, saveId));
+  await txDone(tx);
+}
+
+export async function getSaveWorld(saveId: string): Promise<World | null> {
+  if (!saveId) return null;
+  const db = await openHistoryDb();
+  if (!db) return null;
+  const tx = db.transaction(STORE_SAVE_WORLDS, "readonly");
+  const result = await reqAsPromise<World | undefined>(tx.objectStore(STORE_SAVE_WORLDS).get(saveId));
+  await txDone(tx);
+  return result ?? null;
+}
+
+export async function deleteSaveWorld(saveId: string): Promise<void> {
+  if (!saveId) return;
+  const db = await openHistoryDb();
+  if (!db) return;
+  const tx = db.transaction(STORE_SAVE_WORLDS, "readwrite");
+  await reqAsPromise(tx.objectStore(STORE_SAVE_WORLDS).delete(saveId));
+  await txDone(tx);
 }

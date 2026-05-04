@@ -36,3 +36,25 @@
   font-size: 12px;
   line-height: 1.5;
 }
+
+/* Indeterminate progress for the save-loading splash. The bar slides
+   a 35%-wide bright band across the track on a continuous loop so the
+   user sees motion even though we don't know how long IDB will take. */
+.save-loading-progress {
+  background: var(--bg-1);
+}
+
+.save-loading-pulse {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 35%;
+  height: 100%;
+  border-radius: 3px;
+  animation: save-loading-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes save-loading-pulse {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(285%); }
+}
