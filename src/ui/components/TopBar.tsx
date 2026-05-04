@@ -1,7 +1,9 @@
 import { useRef, useState } from "react";
-import { MdAdd, MdClose, MdCode, MdMenu, MdRestartAlt, MdSave, MdSkipNext } from "react-icons/md";
+import { MdAdd, MdClose, MdCode, MdMenu, MdPersonOutline, MdRestartAlt, MdSave, MdSkipNext } from "react-icons/md";
 import { useStore, type Speed, type Tab } from "../store";
 import { useIsMobile } from "../useIsMobile";
+import { useCrewHeadshot } from "../headshots";
+import { DEV_MODE } from "../devMode";
 import { MOBILE_PANELS, defaultMobilePanelId } from "../mobilePanels";
 import { cargoMass } from "../../sim/cargo";
 import type { Trader, World } from "../../sim/types";
@@ -247,34 +249,36 @@ export function TopBar() {
           </div>
         </section>
 
-        <section className="topbar-menu-section topbar-dev-section">
-          <div className="topbar-menu-heading">
-            <span>Developer</span>
-            <span className="topbar-menu-muted">local tools</span>
-          </div>
-          <div className="topbar-menu-actions">
-            <button
-              className="topbar-command"
-              onClick={() => {
-                loadDeveloperState();
-                closeSaveModal();
-              }}
-            >
-              <MdCode aria-hidden="true" focusable="false" />
-              <span>Load dev state</span>
-            </button>
-            <button
-              className="topbar-command topbar-command-danger"
-              onClick={() => {
-                reset();
-                closeSaveModal();
-              }}
-            >
-              <MdRestartAlt aria-hidden="true" focusable="false" />
-              <span>Reset current</span>
-            </button>
-          </div>
-        </section>
+        {DEV_MODE && (
+          <section className="topbar-menu-section topbar-dev-section">
+            <div className="topbar-menu-heading">
+              <span>Developer</span>
+              <span className="topbar-menu-muted">?dev=1 only</span>
+            </div>
+            <div className="topbar-menu-actions">
+              <button
+                className="topbar-command"
+                onClick={() => {
+                  loadDeveloperState();
+                  closeSaveModal();
+                }}
+              >
+                <MdCode aria-hidden="true" focusable="false" />
+                <span>Load dev state</span>
+              </button>
+              <button
+                className="topbar-command topbar-command-danger"
+                onClick={() => {
+                  reset();
+                  closeSaveModal();
+                }}
+              >
+                <MdRestartAlt aria-hidden="true" focusable="false" />
+                <span>Reset current</span>
+              </button>
+            </div>
+          </section>
+        )}
       </Modal>
     </section>
   );
@@ -302,22 +306,50 @@ function SaveSlotRow({ slot, active, canDelete, onLoad, onDelete }: {
   onLoad: () => void;
   onDelete: () => void;
 }) {
+  // Pilots are persisted with portraitId baked from the wizard variant,
+  // so the cache key here is identical to the one the wizard generated
+  // under. saveId=null means all pilots share gameId 0 in the headshot
+  // store — fine because portraitIds are random per pilot, no collision.
+  const portraitSubject = slot.pilotPortraitId
+    ? { id: slot.pilotPortraitId, role: "captain" as const }
+    : null;
+  const headshot = useCrewHeadshot(null, portraitSubject);
+  const portraitUrl = headshot?.status === "ready" ? headshot.url : null;
+  const loading = headshot?.status === "loading";
+  const displayName = slot.pilotName ?? slot.name;
+  const isDev = slot.kind === "developer";
+
   return (
-    <div className={`topbar-save-row ${active ? "active" : ""}`}>
-      <button className="topbar-save-main" onClick={onLoad} disabled={active}>
-        <span className="topbar-save-name">{slot.name}</span>
-        <span className="topbar-save-meta">
-          <span>{slot.kind === "developer" ? "developer" : "standard"}</span>
-          <span className="mono">t{slot.tick.toLocaleString()}</span>
-          <span>{formatSlotTime(slot.updatedAt)}</span>
+    <div
+      className={`topbar-save-card ${active ? "active" : ""} ${portraitUrl ? "has-portrait" : ""} ${loading ? "portrait-loading" : ""}`}
+      style={portraitUrl ? { backgroundImage: `url(${portraitUrl})` } : undefined}
+    >
+      <button
+        className="topbar-save-card-main"
+        onClick={onLoad}
+        disabled={active}
+        aria-label={`Load ${displayName}`}
+      >
+        <span className="topbar-save-card-portrait" aria-hidden="true">
+          {!portraitUrl && (
+            <MdPersonOutline aria-hidden="true" focusable="false" />
+          )}
+        </span>
+        <span className="topbar-save-card-body">
+          <span className="topbar-save-card-name">{displayName}</span>
+          <span className="topbar-save-card-meta">
+            {isDev && <span className="topbar-save-card-tag">developer</span>}
+            <span className="mono">t{slot.tick.toLocaleString()}</span>
+            <span>{formatSlotTime(slot.updatedAt)}</span>
+          </span>
         </span>
       </button>
       <button
-        className="topbar-save-delete"
+        className="topbar-save-card-delete"
         onClick={onDelete}
         disabled={!canDelete}
-        title={canDelete ? `Delete ${slot.name}` : "Keep at least one save"}
-        aria-label={`Delete ${slot.name}`}
+        title={canDelete ? `Delete ${displayName}` : "Keep at least one save"}
+        aria-label={`Delete ${displayName}`}
       >
         <MdClose aria-hidden="true" focusable="false" />
       </button>
