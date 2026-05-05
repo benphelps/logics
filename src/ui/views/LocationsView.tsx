@@ -1394,7 +1394,10 @@ const LanesLayer = memo(function LanesLayer({
         const cls = [
           "atlas-lane",
           traffic && traffic.count > 0 ? "traffic" : null,
-          dangerIntensity > 0 ? "danger" : null,
+          // Any encounter activity gets the .danger class so the lane
+          // paints from the calm-green end of the ramp (intensity 0).
+          // Lanes with zero recent encounters stay on neutral atlas-ink.
+          danger && danger.count > 0 ? "danger" : null,
           isHovered ? "hovered" : null,
           dimLanes.has(key) ? "dim" : null,
           dimmerLanes.has(key) ? "dimmer" : null,
