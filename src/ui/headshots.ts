@@ -181,8 +181,15 @@ export function releaseCrewHeadshots(saveId: string | null, subjectIds: readonly
   const gameId = gameIdFromSaveId(saveId);
   let dirty = false;
   for (const subjectId of subjectIds) {
-    if (cache.delete(subjectId)) dirty = true;
+    // Only fire the release fetch if we ever allocated this subject locally
+    // this session. Hire offers expire constantly across stations the player
+    // never visited — the server has no claim for those, so the network call
+    // is a no-op + cache write for nothing. Cache.delete returns true iff
+    // the subject had a state entry (allocated, loading, or failed).
+    const wasInCache = cache.delete(subjectId);
     inflight.delete(subjectId);
+    if (!wasInCache) continue;
+    dirty = true;
     void fetch(`/api/headshots/${gameId}/release`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
