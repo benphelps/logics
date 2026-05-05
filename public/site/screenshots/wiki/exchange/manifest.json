@@ -1,6 +1,6 @@
 {
-  "url": "http://127.0.0.1:5173/",
-  "generatedAt": "2026-04-30T05:31:10.365Z",
+  "url": "http://127.0.0.1:5174/?dev=1",
+  "generatedAt": "2026-05-05T03:41:19.108Z",
   "shots": [
     {
       "id": "screen-layout",
@@ -27,9 +27,9 @@
       "text": "The selector groups station, syndicate, commodity, basis, futures, and index listings while keeping out-of-range station books visible.",
       "focus": {
         "x": 1.2,
-        "y": 11.8,
+        "y": 11.7,
         "width": 97.6,
-        "height": 86.3
+        "height": 80.8
       }
     },
     {
@@ -66,9 +66,9 @@
       "text": "KPI summarizes quote quality and activity; Underlying explains what economic signal backs the selected listing.",
       "focus": {
         "x": 1.8,
-        "y": 20,
+        "y": 19.7,
         "width": 48.2,
-        "height": 60.4
+        "height": 61.2
       }
     },
     {
@@ -81,9 +81,9 @@
       "text": "Asks stack above the spread, bids stack below it, and cumulative size shows how much depth sits away from the spread.",
       "focus": {
         "x": 3.5,
-        "y": 8.9,
+        "y": 10.1,
         "width": 88.9,
-        "height": 88
+        "height": 86.9
       }
     },
     {
@@ -96,9 +96,9 @@
       "text": "The tape lists recent fills with tick, price, quantity, and whether the buyer or seller took liquidity.",
       "focus": {
         "x": 7.6,
-        "y": 8.9,
+        "y": 10.1,
         "width": 89,
-        "height": 88
+        "height": 86.9
       }
     },
     {
@@ -111,9 +111,9 @@
       "text": "Spot assets use one compact form for buy limits, sell limits from held shares, and market shorts.",
       "focus": {
         "x": 1.8,
-        "y": 12.7,
+        "y": 67.8,
         "width": 96.4,
-        "height": 13.4
+        "height": 24.4
       }
     },
     {
@@ -126,9 +126,9 @@
       "text": "Expanding a position exposes mark, entry, value, P&L, close controls, stop-loss, take-profit, and abandon.",
       "focus": {
         "x": 1.2,
-        "y": 11.8,
+        "y": 11.7,
         "width": 97.6,
-        "height": 56.8
+        "height": 53.5
       }
     },
     {
@@ -141,9 +141,9 @@
       "text": "The Orders tab lists player resting limits and lets each order be adjusted or canceled from its expanded row.",
       "focus": {
         "x": 1.2,
-        "y": 11.8,
+        "y": 11.7,
         "width": 97.6,
-        "height": 22.5
+        "height": 20.6
       }
     },
     {
@@ -156,9 +156,9 @@
       "text": "Futures orders show contract count, spot mark, size, notional, margin, fee, expiry, and long or short open buttons.",
       "focus": {
         "x": 1.8,
-        "y": 67.4,
+        "y": 51.6,
         "width": 96.4,
-        "height": 11.5
+        "height": 18.6
       }
     },
     {
@@ -171,9 +171,9 @@
       "text": "The Futures tab tracks contracts, mark-to-market P&L, margin, expiry, delivery station, and physical delivery readiness.",
       "focus": {
         "x": 1.2,
-        "y": 11.8,
+        "y": 11.7,
         "width": 97.6,
-        "height": 38.2
+        "height": 36.6
       }
     },
     {
@@ -186,9 +186,24 @@
       "text": "History records opens, adds, closes, covers, cash flow, realized P&L, and stop or take-profit tags when a trigger fires.",
       "focus": {
         "x": 1.2,
-        "y": 7.5,
+        "y": 7.2,
         "width": 97.6,
-        "height": 42.4
+        "height": 40.5
+      }
+    },
+    {
+      "id": "insights-tab",
+      "section": "insights-tab",
+      "image": "/site/screenshots/wiki/exchange/insights-tab.png",
+      "alt": "Exchange Insights tab showing ranked trade ideas with edge, suggested limit, status, and reason columns",
+      "label": "Insights",
+      "title": "Navigator market insights",
+      "text": "The Insights tab ranks trade ideas, edge, suggested limits, and blocked reasons when a navigator is aboard.",
+      "focus": {
+        "x": 1.2,
+        "y": 7.2,
+        "width": 97.6,
+        "height": 92.8
       }
     },
     {
@@ -201,9 +216,9 @@
       "text": "Basis listings tie one station and one good together, exposing local price, spread versus universe spot, and local stock.",
       "focus": {
         "x": 6.3,
-        "y": 46.4,
+        "y": 79.5,
         "width": 87.4,
-        "height": 27.8
+        "height": 20.5
       }
     },
     {
@@ -216,9 +231,9 @@
       "text": "Index listings summarize baskets such as sector commodities or overall station treasury health.",
       "focus": {
         "x": 6.3,
-        "y": 46.4,
+        "y": 79.5,
         "width": 87.4,
-        "height": 27.8
+        "height": 20.5
       }
     }
   ]

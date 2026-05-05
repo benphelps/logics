@@ -11,7 +11,7 @@ The Exchange has two working zones:
 - The left side contains the listing browser and the player account panel.
 - The right side contains the selected market's quote, chart, fundamentals, live book, tape, and order entry.
 
-The listing browser stays visible while you inspect a market. The account panel below it switches between Positions, Orders, Futures, and History so you can manage exposure without leaving the selected quote.
+The listing browser stays visible while you inspect a market. The account panel below it switches between Positions, Orders, Futures, History, and Insights so you can manage exposure without leaving the selected quote.
 
 ## Listing Browser
 
@@ -26,6 +26,8 @@ Each row shows:
 - current percent move
 
 Rows with player exposure are pushed toward the top. After that, listings sort by the largest current move, then by name. Station rows can move into an Out of range group when the selected ship is too far away to trade that station.
+
+Navigator-backed trade guidance can mark one listing as the current best Exchange idea. The guide is advice in manual mode; it does not place orders unless the player clicks the order controls.
 
 ## Asset Types
 
@@ -267,6 +269,12 @@ Rows include:
 - realized P&L when applicable
 
 Trade actions include open long, add long, close long, open short, add short, and cover short. Triggered exits can be tagged as stop-loss or take-profit.
+
+## Insights Tab
+
+Insights lists navigator-backed Exchange ideas when the active ship has guidance unlocked. Rows show the ticker, suggested action, readiness, and reason.
+
+The same hints can also mark listing rows, position rows, futures rows, and order form fields. A blocked insight is still useful because it explains what has to change before the idea can be executed, such as docking the ship, closing the opposite side first, changing quantity, or choosing the suggested limit.
 
 ## Dividends Borrow Fees And Settlements
 

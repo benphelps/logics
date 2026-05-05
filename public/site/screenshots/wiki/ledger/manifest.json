@@ -1,0 +1,96 @@
+{
+  "url": "http://127.0.0.1:5174/?dev=1",
+  "generatedAt": "2026-05-05T03:41:40.503Z",
+  "shots": [
+    {
+      "id": "screen-layout",
+      "section": "screen-layout",
+      "image": "/site/screenshots/wiki/ledger/screen-layout.png",
+      "alt": "Ledger screen showing record tabs and Captain's Ledger sidebar",
+      "label": "Layout",
+      "title": "Ledger records and sidebar",
+      "text": "Ledger keeps career records on the left and the Captain's Ledger summary on the right.",
+      "focus": {
+        "x": 61.1,
+        "y": 1,
+        "width": 38.3,
+        "height": 99
+      }
+    },
+    {
+      "id": "charters",
+      "section": "charters",
+      "image": "/site/screenshots/wiki/ledger/charters.png",
+      "alt": "Ledger Charters tab showing crew guilds and tier license milestones",
+      "label": "Charters",
+      "title": "Charters and tier licenses",
+      "text": "Charters turn manual actions into crew-guild unlocks and upgrade-tier licenses.",
+      "focus": {
+        "x": 1.2,
+        "y": 10.8,
+        "width": 97.7,
+        "height": 17.6
+      }
+    },
+    {
+      "id": "syndicates",
+      "section": "syndicates",
+      "image": "/site/screenshots/wiki/ledger/syndicates.png",
+      "alt": "Ledger Syndicates tab showing faction reputation cards and reputation bands",
+      "label": "Syndicates",
+      "title": "Syndicate reputation",
+      "text": "The Syndicates tab shows faction traits, alignment, reputation bands, and toll-discount context.",
+      "focus": {
+        "x": 1.2,
+        "y": 8.7,
+        "width": 97.7,
+        "height": 24.5
+      }
+    },
+    {
+      "id": "combat",
+      "section": "combat",
+      "image": "/site/screenshots/wiki/ledger/combat.png",
+      "alt": "Ledger Combat tab showing hostile encounter history with choices, outcomes, routes, and losses",
+      "label": "Combat",
+      "title": "Combat encounter history",
+      "text": "The Combat tab records hostile contacts, player choices, outcomes, routes, and losses.",
+      "focus": {
+        "x": 2.6,
+        "y": 12.5,
+        "width": 94.7,
+        "height": 23.2
+      }
+    },
+    {
+      "id": "log",
+      "section": "log",
+      "image": "/site/screenshots/wiki/ledger/log.png",
+      "alt": "Ledger Log tab showing fleet cargo, travel, contract, and exchange trade entries",
+      "label": "Log",
+      "title": "Fleet activity log",
+      "text": "The Log tab merges cargo operations, travel, contracts, and exchange trades from the selected fleet.",
+      "focus": {
+        "x": 2.6,
+        "y": 9.7,
+        "width": 94.7,
+        "height": 23.2
+      }
+    },
+    {
+      "id": "captain-ledger",
+      "section": "captain-s-ledger",
+      "image": "/site/screenshots/wiki/ledger/captain-ledger.png",
+      "alt": "Captain's Ledger sidebar showing career progress, wallet, ship count, save context, and backstory",
+      "label": "Sidebar",
+      "title": "Captain's Ledger sidebar",
+      "text": "The sidebar summarizes manual actions, earned charters, fleet wallet, ship count, and universe backstory.",
+      "focus": {
+        "x": 1.9,
+        "y": 0.9,
+        "width": 96.3,
+        "height": 5.2
+      }
+    }
+  ]
+}

@@ -1,0 +1,81 @@
+{
+  "url": "http://127.0.0.1:5174/?dev=1",
+  "generatedAt": "2026-05-05T06:54:18.801Z",
+  "shots": [
+    {
+      "id": "encounter-modal",
+      "section": "encounter-modal",
+      "image": "/site/screenshots/wiki/combat/encounter-modal.png",
+      "alt": "Combat encounter modal showing the player ship, attacking pirate, route, and available choices",
+      "label": "Encounter",
+      "title": "Pending encounter modal",
+      "text": "Manual ships pause on the encounter modal until the player chooses fight, flee, or bribe.",
+      "focus": {
+        "x": 3.6,
+        "y": 20.5,
+        "width": 92.9,
+        "height": 37.6
+      }
+    },
+    {
+      "id": "choices-and-odds",
+      "section": "choices-and-odds",
+      "image": "/site/screenshots/wiki/combat/choices-and-odds.png",
+      "alt": "Encounter action cards showing Fight, Flee, and Bribe with odds bands and a recommended action",
+      "label": "Choices",
+      "title": "Fight, flee, and bribe cards",
+      "text": "Each action shows a fuzzy odds band and marks the auto-pilot recommendation when one choice is clearly favored.",
+      "focus": {
+        "x": 1.5,
+        "y": 7.7,
+        "width": 31.5,
+        "height": 85.3
+      }
+    },
+    {
+      "id": "losses",
+      "section": "losses",
+      "image": "/site/screenshots/wiki/combat/losses.png",
+      "alt": "Encounter action cards showing cargo, credit, and hull loss pills",
+      "label": "Losses",
+      "title": "Concrete loss pills",
+      "text": "Loss pills name the exact cargo, credits, or hull damage at stake before the player commits.",
+      "focus": {
+        "x": 3.7,
+        "y": 49.6,
+        "width": 27.1,
+        "height": 32.4
+      }
+    },
+    {
+      "id": "ledger-history",
+      "section": "ledger-and-atlas-history",
+      "image": "/site/screenshots/wiki/combat/ledger-history.png",
+      "alt": "Ledger Combat tab showing encounter history with choices, outcomes, attackers, routes, and losses",
+      "label": "Ledger",
+      "title": "Combat history feed",
+      "text": "Ledger records encounter choices, outcomes, attackers, routes, and losses for player ships or all ships.",
+      "focus": {
+        "x": 2.6,
+        "y": 12.5,
+        "width": 94.7,
+        "height": 46.4
+      }
+    },
+    {
+      "id": "atlas-danger",
+      "section": "ledger-and-atlas-history",
+      "image": "/site/screenshots/wiki/combat/atlas-danger.png",
+      "alt": "Atlas Logistics map showing lane danger, encounter pings, and active security news",
+      "label": "Atlas",
+      "title": "Lane danger and encounter pings",
+      "text": "Atlas Logistics mode turns recent encounter history into lane danger tint and fresh hostile-contact pings.",
+      "focus": {
+        "x": 0.6,
+        "y": 0.9,
+        "width": 59.5,
+        "height": 57
+      }
+    }
+  ]
+}

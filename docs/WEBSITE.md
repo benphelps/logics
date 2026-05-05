@@ -19,7 +19,7 @@ The site presents Ledgway as a space logistics trading idle clicker:
 - trading layer: markets, contracts, prices, and shortages
 - shipping layer: cargo, fuel, lanes, maintenance, and station travel
 - automation layer: crew, upgrades, auto-pilot, and passive positions
-- career layer: Charters, manual-action unlocks, staged guidance, and staged automation
+- career layer: Ledger, Charters, manual-action unlocks, staged guidance, staged automation, combat history, and fleet logs
 
 The public pitch should stay close to the current game direction: space trucking, coordination, and Wall Street simulation in the browser; part spreadsheet, part clicker, part idler. The visual language should stay close to the game UI: dark command panels, compact uppercase labels, cyan/amber market accents, and existing industrial space art.
 
@@ -27,11 +27,12 @@ The public pitch should stay close to the current game direction: space trucking
 
 Start the app with `npm run dev`, open the game, and capture these views into `public/site/screenshots/`:
 
-- `fleet.png` — My Fleet / bridge
+- `cargo.png` — Cargo / ship operations
 - `markets.png` — Markets
 - `atlas.png` — Atlas
 - `exchange.png` — Exchange
-- `readme-ui-composite.png` — README-specific full-UI composite with My Fleet on the left and Exchange on the right
+- `ledger.png` — Ledger
+- `readme-ui-composite.png` — README-specific full-UI composite with Cargo on the left and Exchange on the right
 
 The screenshots should come from the running game UI so the site reflects the current build instead of drifting into mockups.
 
@@ -42,6 +43,10 @@ Use the capture script for reusable wiki screenshots:
 ```sh
 npm run screenshots:wiki
 npm run screenshots:wiki:exchange
+node scripts/capture-wiki-screenshots.mjs --view=markets
+node scripts/capture-wiki-screenshots.mjs --view=atlas
+node scripts/capture-wiki-screenshots.mjs --view=ledger
+node scripts/capture-wiki-screenshots.mjs --view=site
 node scripts/capture-wiki-screenshots.mjs --view=readme-full --out=/tmp/ledgway-readme-full
 ```
 

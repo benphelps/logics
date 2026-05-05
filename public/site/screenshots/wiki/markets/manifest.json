@@ -1,0 +1,111 @@
+{
+  "url": "http://127.0.0.1:5174/?dev=1",
+  "generatedAt": "2026-05-05T03:41:25.120Z",
+  "shots": [
+    {
+      "id": "screen-layout",
+      "section": "screen-layout",
+      "image": "/site/screenshots/wiki/markets/screen-layout.png",
+      "alt": "Markets screen showing commodity browser, universe spot chart, logistics metrics, best quotes, producers, and consumers",
+      "label": "Layout",
+      "title": "Markets split view",
+      "text": "Markets pairs the commodity browser with a detail column for spot history, logistics, quotes, producers, and consumers.",
+      "focus": {
+        "x": 61,
+        "y": 1,
+        "width": 38.3,
+        "height": 99
+      }
+    },
+    {
+      "id": "commodity-browser",
+      "section": "commodity-browser",
+      "image": "/site/screenshots/wiki/markets/commodity-browser.png",
+      "alt": "Markets commodity browser showing spot price, stock depth, low ask, high bid, and spread columns",
+      "label": "Browser",
+      "title": "Commodity browser",
+      "text": "Rows compare spot price, stock depth, best local ask, best local bid, and spread for every physical good.",
+      "focus": {
+        "x": 1.2,
+        "y": 5.9,
+        "width": 97.6,
+        "height": 93.2
+      }
+    },
+    {
+      "id": "category-tabs",
+      "section": "category-tabs",
+      "image": "/site/screenshots/wiki/markets/category-tabs.png",
+      "alt": "Markets commodity category tabs with counts for commodities, food, raw, parts, fuel, advanced, luxury, and upgrades",
+      "label": "Tabs",
+      "title": "Commodity category tabs",
+      "text": "Category tabs narrow the list to food, raw goods, parts, fuel, advanced goods, luxury goods, or upgrade modules.",
+      "focus": {
+        "x": 1.2,
+        "y": 5,
+        "width": 97.6,
+        "height": 15.5
+      }
+    },
+    {
+      "id": "spot-chart",
+      "section": "spot-chart",
+      "image": "/site/screenshots/wiki/markets/spot-chart.png",
+      "alt": "Markets universe spot chart for a selected commodity",
+      "label": "Spot",
+      "title": "Universe spot chart",
+      "text": "The detail column charts universe-wide spot history for the selected good with its base price as the reference line.",
+      "focus": {
+        "x": 6.3,
+        "y": 32.3,
+        "width": 87.4,
+        "height": 42.9
+      }
+    },
+    {
+      "id": "spot-and-logistics",
+      "section": "spot-and-logistics",
+      "image": "/site/screenshots/wiki/markets/spot-and-logistics.png",
+      "alt": "Markets spot and logistics KPI panels showing price, base, stock health, producers, consumers, net flow, and runway",
+      "label": "Signals",
+      "title": "Spot and logistics signals",
+      "text": "Spot explains price, base, stock health, and spread while Logistics compares active markets, production, consumption, and runway.",
+      "focus": {
+        "x": 6.3,
+        "y": 54.4,
+        "width": 87.4,
+        "height": 25.4
+      }
+    },
+    {
+      "id": "best-quotes",
+      "section": "best-asks-and-best-bids",
+      "image": "/site/screenshots/wiki/markets/best-quotes.png",
+      "alt": "Markets best asks and best bids panels listing station names, prices, stock, and target demand",
+      "label": "Quotes",
+      "title": "Best asks and best bids",
+      "text": "The quote panels show where the cheapest supply and strongest demand are sitting right now.",
+      "focus": {
+        "x": 50,
+        "y": 35.6,
+        "width": 43.8,
+        "height": 14.6
+      }
+    },
+    {
+      "id": "producers-consumers",
+      "section": "producers-and-consumers",
+      "image": "/site/screenshots/wiki/markets/producers-consumers.png",
+      "alt": "Markets top producers and top consumers panels with station names and per tick rates",
+      "label": "Flows",
+      "title": "Top producers and consumers",
+      "text": "Producer and consumer lists identify which stations create or absorb the selected good fastest.",
+      "focus": {
+        "x": 6.2,
+        "y": 100,
+        "width": 87.6,
+        "height": 0
+      }
+    }
+  ]
+}

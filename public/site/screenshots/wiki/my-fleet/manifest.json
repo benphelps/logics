@@ -1,33 +1,33 @@
 {
-  "url": "http://127.0.0.1:5173/",
-  "generatedAt": "2026-04-30T02:26:52.548Z",
+  "url": "http://127.0.0.1:5174/?dev=1",
+  "generatedAt": "2026-05-05T03:41:06.485Z",
   "shots": [
     {
       "id": "screen-layout",
       "section": "screen-layout",
       "image": "/site/screenshots/wiki/my-fleet/screen-layout.png",
-      "alt": "My Fleet screen showing the ship card, station travel card, station exchange card, and info card",
+      "alt": "Cargo screen showing the ship card, station travel card, station exchange card, and info card",
       "label": "Layout",
-      "title": "My Fleet bridge layout",
+      "title": "Cargo bridge layout",
       "text": "The selected ship sits above the station exchange and info card, with travel controls on the right."
     },
     {
       "id": "game-menu",
       "section": "game-menu",
       "image": "/site/screenshots/wiki/my-fleet/game-menu.png",
-      "alt": "Expanded game menu showing save slots, save actions, and developer actions",
+      "alt": "Save game modal showing save slots, save actions, and developer controls",
       "label": "Menu",
       "title": "Game menu and save controls",
-      "text": "The menu exposes save slots, fleet value, tick, reset, new game, and the local developer state."
+      "text": "The menu exposes save slots, save now, new game, and developer-only controls when dev mode is enabled."
     },
     {
       "id": "top-controls",
       "section": "top-controls",
       "image": "/site/screenshots/wiki/my-fleet/top-controls.png",
-      "alt": "Top controls showing main tabs, tick speed, selected ship, wallet summary, and pilot mode",
+      "alt": "Top controls showing main tabs, tick speed, selected ship, music, and save buttons",
       "label": "Controls",
-      "title": "Navigation, speed, ship picker, and pilot mode",
-      "text": "The top bar selects the main tab, controls time, changes ships, and switches the focused ship between manual and auto."
+      "title": "Navigation, speed, ship picker, and tools",
+      "text": "The top bar selects the main tab, controls time, changes ships, and opens music or save tools."
     },
     {
       "id": "fuel-hull-status",
@@ -39,9 +39,9 @@
       "text": "The top strip of the ship card doubles as status readout and dockside action surface.",
       "focus": {
         "x": 1.2,
-        "y": 4.2,
-        "width": 97.7,
-        "height": 13.1
+        "y": 100,
+        "width": 97.6,
+        "height": 0
       }
     },
     {
@@ -54,9 +54,9 @@
       "text": "Cargo rows show quantity, route-aware profit and loss, and a manual sell action when docked.",
       "focus": {
         "x": 1.2,
-        "y": 22.3,
-        "width": 97.7,
-        "height": 61.8
+        "y": 12.6,
+        "width": 97.6,
+        "height": 48.2
       }
     },
     {
@@ -69,24 +69,24 @@
       "text": "The ship upgrades tab separates installed modules from upgrade cargo waiting to be installed or sold.",
       "focus": {
         "x": 2.4,
-        "y": 16.5,
-        "width": 95.2,
-        "height": 49.5
+        "y": 8.8,
+        "width": 95.1,
+        "height": 44.4
       }
     },
     {
       "id": "crew-tab",
       "section": "crew-tab",
       "image": "/site/screenshots/wiki/my-fleet/crew-tab.png",
-      "alt": "Ship crew tab showing pilot, navigator, and mechanic crew cards",
+      "alt": "Ship crew tab showing pilot, navigator, mechanic, and mercenary crew cards",
       "label": "Crew",
       "title": "Crew stations on the ship",
-      "text": "Pilot, navigator, and mechanic roles live on the ship and unlock automation, guidance, and maintenance behavior.",
+      "text": "Pilot, navigator, mechanic, and mercenary roles live on the ship and unlock automation, guidance, upkeep, and combat support.",
       "focus": {
-        "x": 0.8,
-        "y": 20.3,
-        "width": 97.7,
-        "height": 63.3
+        "x": 1.2,
+        "y": 10.8,
+        "width": 97.6,
+        "height": 59.5
       }
     },
     {
@@ -98,10 +98,10 @@
       "title": "Reachable stations and departure checks",
       "text": "Each route row shows destination, distance, fuel needed, travel time, local notes, and the depart action.",
       "focus": {
-        "x": 1.9,
-        "y": 15.6,
-        "width": 96.3,
-        "height": 81.5
+        "x": 1.8,
+        "y": 22.8,
+        "width": 96.4,
+        "height": 73.8
       }
     },
     {
@@ -114,9 +114,9 @@
       "text": "Markets list local commodity stock, held cargo, buy price, net sell value after tax, and buy controls.",
       "focus": {
         "x": 1.2,
-        "y": 13.6,
-        "width": 97.7,
-        "height": 63.6
+        "y": 7.2,
+        "width": 97.6,
+        "height": 62
       }
     },
     {
@@ -129,9 +129,9 @@
       "text": "Buying from this subtab puts the module into cargo. Installing still happens from the ship card.",
       "focus": {
         "x": 2.4,
-        "y": 14.6,
-        "width": 95.2,
-        "height": 68.5
+        "y": 8.8,
+        "width": 95.1,
+        "height": 65.3
       }
     },
     {
@@ -144,9 +144,9 @@
       "text": "Crew offers show role, name, tier, modifiers, cost, wage context, and a hire action.",
       "focus": {
         "x": 2.4,
-        "y": 14.6,
-        "width": 95.2,
-        "height": 28.5
+        "y": 8.8,
+        "width": 95.1,
+        "height": 17.3
       }
     },
     {
@@ -189,7 +189,7 @@
       "id": "suggestions",
       "section": "suggestions",
       "image": "/site/screenshots/wiki/my-fleet/suggestions.png",
-      "alt": "My Fleet station exchange showing suggested actions and highlighted guidance markers",
+      "alt": "Cargo station exchange showing suggested actions and highlighted guidance markers",
       "label": "Guidance",
       "title": "Navigator suggestion highlights",
       "text": "With a navigator hired, suggested tabs and action buttons receive route-aware guidance markers."
@@ -203,10 +203,10 @@
       "title": "Manual and Auto pilot modes",
       "text": "Auto mode is per ship. It becomes available once a pilot is hired and moves dockside actions under crew control.",
       "focus": {
-        "x": 87,
-        "y": 25.9,
-        "width": 12.1,
-        "height": 48.3
+        "x": 34.1,
+        "y": 93.3,
+        "width": 31,
+        "height": 4.3
       }
     }
   ]

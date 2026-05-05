@@ -10,6 +10,11 @@ const DEFAULT_URL = "http://127.0.0.1:5173/";
 const DEFAULT_OUT_DIRS = {
   "my-fleet": "public/site/screenshots/wiki/my-fleet",
   exchange: "public/site/screenshots/wiki/exchange",
+  markets: "public/site/screenshots/wiki/markets",
+  atlas: "public/site/screenshots/wiki/atlas",
+  combat: "public/site/screenshots/wiki/combat",
+  ledger: "public/site/screenshots/wiki/ledger",
+  site: "public/site/screenshots",
   "readme-full": "public/site/screenshots/readme",
 };
 const DEFAULT_VIEWPORT = { width: 1600, height: 1300 };
@@ -29,9 +34,9 @@ const myFleetShots = [
     id: "screen-layout",
     section: "screen-layout",
     label: "Layout",
-    title: "My Fleet bridge layout",
+    title: "Cargo bridge layout",
     text: "The selected ship sits above the station exchange and info card, with travel controls on the right.",
-    alt: "My Fleet screen showing the ship card, station travel card, station exchange card, and info card",
+    alt: "Cargo screen showing the ship card, station travel card, station exchange card, and info card",
     selector: ".docked-view",
     pad: 10,
     maxHeight: 1020,
@@ -46,9 +51,9 @@ const myFleetShots = [
     section: "game-menu",
     label: "Menu",
     title: "Game menu and save controls",
-    text: "The menu exposes save slots, fleet value, tick, reset, new game, and the local developer state.",
-    alt: "Expanded game menu showing save slots, save actions, and developer actions",
-    selector: ".topbar-menu-panel",
+    text: "The menu exposes save slots, save now, new game, and developer-only controls when dev mode is enabled.",
+    alt: "Save game modal showing save slots, save actions, and developer controls",
+    selector: ".topbar-save-modal",
     pad: 10,
     pre: async (page) => {
       await openGameMenu(page);
@@ -58,9 +63,9 @@ const myFleetShots = [
     id: "top-controls",
     section: "top-controls",
     label: "Controls",
-    title: "Navigation, speed, ship picker, and pilot mode",
-    text: "The top bar selects the main tab, controls time, changes ships, and switches the focused ship between manual and auto.",
-    alt: "Top controls showing main tabs, tick speed, selected ship, wallet summary, and pilot mode",
+    title: "Navigation, speed, ship picker, and tools",
+    text: "The top bar selects the main tab, controls time, changes ships, and opens music or save tools.",
+    alt: "Top controls showing main tabs, tick speed, selected ship, music, and save buttons",
     selector: ".topbar-shell",
     pad: 8,
     pre: async (page) => {
@@ -118,8 +123,8 @@ const myFleetShots = [
     section: "crew-tab",
     label: "Crew",
     title: "Crew stations on the ship",
-    text: "Pilot, navigator, and mechanic roles live on the ship and unlock automation, guidance, and maintenance behavior.",
-    alt: "Ship crew tab showing pilot, navigator, and mechanic crew cards",
+    text: "Pilot, navigator, mechanic, and mercenary roles live on the ship and unlock automation, guidance, upkeep, and combat support.",
+    alt: "Ship crew tab showing pilot, navigator, mechanic, and mercenary crew cards",
     selector: ".ship-card",
     focusSelector: ".crew-card-grid",
     pad: 10,
@@ -222,7 +227,7 @@ const myFleetShots = [
     selector: ".info-area-card",
     pad: 10,
     pre: async (page) => {
-      await clickSelector(page, ".travel-current-location .info-focus-trigger");
+      await clickSelector(page, ".travel-current-station.info-focus-trigger");
       await page.wait(180);
     },
   },
@@ -237,7 +242,7 @@ const myFleetShots = [
     pad: 10,
     pre: async (page) => {
       await selectExchangeTab(page, "Markets");
-      await clickSelector(page, ".market-table tbody tr:first-child .info-focus-trigger");
+      await clickSelector(page, ".market-table tbody tr.info-focus-row:first-child");
       await page.wait(180);
     },
   },
@@ -247,7 +252,7 @@ const myFleetShots = [
     label: "Guidance",
     title: "Navigator suggestion highlights",
     text: "With a navigator hired, suggested tabs and action buttons receive route-aware guidance markers.",
-    alt: "My Fleet station exchange showing suggested actions and highlighted guidance markers",
+    alt: "Cargo station exchange showing suggested actions and highlighted guidance markers",
     selector: ".docked-view",
     showSuggestions: true,
     pad: 10,
@@ -265,11 +270,12 @@ const myFleetShots = [
     title: "Manual and Auto pilot modes",
     text: "Auto mode is per ship. It becomes available once a pilot is hired and moves dockside actions under crew control.",
     alt: "Top controls showing the selected ship and manual versus auto pilot mode buttons",
-    selector: ".topbar-card",
-    focusSelector: ".topbar-pilot-tabs",
+    selector: ".ship-card",
+    focusSelector: ".ship-pilot-entry",
     pad: 10,
     pre: async (page) => {
-      await clickText(page, ".topbar-pilot-tabs", "Auto");
+      await selectShipTab(page, "Cargo");
+      await clickSelector(page, ".ship-pilot-entry");
       await page.wait(180);
     },
   },
@@ -469,6 +475,21 @@ const exchangeShots = [
     },
   },
   {
+    id: "insights-tab",
+    section: "insights-tab",
+    label: "Insights",
+    title: "Navigator market insights",
+    text: "The Insights tab ranks trade ideas, edge, suggested limits, and blocked reasons when a navigator is aboard.",
+    alt: "Exchange Insights tab showing ranked trade ideas with edge, suggested limit, status, and reason columns",
+    selector: ".stocks-pno",
+    focusSelector: ".stocks-insights-list",
+    pad: 10,
+    pre: async (page) => {
+      await selectExchangeListing(page, "commodity");
+      await selectPnoTab(page, "Insights");
+    },
+  },
+  {
     id: "basis-underlying",
     section: "basis-pairs",
     label: "Basis",
@@ -500,14 +521,471 @@ const exchangeShots = [
   },
 ];
 
+const marketsShots = [
+  {
+    id: "screen-layout",
+    section: "screen-layout",
+    label: "Layout",
+    title: "Markets split view",
+    text: "Markets pairs the commodity browser with a detail column for spot history, logistics, quotes, producers, and consumers.",
+    alt: "Markets screen showing commodity browser, universe spot chart, logistics metrics, best quotes, producers, and consumers",
+    selector: ".markets-view .stocks-shell",
+    focusSelector: ".markets-view .stocks-shell-right",
+    pad: 10,
+    maxHeight: 1040,
+    pre: async (page) => {
+      await selectMainTab(page, "Markets");
+      await selectMarketsCategory(page, "Commodities");
+    },
+  },
+  {
+    id: "commodity-browser",
+    section: "commodity-browser",
+    label: "Browser",
+    title: "Commodity browser",
+    text: "Rows compare spot price, stock depth, best local ask, best local bid, and spread for every physical good.",
+    alt: "Markets commodity browser showing spot price, stock depth, low ask, high bid, and spread columns",
+    selector: ".markets-selector",
+    focusSelector: ".markets-selector-list",
+    pad: 10,
+    pre: async (page) => {
+      await selectMarketsCategory(page, "Commodities");
+    },
+  },
+  {
+    id: "category-tabs",
+    section: "category-tabs",
+    label: "Tabs",
+    title: "Commodity category tabs",
+    text: "Category tabs narrow the list to food, raw goods, parts, fuel, advanced goods, luxury goods, or upgrade modules.",
+    alt: "Markets commodity category tabs with counts for commodities, food, raw, parts, fuel, advanced, luxury, and upgrades",
+    selector: ".markets-selector",
+    focusSelector: ".markets-tabs",
+    pad: 10,
+    maxHeight: 220,
+    pre: async (page) => {
+      await selectMarketsCategory(page, "Fuel");
+    },
+  },
+  {
+    id: "spot-chart",
+    section: "spot-chart",
+    label: "Spot",
+    title: "Universe spot chart",
+    text: "The detail column charts universe-wide spot history for the selected good with its base price as the reference line.",
+    alt: "Markets universe spot chart for a selected commodity",
+    selector: ".markets-view .stocks-info-col",
+    focusSelector: ".markets-chart",
+    pad: 10,
+    maxHeight: 470,
+    pre: async (page) => {
+      await selectMarketsCategory(page, "Commodities");
+    },
+  },
+  {
+    id: "spot-and-logistics",
+    section: "spot-and-logistics",
+    label: "Signals",
+    title: "Spot and logistics signals",
+    text: "Spot explains price, base, stock health, and spread while Logistics compares active markets, production, consumption, and runway.",
+    alt: "Markets spot and logistics KPI panels showing price, base, stock health, producers, consumers, net flow, and runway",
+    selector: ".markets-view .stocks-info-col",
+    focusSelector: ".markets-view .stocks-info-body > .stocks-info-row",
+    pad: 10,
+    maxHeight: 650,
+  },
+  {
+    id: "best-quotes",
+    section: "best-asks-and-best-bids",
+    label: "Quotes",
+    title: "Best asks and best bids",
+    text: "The quote panels show where the cheapest supply and strongest demand are sitting right now.",
+    alt: "Markets best asks and best bids panels listing station names, prices, stock, and target demand",
+    selector: ".markets-view .stocks-info-body",
+    focusSelector: ".markets-view .stocks-info-body .trade-helper-section:nth-of-type(2)",
+    pad: 10,
+    maxHeight: 740,
+  },
+  {
+    id: "producers-consumers",
+    section: "producers-and-consumers",
+    label: "Flows",
+    title: "Top producers and consumers",
+    text: "Producer and consumer lists identify which stations create or absorb the selected good fastest.",
+    alt: "Markets top producers and top consumers panels with station names and per tick rates",
+    selector: ".markets-view .stocks-info-body",
+    focusSelector: ".markets-view .stocks-info-body .trade-helper-section:nth-of-type(4)",
+    pad: 10,
+    maxHeight: 860,
+  },
+];
+
+const atlasShots = [
+  {
+    id: "screen-layout",
+    section: "screen-layout",
+    label: "Layout",
+    title: "Atlas map and detail layout",
+    text: "Atlas keeps the sector map, station sheets, and selected station detail panel on one screen.",
+    alt: "Atlas screen showing sector map, station sheet, and selected station detail panel",
+    selector: ".atlas-view",
+    focusSelector: ".atlas-detail-panel",
+    pad: 10,
+    maxHeight: 1060,
+    pre: async (page) => {
+      await selectMainTab(page, "Atlas");
+      await selectAtlasMapTab(page, "Stations");
+      await selectAtlasSheetTab(page, "Systems");
+    },
+  },
+  {
+    id: "map-modes",
+    section: "map-modes",
+    label: "Modes",
+    title: "Station, syndicate, and logistics map modes",
+    text: "Map modes switch the same sector from local station navigation to faction control or lane danger.",
+    alt: "Atlas map panel with Stations, Syndicates, and Logistics map mode tabs",
+    selector: ".atlas-map-panel",
+    focusSelector: ".atlas-map-tabs",
+    pad: 10,
+    pre: async (page) => {
+      await selectAtlasMapTab(page, "Logistics");
+    },
+  },
+  {
+    id: "systems-table",
+    section: "systems-table",
+    label: "Systems",
+    title: "Systems table",
+    text: "Systems rows compare station kind, traffic, jobs, market pressure, hires, upgrades, exchange signals, and route count.",
+    alt: "Atlas systems table listing stations with kind, traffic, jobs, pressure, hires, upgrades, exchange, and routes",
+    selector: ".atlas-sheet-panel",
+    focusSelector: ".atlas-table-scroll",
+    pad: 10,
+    pre: async (page) => {
+      await selectAtlasSheetTab(page, "Systems");
+    },
+  },
+  {
+    id: "ships-table",
+    section: "ships-table",
+    label: "Ships",
+    title: "Ships table",
+    text: "The Ships sheet locates player and NPC traffic with state, route, cargo, wallet, hull, and ETA context.",
+    alt: "Atlas ships table listing ships with state, route, cargo, wallet, hull, and ETA",
+    selector: ".atlas-sheet-panel",
+    focusSelector: ".atlas-table-scroll",
+    pad: 10,
+    pre: async (page) => {
+      await selectAtlasSheetTab(page, "Ships");
+    },
+  },
+  {
+    id: "station-detail",
+    section: "station-detail",
+    label: "Station",
+    title: "Station detail panel",
+    text: "The detail panel summarizes station profile, exchange context, local stock pressure, active events, traffic, and route actions.",
+    alt: "Atlas station detail panel showing station profile, exchange context, market pressure, active events, and traffic",
+    selector: ".atlas-detail-panel",
+    pad: 10,
+    maxHeight: 1040,
+    pre: async (page) => {
+      await selectAtlasSheetTab(page, "Systems");
+    },
+  },
+  {
+    id: "shipyards",
+    section: "shipyards",
+    label: "Shipyards",
+    title: "Shipyard inventory",
+    text: "Shipyards list blueprints with class, price, stats, pre-installed upgrades, traits, and buy eligibility.",
+    alt: "Atlas shipyard inventory showing ship blueprints, class labels, prices, stats, upgrades, traits, and buy button",
+    selector: ".atlas-detail-panel",
+    focusSelector: ".atlas-shipyard-section",
+    pad: 10,
+    maxHeight: 1040,
+    pre: async (page) => {
+      await focusShipyard(page);
+      await openFirstShipyardBlueprint(page);
+    },
+  },
+  {
+    id: "lane-danger-events",
+    section: "lane-danger-and-events",
+    label: "Danger",
+    title: "Lane danger and active events",
+    text: "Logistics mode tints recent danger lanes while the Events sheet lists active news that is moving the economy.",
+    alt: "Atlas logistics map with lane danger and active news events list",
+    selector: ".atlas-view",
+    focusSelector: ".atlas-news-list",
+    pad: 10,
+    maxHeight: 1060,
+    pre: async (page) => {
+      await selectAtlasMapTab(page, "Logistics");
+      await selectAtlasSheetTab(page, "Events");
+    },
+  },
+];
+
+const ledgerShots = [
+  {
+    id: "screen-layout",
+    section: "screen-layout",
+    label: "Layout",
+    title: "Ledger records and sidebar",
+    text: "Ledger keeps career records on the left and the Captain's Ledger summary on the right.",
+    alt: "Ledger screen showing record tabs and Captain's Ledger sidebar",
+    selector: ".charters-view",
+    focusSelector: ".charters-sidebar-card",
+    pad: 10,
+    maxHeight: 1040,
+    pre: async (page) => {
+      await selectMainTab(page, "Ledger");
+      await selectLedgerTab(page, "Charters");
+    },
+  },
+  {
+    id: "charters",
+    section: "charters",
+    label: "Charters",
+    title: "Charters and tier licenses",
+    text: "Charters turn manual actions into crew-guild unlocks and upgrade-tier licenses.",
+    alt: "Ledger Charters tab showing crew guilds and tier license milestones",
+    selector: ".charters-badges-card",
+    focusSelector: ".charters-badges-grid",
+    pad: 10,
+    pre: async (page) => {
+      await selectLedgerTab(page, "Charters");
+    },
+  },
+  {
+    id: "syndicates",
+    section: "syndicates",
+    label: "Syndicates",
+    title: "Syndicate reputation",
+    text: "The Syndicates tab shows faction traits, alignment, reputation bands, and toll-discount context.",
+    alt: "Ledger Syndicates tab showing faction reputation cards and reputation bands",
+    selector: ".charters-badges-card",
+    focusSelector: ".syndicate-rep-grid",
+    pad: 10,
+    pre: async (page) => {
+      await selectLedgerTab(page, "Syndicates");
+    },
+  },
+  {
+    id: "combat",
+    section: "combat",
+    label: "Combat",
+    title: "Combat encounter history",
+    text: "The Combat tab records hostile contacts, player choices, outcomes, routes, and losses.",
+    alt: "Ledger Combat tab showing hostile encounter history with choices, outcomes, routes, and losses",
+    selector: ".charters-badges-card",
+    focusSelector: ".ledger-log-list",
+    pad: 10,
+    pre: async (page) => {
+      await selectLedgerTab(page, "Combat");
+    },
+  },
+  {
+    id: "log",
+    section: "log",
+    label: "Log",
+    title: "Fleet activity log",
+    text: "The Log tab merges cargo operations, travel, contracts, and exchange trades from the selected fleet.",
+    alt: "Ledger Log tab showing fleet cargo, travel, contract, and exchange trade entries",
+    selector: ".charters-badges-card",
+    focusSelector: ".ledger-log-list",
+    pad: 10,
+    pre: async (page) => {
+      await selectLedgerTab(page, "Log");
+    },
+  },
+  {
+    id: "captain-ledger",
+    section: "captain-s-ledger",
+    label: "Sidebar",
+    title: "Captain's Ledger sidebar",
+    text: "The sidebar summarizes manual actions, earned charters, fleet wallet, ship count, and universe backstory.",
+    alt: "Captain's Ledger sidebar showing career progress, wallet, ship count, save context, and backstory",
+    selector: ".charters-sidebar-card",
+    focusSelector: ".charters-ledger-head",
+    pad: 10,
+    pre: async (page) => {
+      await selectLedgerTab(page, "Charters");
+    },
+  },
+];
+
+const combatShots = [
+  {
+    id: "encounter-modal",
+    section: "encounter-modal",
+    label: "Encounter",
+    title: "Pending encounter modal",
+    text: "Manual ships pause on the encounter modal until the player chooses fight, flee, or bribe.",
+    alt: "Combat encounter modal showing the player ship, attacking pirate, route, and available choices",
+    selector: ".ui-modal-dialog.encounter-dialog",
+    focusSelector: ".encounter-stats",
+    pad: 10,
+    pre: async (page) => {
+      await showCombatEncounterModal(page);
+    },
+  },
+  {
+    id: "choices-and-odds",
+    section: "choices-and-odds",
+    label: "Choices",
+    title: "Fight, flee, and bribe cards",
+    text: "Each action shows a fuzzy odds band and marks the auto-pilot recommendation when one choice is clearly favored.",
+    alt: "Encounter action cards showing Fight, Flee, and Bribe with odds bands and a recommended action",
+    selector: ".encounter-actions",
+    focusSelector: ".encounter-action.recommended",
+    pad: 10,
+    pre: async (page) => {
+      await showCombatEncounterModal(page);
+    },
+  },
+  {
+    id: "losses",
+    section: "losses",
+    label: "Losses",
+    title: "Concrete loss pills",
+    text: "Loss pills name the exact cargo, credits, or hull damage at stake before the player commits.",
+    alt: "Encounter action cards showing cargo, credit, and hull loss pills",
+    selector: ".encounter-actions",
+    focusSelector: ".encounter-action-pills",
+    pad: 10,
+    pre: async (page) => {
+      await showCombatEncounterModal(page);
+    },
+  },
+  {
+    id: "ledger-history",
+    section: "ledger-and-atlas-history",
+    label: "Ledger",
+    title: "Combat history feed",
+    text: "Ledger records encounter choices, outcomes, attackers, routes, and losses for player ships or all ships.",
+    alt: "Ledger Combat tab showing encounter history with choices, outcomes, attackers, routes, and losses",
+    selector: ".charters-badges-card",
+    focusSelector: ".ledger-log-list",
+    pad: 10,
+    pre: async (page) => {
+      await clearCombatEncounterModal(page);
+      await selectMainTab(page, "Ledger");
+      await selectLedgerTab(page, "Combat");
+    },
+  },
+  {
+    id: "atlas-danger",
+    section: "ledger-and-atlas-history",
+    label: "Atlas",
+    title: "Lane danger and encounter pings",
+    text: "Atlas Logistics mode turns recent encounter history into lane danger tint and fresh hostile-contact pings.",
+    alt: "Atlas Logistics map showing lane danger, encounter pings, and active security news",
+    selector: ".atlas-view",
+    focusSelector: ".atlas-map-panel",
+    pad: 10,
+    maxHeight: 1060,
+    pre: async (page) => {
+      await clearCombatEncounterModal(page);
+      await selectMainTab(page, "Atlas");
+      await selectAtlasMapTab(page, "Logistics");
+      await selectAtlasSheetTab(page, "Events");
+    },
+  },
+];
+
+const siteShots = [
+  {
+    id: "cargo",
+    section: "site",
+    label: "Cargo",
+    title: "Cargo UI",
+    text: "Homepage carousel screenshot for Cargo operations.",
+    alt: "Ledgway Cargo UI showing ship operations, station markets, and travel controls",
+    selector: ".app",
+    pad: 0,
+    maxHeight: DEFAULT_VIEWPORT.height,
+    pre: async (page) => {
+      await selectMainTab(page, "Cargo");
+      await selectShipTab(page, "Cargo");
+      await selectExchangeTab(page, "Markets");
+      await clearInfoFocus(page);
+    },
+  },
+  {
+    id: "exchange",
+    section: "site",
+    label: "Exchange",
+    title: "Exchange UI",
+    text: "Homepage carousel screenshot for the market desk.",
+    alt: "Ledgway Exchange UI showing asset listings, positions, market detail, chart, order book, and order form",
+    selector: ".app",
+    pad: 0,
+    maxHeight: DEFAULT_VIEWPORT.height,
+    pre: async (page) => {
+      await selectMainTab(page, "Exchange");
+      await selectExchangeListing(page, "commodity");
+      await selectPnoTab(page, "Positions");
+    },
+  },
+  {
+    id: "markets",
+    section: "site",
+    label: "Markets",
+    title: "Markets UI",
+    text: "Homepage carousel screenshot for commodity logistics.",
+    alt: "Ledgway Markets UI showing commodity listings, universe spot chart, logistics, quotes, producers, and consumers",
+    selector: ".app",
+    pad: 0,
+    maxHeight: DEFAULT_VIEWPORT.height,
+    pre: async (page) => {
+      await selectMainTab(page, "Markets");
+      await selectMarketsCategory(page, "Commodities");
+    },
+  },
+  {
+    id: "atlas",
+    section: "site",
+    label: "Atlas",
+    title: "Atlas UI",
+    text: "Homepage carousel screenshot for the sector map.",
+    alt: "Ledgway Atlas UI showing sector map, systems table, station detail, shipyard inventory, and lane context",
+    selector: ".app",
+    pad: 0,
+    maxHeight: DEFAULT_VIEWPORT.height,
+    pre: async (page) => {
+      await selectMainTab(page, "Atlas");
+      await focusShipyard(page);
+      await openFirstShipyardBlueprint(page);
+    },
+  },
+  {
+    id: "ledger",
+    section: "site",
+    label: "Ledger",
+    title: "Ledger UI",
+    text: "Homepage carousel screenshot for career records.",
+    alt: "Ledgway Ledger UI showing charters, syndicates, combat, fleet log, and Captain's Ledger summary",
+    selector: ".app",
+    pad: 0,
+    maxHeight: DEFAULT_VIEWPORT.height,
+    pre: async (page) => {
+      await selectMainTab(page, "Ledger");
+      await selectLedgerTab(page, "Combat");
+    },
+  },
+];
+
 const readmeFullShots = [
   {
     id: "fleet-full",
     section: "readme",
-    label: "My Fleet",
-    title: "Full My Fleet UI",
-    text: "Full-viewport My Fleet operations screen for README composition.",
-    alt: "Full Ledgway UI showing My Fleet ship operations, station travel, dockside markets, and ship context",
+    label: "Cargo",
+    title: "Full Cargo UI",
+    text: "Full-viewport Cargo operations screen for README composition.",
+    alt: "Full Ledgway UI showing Cargo ship operations, station travel, dockside markets, and ship context",
     selector: ".app",
     pad: 0,
     maxHeight: DEFAULT_VIEWPORT.height,
@@ -552,11 +1030,18 @@ const readmeFullShots = [
   },
 ];
 
-const shots = captureView === "exchange"
-  ? exchangeShots
-  : captureView === "readme-full"
-    ? readmeFullShots
-    : myFleetShots;
+const shotSets = {
+  "my-fleet": myFleetShots,
+  exchange: exchangeShots,
+  markets: marketsShots,
+  atlas: atlasShots,
+  combat: combatShots,
+  ledger: ledgerShots,
+  site: siteShots,
+  "readme-full": readmeFullShots,
+};
+
+const shots = shotSets[captureView];
 
 main().catch((error) => {
   console.error(error);
@@ -591,11 +1076,7 @@ async function main() {
     await page.waitForSelector(".player-view");
     await installCaptureStyle(page);
     await loadDeveloperState(page);
-    if (captureView === "exchange") {
-      await enrichExchangeDeveloperState(page);
-    } else {
-      await enrichMyFleetDeveloperState(page);
-    }
+    await prepareCaptureView(page, captureView);
 
     await mkdir(outDir, { recursive: true });
     const manifest = [];
@@ -605,8 +1086,10 @@ async function main() {
       manifest.push(entry);
     }
 
-    const manifestPath = path.join(outDir, "manifest.json");
-    await writeFile(manifestPath, `${JSON.stringify({ url: targetUrl, generatedAt: new Date().toISOString(), shots: manifest }, null, 2)}\n`);
+    if (captureView !== "site") {
+      const manifestPath = path.join(outDir, "manifest.json");
+      await writeFile(manifestPath, `${JSON.stringify({ url: targetUrl, generatedAt: new Date().toISOString(), shots: manifest }, null, 2)}\n`);
+    }
     console.log(`wrote ${manifest.length} screenshots to ${path.relative(process.cwd(), outDir)}`);
   } finally {
     if (page) page.close();
@@ -646,11 +1129,45 @@ async function captureShot(page, shot) {
 }
 
 async function loadDeveloperState(page) {
-  await openGameMenu(page);
-  await clickText(page, ".topbar-dev-section", "Load dev state");
-  await page.waitForSelector(".topbar-game-tab.has-kind");
+  const result = await page.evaluate(() => {
+    const useStore = window.__LEDGWAY_CAPTURE_STORE__;
+    if (!useStore) return { ok: false, reason: "capture store hook unavailable" };
+    useStore.getState().loadDeveloperState();
+    useStore.setState({ pendingNewGame: null, pendingSeed: null, pendingWorldLoad: false });
+    return { ok: true };
+  });
+  if (!result?.ok) throw new Error(`Could not load developer state: ${result?.reason ?? "unknown"}`);
+  await page.waitForSelector(".topbar-view-tabs");
   await page.waitForSelector(".crew-card-grid, .ship-card");
   await page.wait(250);
+}
+
+async function prepareCaptureView(page, view) {
+  if (view === "exchange") {
+    await enrichExchangeDeveloperState(page);
+    return;
+  }
+  if (view === "markets") {
+    await enrichMarketsDeveloperState(page);
+    return;
+  }
+  if (view === "atlas") {
+    await enrichAtlasDeveloperState(page);
+    return;
+  }
+  if (view === "combat") {
+    await enrichCombatDeveloperState(page);
+    return;
+  }
+  if (view === "ledger") {
+    await enrichLedgerDeveloperState(page);
+    return;
+  }
+  if (view === "site") {
+    await enrichSiteDeveloperState(page);
+    return;
+  }
+  await enrichMyFleetDeveloperState(page);
 }
 
 async function enrichMyFleetDeveloperState(page) {
@@ -664,7 +1181,11 @@ async function enrichMyFleetDeveloperState(page) {
     const ship = world.traders[shipId];
     if (!ship) return { ok: false, reason: "missing ship" };
 
-    const locId = ship.location;
+    let locId = ship.location;
+    if (world.locations[locId]?.traits?.tags?.includes("shipyard")) {
+      locId = Object.values(world.locations).find(candidate => !candidate.traits.tags.includes("shipyard"))?.id ?? locId;
+      ship.location = locId;
+    }
     const loc = world.locations[locId];
     const market = world.markets[locId];
     const routeIds = Object.keys(world.lanes[locId] ?? {});
@@ -677,6 +1198,13 @@ async function enrichMyFleetDeveloperState(page) {
     ship.ticksRemaining = 0;
     ship.pilot = "manual";
     ship.funds = 188_420;
+    ship.crew = {
+      ...(ship.crew ?? {}),
+      captain: ship.crew?.captain ?? crewMember("captain", "Vera Pike", 2, { speedBonus: 0.5 }),
+      navigator: ship.crew?.navigator ?? crewMember("navigator", "Jun Sato", 2, { rangeEfficiency: 0.12, treasuryYield: 0.0005 }),
+      mechanic: ship.crew?.mechanic ?? crewMember("mechanic", "Mara Coil", 2, { maintenanceDiscount: 0.35, unloadSpeedBonus: 0.5 }),
+      mercenary: ship.crew?.mercenary ?? crewMember("mercenary", "Ilya Knox", 2, { weaponPowerBonus: 3, hullBonus: 2 }),
+    };
     ship.currentFuel = { good: "plasma", qty: Math.max(18, Math.floor(ship.fuelCapacity * 0.28)) };
     ship.maintenanceDebt = 2_350;
     ship.cargo = [
@@ -797,6 +1325,21 @@ async function enrichMyFleetDeveloperState(page) {
       unloadingLots: ship.unloadingCargo?.length ?? 0,
       jobs: Object.keys(world.jobs).length,
     };
+
+    function crewMember(role, name, tier, modifiers) {
+      return {
+        id: `wiki-${role}`,
+        role,
+        name,
+        tier,
+        hireCost: 0,
+        wagePerTick: role === "captain" ? 140 : role === "mercenary" ? 180 : 75,
+        modifiers,
+        sex: "nonbinary",
+        age: "adult",
+        race: "human",
+      };
+    }
   });
   if (!result?.ok) throw new Error(`Could not enrich developer state: ${result?.reason ?? "unknown"}`);
   console.log(`prepared dev state: ${result.cargoLots} cargo lots, ${result.unloadingLots} unloading lots, ${result.jobs} jobs`);
@@ -894,14 +1437,24 @@ async function enrichExchangeDeveloperState(page) {
       seedBook(eq);
     }
 
-    player.positions = {};
-    player.reservedShares = {};
-    player.trades = [];
-    player.futures = {};
-    player.reservedFutures = {};
+    const positions = {};
+    const reservedShares = {};
+    const trades = [];
+    const futures = {};
+    const reservedFutures = {};
+    player.positions = positions;
+    player.reservedShares = reservedShares;
+    player.trades = trades;
+    player.futures = futures;
+    player.reservedFutures = reservedFutures;
+    ship.stockPositions = positions;
+    ship.reservedShares = reservedShares;
+    ship.stockTrades = trades;
+    ship.futures = futures;
+    ship.reservedFutures = reservedFutures;
 
     if (commodityEq) {
-      player.positions[commodityEq.id] = {
+      positions[commodityEq.id] = {
         equityId: commodityEq.id,
         kind: "long",
         shares: 86,
@@ -912,7 +1465,7 @@ async function enrichExchangeDeveloperState(page) {
       };
     }
     if (syndicateEq) {
-      player.positions[syndicateEq.id] = {
+      positions[syndicateEq.id] = {
         equityId: syndicateEq.id,
         kind: "short",
         shares: 44,
@@ -928,7 +1481,7 @@ async function enrichExchangeDeveloperState(page) {
       }
     }
     if (stationEq) {
-      player.positions[stationEq.id] = {
+      positions[stationEq.id] = {
         equityId: stationEq.id,
         kind: "long",
         shares: 38,
@@ -943,7 +1496,7 @@ async function enrichExchangeDeveloperState(page) {
       const spot = world.equities[futureContract.underlyingEquityId]?.price ?? futuresEq.price;
       const contractsHeld = 2;
       const margin = futureContract.marginFraction * futureContract.contractSize * spot * contractsHeld;
-      player.futures[futuresEq.id] = {
+      futures[futuresEq.id] = {
         contractId: futuresEq.id,
         side: "short",
         contracts: contractsHeld,
@@ -952,7 +1505,7 @@ async function enrichExchangeDeveloperState(page) {
         openedAt: world.tick - 44,
         lastMarkPrice: spot,
       };
-      player.reservedFutures[futuresEq.id] = margin;
+      reservedFutures[futuresEq.id] = margin;
       futureContract.openInterest = Math.max(futureContract.openInterest ?? 0, 17);
       const deliveryQty = futureContract.contractSize * contractsHeld;
       ship.cargo = [
@@ -969,7 +1522,7 @@ async function enrichExchangeDeveloperState(page) {
 
     if (commodityEq) {
       addPlayerOrder(commodityEq, "ask", 24, commodityEq.price * 1.055, 17);
-      player.reservedShares[commodityEq.id] = (player.reservedShares[commodityEq.id] ?? 0) + 24;
+      reservedShares[commodityEq.id] = (reservedShares[commodityEq.id] ?? 0) + 24;
     }
     if (stationEq) {
       addPlayerOrder(stationEq, "bid", 35, stationEq.price * 0.965, 11);
@@ -1011,8 +1564,8 @@ async function enrichExchangeDeveloperState(page) {
       ids,
       positions: Object.keys(player.positions).length,
       orders: countPlayerOrders(shipId),
-      futures: Object.keys(player.futures).length,
-      trades: player.trades.length,
+      futures: Object.keys(futures).length,
+      trades: trades.length,
     };
 
     function parseBasis(underlyingId) {
@@ -1124,9 +1677,9 @@ async function enrichExchangeDeveloperState(page) {
 
     function addTrade(eq, action, shares, price, cashFlow, realizedPnl, trigger) {
       if (!eq) return;
-      player.trades.push({
-        id: `wiki_tr_${player.trades.length + 1}`,
-        tick: Math.max(0, world.tick - 90 + player.trades.length * 9),
+      trades.push({
+        id: `wiki_tr_${trades.length + 1}`,
+        tick: Math.max(0, world.tick - 90 + trades.length * 9),
         equityId: eq.id,
         ticker: eq.ticker,
         action,
@@ -1155,20 +1708,622 @@ async function enrichExchangeDeveloperState(page) {
   await page.wait(450);
 }
 
+async function enrichMarketsDeveloperState(page) {
+  const result = await page.evaluate(() => {
+    const useStore = window.__LEDGWAY_CAPTURE_STORE__;
+    if (!useStore) return { ok: false, reason: "capture store hook unavailable" };
+    const state = useStore.getState();
+    const world = state.world;
+    const goods = Object.values(world.goods ?? {}).filter(g => g.category !== "upgrade");
+    const focusGood = world.goods.plasma?.id
+      ?? goods.find(g => g.category === "fuel")?.id
+      ?? goods[0]?.id;
+    if (!focusGood) return { ok: false, reason: "no commodity goods" };
+    const base = world.goods[focusGood]?.basePrice ?? 10;
+    const locations = Object.values(world.locations ?? {});
+    if (locations.length === 0) return { ok: false, reason: "no locations" };
+    world.tick = Math.max(world.tick ?? 0, 420);
+
+    for (let i = 0; i < locations.length; i++) {
+      const loc = locations[i];
+      const market = world.markets[loc.id];
+      if (!market) continue;
+      loc.targetStock[focusGood] = Math.max(loc.targetStock[focusGood] ?? 0, 80 + i * 24);
+      market.stock[focusGood] = i % 3 === 0 ? 20 + i * 7 : 180 + i * 32;
+      market.prices[focusGood] = roundPrice(base * (i % 3 === 0 ? 1.72 : i % 3 === 1 ? 0.72 : 1.08));
+      if (i % 3 === 1 && !loc.produces.some(p => p.good === focusGood)) {
+        loc.produces.push({ good: focusGood, ratePerTick: 1.2 + i * 0.18 });
+      }
+      if (i % 3 === 0 && !loc.consumes.some(c => c.good === focusGood)) {
+        loc.consumes.push({ good: focusGood, ratePerTick: 1.8 + i * 0.2 });
+      }
+    }
+
+    world.commoditySpotHistory = world.commoditySpotHistory ?? {};
+    for (const good of goods) {
+      const drift = good.id === focusGood ? 1.36 : good.category === "luxury" ? 1.18 : good.category === "raw" ? 0.88 : 1.05;
+      seedSpotHistory(good, drift);
+    }
+
+    useStore.setState({
+      world,
+      speed: 0,
+      selectedTab: "markets",
+      selectedGood: focusGood,
+      commodityTab: "all",
+      saveStatus: "saved",
+      lastError: null,
+      tickEpoch: state.tickEpoch + 1,
+    });
+    window.__LEDGWAY_CAPTURE_MARKET_GOOD__ = focusGood;
+    return { ok: true, focusGood, history: world.commoditySpotHistory[focusGood]?.length ?? 0 };
+
+    function seedSpotHistory(good, drift) {
+      const points = [];
+      const start = Math.max(0, world.tick - 149);
+      const basePrice = Math.max(1, good.basePrice ?? 10);
+      for (let i = 0; i < 150; i++) {
+        const progress = i / 149;
+        const wave = Math.sin(i * 0.23 + good.id.length) * 0.04 + Math.cos(i * 0.13) * 0.018;
+        points.push({ tick: start + i, price: roundPrice(basePrice * (1 + (drift - 1) * progress) * (1 + wave)) });
+      }
+      world.commoditySpotHistory[good.id] = points;
+    }
+
+    function roundPrice(value) {
+      return Math.max(0.01, Math.round(value * 100) / 100);
+    }
+  });
+  if (!result?.ok) throw new Error(`Could not enrich markets developer state: ${result?.reason ?? "unknown"}`);
+  console.log(`prepared markets state: ${result.focusGood} with ${result.history} spot samples`);
+  await page.waitForSelector(".markets-view");
+  await page.waitForSelector(".markets-selector-row");
+  await page.wait(450);
+}
+
+async function enrichAtlasDeveloperState(page) {
+  const result = await page.evaluate(() => {
+    const useStore = window.__LEDGWAY_CAPTURE_STORE__;
+    if (!useStore) return { ok: false, reason: "capture store hook unavailable" };
+    const state = useStore.getState();
+    const world = state.world;
+    const player = world.player;
+    const shipId = player?.shipIds?.[0];
+    const ship = shipId ? world.traders[shipId] : null;
+    if (!player || !ship) return { ok: false, reason: "missing player ship" };
+
+    world.tick = Math.max(world.tick ?? 0, 520);
+    const locations = Object.values(world.locations ?? {});
+    if (locations.length < 2) return { ok: false, reason: "not enough locations" };
+    const shipyard = locations.find(loc => loc.traits.tags.includes("shipyard")) ?? locations[0];
+    if (!shipyard.traits.tags.includes("shipyard")) shipyard.traits.tags.push("shipyard");
+    const neighborId = Object.keys(world.lanes[shipyard.id] ?? {})[0] ?? locations.find(loc => loc.id !== shipyard.id)?.id;
+    const other = neighborId ? world.locations[neighborId] : locations.find(loc => loc.id !== shipyard.id);
+    if (!other) return { ok: false, reason: "missing atlas route" };
+
+    ship.state = "idle";
+    ship.location = shipyard.id;
+    ship.destination = null;
+    ship.ticksRemaining = 0;
+    ship.funds = Math.max(ship.funds ?? 0, 12_500_000);
+
+    world.shipyardInventory = world.shipyardInventory ?? {};
+    world.shipyardInventory[shipyard.id] = [
+      {
+        id: "wiki-cruiser-01",
+        locationId: shipyard.id,
+        name: "Cobalt Warden",
+        class: "cruiser",
+        classLabel: "Cruiser",
+        flavor: "Heavy plate, extra mounts, and enough range to make dangerous lanes feel negotiable.",
+        baseCapacity: 88,
+        baseSpeed: 1.28,
+        baseFuelCapacity: 76,
+        baseHull: 9,
+        baseWeaponPower: 5,
+        fuelType: "antimatter",
+        preInstalled: { hull: "upg_hull_2", weapon: "upg_weapon_2", systems: "upg_systems_nav_1" },
+        traits: ["extra-slot"],
+        price: 6_850_000,
+        postedTick: world.tick - 12,
+        expiresAtTick: world.tick + 520,
+      },
+      {
+        id: "wiki-exotic-01",
+        locationId: shipyard.id,
+        name: "Oracle Needle",
+        class: "exotic",
+        classLabel: "Exotic",
+        flavor: "Self-guided courier-brain wrapped around a high-risk, high-response frame.",
+        baseCapacity: 64,
+        baseSpeed: 1.82,
+        baseFuelCapacity: 58,
+        baseHull: 6,
+        baseWeaponPower: 4,
+        fuelType: "plasma",
+        preInstalled: { engine: "upg_engine_3", systems: "upg_systems_oracle_3", weapon: "upg_weapon_emp_3" },
+        traits: ["self-piloted", "ai-navigator", "fuel-efficient"],
+        price: 11_900_000,
+        postedTick: world.tick - 4,
+        expiresAtTick: world.tick + 640,
+      },
+    ];
+
+    const activeEvents = [
+      {
+        uid: "wiki-news-1",
+        templateId: "wiki-border-raids",
+        spawnedAt: world.tick - 18,
+        expiresAt: world.tick + 94,
+        category: "Security",
+        tone: "warn",
+        headline: `${other.name} corridor reports armed boardings`,
+        body: "Convoys are rerouting around the lane until patrols regain control.",
+        effects: [
+          { scope: "encounter_chance", target: { kind: "location", id: other.id }, magnitude: 0.28, direction: 1 },
+          { scope: "contract_reward", target: { kind: "location", id: other.id }, magnitude: 0.16, direction: 1 },
+        ],
+      },
+      {
+        uid: "wiki-news-2",
+        templateId: "wiki-shipyard-surge",
+        spawnedAt: world.tick - 9,
+        expiresAt: world.tick + 170,
+        category: "Industry",
+        tone: "good",
+        headline: `${shipyard.name} opens a refit allocation`,
+        body: "Shipyard brokers are discounting hull inspections while inventory turns over.",
+        effects: [
+          { scope: "upgrade_cost", target: { kind: "location", id: shipyard.id }, magnitude: 0.12, direction: -1 },
+          { scope: "maintenance", target: { kind: "location", id: shipyard.id }, magnitude: 0.10, direction: -1 },
+        ],
+      },
+    ];
+    world.newsEvents = {
+      enabled: true,
+      active: activeEvents,
+      recent: activeEvents.map(ev => ({ uid: ev.uid, templateId: ev.templateId, tick: ev.spawnedAt, effects: ev.effects })),
+      bias: {},
+      nextEventId: 3,
+    };
+
+    world.encounterHistory = buildEncounterHistory(shipId, shipyard.id, other.id);
+    world.pendingEncounter = undefined;
+    window.__LEDGWAY_CAPTURE_SHIPYARD_ID__ = shipyard.id;
+
+    useStore.setState({
+      world,
+      speed: 0,
+      selectedTab: "locations",
+      selectedTrader: shipId,
+      selectedLocation: shipyard.id,
+      atlasMapTab: "stations",
+      atlasSheetTab: "systems",
+      saveStatus: "saved",
+      lastError: null,
+      tickEpoch: state.tickEpoch + 1,
+    });
+    return { ok: true, shipyard: shipyard.name, encounters: world.encounterHistory.length, events: activeEvents.length };
+
+    function buildEncounterHistory(activeShipId, from, to) {
+      const rows = [];
+      const names = ["Glass Hook", "Red Writ", "Null Choir", "Iron Tithe", "Vane Corsairs", "Blind Ledger", "Harbor Teeth", "Kite Patrol", "Cinder Wake", "Noon Knives", "Copper Host", "Quiet Claim"];
+      const outcomes = ["won", "escaped", "fled_damaged", "negotiated_partial"];
+      const choices = ["fight", "flee", "negotiate"];
+      for (let i = 0; i < 12; i++) {
+        rows.push({
+          id: `wiki-enc-${i + 1}`,
+          spawnedAt: world.tick - 14 - i * 13,
+          shipId: activeShipId,
+          fromLocation: i % 2 === 0 ? from : to,
+          toLocation: i % 2 === 0 ? to : from,
+          attacker: {
+            name: names[i % names.length],
+            kind: i % 3 === 0 ? "rival_syndicate" : "pirate",
+            weaponPower: 2 + (i % 5),
+            hull: 4 + (i % 4),
+            speed: 1.05 + (i % 3) * 0.18,
+            crewLevel: 0.35 + (i % 4) * 0.12,
+          },
+          pFight: 0.64,
+          pFlee: 0.56,
+          pNegotiate: 0.42,
+          oddsFight: "likely",
+          oddsFlee: "even",
+          oddsNegotiate: "risky",
+          fightLossOnFail: { credits: 1600 + i * 110, cargo: [], hull: 1 + (i % 2) },
+          fleeLossOnFail: { credits: 0, cargo: [], hull: 1 + (i % 3) },
+          negotiateBribe: 900 + i * 80,
+          negotiatePartialCargo: [{ good: "parts", qty: 2 + (i % 3) }],
+          resolution: {
+            choice: choices[i % choices.length],
+            outcome: outcomes[i % outcomes.length],
+            tick: world.tick - 12 - i * 13,
+            loss: i % 4 === 2 ? { credits: 0, cargo: [], hull: 2 } : undefined,
+            autoResolved: i % 5 === 0,
+          },
+        });
+      }
+      return rows;
+    }
+  });
+  if (!result?.ok) throw new Error(`Could not enrich atlas developer state: ${result?.reason ?? "unknown"}`);
+  console.log(`prepared atlas state: ${result.shipyard}, ${result.encounters} encounters, ${result.events} events`);
+  await page.waitForSelector(".atlas-view");
+  await page.waitForSelector(".atlas-detail-panel");
+  await page.wait(450);
+}
+
+async function enrichLedgerDeveloperState(page) {
+  const result = await page.evaluate(() => {
+    const useStore = window.__LEDGWAY_CAPTURE_STORE__;
+    if (!useStore) return { ok: false, reason: "capture store hook unavailable" };
+    const state = useStore.getState();
+    const world = state.world;
+    const player = world.player;
+    const shipId = player?.shipIds?.[0];
+    const ship = shipId ? world.traders[shipId] : null;
+    if (!player || !ship) return { ok: false, reason: "missing player ship" };
+
+    world.tick = Math.max(world.tick ?? 0, 560);
+    player.manualActionCount = 420;
+    const locIds = Object.keys(world.locations);
+    const from = ship.location;
+    const to = Object.keys(world.lanes[from] ?? {})[0] ?? locIds.find(id => id !== from) ?? from;
+    if (!world.encounterHistory || world.encounterHistory.length < 6) {
+      world.encounterHistory = buildEncounterHistory(shipId, from, to);
+    }
+    ship.log = [
+      { tick: world.tick - 88, kind: "buy", message: "Loaded 32 Polymer at South Haven Hub.", tone: "info" },
+      { tick: world.tick - 72, kind: "depart", message: "Departed toward Spring Bloom via safe lane.", tone: "info" },
+      { tick: world.tick - 51, kind: "sell", message: "Sold 28 Polymer into a shortage market.", tone: "good" },
+      { tick: world.tick - 33, kind: "contract", message: "Accepted Machine Parts shortage contract.", tone: "warn" },
+      { tick: world.tick - 16, kind: "refuel", message: "Refueled antimatter reserves before a hostile corridor.", tone: "info" },
+    ];
+    ship.stockTrades = [
+      { id: "wiki-ledger-tr-1", tick: world.tick - 64, equityId: "wiki", ticker: "PLS", action: "open_long", shares: 60, price: 42.4, fee: 25.44, cashFlow: -2569.44 },
+      { id: "wiki-ledger-tr-2", tick: world.tick - 44, equityId: "wiki", ticker: "PLS", action: "close_long", shares: 18, price: 48.9, fee: 8.8, cashFlow: 871.4, realizedPnl: 117, trigger: "take_profit" },
+      { id: "wiki-ledger-tr-3", tick: world.tick - 21, equityId: "wiki", ticker: "SYN", action: "open_short", shares: 24, price: 31.2, fee: 7.49, cashFlow: 741.31 },
+    ];
+
+    useStore.setState({
+      world,
+      speed: 0,
+      selectedTab: "charters",
+      selectedTrader: shipId,
+      ledgerTab: "charters",
+      saveStatus: "saved",
+      lastError: null,
+      tickEpoch: state.tickEpoch + 1,
+    });
+    return { ok: true, actions: player.manualActionCount, encounters: world.encounterHistory.length, logs: ship.log.length + ship.stockTrades.length };
+
+    function buildEncounterHistory(activeShipId, fromLoc, toLoc) {
+      const rows = [];
+      const names = ["Glass Hook", "Red Writ", "Null Choir", "Iron Tithe", "Vane Corsairs", "Blind Ledger"];
+      const outcomes = ["won", "escaped", "fled_damaged", "negotiated_partial"];
+      const choices = ["fight", "flee", "negotiate"];
+      for (let i = 0; i < 8; i++) {
+        rows.push({
+          id: `wiki-ledger-enc-${i + 1}`,
+          spawnedAt: world.tick - 20 - i * 17,
+          shipId: activeShipId,
+          fromLocation: i % 2 === 0 ? fromLoc : toLoc,
+          toLocation: i % 2 === 0 ? toLoc : fromLoc,
+          attacker: { name: names[i % names.length], kind: "pirate", weaponPower: 2 + (i % 4), hull: 4 + (i % 3), speed: 1.1, crewLevel: 0.45 },
+          pFight: 0.64,
+          pFlee: 0.56,
+          pNegotiate: 0.42,
+          oddsFight: "likely",
+          oddsFlee: "even",
+          oddsNegotiate: "risky",
+          fightLossOnFail: { credits: 1400 + i * 90, cargo: [], hull: 1 + (i % 2) },
+          fleeLossOnFail: { credits: 0, cargo: [], hull: 1 + (i % 3) },
+          negotiateBribe: 700 + i * 70,
+          negotiatePartialCargo: [{ good: "parts", qty: 1 + (i % 3) }],
+          resolution: {
+            choice: choices[i % choices.length],
+            outcome: outcomes[i % outcomes.length],
+            tick: world.tick - 18 - i * 17,
+            loss: i % 4 === 2 ? { credits: 0, cargo: [], hull: 2 } : undefined,
+            autoResolved: i % 3 === 0,
+          },
+        });
+      }
+      return rows;
+    }
+  });
+  if (!result?.ok) throw new Error(`Could not enrich ledger developer state: ${result?.reason ?? "unknown"}`);
+  console.log(`prepared ledger state: ${result.actions} actions, ${result.encounters} encounters, ${result.logs} log entries`);
+  await page.waitForSelector(".charters-view");
+  await page.wait(350);
+}
+
+async function enrichCombatDeveloperState(page) {
+  const result = await page.evaluate(() => {
+    const useStore = window.__LEDGWAY_CAPTURE_STORE__;
+    if (!useStore) return { ok: false, reason: "capture store hook unavailable" };
+    const state = useStore.getState();
+    const world = state.world;
+    const player = world.player;
+    const shipId = player?.shipIds?.[0];
+    const ship = shipId ? world.traders[shipId] : null;
+    if (!player || !ship) return { ok: false, reason: "missing player ship" };
+
+    world.tick = Math.max(world.tick ?? 0, 680);
+    player.manualActionCount = Math.max(player.manualActionCount ?? 0, 440);
+
+    const locations = Object.values(world.locations ?? {});
+    if (locations.length < 2) return { ok: false, reason: "not enough locations" };
+    let from = ship.location && world.locations[ship.location] ? ship.location : locations[0].id;
+    let to = Object.keys(world.lanes[from] ?? {})[0];
+    if (!to) {
+      from = locations[0].id;
+      to = Object.keys(world.lanes[from] ?? {})[0] ?? locations.find(loc => loc.id !== from)?.id;
+    }
+    if (!to) return { ok: false, reason: "missing route for combat capture" };
+
+    const goods = Object.values(world.goods ?? {}).filter(good => good.category !== "upgrade");
+    const cargoGoodA = world.goods.polymer?.id ?? goods.find(good => good.category === "intermediate")?.id ?? goods[0]?.id;
+    const cargoGoodB = world.goods.parts?.id ?? goods.find(good => good.category === "advanced")?.id ?? cargoGoodA;
+    if (!cargoGoodA || !cargoGoodB) return { ok: false, reason: "missing cargo goods" };
+
+    ship.name = "Voyager";
+    ship.location = from;
+    ship.destination = to;
+    ship.state = "transit";
+    ship.ticksRemaining = 3;
+    ship.pilot = "manual";
+    ship.funds = 214_800;
+    ship.baseHull = Math.max(ship.baseHull ?? 0, 8);
+    ship.hull = Math.max(ship.hull ?? 0, 8);
+    ship.baseWeaponPower = Math.max(ship.baseWeaponPower ?? 0, 3);
+    ship.weaponPower = Math.max(ship.weaponPower ?? 0, 5);
+    ship.baseSpeed = Math.max(ship.baseSpeed ?? 0, 4);
+    ship.speed = Math.max(ship.speed ?? 0, 4);
+    ship.currentFuel = ship.currentFuel ?? { good: "plasma", qty: Math.max(12, Math.floor((ship.fuelCapacity ?? 48) * 0.4)) };
+    ship.cargo = [
+      { good: cargoGoodA, qty: 34, source: from, unitPrice: world.goods[cargoGoodA]?.basePrice ?? 10, purchasedAt: world.tick - 24 },
+      { good: cargoGoodB, qty: 12, source: from, unitPrice: world.goods[cargoGoodB]?.basePrice ?? 60, purchasedAt: world.tick - 19 },
+    ];
+    ship.crew = {
+      ...(ship.crew ?? {}),
+      mercenary: {
+        id: "wiki-combat-merc",
+        role: "mercenary",
+        name: "Ilya Knox",
+        tier: 2,
+        hireCost: 0,
+        wagePerTick: 180,
+        modifiers: { weaponPowerBonus: 3, hullBonus: 2 },
+        sex: "nonbinary",
+        age: "adult",
+        race: "human",
+      },
+    };
+
+    const pending = buildPendingEncounter(shipId, from, to, cargoGoodA, cargoGoodB);
+    world.pendingEncounter = pending;
+    world.encounterHistory = buildEncounterHistory(shipId, from, to, cargoGoodA, cargoGoodB);
+    world.nextEncounterId = Math.max(world.nextEncounterId ?? 1, 200);
+    window.__LEDGWAY_CAPTURE_COMBAT_PENDING__ = JSON.parse(JSON.stringify(pending));
+
+    const fromName = world.locations[from]?.name ?? from;
+    const toName = world.locations[to]?.name ?? to;
+    world.newsEvents = {
+      enabled: true,
+      active: [
+        {
+          uid: "wiki-combat-news-1",
+          templateId: "wiki-combat-lane-raids",
+          spawnedAt: world.tick - 16,
+          expiresAt: world.tick + 120,
+          category: "Security",
+          tone: "warn",
+          headline: `${fromName} to ${toName} corridor reports armed boardings`,
+          body: "Convoys are slowing departures until patrols push the raiders off the lane.",
+          effects: [
+            { scope: "encounter_chance", target: { kind: "location", id: to }, magnitude: 0.34, direction: 1 },
+            { scope: "contract_reward", target: { kind: "location", id: to }, magnitude: 0.12, direction: 1 },
+          ],
+        },
+      ],
+      recent: [],
+      bias: {},
+      nextEventId: 2,
+    };
+    world.newsEvents.recent = world.newsEvents.active.map(ev => ({
+      uid: ev.uid,
+      templateId: ev.templateId,
+      tick: ev.spawnedAt,
+      effects: ev.effects,
+    }));
+
+    ship.log = [
+      { tick: world.tick - 40, kind: "depart", message: `Departed ${fromName} for ${toName}.`, tone: "info" },
+      { tick: world.tick - 18, kind: "encounter", message: "Outran Red Writ near the border lane.", tone: "good" },
+      { tick: world.tick - 9, kind: "encounter", message: "Paid off Glass Hook with cargo concession.", tone: "warn" },
+    ];
+
+    useStore.setState({
+      world,
+      speed: 0,
+      selectedTab: "player",
+      selectedTrader: shipId,
+      selectedLocation: from,
+      saveStatus: "saved",
+      lastError: null,
+      tickEpoch: state.tickEpoch + 1,
+    });
+
+    return { ok: true, route: `${fromName} -> ${toName}`, encounters: world.encounterHistory.length };
+
+    function buildPendingEncounter(activeShipId, fromLoc, toLoc, goodA, goodB) {
+      return {
+        id: "wiki-combat-pending",
+        spawnedAt: world.tick,
+        shipId: activeShipId,
+        fromLocation: fromLoc,
+        toLocation: toLoc,
+        attacker: {
+          name: "Black Aubade",
+          kind: "pirate",
+          weaponPower: 4,
+          hull: 6,
+          speed: 3,
+          crewLevel: 0.54,
+        },
+        pFight: 0.68,
+        pFlee: 0.46,
+        pNegotiate: 0.45,
+        oddsFight: "likely",
+        oddsFlee: "risky",
+        oddsNegotiate: "even",
+        fightLossOnFail: {
+          credits: 6500,
+          cargo: [
+            { good: goodA, qty: 8 },
+            { good: goodB, qty: 3 },
+          ],
+          hull: 2,
+        },
+        fleeLossOnFail: { credits: 0, cargo: [], hull: 1 },
+        negotiateBribe: 4200,
+        negotiatePartialCargo: [{ good: goodA, qty: 4 }],
+      };
+    }
+
+    function buildEncounterHistory(activeShipId, fromLoc, toLoc, goodA, goodB) {
+      const rows = [];
+      const names = ["Red Writ", "Glass Hook", "Null Choir", "Iron Tithe", "Vane Corsairs", "Blind Ledger", "Harbor Teeth", "Cinder Wake", "Noon Knives", "Copper Host", "Quiet Claim", "Saltbreaker"];
+      const outcomes = ["won", "escaped", "fled_damaged", "negotiated_partial", "negotiated_fail"];
+      const choices = ["fight", "flee", "negotiate"];
+      for (let i = 0; i < 16; i++) {
+        const choice = choices[i % choices.length];
+        const outcome = outcomes[i % outcomes.length];
+        const loss =
+          outcome === "fled_damaged" ? { credits: 0, cargo: [], hull: 2 } :
+          outcome === "negotiated_partial" ? { credits: 1300 + i * 80, cargo: [{ good: goodA, qty: 1 + (i % 3) }], hull: 0 } :
+          outcome === "negotiated_fail" ? { credits: 2600 + i * 120, cargo: [{ good: goodB, qty: 1 + (i % 2) }], hull: 2 } :
+          undefined;
+        rows.push({
+          id: `wiki-combat-enc-${i + 1}`,
+          spawnedAt: world.tick - 4 - i * 12,
+          shipId: activeShipId,
+          fromLocation: i % 2 === 0 ? fromLoc : toLoc,
+          toLocation: i % 2 === 0 ? toLoc : fromLoc,
+          attacker: {
+            name: names[i % names.length],
+            kind: i % 4 === 0 ? "rival_syndicate" : "pirate",
+            syndicateId: i % 4 === 0 ? world.locations[toLoc]?.traits.faction : undefined,
+            weaponPower: 2 + (i % 5),
+            hull: 4 + (i % 4),
+            speed: 2 + (i % 3),
+            crewLevel: 0.28 + (i % 5) * 0.12,
+          },
+          pFight: 0.58,
+          pFlee: 0.52,
+          pNegotiate: 0.44,
+          oddsFight: i % 3 === 0 ? "likely" : "even",
+          oddsFlee: i % 3 === 1 ? "likely" : "even",
+          oddsNegotiate: i % 4 === 0 ? "likely" : "risky",
+          fightLossOnFail: { credits: 1800 + i * 130, cargo: [{ good: goodA, qty: 2 + (i % 3) }], hull: 1 + (i % 2) },
+          fleeLossOnFail: { credits: 0, cargo: [], hull: 1 + (i % 2) },
+          negotiateBribe: 1200 + i * 90,
+          negotiatePartialCargo: [{ good: goodA, qty: 1 + (i % 3) }],
+          resolution: {
+            choice,
+            outcome,
+            tick: world.tick - 2 - i * 12,
+            loss,
+            autoResolved: i % 4 === 1,
+          },
+        });
+      }
+      return rows;
+    }
+  });
+  if (!result?.ok) throw new Error(`Could not enrich combat developer state: ${result?.reason ?? "unknown"}`);
+  console.log(`prepared combat state: ${result.route}, ${result.encounters} encounters`);
+  await page.waitForSelector(".ui-modal-dialog.encounter-dialog");
+  await page.wait(350);
+}
+
+async function enrichSiteDeveloperState(page) {
+  await enrichExchangeDeveloperState(page);
+  await enrichMarketsDeveloperState(page);
+  await enrichAtlasDeveloperState(page);
+  await enrichMyFleetDeveloperState(page);
+  await enrichLedgerDeveloperState(page);
+  await selectMainTab(page, "Cargo");
+}
+
+async function showCombatEncounterModal(page) {
+  const ok = await page.evaluate(() => {
+    const useStore = window.__LEDGWAY_CAPTURE_STORE__;
+    if (!useStore) return false;
+    const pending = window.__LEDGWAY_CAPTURE_COMBAT_PENDING__;
+    if (!pending) return false;
+    const state = useStore.getState();
+    const world = state.world;
+    world.pendingEncounter = JSON.parse(JSON.stringify(pending));
+    useStore.setState({
+      world,
+      speed: 0,
+      selectedTab: "player",
+      saveStatus: "saved",
+      lastError: null,
+      tickEpoch: state.tickEpoch + 1,
+    });
+    return true;
+  });
+  if (!ok) throw new Error("Could not show combat encounter modal");
+  await page.waitForSelector(".ui-modal-dialog.encounter-dialog");
+  await page.wait(180);
+}
+
+async function clearCombatEncounterModal(page) {
+  await page.evaluate(() => {
+    const useStore = window.__LEDGWAY_CAPTURE_STORE__;
+    if (!useStore) return;
+    const state = useStore.getState();
+    const world = state.world;
+    world.pendingEncounter = undefined;
+    useStore.setState({
+      world,
+      speed: 0,
+      saveStatus: "saved",
+      lastError: null,
+      tickEpoch: state.tickEpoch + 1,
+    });
+  });
+  await page.wait(180);
+}
+
 async function openGameMenu(page) {
   await page.evaluate(() => {
-    const menu = document.querySelector(".topbar-game-menu");
-    if (menu instanceof HTMLDetailsElement) menu.open = true;
+    const button = document.querySelector('button[aria-label="Open save menu"]');
+    if (button instanceof HTMLButtonElement) button.click();
   });
-  await page.waitForSelector(".topbar-menu-panel");
+  await page.waitForSelector(".topbar-save-modal");
 }
 
 async function closeGameMenu(page) {
   await page.evaluate(() => {
-    const menu = document.querySelector(".topbar-game-menu");
-    if (menu instanceof HTMLDetailsElement) menu.open = false;
+    const closeButton = document.querySelector(".ui-modal-close, .topbar-save-modal button[aria-label='Close']");
+    if (closeButton instanceof HTMLButtonElement) {
+      closeButton.click();
+      return;
+    }
+    const backdrop = document.querySelector(".ui-modal-backdrop");
+    if (backdrop instanceof HTMLElement) backdrop.click();
   });
   await page.wait(80);
+}
+
+async function selectMainTab(page, label) {
+  await clickText(page, ".topbar-view-tabs", label);
+  await page.wait(220);
 }
 
 async function selectShipTab(page, label) {
@@ -1209,6 +2364,59 @@ async function selectExchangeListing(page, kind) {
 
 async function selectPnoTab(page, label) {
   await clickText(page, ".stocks-pno > .bridge-card-tabs", label);
+  await page.wait(180);
+}
+
+async function selectMarketsCategory(page, label) {
+  await clickText(page, ".markets-tabs", label);
+  await page.wait(220);
+}
+
+async function selectAtlasMapTab(page, label) {
+  await clickText(page, ".atlas-map-tabs", label);
+  await page.wait(220);
+}
+
+async function selectAtlasSheetTab(page, label) {
+  await clickText(page, ".atlas-sheet-tabs", label);
+  await page.wait(220);
+}
+
+async function selectLedgerTab(page, label) {
+  await clickText(page, ".charters-badges-tabs", label);
+  await page.wait(220);
+}
+
+async function focusShipyard(page) {
+  const ok = await page.evaluate(() => {
+    const useStore = window.__LEDGWAY_CAPTURE_STORE__;
+    if (!useStore) return false;
+    const shipyardId = window.__LEDGWAY_CAPTURE_SHIPYARD_ID__
+      ?? Object.values(useStore.getState().world.locations).find(loc => loc.traits.tags.includes("shipyard"))?.id;
+    if (!shipyardId) return false;
+    const state = useStore.getState();
+    useStore.setState({
+      selectedTab: "locations",
+      selectedLocation: shipyardId,
+      atlasMapTab: "stations",
+      atlasSheetTab: "systems",
+      tickEpoch: state.tickEpoch + 1,
+    });
+    return true;
+  });
+  if (!ok) throw new Error("Could not focus a shipyard in Atlas");
+  await page.waitForSelector(".atlas-view");
+  await page.wait(260);
+}
+
+async function openFirstShipyardBlueprint(page) {
+  await page.evaluate(() => {
+    const button = document.querySelector(".atlas-shipyard-summary");
+    if (button instanceof HTMLButtonElement) {
+      button.scrollIntoView({ block: "center", inline: "center" });
+      button.click();
+    }
+  });
   await page.wait(180);
 }
 

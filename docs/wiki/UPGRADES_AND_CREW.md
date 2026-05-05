@@ -13,8 +13,8 @@ Some modifiers change ship stats immediately when the ship is recomputed. Other 
 | `cargoCapacityBonus` | Adds flat cargo capacity. |
 | `fuelCapacityBonus` | Adds flat fuel tank capacity. Current fuel is capped to the new tank size after recompute. |
 | `speedBonus` | Adds flat speed, reducing normal travel time. |
-| `hullBonus` | Adds hull rating. Current UI displays it; future danger/combat systems can read it. |
-| `weaponPowerBonus` | Adds weapon rating. Current UI displays it; future danger/combat systems can read it. |
+| `hullBonus` | Adds hull rating and improves combat survivability. |
+| `weaponPowerBonus` | Adds weapon rating and improves fight odds in combat encounters. |
 | `rangeEfficiency` | Reduces fuel per distance. Stacks additively, then fuel use is floored at 10% of the base rate. |
 | `unloadSpeedBonus` | Speeds up cargo unloading. A value of `1.0` halves normal unload duration. |
 | `instantUnload` | Cargo sales and auto-arrival unloads settle immediately. |
@@ -32,7 +32,7 @@ Some modifiers change ship stats immediately when the ship is recomputed. Other 
 
 ## Career Unlocks
 
-The Charters tab tracks manual player actions and gates upgrade stock plus crew offer pools. Manual actions include player-driven ship operations and exchange orders. Auto-pilot work does not advance these gates.
+Ledger's Charters subtab tracks manual player actions and gates upgrade stock plus crew offer pools. Manual actions include player-driven ship operations and exchange orders. Auto-pilot work does not advance these gates.
 
 | Unlock | Actions | Effect |
 |---|---:|---|
@@ -41,6 +41,7 @@ The Charters tab tracks manual player actions and gates upgrade stock plus crew 
 | Mechanic's Guild | 100 | Mechanic offers can appear. |
 | Refit Yards | 150 | Tier-2 modules can appear. |
 | Pilot's Guild | 250 | Pilot offers can appear. |
+| Mercenary Hall | 350 | Mercenary offers can appear. |
 | Specialist Yards | 500 | Tier-3 modules can appear. |
 | Apex Foundries | 900 | Tier-4 modules can appear. |
 
@@ -76,7 +77,7 @@ Upgrade rarity follows the UI tier scale:
 | Engines | Speed, travel time, and fuel-per-distance efficiency. |
 | Fuel Tanks | Fuel capacity, fuel efficiency, regeneration, and fuel-free travel. |
 | Hull | Hull rating and maintenance survivability. |
-| Weapons | Weapon rating and combat/contract-oriented bonuses. |
+| Weapons | Weapon rating and combat/contract-oriented bonuses. Cruisers and exotics can expose extra weapon mounts. |
 | Ship Systems | Exchange, contract, docking, yield, dividend, and trading support systems. |
 
 ## Cargo Hold Modules
@@ -158,9 +159,10 @@ Crew roles are ship-local. Hiring replaces any existing crew member in that role
 
 | UI role | Sim role | Main unlock | Possible rolled modifiers | Base hire | Base wage | Offer weight |
 |---|---|---|---|---:|---:|---:|
-| Pilot | `captain` | Auto-pilot trading | speed, fuel efficiency, sell premium, buy discount | Ç90,000 | Ç9/t | 2 |
-| Navigator | `navigator` | Guided hints and highlighted next actions | fuel capacity, fuel efficiency, contract rewards | Ç45,000 | Ç3/t | 5 |
-| Mechanic | `mechanic` | Auto-paid maintenance and no maintenance debt | cargo capacity, maintenance discount, fuel capacity, unload speed | Ç40,000 | Ç3/t | 3 |
+| Pilot | `captain` | Auto-pilot trading | speed, fuel efficiency, sell premium, buy discount, docking discount, dividend bonus | Ç90,000 | Ç9/t | 2 |
+| Navigator | `navigator` | Guided hints and highlighted next actions | fuel capacity, fuel efficiency, contract rewards, treasury yield | Ç45,000 | Ç3/t | 5 |
+| Mechanic | `mechanic` | Auto-paid maintenance and no maintenance debt | cargo capacity, maintenance discount, fuel capacity, unload speed, fuel regen | Ç40,000 | Ç3/t | 3 |
+| Mercenary | `mercenary` | Better combat odds | hull, weapon power | Ç60,000 | Ç6/t | 2 |
 
 ## Hiring And Firing
 
@@ -207,6 +209,8 @@ Generated crew use small modifier ranges.
 | Cargo capacity | +2 to +6 |
 | Fuel capacity | +3 to +8 |
 | Speed | +1, Tier 3 only |
+| Hull | +1 to +2 |
+| Weapon power | +1 to +2 |
 | Fuel efficiency | 3% to 10% |
 | Unload speed | 6% to 15% |
 | Buy discount | 2% to 5% |
@@ -237,10 +241,31 @@ Crew unlocks different layers of player assistance:
 |---|---|
 | No Pilot | Auto mode idles. The ship will not trade by itself. |
 | Pilot | Auto-pilot can refuel, trade, sell on arrival, service exchange settlement travel, score shortage contracts, accept matching destination shortages, run loadout plans, and reposition. |
-| Navigator | My Fleet guidance and action highlights become visible. Navigator alone does not make Auto mode trade. |
+| Navigator | Cargo guidance and action highlights become visible. Navigator alone does not make Auto mode trade. |
 | Mechanic | Maintenance is auto-paid and maintenance debt no longer accumulates. |
+| Mercenary | Combat odds improve through hull and weapon power modifiers. Mercenary alone does not make Auto mode trade. |
 
 The strongest early path is usually Navigator for advice, Pilot for automation, and Mechanic before maintenance debt becomes a routing problem.
+
+## Shipyard Hull Classes And Traits
+
+Shipyards sell full ship blueprints. A purchased blueprint creates a new player ship at the shipyard with its own wallet, base stats, pre-installed upgrades, and optional traits.
+
+| Class | Typical role |
+|---|---|
+| Freighter | Balanced cargo workhorse. |
+| Courier | Fast, low-capacity route runner. |
+| Hauler | Large cargo capacity with lower speed. |
+| Cruiser | Armed hull with stronger combat stats and extra weapon mount support. |
+| Exotic | High-price specialist hull with stronger trait rolls and extra weapon mount support. |
+
+| Trait | Effect |
+|---|---|
+| Self-piloted | Acts as if the ship has a pilot for automation gating. |
+| AI navigator | Acts as if the ship has navigator guidance. |
+| Extra slot | Grants a bonus upgrade socket where supported. |
+| Fuel-efficient | Improves baseline fuel efficiency. |
+| Rapid unload | Improves baseline unload handling. |
 
 ## Source Notes
 

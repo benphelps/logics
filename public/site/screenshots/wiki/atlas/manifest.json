@@ -1,0 +1,105 @@
+{
+  "url": "http://127.0.0.1:5174/?dev=1",
+  "generatedAt": "2026-05-05T03:41:33.707Z",
+  "shots": [
+    {
+      "id": "screen-layout",
+      "section": "screen-layout",
+      "image": "/site/screenshots/wiki/atlas/screen-layout.png",
+      "alt": "Atlas screen showing sector map, station sheet, and selected station detail panel",
+      "label": "Layout",
+      "title": "Atlas map and detail layout",
+      "text": "Atlas keeps the sector map, station sheets, and selected station detail panel on one screen.",
+      "focus": {
+        "x": 61.1,
+        "y": 0.9,
+        "width": 38.3,
+        "height": 99.1
+      }
+    },
+    {
+      "id": "map-modes",
+      "section": "map-modes",
+      "image": "/site/screenshots/wiki/atlas/map-modes.png",
+      "alt": "Atlas map panel with Stations, Syndicates, and Logistics map mode tabs",
+      "label": "Modes",
+      "title": "Station, syndicate, and logistics map modes",
+      "text": "Map modes switch the same sector from local station navigation to faction control or lane danger.",
+      "focus": {
+        "x": 1.2,
+        "y": 1.8,
+        "width": 97.7,
+        "height": 5.5
+      }
+    },
+    {
+      "id": "systems-table",
+      "section": "systems-table",
+      "image": "/site/screenshots/wiki/atlas/systems-table.png",
+      "alt": "Atlas systems table listing stations with kind, traffic, jobs, pressure, hires, upgrades, exchange, and routes",
+      "label": "Systems",
+      "title": "Systems table",
+      "text": "Systems rows compare station kind, traffic, jobs, market pressure, hires, upgrades, exchange signals, and route count.",
+      "focus": {
+        "x": 1.2,
+        "y": 7.3,
+        "width": 97.7,
+        "height": 91
+      }
+    },
+    {
+      "id": "ships-table",
+      "section": "ships-table",
+      "image": "/site/screenshots/wiki/atlas/ships-table.png",
+      "alt": "Atlas ships table listing ships with state, route, cargo, wallet, hull, and ETA",
+      "label": "Ships",
+      "title": "Ships table",
+      "text": "The Ships sheet locates player and NPC traffic with state, route, cargo, wallet, hull, and ETA context.",
+      "focus": {
+        "x": 1.2,
+        "y": 7.3,
+        "width": 97.7,
+        "height": 91
+      }
+    },
+    {
+      "id": "station-detail",
+      "section": "station-detail",
+      "image": "/site/screenshots/wiki/atlas/station-detail.png",
+      "alt": "Atlas station detail panel showing station profile, exchange context, market pressure, active events, and traffic",
+      "label": "Station",
+      "title": "Station detail panel",
+      "text": "The detail panel summarizes station profile, exchange context, local stock pressure, active events, traffic, and route actions."
+    },
+    {
+      "id": "shipyards",
+      "section": "shipyards",
+      "image": "/site/screenshots/wiki/atlas/shipyards.png",
+      "alt": "Atlas shipyard inventory showing ship blueprints, class labels, prices, stats, upgrades, traits, and buy button",
+      "label": "Shipyards",
+      "title": "Shipyard inventory",
+      "text": "Shipyards list blueprints with class, price, stats, pre-installed upgrades, traits, and buy eligibility.",
+      "focus": {
+        "x": 4.2,
+        "y": 32,
+        "width": 91.8,
+        "height": 34.1
+      }
+    },
+    {
+      "id": "lane-danger-events",
+      "section": "lane-danger-and-events",
+      "image": "/site/screenshots/wiki/atlas/lane-danger-events.png",
+      "alt": "Atlas logistics map with lane danger and active news events list",
+      "label": "Danger",
+      "title": "Lane danger and active events",
+      "text": "Logistics mode tints recent danger lanes while the Events sheet lists active news that is moving the economy.",
+      "focus": {
+        "x": 0.7,
+        "y": 62.6,
+        "width": 59.4,
+        "height": 24.4
+      }
+    }
+  ]
+}

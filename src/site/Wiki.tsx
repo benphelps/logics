@@ -3,14 +3,21 @@ import type { IconType } from "react-icons";
 import {
   GiCargoCrate,
   GiChart,
+  GiCrossedSwords,
+  GiFamilyHouse,
   GiMapleLeaf,
-  GiPathDistance,
+  GiNotebook,
+  GiRadarSweep,
   GiShipWheel,
   GiUpgrade,
 } from "react-icons/gi";
 import { MdClose, MdOpenInNew, MdSearch } from "react-icons/md";
 import wikiIndexSource from "../../docs/WIKI.md?raw";
+import atlasSource from "../../docs/wiki/ATLAS.md?raw";
+import combatSource from "../../docs/wiki/COMBAT.md?raw";
 import exchangeSource from "../../docs/wiki/EXCHANGE.md?raw";
+import ledgerSource from "../../docs/wiki/LEDGER.md?raw";
+import marketsSource from "../../docs/wiki/MARKETS.md?raw";
 import myFleetSource from "../../docs/wiki/MY_FLEET.md?raw";
 import upgradesCrewSource from "../../docs/wiki/UPGRADES_AND_CREW.md?raw";
 
@@ -53,369 +60,178 @@ interface WikiPage extends WikiPageSource {
   wordCount: number;
 }
 
-const pageSources: WikiPageSource[] = [
-  {
-    id: "overview",
-    title: "Overview",
-    kicker: "Start here",
-    summary: "The main tabs, shared systems, and where to go next when a mechanic needs a deeper answer.",
-    sourcePath: "docs/WIKI.md",
-    sourceText: wikiIndexSource,
-    icon: GiMapleLeaf,
-  },
-  {
-    id: "my-fleet",
-    title: "My Fleet",
-    kicker: "Ship operations",
-    summary: "How ships, cargo, fuel, stations, contracts, suggestions, and auto-pilot work.",
-    sourcePath: "docs/wiki/MY_FLEET.md",
-    sourceText: myFleetSource,
-    icon: GiShipWheel,
-    sectionCaptures: {
-      "screen-layout": [myFleetCapture("screen-layout")],
-      "top-controls": [myFleetCapture("top-controls")],
-      "game-menu": [myFleetCapture("game-menu")],
-      "ship-card": [myFleetCapture("fuel-hull-status"), myFleetCapture("cargo-tab")],
-      "fuel": [myFleetCapture("fuel-hull-status")],
-      "hull-damage-and-repairs": [myFleetCapture("fuel-hull-status")],
-      "cargo-tab": [myFleetCapture("cargo-tab")],
-      "upgrades-tab": [myFleetCapture("ship-upgrades-tab")],
-      "crew-tab": [myFleetCapture("crew-tab")],
-      "stations-and-travel": [myFleetCapture("stations-travel")],
-      "station-exchange-card": [myFleetCapture("station-markets")],
-      "markets": [myFleetCapture("station-markets")],
-      "upgrades": [myFleetCapture("station-upgrades")],
-      "offers": [myFleetCapture("station-offers")],
-      "contracts": [myFleetCapture("station-contracts")],
-      "info-card": [myFleetCapture("ship-info")],
-      "ship-info": [myFleetCapture("ship-info")],
-      "station-info": [myFleetCapture("station-info")],
-      "trade-helper": [myFleetCapture("trade-helper")],
-      "suggestions": [myFleetCapture("suggestions")],
-      "auto-pilot": [myFleetCapture("auto-pilot")],
-    },
-  },
-  {
-    id: "exchange",
-    title: "Exchange",
-    kicker: "Market desk",
-    summary: "How listings, order books, spot positions, limit orders, futures, stops, dividends, and settlement jobs work.",
-    sourcePath: "docs/wiki/EXCHANGE.md",
-    sourceText: exchangeSource,
-    icon: GiChart,
-    sectionCaptures: {
-      "screen-layout": [exchangeCapture("screen-layout")],
-      "listing-browser": [exchangeCapture("listing-browser")],
-      "asset-types": [exchangeCapture("asset-filters")],
-      "detail-column": [exchangeCapture("info-column")],
-      "kpi-and-underlying": [exchangeCapture("kpi-underlying")],
-      "order-book-and-tape": [exchangeCapture("order-book"), exchangeCapture("time-and-sales")],
-      "placing-orders": [exchangeCapture("order-form")],
-      "positions-tab": [exchangeCapture("positions-tab")],
-      "orders-tab": [exchangeCapture("orders-tab")],
-      "futures-contracts": [exchangeCapture("futures-order-form")],
-      "futures-positions-tab": [exchangeCapture("futures-positions-tab")],
-      "history-tab": [exchangeCapture("history-tab")],
-      "basis-pairs": [exchangeCapture("basis-underlying")],
-      "indices": [exchangeCapture("index-underlying")],
-    },
-  },
-  {
-    id: "upgrades-crew",
-    title: "Upgrades & Crew",
-    kicker: "Progression",
-    summary: "Tables for modules, crew roles, modifiers, automation unlocks, maintenance, and wages.",
-    sourcePath: "docs/wiki/UPGRADES_AND_CREW.md",
-    sourceText: upgradesCrewSource,
-    icon: GiUpgrade,
-  },
-];
+type WikiCaptureCatalog = Partial<Record<string, Record<string, WikiCapture[]>>>;
 
-function exchangeCapture(id: string): WikiCapture {
-  const captures: Record<string, WikiCapture> = {
-    "screen-layout": {
-      image: "/site/screenshots/wiki/exchange/screen-layout.png",
-      alt: "Exchange screen showing listing browser, positions and orders panel, and the selected market detail column",
-      label: "Layout",
-      title: "Exchange split view",
-      text: "The Exchange pairs the listing browser and player account panels with a detail column for the selected market.",
-      focus: { x: 61, y: 1, width: 38.3, height: 99 },
-    },
-    "listing-browser": {
-      image: "/site/screenshots/wiki/exchange/listing-browser.png",
-      alt: "Exchange listing browser with asset filter tabs, tickers, prices, deltas, and an out of range divider",
-      label: "Listings",
-      title: "Listing browser and asset filters",
-      text: "The selector groups station, syndicate, commodity, basis, futures, and index listings while keeping out-of-range station books visible.",
-      focus: { x: 1.2, y: 11.8, width: 97.6, height: 86.3 },
-    },
-    "asset-filters": {
-      image: "/site/screenshots/wiki/exchange/asset-filters.png",
-      alt: "Exchange listing filter tabs for all assets, stations, syndicates, commodities, basis, futures, and indices",
-      label: "Asset tabs",
-      title: "Major asset classes",
-      text: "The top filter row is the fastest way to move between physical logistics signals and pure market instruments.",
-      focus: { x: 1.2, y: 5.2, width: 97.6, height: 16.3 },
-    },
-    "info-column": {
-      image: "/site/screenshots/wiki/exchange/info-column.png",
-      alt: "Exchange detail column with quote header, chart, KPI, underlying panel, order book, time and sales, and order form",
-      label: "Detail",
-      title: "Selected market workspace",
-      text: "The right column combines the listing art, quote, chart, KPI, underlying data, book, tape, and order entry.",
-    },
-    "kpi-underlying": {
-      image: "/site/screenshots/wiki/exchange/kpi-underlying.png",
-      alt: "Exchange KPI and underlying panels showing bid ask spread volume shares dividend and commodity fundamentals",
-      label: "KPI",
-      title: "KPI and underlying panels",
-      text: "KPI summarizes quote quality and activity; Underlying explains what economic signal backs the selected listing.",
-      focus: { x: 1.8, y: 20, width: 48.2, height: 60.4 },
-    },
-    "order-book": {
-      image: "/site/screenshots/wiki/exchange/order-book.png",
-      alt: "Exchange order book showing ask rows, spread, bid rows, sizes, and cumulative depth bars",
-      label: "Book",
-      title: "Order book depth ladder",
-      text: "Asks stack above the spread, bids stack below it, and cumulative size shows how much depth sits away from the spread.",
-      focus: { x: 3.5, y: 8.9, width: 88.9, height: 88 },
-    },
-    "time-and-sales": {
-      image: "/site/screenshots/wiki/exchange/time-and-sales.png",
-      alt: "Exchange time and sales panel showing recent ticks, prices, quantities, and buy or sell side markers",
-      label: "Tape",
-      title: "Time and sales tape",
-      text: "The tape lists recent fills with tick, price, quantity, and whether the buyer or seller took liquidity.",
-      focus: { x: 7.6, y: 8.9, width: 89, height: 88 },
-    },
-    "order-form": {
-      image: "/site/screenshots/wiki/exchange/order-form.png",
-      alt: "Exchange place order form with Buy Sell Short side buttons quantity price use spot quick chips and submit button",
-      label: "Orders",
-      title: "Buy, sell, and short order form",
-      text: "Spot assets use one compact form for buy limits, sell limits from held shares, and market shorts.",
-      focus: { x: 1.8, y: 12.7, width: 96.4, height: 13.4 },
-    },
-    "positions-tab": {
-      image: "/site/screenshots/wiki/exchange/positions-tab.png",
-      alt: "Exchange Positions tab with expanded long position showing stats close controls stop loss take profit and abandon action",
-      label: "Positions",
-      title: "Open long and short positions",
-      text: "Expanding a position exposes mark, entry, value, P&L, close controls, stop-loss, take-profit, and abandon.",
-      focus: { x: 1.2, y: 11.8, width: 97.6, height: 56.8 },
-    },
-    "orders-tab": {
-      image: "/site/screenshots/wiki/exchange/orders-tab.png",
-      alt: "Exchange Orders tab with an expanded limit order showing quantity price adjust cancel and quick chips",
-      label: "Limits",
-      title: "Open limit orders",
-      text: "The Orders tab lists player resting limits and lets each order be adjusted or canceled from its expanded row.",
-      focus: { x: 1.2, y: 11.8, width: 97.6, height: 22.5 },
-    },
-    "futures-order-form": {
-      image: "/site/screenshots/wiki/exchange/futures-order-form.png",
-      alt: "Exchange futures order form showing contracts, contract size, notional, margin, fee, expiry, and open long or short buttons",
-      label: "Futures",
-      title: "Futures contract order form",
-      text: "Futures orders show contract count, spot mark, size, notional, margin, fee, expiry, and long or short open buttons.",
-      focus: { x: 1.8, y: 67.4, width: 96.4, height: 11.5 },
-    },
-    "futures-positions-tab": {
-      image: "/site/screenshots/wiki/exchange/futures-positions-tab.png",
-      alt: "Exchange Futures tab with an expanded short futures position showing mark entry contract size margin P and L expiry delivery and close action",
-      label: "Futures P&L",
-      title: "Open futures positions",
-      text: "The Futures tab tracks contracts, mark-to-market P&L, margin, expiry, delivery station, and physical delivery readiness.",
-      focus: { x: 1.2, y: 11.8, width: 97.6, height: 38.2 },
-    },
-    "history-tab": {
-      image: "/site/screenshots/wiki/exchange/history-tab.png",
-      alt: "Exchange History tab showing tick action ticker quantity price cash flow and realized P and L columns",
-      label: "Ledger",
-      title: "Trade history ledger",
-      text: "History records opens, adds, closes, covers, cash flow, realized P&L, and stop or take-profit tags when a trigger fires.",
-      focus: { x: 1.2, y: 7.5, width: 97.6, height: 42.4 },
-    },
-    "basis-underlying": {
-      image: "/site/screenshots/wiki/exchange/basis-underlying.png",
-      alt: "Exchange basis listing selected with underlying panel showing station, good, local price, spread versus spot, and local stock",
-      label: "Basis",
-      title: "Station basis listing",
-      text: "Basis listings tie one station and one good together, exposing local price, spread versus universe spot, and local stock.",
-      focus: { x: 6.3, y: 46.4, width: 87.4, height: 27.8 },
-    },
-    "index-underlying": {
-      image: "/site/screenshots/wiki/exchange/index-underlying.png",
-      alt: "Exchange index listing selected with underlying panel showing sector basket member prices",
-      label: "Index",
-      title: "Sector and treasury indices",
-      text: "Index listings summarize baskets such as sector commodities or overall station treasury health.",
-      focus: { x: 6.3, y: 46.4, width: 87.4, height: 27.8 },
-    },
-  };
-  return captures[id];
+interface WikiCaptureManifest {
+  shots?: Array<WikiCapture & { id?: string; section?: string }>;
 }
 
-function myFleetCapture(id: string): WikiCapture {
-  const captures: Record<string, WikiCapture> = {
-  "screen-layout": {
-    image: "/site/screenshots/wiki/my-fleet/screen-layout.png",
-    alt: "My Fleet screen showing the ship card, station travel card, station exchange card, and info card",
-    label: "Layout",
-    title: "My Fleet bridge layout",
-    text: "The selected ship sits above the station exchange and info card, with travel controls on the right.",
-  },
-  "game-menu": {
-    image: "/site/screenshots/wiki/my-fleet/game-menu.png",
-    alt: "Expanded game menu showing save slots, save actions, and developer actions",
-    label: "Menu",
-    title: "Game menu and save controls",
-    text: "The menu exposes save slots, fleet value, tick, reset, new game, and the local developer state.",
-  },
-  "top-controls": {
-    image: "/site/screenshots/wiki/my-fleet/top-controls.png",
-    alt: "Top controls showing main tabs, tick speed, selected ship, wallet summary, and pilot mode",
-    label: "Controls",
-    title: "Navigation, speed, ship picker, and pilot mode",
-    text: "The top bar selects the main tab, controls time, changes ships, and switches the focused ship between manual and auto.",
-  },
-  "fuel-hull-status": {
-    image: "/site/screenshots/wiki/my-fleet/fuel-hull-status.png",
-    alt: "Ship card status strip showing fuel percentage and hull damage percentage",
-    label: "Status",
-    title: "Fuel and hull damage actions",
-    text: "The top strip of the ship card doubles as status readout and dockside action surface.",
-    focus: { x: 1.2, y: 4.2, width: 97.7, height: 13.1 },
-  },
-  "cargo-tab": {
-    image: "/site/screenshots/wiki/my-fleet/cargo-tab.png",
-    alt: "Ship cargo tab showing loaded goods with quantity, profit and loss, and sell controls",
-    label: "Cargo",
-    title: "Cargo lots and sell actions",
-    text: "Cargo rows show quantity, route-aware profit and loss, and a manual sell action when docked.",
-    focus: { x: 1.2, y: 22.3, width: 97.7, height: 61.8 },
-  },
-  "ship-upgrades-tab": {
-    image: "/site/screenshots/wiki/my-fleet/ship-upgrades-tab.png",
-    alt: "Ship upgrades tab showing module slots, installed upgrades, and upgrade cargo cards",
-    label: "Ship modules",
-    title: "Installed upgrade slots",
-    text: "The ship upgrades tab separates installed modules from upgrade cargo waiting to be installed or sold.",
-    focus: { x: 2.4, y: 16.5, width: 95.2, height: 49.5 },
-  },
-  "crew-tab": {
-    image: "/site/screenshots/wiki/my-fleet/crew-tab.png",
-    alt: "Ship crew tab showing pilot, navigator, and mechanic crew cards",
-    label: "Crew",
-    title: "Crew stations on the ship",
-    text: "Pilot, navigator, and mechanic roles live on the ship and unlock automation, guidance, and maintenance behavior.",
-    focus: { x: 0.8, y: 20.3, width: 97.7, height: 63.3 },
-  },
-  "stations-travel": {
-    image: "/site/screenshots/wiki/my-fleet/stations-travel.png",
-    alt: "Stations travel card showing reachable destinations, fuel needs, travel time, and depart buttons",
-    label: "Travel",
-    title: "Reachable stations and departure checks",
-    text: "Each route row shows destination, distance, fuel needed, travel time, local notes, and the depart action.",
-    focus: { x: 1.9, y: 15.6, width: 96.3, height: 81.5 },
-  },
-  "station-markets": {
-    image: "/site/screenshots/wiki/my-fleet/station-markets.png",
-    alt: "Station exchange Markets tab showing goods, stock, held quantity, price, net sell value, and buy controls",
-    label: "Market",
-    title: "Station goods market",
-    text: "Markets list local commodity stock, held cargo, buy price, net sell value after tax, and buy controls.",
-    focus: { x: 1.2, y: 13.6, width: 97.7, height: 63.6 },
-  },
-  "station-upgrades": {
-    image: "/site/screenshots/wiki/my-fleet/station-upgrades.png",
-    alt: "Station exchange Upgrades tab showing upgrade modules for sale with prices and buy buttons",
-    label: "Modules",
-    title: "Station upgrade stock",
-    text: "Buying from this subtab puts the module into cargo. Installing still happens from the ship card.",
-    focus: { x: 2.4, y: 14.6, width: 95.2, height: 68.5 },
-  },
-  "station-offers": {
-    image: "/site/screenshots/wiki/my-fleet/station-offers.png",
-    alt: "Station exchange Offers tab showing local crew hire cards and hire buttons",
-    label: "Crew board",
-    title: "Local hire offers",
-    text: "Crew offers show role, name, tier, modifiers, cost, wage context, and a hire action.",
-    focus: { x: 2.4, y: 14.6, width: 95.2, height: 28.5 },
-  },
-  "station-contracts": {
-    image: "/site/screenshots/wiki/my-fleet/station-contracts.png",
-    alt: "Station exchange Contracts tab showing available and active work with rewards, penalties, expiry, and progress",
-    label: "Contracts",
-    title: "Station contract board",
-    text: "Contracts show tier, requested good, destination, held amount, reward, penalty, expiry, and accept controls.",
-  },
-  "ship-info": {
-    image: "/site/screenshots/wiki/my-fleet/ship-info.png",
-    alt: "Info card showing default ship statistics, systems, service debt, and crew wages",
-    label: "Info",
-    title: "Default ship info",
-    text: "The default info card summarizes wallet, cargo, fuel, hull damage, speed, systems, and upkeep.",
-  },
-  "station-info": {
-    image: "/site/screenshots/wiki/my-fleet/station-info.png",
-    alt: "Info card showing station details, profile, station flow, market pressure, and nearby routes",
-    label: "Station",
-    title: "Pinned station context",
-    text: "Clicking a station row turns the info card into station context with tags, traffic, market pressure, and nearby routes.",
-  },
-  "trade-helper": {
-    image: "/site/screenshots/wiki/my-fleet/trade-helper.png",
-    alt: "Info card showing a trade helper for a selected commodity with market signals and route profit",
-    label: "Helper",
-    title: "Route-aware trade helper",
-    text: "Clicking a good opens the trade helper with stock, prices, max buy, demand, route profit, flow, and related contracts.",
-  },
-  "suggestions": {
-    image: "/site/screenshots/wiki/my-fleet/suggestions.png",
-    alt: "My Fleet station exchange showing suggested actions and highlighted guidance markers",
-    label: "Guidance",
-    title: "Navigator suggestion highlights",
-    text: "With a navigator hired, suggested tabs and action buttons receive route-aware guidance markers.",
-  },
-  "auto-pilot": {
-    image: "/site/screenshots/wiki/my-fleet/auto-pilot.png",
-    alt: "Top controls showing the selected ship and manual versus auto pilot mode buttons",
-    label: "Automation",
-    title: "Manual and Auto pilot modes",
-    text: "Auto mode is per ship. It becomes available once a pilot is hired and moves dockside actions under crew control.",
-    focus: { x: 87, y: 25.9, width: 12.1, height: 48.3 },
-  },
-  };
-  return captures[id];
+const captureManifestUrls = {
+  cargo: "/site/screenshots/wiki/my-fleet/manifest.json",
+  exchange: "/site/screenshots/wiki/exchange/manifest.json",
+  markets: "/site/screenshots/wiki/markets/manifest.json",
+  atlas: "/site/screenshots/wiki/atlas/manifest.json",
+  combat: "/site/screenshots/wiki/combat/manifest.json",
+  ledger: "/site/screenshots/wiki/ledger/manifest.json",
+} as const;
+
+function buildPageSources(captureCatalog: WikiCaptureCatalog): WikiPageSource[] {
+  return [
+    {
+      id: "overview",
+      title: "Overview",
+      kicker: "Start here",
+      summary: "The main tabs, shared systems, and where to go next when a mechanic needs a deeper answer.",
+      sourcePath: "docs/WIKI.md",
+      sourceText: wikiIndexSource,
+      icon: GiMapleLeaf,
+    },
+    {
+      id: "cargo",
+      title: "Cargo",
+      kicker: "Ship operations",
+      summary: "How ships, cargo, fuel, stations, contracts, suggestions, and auto-pilot work.",
+      sourcePath: "docs/wiki/MY_FLEET.md",
+      sourceText: myFleetSource,
+      icon: GiShipWheel,
+      sectionCaptures: captureCatalog.cargo,
+    },
+    {
+      id: "exchange",
+      title: "Exchange",
+      kicker: "Market desk",
+      summary: "How listings, order books, spot positions, limit orders, futures, stops, dividends, and settlement jobs work.",
+      sourcePath: "docs/wiki/EXCHANGE.md",
+      sourceText: exchangeSource,
+      icon: GiChart,
+      sectionCaptures: captureCatalog.exchange,
+    },
+    {
+      id: "markets",
+      title: "Markets",
+      kicker: "Commodity logistics",
+      summary: "How to read universe spot prices, best asks, best bids, producers, consumers, and supply pressure.",
+      sourcePath: "docs/wiki/MARKETS.md",
+      sourceText: marketsSource,
+      icon: GiCargoCrate,
+      sectionCaptures: captureCatalog.markets,
+    },
+    {
+      id: "atlas",
+      title: "Atlas",
+      kicker: "Map and stations",
+      summary: "How to use the station map, syndicate control, lane danger, news, station sheets, and shipyards.",
+      sourcePath: "docs/wiki/ATLAS.md",
+      sourceText: atlasSource,
+      icon: GiRadarSweep,
+      sectionCaptures: captureCatalog.atlas,
+    },
+    {
+      id: "combat",
+      title: "Combat",
+      kicker: "Hostile contacts",
+      summary: "How transit encounters fire, how fight, flee, and negotiation choices resolve, and where danger is recorded.",
+      sourcePath: "docs/wiki/COMBAT.md",
+      sourceText: combatSource,
+      icon: GiCrossedSwords,
+      sectionCaptures: captureCatalog.combat,
+    },
+    {
+      id: "ledger",
+      title: "Ledger",
+      kicker: "Career and history",
+      summary: "How career charters, syndicate reputation, combat history, fleet logs, and the captain ledger work.",
+      sourcePath: "docs/wiki/LEDGER.md",
+      sourceText: ledgerSource,
+      icon: GiNotebook,
+      sectionCaptures: captureCatalog.ledger,
+    },
+    {
+      id: "upgrades-crew",
+      title: "Upgrades & Crew",
+      kicker: "Progression",
+      summary: "Tables for modules, crew roles, modifiers, automation unlocks, maintenance, wages, and shipyard hull traits.",
+      sourcePath: "docs/wiki/UPGRADES_AND_CREW.md",
+      sourceText: upgradesCrewSource,
+      icon: GiUpgrade,
+    },
+  ];
 }
 
-const comingSoonPages = [
+function groupManifestCaptures(manifest: WikiCaptureManifest): Record<string, WikiCapture[]> {
+  const grouped: Record<string, WikiCapture[]> = {};
+  for (const shot of manifest.shots ?? []) {
+    const section = shot.section ?? shot.id;
+    if (!section) continue;
+    const { id: _id, section: _section, ...capture } = shot;
+    void _id;
+    void _section;
+    grouped[section] ??= [];
+    grouped[section].push(capture);
+  }
+  return grouped;
+}
+
+async function fetchCaptureManifest(pageId: string, url: string): Promise<[string, Record<string, WikiCapture[]>]> {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return [pageId, {}];
+    const manifest = await response.json() as WikiCaptureManifest;
+    return [pageId, groupManifestCaptures(manifest)];
+  } catch {
+    return [pageId, {}];
+  }
+}
+
+function useWikiCaptureCatalog(): WikiCaptureCatalog {
+  const [catalog, setCatalog] = useState<WikiCaptureCatalog>({});
+
+  useEffect(() => {
+    let active = true;
+    void Promise
+      .all(Object.entries(captureManifestUrls).map(([pageId, url]) => fetchCaptureManifest(pageId, url)))
+      .then((entries) => {
+        if (!active) return;
+        setCatalog(Object.fromEntries(entries) as WikiCaptureCatalog);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  return catalog;
+}
+
+const sidebarQuickLinks = [
   {
-    title: "Markets",
-    icon: GiCargoCrate,
-    text: "Commodity logistics page planned. The current overview explains the tab at a high level.",
-    href: "#overview-main-tabs",
+    title: "Shipyards",
+    icon: GiFamilyHouse,
+    text: "Ship buying lives in Atlas station detail and Cargo dockside markets.",
+    href: "#atlas-shipyards",
   },
   {
-    title: "Atlas",
-    icon: GiPathDistance,
-    text: "Map and route-planning page planned. The current overview covers the active behavior.",
-    href: "#overview-main-tabs",
+    title: "Combat",
+    icon: GiCrossedSwords,
+    text: "Fight, flee, negotiate, then read outcomes in Ledger and Atlas.",
+    href: "#combat",
   },
 ];
 
 const quickQuestions = [
-  { question: "How do I automate a ship?", pageId: "my-fleet", section: "auto-pilot" },
-  { question: "Why can't a ship depart?", pageId: "my-fleet", section: "stations-and-travel" },
+  { question: "How do I automate a ship?", pageId: "cargo", section: "auto-pilot" },
+  { question: "Why can't a ship depart?", pageId: "cargo", section: "stations-and-travel" },
   { question: "How do Exchange orders fill?", pageId: "exchange", section: "order-book-and-tape" },
   { question: "What do stop-loss and take-profit do?", pageId: "exchange", section: "stops-and-takes" },
+  { question: "Where do I buy another ship?", pageId: "atlas", section: "shipyards" },
+  { question: "What happens when combat fires?", pageId: "combat", section: "encounter-modal" },
+  { question: "Where are combat encounters recorded?", pageId: "combat", section: "ledger-and-atlas-history" },
   { question: "Which crew member unlocks auto-pilot?", pageId: "upgrades-crew", section: "automation-and-guidance" },
   { question: "What does each upgrade modifier mean?", pageId: "upgrades-crew", section: "shared-modifier-rules" },
 ];
 
 export function Wiki() {
-  const pages = useMemo(() => pageSources.map(buildWikiPage), []);
+  const captureCatalog = useWikiCaptureCatalog();
+  const pages = useMemo(() => buildPageSources(captureCatalog).map(buildWikiPage), [captureCatalog]);
   const [activeId, setActiveId] = useState(() => pageIdFromHash(pages));
   const [query, setQuery] = useState("");
   const [modalCapture, setModalCapture] = useState<WikiCapture | null>(null);
@@ -507,9 +323,9 @@ export function Wiki() {
           </div>
 
           <div className="wiki-sidebar-section">
-            <span className="wiki-sidebar-label">Main Tabs Next</span>
+            <span className="wiki-sidebar-label">Quick Links</span>
             <div className="wiki-coming-list">
-              {comingSoonPages.map((page) => {
+              {sidebarQuickLinks.map((page) => {
                 const Icon = page.icon;
                 return (
                   <a href={page.href} key={page.title}>
@@ -731,6 +547,7 @@ function buildWikiPage(source: WikiPageSource): WikiPage {
 function pageIdFromHash(pages: WikiPage[]): string {
   const hash = window.location.hash.replace(/^#/, "");
   if (!hash) return pages[0].id;
+  if (hash === "my-fleet" || hash.startsWith("my-fleet-")) return "cargo";
   return pages.find((page) => hash === page.id || hash.startsWith(`${page.id}-`))?.id ?? pages[0].id;
 }
 
@@ -908,8 +725,12 @@ function slugify(text: string): string {
 }
 
 function mapDocHref(href: string): string {
-  if (/MY_FLEET/i.test(href)) return "#my-fleet";
+  if (/MY_FLEET|CARGO/i.test(href)) return "#cargo";
   if (/EXCHANGE/i.test(href)) return "#exchange";
+  if (/MARKETS/i.test(href)) return "#markets";
+  if (/ATLAS|LOCATIONS/i.test(href)) return "#atlas";
+  if (/COMBAT/i.test(href)) return "#combat";
+  if (/LEDGER|CHARTERS/i.test(href)) return "#ledger";
   if (/UPGRADES_AND_CREW/i.test(href)) return "#upgrades-crew";
   if (/WIKI/i.test(href)) return "#overview";
   if (/COMMODITIES|STOCK_MARKET_REVIEW|STOCK_ORDERBOOK/i.test(href)) return "#exchange";

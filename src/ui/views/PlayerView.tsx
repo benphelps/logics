@@ -80,7 +80,7 @@ export function PlayerView() {
   if (!player) {
     return (
       <section>
-        <h2>My Fleet</h2>
+        <h2>Cargo</h2>
         <p className="dim">No player exists in this world.</p>
       </section>
     );
@@ -2222,7 +2222,9 @@ function InfoAreaCard({ ship, world, loc, focus, pinnedFocuses, activePinnedKey,
 function ShipInfoPanelContent({ ship, world }: { ship: Trader; world: World }) {
   const cargoUsed = cargoMassFn(ship, world);
   const installedCount = Object.keys(ship.upgrades ?? {}).length;
+  const visibleSlotCount = visibleUpgradeSlots(ship).length;
   const crewCount = Object.keys(ship.crew ?? {}).length;
+  const crewSlotCount = CREW_ROLES.length;
   const fuelQty = ship.currentFuel?.qty ?? 0;
   const debt = ship.maintenanceDebt ?? 0;
   const debtPct = (debt / MAINTENANCE_DEBT_TRAVEL_BLOCK) * 100;
@@ -2254,8 +2256,8 @@ function ShipInfoPanelContent({ ship, world }: { ship: Trader; world: World }) {
         <Stat label="hull" value={(ship.hull ?? ship.baseHull ?? 1).toLocaleString()} />
         <Stat label="speed" value={ship.speed.toLocaleString()} />
         <Stat label="weapons" value={(ship.weaponPower ?? ship.baseWeaponPower ?? 0).toLocaleString()} />
-        <Stat label="upgrades" value={`${installedCount} / 5`} />
-        <Stat label="crew" value={`${crewCount} / 3`} />
+        <Stat label="upgrades" value={`${installedCount} / ${visibleSlotCount}`} />
+        <Stat label="crew" value={`${crewCount} / ${crewSlotCount}`} />
         <Stat label="service debt" value={`Ç${Math.round(debt + hullCost).toLocaleString()}`} />
         <Stat label="wages" value={`Ç${Math.round(wage).toLocaleString()}/t`} />
       </dl>
@@ -2652,7 +2654,9 @@ function ShipCargoTabs({ ship, world, loc, groups, inTransit, target, hintText, 
   onTabChange: (tab: ShipCargoTab) => void;
 }) {
   const installedCount = Object.keys(ship.upgrades ?? {}).length;
+  const visibleSlotCount = visibleUpgradeSlots(ship).length;
   const crewCount = Object.keys(ship.crew ?? {}).length;
+  const crewSlotCount = CREW_ROLES.length;
   const activeContracts = Object.values(world.jobs).filter(j => j.acceptedBy === ship.id);
   const manualActions = ship.pilot !== "auto";
   const cargoSuggested = manualActions && targetSuggestsCargoAction(target);
@@ -2676,13 +2680,13 @@ function ShipCargoTabs({ ship, world, loc, groups, inTransit, target, hintText, 
           className={`bridge-tab ${tab === "upgrades" ? "active" : ""}`}
           onClick={() => onTabChange("upgrades")}
         >
-          Upgrades <span className="bridge-tab-count">{installedCount}/5</span>
+          Upgrades <span className="bridge-tab-count">{installedCount}/{visibleSlotCount}</span>
         </button>
         <button
           className={`bridge-tab ${tab === "crew" ? "active" : ""}`}
           onClick={() => onTabChange("crew")}
         >
-          Crew <span className="bridge-tab-count">{crewCount}/3</span>
+          Crew <span className="bridge-tab-count">{crewCount}/{crewSlotCount}</span>
         </button>
         <button
           className={`bridge-tab ${tab === "contracts" ? "active" : ""} ${contractsSuggested ? "has-suggestion" : ""}`}
@@ -3551,18 +3555,18 @@ function ModifierPills({ mods }: { mods: CrewModifiers }) {
 // Crew tab inside the Cargo card — current crew only. Each role row shows
 // who's hired (or vacant) with a Fire button. Hiring happens from the
 // "Hire offers" tab next to the market.
+const CREW_ROLES: { role: CrewRole; label: string }[] = [
+  { role: "captain",   label: "Pilot" },
+  { role: "navigator", label: "Navigator" },
+  { role: "mechanic",  label: "Mechanic" },
+  { role: "mercenary", label: "Mercenary" },
+];
+
 function CrewTab({ ship }: { ship: Trader }) {
   const docked = ship.state === "idle";
-  const roles: { role: CrewRole; label: string }[] = [
-    { role: "captain",   label: "Pilot" },
-    { role: "navigator", label: "Navigator" },
-    { role: "mechanic",  label: "Mechanic" },
-    { role: "mercenary", label: "Mercenary" },
-  ];
-
   return (
     <div className="crew-card-grid">
-      {roles.map(({ role, label }) => {
+      {CREW_ROLES.map(({ role, label }) => {
         const member = ship.crew?.[role];
         return (
           <CrewRoleCard

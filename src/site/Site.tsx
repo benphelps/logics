@@ -7,106 +7,67 @@ import {
   GiReceiveMoney,
   GiShipWheel,
   GiTrade,
-  GiUpgrade,
 } from "react-icons/gi";
 import { MdArrowForward, MdPlayArrow } from "react-icons/md";
 
-const screenshots = [
+const tabSections = [
   {
-    title: "My Fleet",
+    id: "cargo",
+    title: "Cargo",
     label: "Ship operations",
-    image: "/site/screenshots/fleet.png",
-    description: "Run the ship by hand, then layer in crew, upgrades, contracts, and auto-pilot as the operation grows.",
+    image: "/site/screenshots/cargo.png",
+    intro:
+      "The working screen for ships, cargo, contracts, upgrades, crew, and the dockside decisions that keep a route profitable.",
+    cards: [
+      { icon: GiCargoCrate, title: "Move freight", text: "Buy low, sell into demand, accept station contracts, and watch cargo, fuel, and hull condition." },
+      { icon: GiShipWheel, title: "Delegate routes", text: "Crew turns proven manual decisions into auto-pilot work when a ship is ready." },
+      { icon: GiPathDistance, title: "Scale the fleet", text: "Shipyards and charters push the run from one hauler into coordinated operations." },
+    ],
   },
   {
+    id: "exchange",
     title: "Exchange",
     label: "Asset market",
     image: "/site/screenshots/exchange.png",
-    description: "Trade station, syndicate, commodity, basis, futures, and index assets in a full market desk.",
+    intro:
+      "A market layer built on the same station economy you ship through, with order books, positions, futures, and readable trade history.",
+    cards: [
+      { icon: GiChart, title: "Read listings", text: "Filter station, syndicate, commodity, basis, futures, and index instruments." },
+      { icon: GiTrade, title: "Place orders", text: "Work bids, asks, stops, take-profits, and active positions from one trading desk." },
+      { icon: GiReceiveMoney, title: "Track exposure", text: "Insights and history show what filled, what is reserved, and where the account stands." },
+    ],
   },
   {
-    title: "Markets",
-    label: "Commodity logistics",
-    image: "/site/screenshots/markets.png",
-    description: "See who needs what, where supply is piling up, and which goods are worth moving across the sector.",
-  },
-  {
+    id: "atlas",
     title: "Atlas",
     label: "Route planning",
     image: "/site/screenshots/atlas.png",
-    description: "View stations, lanes, and ships, then plan routes and guide vessels through the network.",
+    intro:
+      "The sector view for understanding where ships can go, what each station does, and where the next hull or route should come from.",
+    cards: [
+      { icon: GiRadarSweep, title: "Plan routes", text: "Compare lanes, station roles, active ships, syndicate control, and travel constraints." },
+      { icon: GiFactory, title: "Inspect stations", text: "Open local markets, production, consumption, contracts, and shipyard inventory." },
+      { icon: GiPathDistance, title: "Avoid friction", text: "Lane danger and route state make long-running automated work easier to read." },
+    ],
   },
-];
-
-const loops = [
-  {
-    title: "Click the profitable move",
-    icon: GiReceiveMoney,
-    text: "Start hands-on: read prices, buy low, haul cargo, sell into demand, and collect contract bonuses.",
-  },
-  {
-    title: "Delegate the routine",
-    icon: GiShipWheel,
-    text: "Hire a navigator for guidance, a mechanic for upkeep, and a pilot when the route is ready for auto mode.",
-  },
-  {
-    title: "Scale into logistics",
-    icon: GiPathDistance,
-    text: "Grow from a single hauler to a managed fleet that feeds shortages, rescues stranded traders, and supplies advanced chains.",
-  },
-];
-
-const features = [
-  { icon: GiTrade, title: "Trading", text: "Commodity prices react to local stockpiles, production, and incoming cargo." },
-  { icon: GiCargoCrate, title: "Shipping", text: "Ships have cargo, fuel, maintenance debt, wallets, and route constraints." },
-  { icon: GiUpgrade, title: "Progression", text: "Charters, modules, crew, and automation create steady idle progression without hiding the numbers." },
-  { icon: GiFactory, title: "Economy", text: "Stations produce, consume, tax, replenish treasuries, and move money in a closed loop." },
-  { icon: GiChart, title: "Markets", text: "A stock exchange lets players invest in the same station economy they influence." },
-  { icon: GiRadarSweep, title: "Readable sim", text: "Clamped price bands and deterministic ticks keep long runs understandable." },
-];
-
-const stats = [
-  { label: "Core loop", value: "Ship -> Trade -> Delegate" },
-  { label: "Session style", value: "Clicker-friendly idle sim" },
-  { label: "Perspective", value: "Single-player browser game" },
-  { label: "Current focus", value: "Fleet, Exchange, Charters" },
 ];
 
 const footerGroups = [
   {
     title: "Game",
     links: [
-      { label: "Screenshots", href: "#screens" },
-      { label: "Gameplay loop", href: "#loop" },
-      { label: "Systems", href: "#systems" },
+      { label: "Cargo", href: "#cargo" },
+      { label: "Exchange", href: "#exchange" },
+      { label: "Atlas", href: "#atlas" },
       { label: "Wiki", href: "/wiki.html" },
-    ],
-  },
-  {
-    title: "Community",
-    links: [
-      { label: "Discord", href: "/website.html" },
-      { label: "Steam page", href: "/website.html" },
-      { label: "Dev updates", href: "/website.html" },
-      { label: "Press kit", href: "/website.html" },
     ],
   },
   {
     title: "Build",
     links: [
-      { label: "Roadmap", href: "/website.html" },
+      { label: "Open game", href: "/" },
       { label: "Wiki", href: "/wiki.html" },
-      { label: "Changelog", href: "/website.html" },
-      { label: "Bug reports", href: "/website.html" },
-    ],
-  },
-  {
-    title: "Legal",
-    links: [
-      { label: "Privacy", href: "/website.html" },
-      { label: "Terms", href: "/website.html" },
-      { label: "Contact", href: "/website.html" },
-      { label: "Credits", href: "/website.html" },
+      { label: "Website home", href: "/website.html" },
     ],
   },
 ];
@@ -121,10 +82,9 @@ export function Site() {
             <img className="site-brand-mark" src="/site/ledgway-mark.svg" alt="" />
           </a>
           <nav className="site-nav-links" aria-label="Page sections">
-            <a href="#screens">Screens</a>
-            <a href="#loop">Loop</a>
-            <a href="#systems">Systems</a>
-            <a href="/wiki.html">Wiki</a>
+            <a href="#cargo">Cargo</a>
+            <a href="#exchange">Exchange</a>
+            <a href="#atlas">Atlas</a>
           </nav>
           <a className="site-link-button" href="/" aria-label="Open game">
             <MdPlayArrow aria-hidden="true" />
@@ -137,16 +97,16 @@ export function Site() {
             <span className="site-kicker">Space trucking, coordination, and markets</span>
             <h1 id="site-title">Ledgway</h1>
             <p>
-              An easy-to-play space logistics game about running cargo, reading a living station economy,
-              hiring the crew that takes over routine work, and trading the market built on top of it.
+              A compact space logistics game built around three working screens: run cargo, trade the
+              Exchange, and use the Atlas to plan the next move.
             </p>
             <div className="site-hero-actions">
               <a className="site-primary-action" href="/">
                 <MdPlayArrow aria-hidden="true" />
                 <span>Play the current build</span>
               </a>
-              <a className="site-secondary-action" href="#screens">
-                <span>View screenshots</span>
+              <a className="site-secondary-action" href="#cargo">
+                <span>Tour the tabs</span>
                 <MdArrowForward aria-hidden="true" />
               </a>
             </div>
@@ -174,78 +134,45 @@ export function Site() {
         </div>
       </section>
 
-      <section className="site-section site-screens-band" id="screens" aria-labelledby="screens-title">
+      <section className="site-section site-tabs-band" aria-labelledby="tabs-title">
         <div className="site-section-inner">
           <div className="site-section-head">
-            <span className="site-kicker">Operations</span>
-            <h2 id="screens-title">Operate the route network</h2>
+            <span className="site-kicker">Current focus</span>
+            <h2 id="tabs-title">Three tabs carry the route network</h2>
             <p>
-              Move between fleet control, asset trading, commodity logistics, and the sector map while
-              career charters pace the next layer of guidance, upkeep, automation, and ship upgrades.
+              Cargo handles the ship work, Exchange handles the money work, and Atlas keeps the sector
+              readable without burying the core loop.
             </p>
           </div>
 
-          <div className="screenshot-grid">
-            {screenshots.map((shot) => (
-              <figure className="screenshot-card" key={shot.title}>
-                <img src={shot.image} alt={`${shot.title} gameplay screenshot`} />
-                <figcaption>
-                  <span>{shot.label}</span>
-                  <strong>{shot.title}</strong>
-                  <p>{shot.description}</p>
-                </figcaption>
-              </figure>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="site-section site-loop-band" id="loop" aria-labelledby="loop-title">
-        <div className="site-section-inner">
-          <div className="site-section-head">
-            <span className="site-kicker">Gameplay loop</span>
-            <h2 id="loop-title">Simple actions, compounding systems</h2>
-            <p>
-              Ledgway starts like a clicker: make clear, satisfying shipping decisions. The depth comes from
-              deciding which repeated moves deserve a crew, a better ship, or a market position.
-            </p>
-          </div>
-
-          <div className="loop-grid">
-            {loops.map((item, index) => {
-              const Icon = item.icon;
+          <div className="tab-feature-list">
+            {tabSections.map((section, index) => {
               return (
-                <article className="loop-step" key={item.title}>
-                  <span className="loop-index">{String(index + 1).padStart(2, "0")}</span>
-                  <Icon aria-hidden="true" />
-                  <h3>{item.title}</h3>
-                  <p>{item.text}</p>
-                </article>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      <section className="site-section site-systems-band" id="systems" aria-labelledby="systems-title">
-        <div className="site-section-inner site-systems-layout">
-          <div className="site-section-head">
-            <span className="site-kicker">What you manage</span>
-            <h2 id="systems-title">Trading, trucking, delegation</h2>
-            <p>
-              The game is approachable at the surface, but it keeps the simulation legible for players who
-              want to optimize routes, crews, contracts, upgrades, and passive market positions.
-            </p>
-          </div>
-
-          <div className="feature-grid">
-            {features.map((feature) => {
-              const Icon = feature.icon;
-              return (
-                <article className="feature-card" key={feature.title}>
-                  <Icon aria-hidden="true" />
-                  <h3>{feature.title}</h3>
-                  <p>{feature.text}</p>
+                <article
+                  className={`tab-feature ${index % 2 === 1 ? "tab-feature-reverse" : ""}`}
+                  id={section.id}
+                  key={section.title}
+                >
+                  <figure className="tab-feature-media">
+                    <img src={section.image} alt={`${section.title} gameplay screenshot`} />
+                  </figure>
+                  <div className="tab-feature-copy">
+                    <span className="site-kicker">{section.label}</span>
+                    <h3>{section.title}</h3>
+                    <p>{section.intro}</p>
+                    <div className="tab-card-grid">
+                      {section.cards.map((card) => {
+                        const Icon = card.icon;
+                        return (
+                          <div className="tab-card" key={card.title}>
+                            <Icon aria-hidden="true" />
+                            <strong>{card.title}</strong>
+                            <span>{card.text}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </article>
               );
             })}
@@ -257,15 +184,7 @@ export function Site() {
         <div className="site-section-inner cta-layout">
           <div>
             <span className="site-kicker">Current build</span>
-            <h2 id="cta-title">Run the route, hire the crew, trade the economy.</h2>
-          </div>
-          <div className="stat-strip" aria-label="Game summary">
-            {stats.map((stat) => (
-              <div key={stat.label}>
-                <span>{stat.label}</span>
-                <strong>{stat.value}</strong>
-              </div>
-            ))}
+            <h2 id="cta-title">Run cargo, trade assets, map the sector.</h2>
           </div>
           <a className="site-primary-action" href="/">
             <MdPlayArrow aria-hidden="true" />

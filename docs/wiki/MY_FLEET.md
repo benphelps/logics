@@ -1,6 +1,6 @@
-# My Fleet
+# Cargo
 
-My Fleet is the player's operations screen. It is where each ship is managed as an independent business: every ship has its own wallet, cargo hold, fuel tank, crew, upgrades, contracts, and route state.
+Cargo is the player's operations screen. It is where each ship is managed as an independent business: every ship has its own wallet, cargo hold, fuel tank, crew, upgrades, contracts, and route state.
 
 The current game starts with the player ship `Voyager`: 60 cargo capacity, 60 plasma fuel, speed 1, hull 3, and Ç55,000 in the ship wallet. `world.player.funds` exists for compatibility, but the active economy uses ship wallets.
 
@@ -26,17 +26,17 @@ The save menu shows the current game name, autosave state, tick, fleet value, an
 
 The main tab buttons are:
 
-- **My Fleet**: ship operations and automation.
+- **Cargo**: ship operations and automation.
 - **Exchange**: station, syndicate, commodity, basis, futures, and index trading.
 - **Markets**: commodity logistics and supply/demand reading.
-- **Atlas**: stations, route planning, and ship positions.
-- **Charters**: career progress, manual-action milestones, crew offer unlocks, and upgrade-tier licenses.
+- **Atlas**: stations, route planning, ship positions, syndicate control, lane danger, events, and shipyards.
+- **Ledger**: career progress, syndicate standing, combat history, fleet log, and the captain ledger.
 
 ### Career Charters
 
 Manual actions advance the player's career counter. Buying, selling, traveling, refueling, accepting work, collecting work, installing upgrades, hiring crew, and placing exchange orders all count. Auto-pilot actions do not count.
 
-Charters use that counter to stage the game's lift:
+Ledger's Charters subtab uses that counter to stage the game's lift:
 
 | Unlock | Actions | What changes |
 |---|---:|---|
@@ -45,6 +45,7 @@ Charters use that counter to stage the game's lift:
 | Mechanic's Guild | 100 | Stations can post mechanic offers; hired mechanics handle maintenance. |
 | Refit Yards | 150 | Tier-2 modules can stock in station upgrade markets. |
 | Pilot's Guild | 250 | Stations can post pilot offers; hired pilots unlock auto-pilot trading. |
+| Mercenary Hall | 350 | Stations can post mercenary offers; hired mercenaries improve combat odds. |
 | Specialist Yards | 500 | Tier-3 modules can stock in station upgrade markets. |
 | Apex Foundries | 900 | Tier-4 endgame modules can stock in station upgrade markets. |
 
@@ -146,11 +147,12 @@ Upgrade rules:
 
 ### Crew Tab
 
-Crew has three current roles:
+Crew has four current roles:
 
 - **Pilot** (`captain` in the sim): unlocks auto-pilot trading.
-- **Navigator**: unlocks guided hints and highlighted next actions in My Fleet.
+- **Navigator**: unlocks guided hints and highlighted next actions in Cargo.
 - **Mechanic**: auto-pays maintenance and prevents maintenance debt.
+- **Mercenary**: improves combat odds through hull and weapon modifiers.
 
 Each crew member has a tier, hire cost, wage per tick, and modifiers. Firing a crew member stops future wages but gives no refund. The ship must be docked to fire crew.
 
@@ -181,7 +183,7 @@ While in transit, the same card becomes the Arrival route view. Quick Travel adv
 
 ## Station Exchange Card
 
-The station exchange card is the dockside work area for the focused station. It has four subtabs.
+The station exchange card is the dockside work area for the focused station. It has four subtabs. At a shipyard, the Markets subtab changes to Ships and lists hull blueprints instead of commodity rows.
 
 ### Markets
 
@@ -204,6 +206,18 @@ Buying rules:
 - The ship wallet must cover the purchase.
 - Purchases are paid into the station treasury.
 - Suggested buys may use a route-aware quantity instead of full bay capacity, especially when the engine reserves space for contract goods.
+
+### Ships At Shipyards
+
+When docked at a shipyard, the first subtab is **Ships** instead of Markets. Ship listings show hull class, price, stats, fuel type, pre-installed upgrades, and traits.
+
+Buying a ship:
+
+- requires the buying ship to be docked at that shipyard
+- pays from the buying ship's wallet
+- consumes the blueprint
+- adds the new ship to the player's fleet at the same shipyard
+- starts the new ship with its own empty wallet and a partial fuel tank
 
 ### Upgrades
 
@@ -320,7 +334,7 @@ The helper is intentionally route-aware: a high sell price is not enough if fuel
 
 ## Suggestions
 
-When the ship has a navigator, My Fleet highlights suggested actions. The guidance engine evaluates the current ship state and returns a best next step, such as:
+When the ship has a navigator, Cargo highlights suggested actions. The guidance engine evaluates the current ship state and returns a best next step, such as:
 
 - refuel
 - buy for a route
@@ -339,11 +353,12 @@ Auto-pilot is gated by crew:
 
 | Crew | Auto behavior |
 |---|---|
-| No captain | Auto mode idles. The ship will not trade by itself. |
-| Captain | Refuels, picks profitable cargo routes, departs, sells on arrival, handles exchange settlement travel, scores shortage contracts, can accept matching destination shortages, can run multi-good loadout plans, and may reposition when no local trade is available. Maintenance debt can still accrue. |
-| Captain + Mechanic | Captain behavior plus automatic maintenance payment. |
-| Captain + Navigator | Captain behavior plus the My Fleet guidance UI, so the player can see highlighted recommendations and the auto-pilot's current intended action. Maintenance debt can still accrue without a mechanic. |
-| Full crew | Automated trading, guidance highlights, and automatic maintenance payment. |
+| No pilot | Auto mode idles. The ship will not trade by itself. |
+| Pilot | Refuels, picks profitable cargo routes, departs, sells on arrival, handles exchange settlement travel, scores shortage contracts, can accept matching destination shortages, can run multi-good loadout plans, and may reposition when no local trade is available. Maintenance debt can still accrue. |
+| Pilot + Mechanic | Pilot behavior plus automatic maintenance payment. |
+| Pilot + Navigator | Pilot behavior plus the Cargo guidance UI, so the player can see highlighted recommendations and the auto-pilot's current intended action. Maintenance debt can still accrue without a mechanic. |
+| Pilot + Navigator + Mechanic | Automated trading, guidance highlights, and automatic maintenance payment. |
+| Mercenary added | Combat odds improve through hull and weapon modifiers, but the mercenary does not replace pilot, navigator, or mechanic behavior. |
 
 Auto-pilot uses the same underlying market and route math as NPC traders, with player-specific contract awareness layered on top.
 
@@ -367,12 +382,13 @@ Auto-pilot uses the same underlying market and route math as NPC traders, with p
 | Mechanic offer unlock | 100 manual actions |
 | Tier-2 module unlock | 150 manual actions |
 | Pilot offer unlock | 250 manual actions |
+| Mercenary offer unlock | 350 manual actions |
 | Tier-3 module unlock | 500 manual actions |
 | Tier-4 module unlock | 900 manual actions |
 
 ## Source Notes
 
-This page is based on the current My Fleet UI and mechanics in:
+This page is based on the current Cargo UI and mechanics in:
 
 - `src/ui/views/PlayerView.tsx`
 - `src/ui/components/TopBar.tsx`

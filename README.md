@@ -7,24 +7,25 @@ The loop grows from hands-on cargo runs into fleet coordination, staged crew aut
 ## Gameplay
 
 - **Run the route yourself.** Buy cargo, refuel, take contracts, travel between stations, sell into shortages, and keep the ship repaired.
-- **Unlock better guidance.** Career charters track manual actions and gradually open upgrade tiers, navigator offers, mechanic offers, and pilot offers.
-- **Hire a crew.** Navigators surface route and exchange suggestions, mechanics handle maintenance, and pilots let auto mode run the ship.
+- **Unlock better guidance.** Ledger charters track manual actions and gradually open upgrade tiers, navigator offers, mechanic offers, pilot offers, and mercenary offers.
+- **Hire a crew.** Navigators surface route and exchange suggestions, mechanics handle maintenance, pilots let auto mode run the ship, and mercenaries improve combat odds.
 - **Invest in the economy.** Trade assets on the Exchange while your ships change the underlying station and commodity signals.
-- **Build toward scale.** Current systems support the direction toward buying more ships, moving into larger hulls, assigning crews, and earning from established teams while you focus on bigger opportunities.
+- **Build toward scale.** Buy more ships at shipyards, move into larger hulls, assign crews, and let established routes run while you focus on bigger opportunities.
 
 ## Current Build
 
 The game currently includes:
 
 - A deterministic single-player logistics economy with stations, goods, treasuries, NPC traders, contracts, fuel, maintenance, taxes, and docking fees.
-- Manual ship control through **My Fleet** with route-aware suggestions once a navigator is hired.
+- Manual ship control through **Cargo** with route-aware suggestions once a navigator is hired.
 - Ship-local wallets, cargo, fuel, upgrades, crew, contracts, and auto-pilot mode.
-- Career **Charters** that gate upgrade tiers and crew offer pools through manual-action milestones.
+- **Ledger** charters that gate upgrade tiers and crew offer pools through manual-action milestones.
 - A full **Exchange** with spot-style listings, order books, player positions, limit orders, futures, history, dividends, borrow fees, settlement jobs, and navigator trade insights.
-- **Markets** and **Atlas** tabs for commodity pressure, station context, ships, routes, and news.
+- **Markets** and **Atlas** tabs for commodity pressure, station context, ships, routes, syndicate control, lane danger, shipyards, and news.
+- **Ledger** records for syndicate standing, combat encounters, fleet actions, and exchange trade history.
 - Local save slots and a developer state for screenshot/documentation capture.
 
-Planned additions include buying new ships, controlling more than one ship, larger hull classes with traits, dangerous route work, combat-relevant jobs, actual weapon upgrades, and higher-stakes fleet/market automation.
+Current additions include buying new ships, controlling more than one ship, larger hull classes with traits, route danger, combat encounters, and weapon stats. Planned work is now about deeper dangerous jobs and higher-stakes fleet/market automation.
 
 ## Run Locally
 
