@@ -87,15 +87,6 @@ export interface NewsEventsState {
   recent: RecentNewsEvent[];    // ring buffer for UI history
   bias: Record<string, number>; // scopeKey -> EMA of dir*magnitude
   nextEventId: number;
-  // Number of in-flight backend requests for new-event generation. Bumped
-  // when a request is queued, decremented when the response lands. The UI
-  // reads this to render a small "writing breaking news…" indicator.
-  // Transient — not persisted across saves.
-  pendingRequestCount?: number;
-  // The world tick at which the last spawn-cadence request was queued.
-  // Used together with NEWS_SPAWN_PERIOD to gate concurrent in-flight
-  // requests during fast playback. Optional; defaults to negative infinity.
-  lastSpawnRequestAt?: number;
 }
 
 export interface NewsCtx {

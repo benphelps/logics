@@ -16,7 +16,14 @@ import type {
   NewsTarget,
   ResolvedNewsEvent,
 } from "../sim/news";
-import { applyResolvedNewsEvent } from "../sim/news";
+import { applyResolvedNewsEvent, MAX_INFLIGHT_REQUESTS } from "../sim/news";
+
+// Client-side concurrency cap for /api/news/event. The sim emits cadence-
+// driven requests freely (it doesn't know about HTTP), and we drop spawn
+// requests on the floor here when this counter is already at the cap.
+// Module-level so the cap survives store re-creation but resets on page
+// reload (which is fine — load doesn't carry in-flight requests anyway).
+let inflightRequests = 0;
 
 interface BackstoryEndpointResult {
   backstory: UniverseBackstory;
@@ -94,7 +101,8 @@ interface EventRequestPayload {
 // Fire an event request. On success, applies it via the sim's
 // applyResolvedNewsEvent. On failure, just decrements the in-flight
 // counter — the next cadence will roll again. Returns the applied event
-// (for the store's toast pipeline) or null on failure / no-spawn.
+// (for the store's toast pipeline) or null on failure / no-spawn /
+// concurrency cap.
 export async function fetchNewsEvent(
   world: World,
   request: NewsSpawnRequest,
@@ -102,6 +110,8 @@ export async function fetchNewsEvent(
 ): Promise<ActiveNewsEvent | null> {
   const state = world.newsEvents;
   if (!state) return null;
+  if (inflightRequests >= MAX_INFLIGHT_REQUESTS) return null;
+  inflightRequests += 1;
   const backstory = world.universeBackstory ?? fallbackUniverseBackstory();
   const recent = collectRecentForTarget(world, request.target).slice(-3).map(e => ({
     headline: e.headline,
@@ -149,9 +159,7 @@ export async function fetchNewsEvent(
     console.warn("[ledgway] news event request error", err);
     return null;
   } finally {
-    if (state.pendingRequestCount && state.pendingRequestCount > 0) {
-      state.pendingRequestCount -= 1;
-    }
+    if (inflightRequests > 0) inflightRequests -= 1;
   }
 }
 

@@ -12,7 +12,7 @@ import { createWorld } from "../world";
 import { tickWorld } from "../tick";
 import { eventMultiplier } from "./modifier";
 import { createNewsEventsState, tickNewsEvents } from "./tick";
-import { applyResolvedNewsEvent, MAX_INFLIGHT_REQUESTS } from "./spawn";
+import { applyResolvedNewsEvent } from "./spawn";
 import type { ActiveNewsEvent, NewsEffect, NewsScope, NewsTarget } from "./types";
 
 function freshWorld() {
@@ -154,17 +154,10 @@ describe("news/spawn — cadence + request spec", () => {
     }
   });
 
-  it("respects MAX_INFLIGHT_REQUESTS — won't queue while pending count is at the cap", () => {
-    const w = freshWorld();
-    w.newsEvents!.pendingRequestCount = MAX_INFLIGHT_REQUESTS;
-    let queued = 0;
-    for (let t = 0; t < 600; t++) {
-      w.tick = t;
-      const r = tickNewsEvents(w);
-      if (r.spawnRequest) queued += 1;
-    }
-    expect(queued).toBe(0);
-  });
+  // Concurrency cap moved client-side (see src/ui/news.ts). The sim emits
+  // cadence requests freely; the client drops them when in-flight count is
+  // at MAX_INFLIGHT_REQUESTS. So this layer just exposes a steady stream
+  // of spawn requests without bookkeeping.
 });
 
 describe("news/spawn — applyResolvedNewsEvent", () => {

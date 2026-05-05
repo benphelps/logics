@@ -73,9 +73,13 @@ export function maybeQueueNewsRequest(world: World): NewsSpawnRequest | null {
   const state = world.newsEvents;
   if (!state || !state.enabled) return null;
   if (state.active.length >= MAX_ACTIVE_EVENTS) return null;
-  if ((state.pendingRequestCount ?? 0) >= MAX_INFLIGHT_REQUESTS) return null;
   if (world.tick === 0) return null;
   if (world.tick % NEWS_SPAWN_PERIOD !== 0) return null;
+  // Concurrency cap lives client-side now (see src/ui/news.ts) so the sim
+  // can keep emitting cadence-driven requests without bookkeeping that
+  // gets polluted by background tickWorld loops (e.g. the new-game seeding
+  // warmup). Client throttles by dropping requests when the in-flight
+  // counter is at MAX_INFLIGHT_REQUESTS.
 
   const rng = rngFor(world);
   if (rng() >= NEWS_SPAWN_CHANCE) return null;

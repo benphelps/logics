@@ -792,10 +792,10 @@ export const useStore = create<UiState>((set, get) => {
     });
   };
 
-  // Fire a generated news event request for this world. The sim's
-  // tickNewsEvents already incremented pendingRequestCount; fetchNewsEvent
-  // decrements on completion. onApplied runs after the event is applied
-  // (or skipped) so the store can update tickEpoch + push toasts.
+  // Fire a generated news event request for this world. The client
+  // throttles in-flight calls to MAX_INFLIGHT_REQUESTS — over-cap requests
+  // resolve to null silently. onApplied runs after a successful apply so
+  // the store can bump tickEpoch + push toasts.
   const handleNewsRequest = (
     world: World,
     request: NewsSpawnRequest | null,
