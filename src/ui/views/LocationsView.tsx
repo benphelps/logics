@@ -1012,6 +1012,7 @@ function SectorMap({
           laneTraffic={laneTraffic}
           peakLaneTraffic={peakLaneTraffic}
           laneDanger={laneDanger}
+          alwaysTintDanger={mapTab === "logistics"}
           hoveredLane={hoveredLane}
         />
         {mapTab === "logistics" && encounterPings.length > 0 && (
@@ -1363,6 +1364,10 @@ interface LanesLayerProps {
   laneTraffic: Map<string, LaneTraffic>;
   peakLaneTraffic: number;
   laneDanger: Map<string, LaneDanger>;
+  // Logistics tab paints every lane on the danger ramp (zero-encounter
+  // lanes show as calm green); other tabs only tint when there's actual
+  // activity, falling back to the neutral atlas-ink default.
+  alwaysTintDanger: boolean;
   hoveredLane: string | null;
   // Lane keys that should render at the "second step" tier (softer)
   // and the "third step" tier (softer still). Used by the stations
@@ -1377,7 +1382,7 @@ interface LanesLayerProps {
 // can't both highlight at once. Per-line SVG hit-zones were removed
 // for the same reason.
 const LanesLayer = memo(function LanesLayer({
-  orderedLinks, projectedById, laneTraffic, peakLaneTraffic, laneDanger, hoveredLane, dimLanes, dimmerLanes,
+  orderedLinks, projectedById, laneTraffic, peakLaneTraffic, laneDanger, alwaysTintDanger, hoveredLane, dimLanes, dimmerLanes,
 }: LanesLayerProps) {
   return (
     <g className="atlas-lanes" pointerEvents="none">
@@ -1394,10 +1399,11 @@ const LanesLayer = memo(function LanesLayer({
         const cls = [
           "atlas-lane",
           traffic && traffic.count > 0 ? "traffic" : null,
-          // Any encounter activity gets the .danger class so the lane
-          // paints from the calm-green end of the ramp (intensity 0).
-          // Lanes with zero recent encounters stay on neutral atlas-ink.
-          danger && danger.count > 0 ? "danger" : null,
+          // Logistics tab tints every lane on the calm→hot spectrum so
+          // the player can scan the whole sector for risk at a glance;
+          // intensity=0 paints the calm green end. Other tabs keep the
+          // neutral atlas-ink for zero-encounter lanes.
+          alwaysTintDanger || (danger && danger.count > 0) ? "danger" : null,
           isHovered ? "hovered" : null,
           dimLanes.has(key) ? "dim" : null,
           dimmerLanes.has(key) ? "dimmer" : null,
