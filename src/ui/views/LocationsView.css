@@ -1102,17 +1102,19 @@
   stroke-opacity: calc(0.08 + var(--lane-traffic-intensity) * 0.08);
 }
 
-/* Danger heatmap — lanes with recent encounter activity tint red on the
-   logistics tab. The intensity mixes a saturated red into the inner stroke
-   in proportion to encounter density. Hostile corridors stand out without
-   overwhelming the rest of the map. */
+/* Danger heatmap — lanes with recent encounter activity ramp through a
+   green → orange → red spectrum on the logistics tab. Interpolated in
+   OKLCH so the curve passes naturally through warm orange at the
+   midpoint instead of the muddy salmon you'd get in sRGB.
+   Two-stop color-mix here uses OKLCH's natural hue path (~150° → 25°)
+   which crosses through yellow/orange around 50% intensity. */
 .atlas-lane.danger .atlas-lane-inner {
   stroke: color-mix(
-    in srgb,
-    rgba(248, 113, 113, 1) calc(var(--lane-danger-intensity) * 100%),
-    var(--atlas-ink)
+    in oklch,
+    oklch(76% 0.17 150),
+    oklch(62% 0.23 25) calc(var(--lane-danger-intensity) * 100%)
   );
-  stroke-opacity: calc(0.55 + var(--lane-danger-intensity) * 0.4);
+  stroke-opacity: calc(0.65 + var(--lane-danger-intensity) * 0.3);
   stroke-width: calc(1.0 + var(--lane-danger-intensity) * 0.6);
 }
 
@@ -1502,9 +1504,11 @@
   list-style: none;
 }
 
-/* Heat-ramp swatch for the lane-danger legend. Mirrors the lane CSS:
-   neutral atlas ink at the calm end, color-mixed red at the hotspot end,
-   with a midpoint sample so the gradient curve reads non-linearly. */
+/* Heat-ramp swatch for the lane-danger legend. Mirrors the lane stroke
+   color formula — same green → orange → red OKLCH ramp so the swatch
+   matches what the player sees on actual lanes. Three explicit stops
+   (vs the lane stroke's 2-stop interpolation) anchor orange at the
+   midpoint instead of letting linear-gradient drift through yellow. */
 .atlas-legend-ramp {
   display: grid;
   gap: 4px;
@@ -1516,12 +1520,11 @@
   height: 6px;
   border-radius: 3px;
   background: linear-gradient(
-    90deg,
-    var(--atlas-ink),
-    color-mix(in srgb, rgba(248, 113, 113, 1) 45%, var(--atlas-ink)) 50%,
-    rgba(248, 113, 113, 1)
+    in oklch to right,
+    oklch(76% 0.17 150) 0%,
+    oklch(72% 0.18 60) 50%,
+    oklch(62% 0.23 25) 100%
   );
-  opacity: 0.85;
 }
 
 .atlas-legend-ramp-labels {
