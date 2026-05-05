@@ -1102,17 +1102,17 @@
   stroke-opacity: calc(0.08 + var(--lane-traffic-intensity) * 0.08);
 }
 
-/* Danger heatmap — lanes with recent encounter activity ramp through a
-   green → orange → red spectrum on the logistics tab. Interpolated in
-   OKLCH so the curve passes naturally through warm orange at the
-   midpoint instead of the muddy salmon you'd get in sRGB.
-   Two-stop color-mix here uses OKLCH's natural hue path (~150° → 25°)
-   which crosses through yellow/orange around 50% intensity. */
+/* Danger heatmap — muted, slate-aligned green → amber → rose ramp on
+   the logistics tab. Lower chroma than the saturated v1 ramp so it
+   reads as informational rather than alarming, and the hues bias
+   slightly cool to harmonize with the atlas's slate-blue ink palette.
+   Interpolated in OKLCH so the midpoint reads as dusty amber rather
+   than yellow. */
 .atlas-lane.danger .atlas-lane-inner {
   stroke: color-mix(
     in oklch,
-    oklch(76% 0.17 150),
-    oklch(62% 0.23 25) calc(var(--lane-danger-intensity) * 100%)
+    oklch(70% 0.07 165),
+    oklch(58% 0.13 22) calc(var(--lane-danger-intensity) * 100%)
   );
   stroke-opacity: calc(0.65 + var(--lane-danger-intensity) * 0.3);
   stroke-width: calc(1.0 + var(--lane-danger-intensity) * 0.6);
@@ -1521,9 +1521,9 @@
   border-radius: 3px;
   background: linear-gradient(
     in oklch to right,
-    oklch(76% 0.17 150) 0%,
-    oklch(72% 0.18 60) 50%,
-    oklch(62% 0.23 25) 100%
+    oklch(70% 0.07 165) 0%,
+    oklch(70% 0.10 75) 50%,
+    oklch(58% 0.13 22) 100%
   );
 }
 

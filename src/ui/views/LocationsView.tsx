@@ -91,6 +91,26 @@ const LANE_DANGER_WINDOW_TICKS = 250;
 // player can spot fresh hostile activity at a glance.
 const ENCOUNTER_PING_TICKS = 20;
 
+// Absolute thresholds for the lane danger color ramp:
+//   <  DANGER_CALM_BELOW       → no tint (feels normal)
+//   = DANGER_MEDIUM_AT          → midpoint (orange / dusty amber)
+//   ≥ DANGER_HOT_AT             → fully red
+// Two linear segments interpolate intensity 0..0.5 between calm→medium and
+// 0.5..1 between medium→hot. Absolute (not relative-to-peak) so a lane
+// with 6 encounters always reads the same regardless of fleet activity.
+const DANGER_CALM_BELOW = 5;
+const DANGER_MEDIUM_AT = 10;
+const DANGER_HOT_AT = 20;
+
+function laneDangerIntensity(count: number): number {
+  if (count < DANGER_CALM_BELOW) return 0;
+  if (count >= DANGER_HOT_AT) return 1;
+  if (count <= DANGER_MEDIUM_AT) {
+    return ((count - DANGER_CALM_BELOW) / (DANGER_MEDIUM_AT - DANGER_CALM_BELOW)) * 0.5;
+  }
+  return 0.5 + ((count - DANGER_MEDIUM_AT) / (DANGER_HOT_AT - DANGER_MEDIUM_AT)) * 0.5;
+}
+
 interface EncounterPing {
   id: string;
   x: number;
@@ -435,7 +455,6 @@ function SectorMap({
   };
 
   const peakLaneTraffic = Math.max(1, ...Array.from(laneTraffic.values()).map(t => t.count));
-  const peakLaneDanger = Math.max(1, ...Array.from(laneDanger.values()).map(d => d.count));
 
   // Syndicate accent map — used by the control-bubble field, station
   // border tints, and ship chevron tints. Keyed by SyndicateId so each
@@ -993,7 +1012,6 @@ function SectorMap({
           laneTraffic={laneTraffic}
           peakLaneTraffic={peakLaneTraffic}
           laneDanger={laneDanger}
-          peakLaneDanger={peakLaneDanger}
           hoveredLane={hoveredLane}
         />
         {mapTab === "logistics" && encounterPings.length > 0 && (
@@ -1345,7 +1363,6 @@ interface LanesLayerProps {
   laneTraffic: Map<string, LaneTraffic>;
   peakLaneTraffic: number;
   laneDanger: Map<string, LaneDanger>;
-  peakLaneDanger: number;
   hoveredLane: string | null;
   // Lane keys that should render at the "second step" tier (softer)
   // and the "third step" tier (softer still). Used by the stations
@@ -1360,7 +1377,7 @@ interface LanesLayerProps {
 // can't both highlight at once. Per-line SVG hit-zones were removed
 // for the same reason.
 const LanesLayer = memo(function LanesLayer({
-  orderedLinks, projectedById, laneTraffic, peakLaneTraffic, laneDanger, peakLaneDanger, hoveredLane, dimLanes, dimmerLanes,
+  orderedLinks, projectedById, laneTraffic, peakLaneTraffic, laneDanger, hoveredLane, dimLanes, dimmerLanes,
 }: LanesLayerProps) {
   return (
     <g className="atlas-lanes" pointerEvents="none">
@@ -1372,14 +1389,12 @@ const LanesLayer = memo(function LanesLayer({
         const traffic = laneTraffic.get(key);
         const intensity = traffic ? Math.min(1, 0.5 + (traffic.count / peakLaneTraffic) * 0.5) : 0;
         const danger = laneDanger.get(key);
-        const dangerIntensity = danger && peakLaneDanger > 0
-          ? Math.min(1, 0.4 + (danger.count / peakLaneDanger) * 0.6)
-          : 0;
+        const dangerIntensity = danger ? laneDangerIntensity(danger.count) : 0;
         const isHovered = hoveredLane === key;
         const cls = [
           "atlas-lane",
           traffic && traffic.count > 0 ? "traffic" : null,
-          danger && danger.count > 0 ? "danger" : null,
+          dangerIntensity > 0 ? "danger" : null,
           isHovered ? "hovered" : null,
           dimLanes.has(key) ? "dim" : null,
           dimmerLanes.has(key) ? "dimmer" : null,
