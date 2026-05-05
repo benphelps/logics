@@ -31,7 +31,10 @@
   text-align: left;
   font-family: inherit;
   color: var(--text);
-  transition: background 120ms ease, border-color 120ms ease, transform 80ms ease;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    transform 80ms ease;
 }
 
 .new-game-card:hover {
@@ -41,7 +44,11 @@
 
 .new-game-card.selected {
   border-color: var(--syndicate-accent, var(--accent));
-  background: color-mix(in srgb, var(--syndicate-accent, var(--accent)) 8%, var(--bg-1));
+  background: color-mix(
+    in srgb,
+    var(--syndicate-accent, var(--accent)) 8%,
+    var(--bg-1)
+  );
   box-shadow: 0 0 0 1px var(--syndicate-accent, var(--accent)) inset;
 }
 
@@ -52,7 +59,8 @@
   background: linear-gradient(
     180deg,
     var(--syndicate-accent, var(--accent)) 0%,
-    color-mix(in srgb, var(--syndicate-accent, var(--accent)) 55%, transparent) 100%
+    color-mix(in srgb, var(--syndicate-accent, var(--accent)) 55%, transparent)
+      100%
   );
   align-self: stretch;
 }
@@ -232,7 +240,10 @@
   border-radius: 4px;
   color: var(--text-dim);
   cursor: pointer;
-  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease;
 }
 
 .new-game-pilot-dice:hover {
@@ -345,15 +356,23 @@
 }
 
 @keyframes pilot-portrait-fade {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .new-game-pilot-portrait-placeholder {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse at 50% 38%, rgba(255, 255, 255, 0.04) 0%, transparent 65%),
+    radial-gradient(
+      ellipse at 50% 38%,
+      rgba(255, 255, 255, 0.04) 0%,
+      transparent 65%
+    ),
     linear-gradient(180deg, #14181d 0%, #0d1116 100%);
   overflow: hidden;
 }
@@ -375,8 +394,12 @@
 }
 
 @keyframes pilot-portrait-shimmer {
-  from { background-position: 220% 0; }
-  to   { background-position: -120% 0; }
+  from {
+    background-position: 220% 0;
+  }
+  to {
+    background-position: -120% 0;
+  }
 }
 
 .new-game-pilot-portrait-idle {

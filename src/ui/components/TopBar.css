@@ -160,6 +160,17 @@
   opacity: 0.92;
 }
 
+.topbar-music-button.active {
+  color: var(--text);
+  border-color: rgba(85, 199, 165, 0.34);
+  background: #1b2026;
+}
+
+.topbar-music-button.active .topbar-tab-icon {
+  color: #8be8cd;
+  opacity: 1;
+}
+
 .topbar-ship-picker {
   flex: 1 1 auto;
   min-width: 0;
@@ -542,7 +553,9 @@
   background-size: cover;
   background-clip: padding-box;
   overflow: hidden;
-  transition: background-image 0.4s ease-in, border-color 120ms ease;
+  transition:
+    background-image 0.4s ease-in,
+    border-color 120ms ease;
 }
 
 /* Dark gradient overlay to keep text readable over any portrait. */
@@ -552,14 +565,13 @@
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background:
-    linear-gradient(
-      90deg,
-      rgba(14, 18, 23, 0.95) 0%,
-      rgba(14, 18, 23, 0.78) 38%,
-      rgba(14, 18, 23, 0.42) 64%,
-      rgba(14, 18, 23, 0.22) 100%
-    );
+  background: linear-gradient(
+    90deg,
+    rgba(14, 18, 23, 0.95) 0%,
+    rgba(14, 18, 23, 0.78) 38%,
+    rgba(14, 18, 23, 0.42) 64%,
+    rgba(14, 18, 23, 0.22) 100%
+  );
 }
 
 .topbar-save-card.active {
@@ -675,7 +687,7 @@
 
 .topbar-command-danger:hover:not(:disabled) {
   border-color: rgba(248, 113, 113, 0.38);
-  background: rgba(248, 113, 113, 0.10);
+  background: rgba(248, 113, 113, 0.1);
   color: #fca5a5;
 }
 

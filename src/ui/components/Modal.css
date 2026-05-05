@@ -7,7 +7,11 @@
   justify-content: center;
   padding: 24px;
   background:
-    radial-gradient(ellipse at center, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0.78) 100%),
+    radial-gradient(
+      ellipse at center,
+      rgba(0, 0, 0, 0.55) 0%,
+      rgba(0, 0, 0, 0.78) 100%
+    ),
     rgba(13, 17, 22, 0.55);
   backdrop-filter: blur(2px);
   animation: ui-modal-backdrop-in 140ms ease-out;
@@ -38,12 +42,32 @@
      leaves a faint accent-blue wash in the middle for visual lift. No
      image plate — just gradient layers on the dialog's bg. */
   background-image:
-    linear-gradient(to bottom, rgba(13, 17, 22, 0.05) 0%, rgba(13, 17, 22, 0.55) 78%, rgba(13, 17, 22, 0.85) 100%),
-    linear-gradient(90deg, rgba(13, 17, 22, 0.55), rgba(31, 111, 168, 0.18) 50%, rgba(13, 17, 22, 0.55)),
-    radial-gradient(ellipse 110% 80% at 50% -20%, rgba(118, 199, 255, 0.18), rgba(118, 199, 255, 0) 60%);
-  background-position: center center, center center, center top;
+    linear-gradient(
+      to bottom,
+      rgba(13, 17, 22, 0.05) 0%,
+      rgba(13, 17, 22, 0.55) 78%,
+      rgba(13, 17, 22, 0.85) 100%
+    ),
+    linear-gradient(
+      90deg,
+      rgba(13, 17, 22, 0.55),
+      rgba(31, 111, 168, 0.18) 50%,
+      rgba(13, 17, 22, 0.55)
+    ),
+    radial-gradient(
+      ellipse 110% 80% at 50% -20%,
+      rgba(118, 199, 255, 0.18),
+      rgba(118, 199, 255, 0) 60%
+    );
+  background-position:
+    center center,
+    center center,
+    center top;
   background-repeat: no-repeat;
-  background-size: 100% 100%, 100% 100%, 100% 100%;
+  background-size:
+    100% 100%,
+    100% 100%,
+    100% 100%;
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
 }
 
@@ -71,7 +95,7 @@
 }
 
 .ui-modal-body {
-  padding: 0 14px 14px;
+  padding: 14px;
   overflow-y: auto;
   font-size: 12.5px;
   color: var(--text);
@@ -95,7 +119,10 @@
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--border);
   color: var(--text);
@@ -177,11 +204,21 @@
 }
 
 @keyframes ui-modal-backdrop-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes ui-modal-dialog-in {
-  from { opacity: 0; transform: translateY(8px) scale(0.985); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }

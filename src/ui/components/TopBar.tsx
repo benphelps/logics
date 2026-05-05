@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { MdAdd, MdClose, MdCode, MdMenu, MdRestartAlt, MdSave, MdSkipNext } from "react-icons/md";
+import { MdAdd, MdClose, MdCode, MdMenu, MdMusicNote, MdRestartAlt, MdSave, MdSkipNext } from "react-icons/md";
 import { useStore, type Speed, type Tab } from "../store";
 import { useIsMobile } from "../useIsMobile";
 import { useCrewHeadshot } from "../headshots";
@@ -10,6 +10,8 @@ import type { Trader, World } from "../../sim/types";
 import type { SaveSlotSummary } from "../saveGames";
 import { MobilePanelTabs } from "./MobilePanelTabs";
 import { Modal } from "./Modal";
+import { TrackerMusicPanel } from "./TrackerMusicPanel";
+import { useKeygenMusic } from "../music/useKeygenMusic";
 import "./TopBar.css";
 
 const SPEED_PRESETS: { value: Speed; label: string }[] = [
@@ -30,6 +32,8 @@ const TABS: { id: Tab; label: string }[] = [
 export function TopBar() {
   const shipMenuRef = useRef<HTMLDetailsElement>(null);
   const [saveModalOpen, setSaveModalOpen] = useState(false);
+  const [musicModalOpen, setMusicModalOpen] = useState(false);
+  const music = useKeygenMusic();
   const selectedTab = useStore((s) => s.selectedTab);
   const selectTab = useStore((s) => s.selectTab);
   const isMobile = useIsMobile();
@@ -66,6 +70,8 @@ export function TopBar() {
   };
   const openSaveModal = () => setSaveModalOpen(true);
   const closeSaveModal = () => setSaveModalOpen(false);
+  const openMusicModal = () => setMusicModalOpen(true);
+  const closeMusicModal = () => setMusicModalOpen(false);
 
   return (
     <section className={`topbar-shell ${isMobile ? "topbar-mobile" : ""}`} aria-label="Game controls">
@@ -151,6 +157,14 @@ export function TopBar() {
               </button>
             ))}
           </div>
+          <button
+            className={`topbar-tab topbar-menu-button topbar-music-button ${musicModalOpen || music.snapshot.playing ? "active" : ""}`}
+            onClick={openMusicModal}
+            aria-label="Open music tracker"
+            title="Music tracker"
+          >
+            <MdMusicNote className="topbar-tab-icon" aria-hidden="true" focusable="false" />
+          </button>
           <button
             className="topbar-tab topbar-menu-button"
             onClick={openSaveModal}
@@ -256,6 +270,16 @@ export function TopBar() {
           </section>
         )}
       </Modal>
+
+      <Modal
+        open={musicModalOpen}
+        onClose={closeMusicModal}
+        eyebrow="Module tracker"
+        title="Music"
+        dialogClassName="topbar-music-modal"
+      >
+        <TrackerMusicPanel music={music} />
+      </Modal>
     </section>
   );
 }
@@ -337,4 +361,3 @@ function formatSlotTime(timestamp: number): string {
     minute: "2-digit",
   }).format(new Date(timestamp));
 }
-

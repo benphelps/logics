@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
-import { defineConfig } from "vite";
+import { readFileSync } from "node:fs";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { headshotDevServerPlugin } from "./server/headshots";
 import { newsDevServerPlugin } from "./server/news";
@@ -8,7 +9,14 @@ import { syndicateInsigniaDevServerPlugin } from "./server/syndicate-insignia";
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), headshotDevServerPlugin(), shipArtDevServerPlugin(), syndicateInsigniaDevServerPlugin(), newsDevServerPlugin()],
+  plugins: [
+    react(),
+    headshotDevServerPlugin(),
+    shipArtDevServerPlugin(),
+    syndicateInsigniaDevServerPlugin(),
+    newsDevServerPlugin(),
+    chiptuneWorkletAssetPlugin(),
+  ],
   build: {
     rollupOptions: {
       input: {
@@ -19,3 +27,16 @@ export default defineConfig({
     },
   },
 });
+
+function chiptuneWorkletAssetPlugin(): Plugin {
+  return {
+    name: "ledgway-chiptune-worklet-asset",
+    generateBundle() {
+      this.emitFile({
+        type: "asset",
+        fileName: "assets/libopenmpt.worklet.js",
+        source: readFileSync(resolve(__dirname, "node_modules/chiptune3/libopenmpt.worklet.js"), "utf8"),
+      });
+    },
+  };
+}

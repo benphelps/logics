@@ -18,10 +18,12 @@
     "audit": "tsx src/sim/scenarios/audit.ts",
     "audit:progression": "tsx src/sim/scenarios/progression_audit.ts",
     "art:coverage": "tsx src/tools/artCoverage.ts",
+    "tracker:manifests": "node scripts/build-tracker-manifests.mjs",
     "headshots:seed": "tsx src/tools/seedHeadshots.ts"
   },
   "dependencies": {
     "@tanstack/react-table": "^8.21.3",
+    "chiptune3": "^0.8.6",
     "lightweight-charts": "^5.2.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
