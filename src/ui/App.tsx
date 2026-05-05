@@ -7,6 +7,7 @@ import { EncounterModal } from "./components/EncounterModal";
 import { NewGameModal } from "./components/NewGameModal";
 import { SaveLoadingModal } from "./components/SaveLoadingModal";
 import { SeedingModal } from "./components/SeedingModal";
+import { TutorialController } from "./components/TutorialController";
 import { ChartersView } from "./views/ChartersView";
 import { MarketsView } from "./views/MarketsView";
 import { LocationsView } from "./views/LocationsView";
@@ -40,7 +41,7 @@ export function App() {
       <div className="app-body">
         <main className="app-main">
           <TopBar />
-          <div className="app-view">
+          <div className="app-view" data-tutorial="game-area">
             {tab === "markets"   && <MarketsView />}
             {tab === "locations" && <LocationsView />}
             {tab === "player"    && <PlayerView />}
@@ -55,6 +56,7 @@ export function App() {
       <SaveLoadingModal />
       <EncounterModal />
       <BridgeTabScroller />
+      <TutorialController />
     </div>
   );
 }

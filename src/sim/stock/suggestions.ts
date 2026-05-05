@@ -66,7 +66,14 @@ const MAX_SHARE_HINT_QTY = 50;
 const MAX_FUTURE_HINT_CONTRACTS = 3;
 
 export function getStockExchangeHint(world: World, shipId?: TraderId): StockExchangeHint | null {
-  return listStockExchangeHints(world, shipId, 1)[0] ?? null;
+  // Watch hints are surfaced per-row in the UI but they're not
+  // actionable on their own — there's no button to click. The "best
+  // single hint" caller (autopilot, tutorial spotlight) wants
+  // something the player can actually do, so we skip past watches.
+  // listStockExchangeHints stays untouched so the per-equity badge
+  // pipeline keeps showing them.
+  const hints = listStockExchangeHints(world, shipId);
+  return hints.find(h => h.action !== "watch") ?? null;
 }
 
 export function listStockExchangeHints(world: World, shipId?: TraderId, limit = 5): StockExchangeHint[] {

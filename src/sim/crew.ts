@@ -143,7 +143,7 @@ export function hireCrew(world: World, ship: Trader, hireId: HireId): CrewAction
   ship.crew[offer.role] = snapshotFromHire(offer);
   takeHire(world, hireId);            // consume the offer
   recomputeShipStats(ship);
-  incrementManualActions(world);
+  incrementManualActions(world, "hire_crew");
   return { ok: true };
 }
 

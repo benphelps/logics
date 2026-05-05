@@ -77,9 +77,20 @@ function canAffordRefuelHere(world: World, ship: Trader): boolean {
   return Math.min(room, stock, affordable) > 0.001;
 }
 
-function acceptedTradeJobsForShip(world: World, ship: Trader): Job[] {
+// Jobs that are "ready to be collected" at their destination — either
+// trade settlements (always collectable on arrival) or cargo-haul
+// contracts that have been fully delivered manually (delivered=qty)
+// and are sitting unclaimed because the ship is in manual control.
+// The collect_trade_job hint family covers both kinds.
+function collectableJobsForShip(world: World, ship: Trader): Job[] {
   return Object.values(world.jobs)
-    .filter(j => j.kind === "trade" && j.acceptedBy === ship.id)
+    .filter(j => {
+      if (j.acceptedBy !== ship.id) return false;
+      if (j.kind === "trade") return true;
+      // cargo-haul: ready when delivered hits qty; the engine sees the
+      // same delivered field the player's UI reads.
+      return j.delivered >= j.qty;
+    })
     .sort((a, b) =>
       a.expiresAt - b.expiresAt
       || b.reward - a.reward
@@ -115,18 +126,20 @@ function nextHopToward(world: World, from: LocationId, dst: LocationId): { to: L
 }
 
 function tradeSettlementHint(world: World, ship: Trader, canRefuelHere: boolean): GuidedHint | null {
-  const jobs = acceptedTradeJobsForShip(world, ship);
+  const jobs = collectableJobsForShip(world, ship);
   const job = jobs.find(j => j.destination === ship.location) ?? jobs[0];
   if (!job) return null;
   const stationName = world.locations[job.destination]?.name ?? job.destination;
-  const ticker = job.trade?.ticker ?? "trade";
+  const isTrade = job.kind === "trade";
+  const ticker = job.trade?.ticker ?? (isTrade ? "trade" : (world.goods[job.good ?? ""]?.name ?? "cargo"));
   const reward = job.reward;
+  const settlementWord = isTrade ? "exchange settlement" : "delivery";
   if (ship.location === job.destination) {
     return {
       kind: "collect_trade_job",
       jobId: job.id,
       reward,
-      reason: `Collect ${ticker} exchange settlement at ${stationName} for Ç${reward.toLocaleString()}.`,
+      reason: `Collect ${ticker} ${settlementWord} at ${stationName} for Ç${reward.toLocaleString()}.`,
     };
   }
 
@@ -137,15 +150,15 @@ function tradeSettlementHint(world: World, ship: Trader, canRefuelHere: boolean)
   const ft = activeFuelType(ship) ?? ship.fuelTypes[0] ?? null;
   const fuel = ship.currentFuel;
   if ((!ft || !fuel) && !fuelFree) {
-    return { kind: "wait", reason: `Exchange settlement waiting at ${stationName}, but this ship has no compatible fuel loaded.` };
+    return { kind: "wait", reason: `${capitalize(settlementWord)} waiting at ${stationName}, but this ship has no compatible fuel loaded.` };
   }
 
   const hop = nextHopToward(world, ship.location, job.destination);
-  if (!hop) return { kind: "wait", reason: `No plotted route to ${stationName} for the pending exchange settlement.` };
+  if (!hop) return { kind: "wait", reason: `No plotted route to ${stationName} for the pending ${settlementWord}.` };
   const fuelNeeded = hop.dist * (fuelFree ? 0 : effectivePerDistance(ship, ft!.perDistance));
   if (!fuelFree && fuelNeeded > fuel!.qty + 0.001) {
-    if (canRefuelHere) return { kind: "refuel", critical: true, reason: `Refuel to reach the pending ${ticker} settlement at ${stationName}.` };
-    return { kind: "wait", reason: `Pending ${ticker} settlement at ${stationName}, but fuel is too low for the next hop.` };
+    if (canRefuelHere) return { kind: "refuel", critical: true, reason: `Refuel to reach the pending ${ticker} ${settlementWord} at ${stationName}.` };
+    return { kind: "wait", reason: `Pending ${ticker} ${settlementWord} at ${stationName}, but fuel is too low for the next hop.` };
   }
   const hopName = world.locations[hop.to]?.name ?? hop.to;
   const ticks = travelTicksFor(ship, hop.dist);
@@ -156,9 +169,13 @@ function tradeSettlementHint(world: World, ship: Trader, canRefuelHere: boolean)
     reward,
     ticks,
     reason: hop.to === job.destination
-      ? `Travel to ${stationName} and collect the ${ticker} exchange settlement for Ç${reward.toLocaleString()}.`
-      : `Travel toward ${stationName} via ${hopName} to collect the ${ticker} exchange settlement for Ç${reward.toLocaleString()}.`,
+      ? `Travel to ${stationName} and collect the ${ticker} ${settlementWord} for Ç${reward.toLocaleString()}.`
+      : `Travel toward ${stationName} via ${hopName} to collect the ${ticker} ${settlementWord} for Ç${reward.toLocaleString()}.`,
   };
+}
+
+function capitalize(s: string): string {
+  return s.length > 0 ? s[0].toUpperCase() + s.slice(1) : s;
 }
 
 function buyHintFromTradeOption(option: TradeOption, acceptedJob?: Job): GuidedHint {
@@ -341,6 +358,31 @@ export function getGuidedHint(
   if (localCargoSell) {
     candidates.splice(candidates.indexOf(localCargoSell), 1);
     candidates.unshift(localCargoSell);
+  }
+
+  // Buy-before-contract override: when the top suggestion is "accept this
+  // contract" for good X → destination D, and the same set of candidates
+  // already includes a "buy X here, sell at D" route, surface the BUY
+  // first. Same total EV either way, but flipping the order means the
+  // player loads cargo before claiming the contract — which matches the
+  // natural rhythm and avoids the "engine isn't recommending the obvious
+  // buy" feeling. The accept naturally re-emerges next tick once the
+  // cargo is on board (cargoLoadedCandidates folds the bonus in for
+  // unaccepted-but-realizable contracts).
+  if (candidates[0]?.hint.kind === "accept_job") {
+    const acceptHint = candidates[0].hint;
+    const acceptedJob = world.jobs[acceptHint.jobId];
+    if (acceptedJob?.good && acceptedJob.kind !== "trade" && acceptedJob.destination !== advisoryShip.location) {
+      const matchingBuy = candidates.find(c =>
+        c.hint.kind === "buy_for_route"
+        && c.hint.good === acceptedJob.good
+        && c.hint.dst === acceptedJob.destination
+      );
+      if (matchingBuy) {
+        candidates.splice(candidates.indexOf(matchingBuy), 1);
+        candidates.unshift(matchingBuy);
+      }
+    }
   }
 
   const top = candidates[0];

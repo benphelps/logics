@@ -1,0 +1,85 @@
+/* Tutorial spotlight: a fullscreen fixed overlay with a single cutout
+   sized to the highlighted element's bounding rect. The cutout itself
+   carries the dimming via a huge inset box-shadow — that lets the
+   highlighted element remain fully clickable (the cutout has
+   pointer-events: none) without us tracking which DOM nodes to disable.
+
+   Sits above all main UI but below the helper orb (which lives in its
+   own portal). z-index here matches other modals (1000s); the helper
+   uses 1100. */
+
+.tutorial-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1000;
+  /* Radial dim — lightest near the cutout, deeper toward viewport
+     corners. The cutout's CSS variables come from JS once the target's
+     rect is measured; until then we fall back to a uniform 0.42 dim so
+     the layout doesn't pop. Stops:
+       * 0 → r          : transparent core (the spotlight area)
+       * r → r + 60px   : the lighter dim surrounding the target
+       * r + 60px → 75% of viewport : eases into the heavier dim
+     The "circle farthest-corner" reach guarantees the dark color is hit
+     in the corners regardless of where the target sits. */
+  background:
+    radial-gradient(
+      circle farthest-corner at var(--tutorial-cutout-x, 50%) var(--tutorial-cutout-y, 50%),
+      transparent 0,
+      transparent var(--tutorial-cutout-r, 0px),
+      rgba(0, 0, 0, 0.18) calc(var(--tutorial-cutout-r, 0px) + 140px),
+      rgba(0, 0, 0, 0.55) 55%,
+      rgba(0, 0, 0, 0.95) 100%
+    );
+}
+
+.tutorial-overlay.interactive {
+  /* Tour phase: clicks on the dim land on the overlay so they don't fire
+     UI underneath. The cutout itself still passes clicks through. */
+  pointer-events: auto;
+}
+
+/* Full-dim mode — no cutout, just a flat dim. Used for intro and
+   transition tour stops where the orb is talking and nothing on screen
+   is being called out. */
+.tutorial-overlay-full {
+  background: rgba(0, 0, 0, 0.42);
+  animation: tutorial-overlay-full-fade 240ms ease-out;
+}
+
+@keyframes tutorial-overlay-full-fade {
+  from { background: rgba(0, 0, 0, 0); }
+  to   { background: rgba(0, 0, 0, 0.42); }
+}
+
+.tutorial-overlay-cutout {
+  position: absolute;
+  /* Outline that highlights the element edge. 1px accent ring with a
+     soft bloom; the surrounding dim is now a radial gradient on the
+     overlay's background, so the cutout no longer carries the big
+     inset shadow it used to. */
+  box-shadow:
+    0 0 0 1px rgba(79, 182, 255, 0.9),
+    0 0 16px 2px rgba(79, 182, 255, 0.34);
+  pointer-events: none;
+  animation: tutorial-overlay-cutout-pulse 2800ms ease-in-out infinite;
+}
+
+@keyframes tutorial-overlay-cutout-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 1px rgba(79, 182, 255, 0.8),
+      0 0 14px 2px rgba(79, 182, 255, 0.28);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(79, 182, 255, 1),
+      0 0 22px 4px rgba(79, 182, 255, 0.42);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tutorial-overlay-cutout {
+    animation: none;
+  }
+}

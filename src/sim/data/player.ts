@@ -51,6 +51,12 @@ export function makePlayer(seed: PlayerSeedConfig = DEFAULT_PLAYER_SEED): {
   const player: Player = {
     funds: 0,
     shipIds: [ship.id],
+    tutorial: {
+      phase: "setup",
+      tourStop: 0,
+      perTypeCount: {},
+      loopGoal: 3,
+    },
   };
   return { player, ship };
 }

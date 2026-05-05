@@ -418,28 +418,43 @@ export function acceptJob(world: World, jobId: JobId, traderId: TraderId): JobAc
   if (!isPlayerShip(world, traderId)) return { ok: false, reason: "Only player ships can accept jobs." };
   job.acceptedBy = traderId;
   pushJobAccepted(world, ship, job);
-  incrementManualActions(world);
+  incrementManualActions(world, "accept_contract");
   return { ok: true };
 }
 
+// Collect a contract reward at the destination. Handles both:
+//   - trade settlements (kind=trade): reward is just the agreed payout
+//   - cargo-haul contracts that have been fully delivered manually:
+//     the player sold the goods, delivered hit qty, and the job has
+//     been sitting waiting to be claimed. Same payout flow as before
+//     auto-complete was a thing.
+// Auto-piloted ships still settle inline via creditJobOnDelivery — the
+// "wait for the player to click Collect" behavior only applies to
+// manual ships, where the click is the satisfying action.
 export function collectTradeJob(world: World, jobId: JobId, traderId: TraderId): JobActionResult {
   const job = world.jobs[jobId];
-  if (!job) return { ok: false, reason: "Settlement no longer available." };
-  if (job.kind !== "trade") return { ok: false, reason: "That job is not an exchange settlement." };
+  if (!job) return { ok: false, reason: "Contract no longer available." };
   const ship = world.traders[traderId];
   if (!ship) return { ok: false, reason: "Unknown ship." };
-  if (!isPlayerShip(world, traderId)) return { ok: false, reason: "Only player ships can collect exchange settlements." };
-  if (job.acceptedBy !== traderId) return { ok: false, reason: "Settlement is assigned to another ship." };
-  if (ship.state !== "idle") return { ok: false, reason: "Dock before collecting the settlement." };
+  if (!isPlayerShip(world, traderId)) return { ok: false, reason: "Only player ships can collect contracts." };
+  if (job.acceptedBy !== traderId) return { ok: false, reason: "Contract is assigned to another ship." };
+  if (ship.state !== "idle") return { ok: false, reason: "Dock before collecting." };
   if (ship.location !== job.destination) {
     const dst = world.locations[job.destination]?.name ?? job.destination;
-    return { ok: false, reason: `Collect this settlement at ${dst}.` };
+    return { ok: false, reason: `Collect at ${dst}.` };
+  }
+  if (job.kind !== "trade" && job.delivered < job.qty) {
+    return { ok: false, reason: `Deliver ${job.qty - job.delivered} more before collecting.` };
   }
   const reward = rewardWithBonus(world, ship, job);
   ship.funds += reward;
+  if (job.kind !== "trade" && job.postedBy) {
+    bumpPlayerReputation(world, job.postedBy, REP_PER_JOB[job.tier]);
+    nudgeStationControl(world, job.destination, job.postedBy, CONTROL_PER_JOB[job.tier]);
+  }
   pushJobCompleted(world, ship, { reward, partial: false }, job);
   delete world.jobs[job.id];
-  incrementManualActions(world);
+  incrementManualActions(world, "deliver_contract");
   return { ok: true };
 }
 
@@ -468,9 +483,17 @@ export interface JobCompletionEvent {
   delivered: number;
 }
 
-// Called after a player ship sells (or otherwise delivers) goods to a market.
-// Credits the delivered qty against any active jobs that match (good × destination)
-// and pays out the reward + closes the job when fully satisfied.
+// Called after a player ship sells (or otherwise delivers) goods to a
+// market. Credits the delivered qty against any active jobs that match
+// (good × destination).
+//
+// For ships in autopilot ("auto"), the contract closes inline once
+// fully delivered — paying the reward, releasing rep + control, and
+// removing the job. For ships in MANUAL control we deliberately stop
+// short: bump `delivered` but leave the job sitting at delivered=qty
+// waiting for the player to click Collect themselves. Auto-completion
+// removes a satisfying click and reduces the contract pipeline to a
+// passive bonus, so manual play opts out of it.
 export function creditJobOnDelivery(
   world: World,
   traderId: TraderId,
@@ -490,6 +513,7 @@ export function creditJobOnDelivery(
     .sort((a, b) => tierOrder[a.tier] - tierOrder[b.tier]);
 
   const ship = world.traders[traderId];
+  const autoSettle = ship?.pilot !== "manual";
   for (const job of matching) {
     if (remaining <= 0) break;
     const need = job.qty - job.delivered;
@@ -497,7 +521,8 @@ export function creditJobOnDelivery(
     const credit = Math.min(remaining, need);
     job.delivered += credit;
     remaining -= credit;
-    if (job.delivered >= job.qty) {
+    const fullyDelivered = job.delivered >= job.qty;
+    if (fullyDelivered && autoSettle) {
       const reward = ship ? rewardWithBonus(world, ship, job) : job.reward;
       if (ship) ship.funds += reward;
       // Syndicate-tagged jobs: full delivery earns the player rep with
@@ -512,7 +537,18 @@ export function creditJobOnDelivery(
       if (ship) pushJobCompleted(world, ship, ev, job);
       events.push(ev);
       delete world.jobs[job.id];
+      // Auto-completion still bumps the deliver_contract tutorial
+      // counter so autopilot players progress through that step.
+      // Manual deliveries get their bump from collectTradeJob.
+      if (world.player?.tutorial) {
+        const t = world.player.tutorial.perTypeCount;
+        t.deliver_contract = (t.deliver_contract ?? 0) + 1;
+      }
     } else {
+      // Either still partial OR fully delivered but waiting for a
+      // manual collect. Either way, surface a partial event so the
+      // UI can highlight the row as ready (delivered === qty) or
+      // in-progress.
       events.push({ jobId: job.id, tier: job.tier, reward: 0, partial: true, delivered: job.delivered });
     }
   }

@@ -1,0 +1,213 @@
+/* Helper orb + speech bubble. The orb tracks the spotlit element via
+   TutorialHelper's lookAtSelector and sits adjacent to it on whichever
+   horizontal side has room. The bubble drops diagonally away (vertically
+   opposite from the target) so it never lands on the thing the player
+   needs to read.
+
+   When no target is set, falls back to the bottom-left of the viewport
+   in the original flex layout. */
+
+.tutorial-helper {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  z-index: 1100;
+  pointer-events: none;
+  /* Children flip pointer-events back on individually; the wrapper stays
+     transparent to clicks so it never blocks the spotlit element. */
+}
+
+.tutorial-helper > * {
+  pointer-events: auto;
+}
+
+/* Positioned mode: each child is fixed-positioned at its own top/left
+   from inline style. The wrapper still sits at bottom-left, but the
+   children break out of its flex flow via `position: fixed`, so the
+   wrapper's location doesn't matter — it's just a grouping container
+   for accessibility. */
+.tutorial-helper.positioned .tutorial-helper-orb,
+.tutorial-helper.positioned .tutorial-helper-bubble {
+  position: fixed;
+  /* Float between targets with a long, slow-in/slow-out ease so the
+     pair feels like it's drifting rather than snapping. The orb leads
+     the bubble by a short delay so they don't move in perfect lockstep
+     — it adds a nice trailing-companion feel. */
+  transition: top 720ms cubic-bezier(0.65, 0, 0.35, 1),
+              left 720ms cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+.tutorial-helper.positioned .tutorial-helper-bubble {
+  transition-delay: 90ms;
+}
+
+/* Orb sits behind the bubble so the speech panel reads cleanly even
+   when they overlap; the head/shoulders peek out where they extend
+   past the bubble's footprint. */
+.tutorial-helper.positioned .tutorial-helper-orb { z-index: 1100; }
+.tutorial-helper.positioned .tutorial-helper-bubble { z-index: 1101; }
+
+/* Tail is only meaningful in the default flex layout (orb directly to
+   the left of bubble). In positioned mode the orb floats free of the
+   bubble at a diagonal, so the tail no longer reads as a connector —
+   hide it. */
+.tutorial-helper.positioned .tutorial-helper-bubble-tail {
+  display: none;
+}
+
+.tutorial-helper-orb {
+  position: relative;
+  width: 240px;
+  height: 240px;
+  flex: none;
+  margin-bottom: 4px;
+  animation: tutorial-helper-orb-float 4200ms ease-in-out infinite;
+}
+
+.tutorial-helper-orb-model {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  --poster-color: transparent;
+  --progress-bar-color: transparent;
+  --progress-mask: transparent;
+  pointer-events: none;
+}
+
+@keyframes tutorial-helper-orb-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-6px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tutorial-helper-orb {
+    animation: none;
+  }
+  .tutorial-helper.positioned .tutorial-helper-orb,
+  .tutorial-helper.positioned .tutorial-helper-bubble {
+    transition: none;
+  }
+}
+
+.tutorial-helper-bubble {
+  position: relative;
+  max-width: 380px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 12px 14px 10px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55);
+  /* Arrives with a soft pop so the player notices a new step. */
+  animation: tutorial-helper-bubble-in 240ms ease-out;
+}
+
+.tutorial-helper-bubble-tail {
+  position: absolute;
+  left: -8px;
+  bottom: 22px;
+  width: 14px;
+  height: 14px;
+  background: var(--bg-2);
+  border-left: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border-strong);
+  transform: rotate(45deg);
+}
+
+@keyframes tutorial-helper-bubble-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.tutorial-helper-title {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.01em;
+}
+
+.tutorial-helper-body {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.45;
+  margin-bottom: 10px;
+}
+
+.tutorial-helper-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tutorial-helper-button {
+  /* Outlined buttons, color-coded by intent: advance = green (forward
+     motion), skip = yellow (bail this section), dismiss = red (kill
+     the tutorial entirely). Matches the in-game --good/--warn/--bad
+     palette so the player can read the choice at a glance. */
+  font-size: 11px;
+  padding: 5px 10px;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.tutorial-helper-button.advance {
+  background: var(--good-bg);
+  border-color: var(--good);
+  color: var(--good);
+}
+.tutorial-helper-button.advance:hover:not(:disabled) {
+  /* Slightly more saturated bg + same outline color, no fill flip —
+     a saturated fill at the accent green/yellow/red is too loud at
+     button size against the dim. */
+  background: rgba(74, 222, 128, 0.18);
+  color: var(--good);
+  border-color: var(--good);
+}
+
+.tutorial-helper-button.skip {
+  background: var(--warn-bg);
+  border-color: var(--warn);
+  color: var(--warn);
+}
+.tutorial-helper-button.skip:hover:not(:disabled) {
+  background: rgba(251, 191, 36, 0.18);
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+.tutorial-helper-button.dismiss {
+  background: var(--bad-bg);
+  border-color: var(--bad);
+  color: var(--bad);
+}
+.tutorial-helper-button.dismiss:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.2);
+  color: var(--bad);
+  border-color: var(--bad);
+}
+
+@media (max-width: 720px) {
+  .tutorial-helper:not(.positioned) {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    bottom: 16px;
+    left: 16px;
+    right: 16px;
+  }
+
+  .tutorial-helper:not(.positioned) .tutorial-helper-bubble {
+    max-width: none;
+    width: 100%;
+  }
+
+  .tutorial-helper:not(.positioned) .tutorial-helper-bubble-tail {
+    display: none;
+  }
+}

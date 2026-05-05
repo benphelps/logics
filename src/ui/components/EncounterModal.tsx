@@ -91,11 +91,19 @@ export function EncounterModal() {
   const world = useStore(s => s.world);
   const resolve = useStore(s => s.resolveEncounter);
   const dismiss = useStore(s => s.dismissResolvedEncounter);
+  const setEncounterPhase = useStore(s => s.setEncounterPhase);
 
   // The phase drives the lower panel: choice cards → spinning dice → result.
   // Tied to the encounter id so a fresh spawn resets the UI cleanly even if
   // the previous one was somehow left mid-roll.
   const [phase, setPhase] = useState<Phase>("choosing");
+  // Mirror local phase into the store so the combat tutorial can pick
+  // the right sub-stop (action vs dice easter egg vs revealed). Cleared
+  // when the modal unmounts.
+  useEffect(() => {
+    setEncounterPhase(encounter ? phase : null);
+    return () => { setEncounterPhase(null); };
+  }, [encounter, phase, setEncounterPhase]);
   const [pickedChoice, setPickedChoice] = useState<EncounterChoice | null>(null);
   const rollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -215,6 +223,7 @@ export function EncounterModal() {
               pills={lossPills(world, renderEncounter.fightLossOnFail)}
               recommended={recommended === "fight"}
               onClick={() => handleChoose("fight")}
+              tutorialKey="fight"
             />
             <ActionCard
               label="Flee"
@@ -222,6 +231,7 @@ export function EncounterModal() {
               pills={lossPills(world, renderEncounter.fleeLossOnFail)}
               recommended={recommended === "flee"}
               onClick={() => handleChoose("flee")}
+              tutorialKey="flee"
             />
             <ActionCard
               label={renderEncounter.attacker.kind === "pirate" ? "Bribe" : "Negotiate"}
@@ -231,6 +241,7 @@ export function EncounterModal() {
               recommended={recommended === "negotiate"}
               disabled={cantBribe}
               onClick={() => handleChoose("negotiate")}
+              tutorialKey="negotiate"
             />
           </section>
         )}
@@ -268,14 +279,17 @@ function ActionCard(props: {
   recommended?: boolean;
   disabled?: boolean;
   onClick: () => void;
+  tutorialKey: string;
 }) {
-  const { label, band, pills, note, recommended, disabled, onClick } = props;
+  const { label, band, pills, note, recommended, disabled, onClick, tutorialKey } = props;
   return (
     <button
       type="button"
       className={`encounter-action band-${band} ${recommended ? "recommended" : ""}`}
       onClick={onClick}
       disabled={disabled}
+      data-tutorial-encounter-action={tutorialKey}
+      data-tutorial-encounter-recommended={recommended ? "true" : undefined}
     >
       <span className="encounter-action-head">
         <span className="encounter-action-label">{label}</span>
@@ -371,6 +385,7 @@ function RevealedPanel(props: {
         className="encounter-action recommended encounter-reveal-continue"
         onClick={onContinue}
         autoFocus
+        data-tutorial="encounter-continue"
       >
         <span className="encounter-action-head">
           <span className="encounter-action-label">Continue</span>

@@ -404,6 +404,68 @@ export interface Player {
   // the player has interacted with appear. Optional for back-compat
   // with old saves; readers default to 0 for any missing entry.
   reputation?: Record<SyndicateId, number>;
+  // Onboarding tutorial state. Tracks whether the helper orb is showing
+  // the interface tour, walking through action types, or finished. Per-
+  // type counter advances as the player performs each tutorial action so
+  // we know when to move to the next step. Skipped steps stay skipped —
+  // we never reopen them mid-game. Optional for back-compat with saves
+  // that pre-date the tutorial; missing on load means "already onboarded"
+  // (don't pester returning players).
+  tutorial?: TutorialState;
+}
+
+// Mirrors the step ids in src/sim/tutorial.ts. Defined here so the Player
+// type can reference it without importing UI/tutorial logic.
+export type TutorialActionKind =
+  | "travel"
+  | "buy"
+  | "sell"
+  | "refuel"
+  | "accept_contract"
+  | "deliver_contract"
+  | "install_upgrade"
+  | "hire_crew"
+  | "stock_trade";
+
+export interface TutorialState {
+  // "setup"    = pre-game wizard companion. Runs while pendingNewGame is
+  //              non-null; the orb sits centered and reacts to the
+  //              wizard's intro / pilot / syndicate phases. Auto-flips
+  //              to "tour" once the wizard commits.
+  // "tour"     = pre-action interface walkthrough (skippable).
+  // "cargo"    = hint-driven coaching on the Cargo tab. Reads
+  //              getGuidedHint() each tick and spotlights whatever the
+  //              engine suggests. Exits via the end-of-loop fork prompt.
+  // "exchange" = hint-driven coaching on the Exchange tab. Reads the
+  //              stock suggestion engine. Exits after the first stock
+  //              trade.
+  // "farewell" = final goodbye orb after the exchange phase completes
+  //              (or when the player taps "Finish tutorial"). One full
+  //              dim, one parting message, then they hit Done.
+  // "done"     = finished or already-experienced player.
+  // "skipped"  = explicitly skipped, do not re-trigger except via the replay menu.
+  phase: "setup" | "tour" | "cargo" | "exchange" | "farewell" | "done" | "skipped";
+  // Index into the interface-tour stop list. 0 = first stop. Bumped per
+  // "Next" click; reset to 0 when tutorial is replayed.
+  tourStop: number;
+  // How many times each action type has been performed since tutorial
+  // start. Bumped from incrementManualActions when the action site passes
+  // a TutorialActionKind. Sparse — missing keys read as 0. The phase
+  // transition predicates read from this.
+  perTypeCount: Partial<Record<TutorialActionKind, number>>;
+  // Number of buy/sell loops to run before the end-of-loop fork prompt
+  // fires. Default 3. Each "Another Logistics Route" answer bumps it
+  // by 1, so the player can keep grinding loops one at a time and we
+  // re-prompt at the end of each.
+  loopGoal: number;
+  // Combat sub-tutorial state. Fires the first time the player gets
+  // an encounter — whether during the main tutorial flow or later.
+  // Once `combatSeen` flips true the sub-tutorial never plays again.
+  // `combatStop` is the local index inside that mini-flow:
+  //   0 = intro (orb monologue), 1 = pick recommended action,
+  //   2 = click continue on the resolution panel.
+  combatSeen?: boolean;
+  combatStop?: number;
 }
 
 export type PositionKind = "long" | "short";

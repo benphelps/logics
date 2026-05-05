@@ -298,6 +298,10 @@ describe("ship upgrades", () => {
     const { creditJobOnDelivery } = await import("./jobs");
     const world = createWorld();
     const ship = playerShip(world);
+    // Auto-pilot so the contract auto-pays inline. Manual ships defer
+    // payout to a player-driven Collect click; the bonus math is the
+    // same in both paths.
+    ship.pilot = "auto";
     installFreshUpgrade(world, ship, "upg_systems_haggler_1");
     ship.funds = 0;
 

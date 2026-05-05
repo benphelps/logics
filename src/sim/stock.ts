@@ -1407,7 +1407,7 @@ export function buyShares(world: World, equityId: EquityId, shares: number, ship
     current.shares = totalShares;
     recordTrade(world, ship!, eq, "add_long", exec.filled, exec.weightedAvgPrice, fee, -total);
   }
-  incrementManualActions(world);
+  incrementManualActions(world, "stock_trade");
   return { ok: true, shares: exec.filled, cashFlow: -total, fee };
 }
 
@@ -1460,7 +1460,7 @@ export function sellShares(
   if (current.shares <= 0.0001) delete positions[equityId];
   recordTrade(world, ship!, eq, "close_long", exec.filled, exec.weightedAvgPrice, fee, immediateCashFlow, realizedPnl, trigger);
   // Auto-fired stop-loss / take-profit don't count as manual play.
-  if (!trigger) incrementManualActions(world);
+  if (!trigger) incrementManualActions(world, "stock_trade");
   return { ok: true, shares: exec.filled, cashFlow: immediateCashFlow, fee, realizedPnl, settlementJobId };
 }
 
@@ -1564,7 +1564,7 @@ export function shortShares(world: World, equityId: EquityId, shares: number, sh
     current.shares = totalShares;
     recordTrade(world, ship!, eq, "add_short", exec.filled, exec.weightedAvgPrice, fee, net);
   }
-  incrementManualActions(world);
+  incrementManualActions(world, "stock_trade");
   return { ok: true, shares: exec.filled, cashFlow: net, fee };
 }
 
@@ -1626,7 +1626,7 @@ export function coverShares(
   if (current.shares <= 0.0001) delete positions[equityId];
   recordTrade(world, ship!, eq, "cover_short", exec.filled, exec.weightedAvgPrice, fee, immediateCashFlow, realizedPnl, trigger);
   // Auto-fired stop-loss / take-profit don't count as manual play.
-  if (!trigger) incrementManualActions(world);
+  if (!trigger) incrementManualActions(world, "stock_trade");
   return { ok: true, shares: exec.filled, cashFlow: immediateCashFlow, fee, realizedPnl, settlementJobId };
 }
 
@@ -1692,7 +1692,7 @@ export function placeLimitBuy(
   const order = placeBookLimit(world, {
     equityId: eq.id, side: "bid", qty: shares, limitPrice, agentId: ship.id,
   });
-  incrementManualActions(world);
+  incrementManualActions(world, "stock_trade");
   return { ok: true, orderId: order.id, reservedFunds };
 }
 
@@ -1731,7 +1731,7 @@ export function placeLimitSell(
   const order = placeBookLimit(world, {
     equityId: eq.id, side: "ask", qty: shares, limitPrice, agentId: ship.id,
   });
-  incrementManualActions(world);
+  incrementManualActions(world, "stock_trade");
   return { ok: true, orderId: order.id, reservedShares: shares };
 }
 

@@ -7,7 +7,7 @@
 // don't count. See incrementManualActions for the precise list of entry
 // points that increment the counter.
 
-import type { World } from "./types";
+import type { TutorialActionKind, World } from "./types";
 import { upgradeDef } from "./upgrades";
 
 export const MILESTONES = {
@@ -58,11 +58,21 @@ export function isMilestoneMet(world: World, key: MilestoneKey): boolean {
 // and never reaches these wrappers, so the counter naturally excludes auto
 // actions without an explicit branch.
 //
+// `kind` tags which tutorial action type just happened — the second
+// counter on player.tutorial.perTypeCount drives onboarding progression.
+// Pass `undefined` for actions outside the tutorial taxonomy (e.g.
+// limit-order placement, position abandonment) so they still count toward
+// the milestone career counter without nudging the helper orb forward.
+//
 // Safe to call without a player set — quietly no-ops in NPC-only worlds
 // (the audit test harness, scenario runs).
-export function incrementManualActions(world: World, n: number = 1): void {
+export function incrementManualActions(world: World, kind?: TutorialActionKind, n: number = 1): void {
   if (!world.player) return;
   world.player.manualActionCount = (world.player.manualActionCount ?? 0) + n;
+  if (kind && world.player.tutorial) {
+    const counts = world.player.tutorial.perTypeCount;
+    counts[kind] = (counts[kind] ?? 0) + n;
+  }
 }
 
 // Map an upgrade tier to its milestone key. Tiers are 1-4 in the catalog.

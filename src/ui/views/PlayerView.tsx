@@ -538,7 +538,14 @@ function DockedView({ ship, world, loc, guidedPlan, hint, target, hintText, cueT
   const activePinned = activePinnedKey
     ? pinnedFocuses.find(focus => infoFocusKey(focus) === activePinnedKey) ?? null
     : null;
-  const activeFocus = hoveredFocus ?? activePinned;
+  // Tutorial-pinned focus takes precedence over pinned/hovered when
+  // active, so the right-column info panel shows what the orb's step
+  // is teaching about (route profit on a buy, local best-sell-price
+  // on a sell, destination station info on a travel). Player hover
+  // still wins because it's the most recent intent — they're actively
+  // looking at something different.
+  const tutorialFocus = useStore(s => s.tutorialFocus);
+  const activeFocus = hoveredFocus ?? activePinned ?? tutorialFocus;
   const pinFocus = (focus: InfoFocus) => {
     const key = infoFocusKey(focus);
     setPinnedFocuses(prev => prev.some(item => infoFocusKey(item) === key) ? prev : [...prev, focus]);
@@ -850,7 +857,7 @@ function LocalJobRow({ job, world, ship, suggested, hintText, showAction, intera
   const onHand = job.good ? ship.cargo.filter(l => l.good === job.good).reduce((s, l) => s + l.qty, 0) : 0;
   const onHandTone = onHand >= job.qty ? "good" : onHand > 0 ? "warn" : "faint";
   return (
-    <tr className={`contract-row contract-tier-${job.tier}`}>
+    <tr className={`contract-row contract-tier-${job.tier}`} data-tutorial-accept-job={job.id}>
       <td><span className={`tier-badge tier-${job.tier}`}>{job.tier.toUpperCase()}</span></td>
       <td>
         <span className="contract-title-row">
@@ -1107,7 +1114,7 @@ function StationTradeHelperInfoContent({ loc, world }: { loc: LocationDef; world
         </div>
       </div>
 
-      <div className="trade-helper-section">
+      <div className="trade-helper-section" data-tutorial="info-station-pressure">
         <div className="exchange-section-title">Market pressure</div>
         {pressureRows.length === 0 ? (
           <div className="trade-helper-line muted"><span>Stock</span><span>Markets are near target</span></div>
@@ -1310,7 +1317,7 @@ function ShipCard({ ship, world, loc, guidedPlan, target, hintText, cueText, cri
   const canRepair = totalRepairCost > 0 && ship.state === "idle";
 
   return (
-    <section className="bridge-card ship-card">
+    <section className="bridge-card ship-card" data-tutorial="cargo-panel">
       <ShipCargoTabs
         ship={ship}
         world={world}
@@ -1415,6 +1422,7 @@ function ShipFuelStatusEntry({ ship, world, target, hintText, critical, inTransi
         onClick={() => refuel(ship.id)}
         disabled={!canRefuel}
         title={`${status} · ${actionTitle}`}
+        data-tutorial="refuel-button"
       >
         <span className="ship-meter-label">{fuelLabel}</span>
         <span className="ship-meter-percent">{percentText}</span>
@@ -1771,7 +1779,7 @@ function StationExchangeCard({ ship, world, loc, target, hintText, cueText, sele
   const contractHintText = cueText.sections.contracts ?? hintText;
 
   return (
-    <section className={`bridge-card market-card exchange-card ${inTransit ? "transit-preview-card" : ""}`}>
+    <section className={`bridge-card market-card exchange-card ${inTransit ? "transit-preview-card" : ""}`} data-tutorial="markets-panel">
       <div className="bridge-card-tabs">
         <button
           className={`bridge-tab ${tab === "markets" ? "active" : ""} ${marketsSuggested ? "has-suggestion" : ""}`}
@@ -1813,24 +1821,26 @@ function StationExchangeCard({ ship, world, loc, target, hintText, cueText, sele
               onHoverBlueprint={onHoverBlueprint}
             />
           ) : (
-            <MarketTableBody
-              ship={ship}
-              world={world}
-              loc={loc}
-              target={target}
-              hintText={hintText}
-              cueText={cueText}
-              selectedGood={selectedGood}
-              pinnedGoods={pinnedGoods}
-              interactionLocked={inTransit}
-              onSelectGood={onSelectGood}
-              onHoverGood={onHoverGood}
-            />
+            <div data-tutorial="markets-list">
+              <MarketTableBody
+                ship={ship}
+                world={world}
+                loc={loc}
+                target={target}
+                hintText={hintText}
+                cueText={cueText}
+                selectedGood={selectedGood}
+                pinnedGoods={pinnedGoods}
+                interactionLocked={inTransit}
+                onSelectGood={onSelectGood}
+                onHoverGood={onHoverGood}
+              />
+            </div>
           )
         )}
-        {tab === "upgrades" && <StationUpgradePurchaseTab ship={ship} world={world} loc={loc} target={target} hintText={hintText} cueText={cueText} interactionLocked={inTransit} />}
-        {tab === "offers" && <HireOffersTab ship={ship} world={world} loc={loc} interactionLocked={inTransit} />}
-        {tab === "contracts" && <ContractsTab ship={ship} world={world} loc={loc} target={target} hintText={hintText} cueText={cueText} interactionLocked={inTransit} />}
+        {tab === "upgrades" && <div data-tutorial="upgrades-shop"><StationUpgradePurchaseTab ship={ship} world={world} loc={loc} target={target} hintText={hintText} cueText={cueText} interactionLocked={inTransit} /></div>}
+        {tab === "offers" && <div data-tutorial="crew-offers"><HireOffersTab ship={ship} world={world} loc={loc} interactionLocked={inTransit} /></div>}
+        {tab === "contracts" && <div data-tutorial="contracts-board"><ContractsTab ship={ship} world={world} loc={loc} target={target} hintText={hintText} cueText={cueText} interactionLocked={inTransit} /></div>}
       </div>
     </section>
   );
@@ -1909,6 +1919,7 @@ function MarketTableBody({ ship, world, loc, target, hintText, cueText, selected
                 return (
                   <tr
                     key={gid}
+                    data-tutorial-buy-good={gid}
                     className={infoFocusRowClass(pinned)}
                     aria-selected={selectedGood === gid}
                     tabIndex={0}
@@ -2154,6 +2165,7 @@ function InfoAreaCard({ ship, world, loc, focus, pinnedFocuses, activePinnedKey,
 
   return (
     <section
+      data-tutorial="info-panel"
       className={`bridge-card trade-helper-card info-area-card ${infoArtUrl ? "art-card" : ""} ${renderedFocus == null || renderedFocus.kind === "station" ? "station-info-helper" : ""}`}
       style={infoArtUrl
         ? {
@@ -2516,7 +2528,7 @@ function TradeGoodInfoContent({ ship, world, loc, focus, target, hint }: {
         </div>
       )}
 
-      <div className="trade-helper-section">
+      <div className="trade-helper-section" data-tutorial="info-product-signals">
         <div className="exchange-section-title">Market signals</div>
         <div className="trade-helper-line">
           <span>Nearest demand</span>
@@ -2670,6 +2682,7 @@ function ShipCargoTabs({ ship, world, loc, groups, inTransit, target, hintText, 
         <button
           className={`bridge-tab ship-meter-tab cargo-meter-tab ${tab === "cargo" ? "active" : ""} ${cargoSuggested ? "has-suggestion" : ""}`}
           style={meterTabStyle(cargoPct)}
+          data-tutorial-fleet-tab="cargo"
           onClick={() => onTabChange("cargo")}
           title={cargoSuggested ? cargoHintText : `${cargoPct.toFixed(0)}% cargo capacity used`}
         >
@@ -2678,18 +2691,21 @@ function ShipCargoTabs({ ship, world, loc, groups, inTransit, target, hintText, 
         </button>
         <button
           className={`bridge-tab ${tab === "upgrades" ? "active" : ""}`}
+          data-tutorial-fleet-tab="upgrades"
           onClick={() => onTabChange("upgrades")}
         >
           Upgrades <span className="bridge-tab-count">{installedCount}/{visibleSlotCount}</span>
         </button>
         <button
           className={`bridge-tab ${tab === "crew" ? "active" : ""}`}
+          data-tutorial-fleet-tab="crew"
           onClick={() => onTabChange("crew")}
         >
           Crew <span className="bridge-tab-count">{crewCount}/{crewSlotCount}</span>
         </button>
         <button
           className={`bridge-tab ${tab === "contracts" ? "active" : ""} ${contractsSuggested ? "has-suggestion" : ""}`}
+          data-tutorial-fleet-tab="contracts"
           onClick={() => onTabChange("contracts")}
           title={contractsSuggested ? contractHintText : undefined}
         >
@@ -2697,24 +2713,26 @@ function ShipCargoTabs({ ship, world, loc, groups, inTransit, target, hintText, 
         </button>
       </div>
       {tab === "cargo" && (
-        <CargoTab
-          ship={ship}
-          world={world}
-          loc={loc}
-          groups={groups}
-          inTransit={inTransit}
-          target={target}
-          hintText={hintText}
-          cueText={cueText}
-          selectedGood={selectedGood}
-          pinnedGoods={pinnedGoods}
-          onSelectGood={onSelectGood}
-          onHoverGood={onHoverGood}
-        />
+        <div data-tutorial="cargo-list">
+          <CargoTab
+            ship={ship}
+            world={world}
+            loc={loc}
+            groups={groups}
+            inTransit={inTransit}
+            target={target}
+            hintText={hintText}
+            cueText={cueText}
+            selectedGood={selectedGood}
+            pinnedGoods={pinnedGoods}
+            onSelectGood={onSelectGood}
+            onHoverGood={onHoverGood}
+          />
+        </div>
       )}
-      {tab === "upgrades" && <ShipUpgradesTab ship={ship} />}
-      {tab === "crew" && <CrewTab ship={ship} />}
-      {tab === "contracts" && <ActiveContractsTab ship={ship} world={world} jobs={activeContracts} target={target} cueText={cueText} hintText={hintText} />}
+      {tab === "upgrades" && <div data-tutorial="upgrades-list"><ShipUpgradesTab ship={ship} /></div>}
+      {tab === "crew" && <div data-tutorial="crew-list"><CrewTab ship={ship} /></div>}
+      {tab === "contracts" && <div data-tutorial="contracts-list"><ActiveContractsTab ship={ship} world={world} jobs={activeContracts} target={target} cueText={cueText} hintText={hintText} /></div>}
     </div>
   );
 }
@@ -3450,6 +3468,7 @@ function CargoRow({ group, ship, world, refLocId, inTransit, suggested, hintText
 
   return (
     <tr
+      data-tutorial-sell-good={group.good}
       className={infoFocusRowClass(pinned, "cargo-row")}
       aria-selected={selected}
       tabIndex={0}
@@ -3704,8 +3723,19 @@ function ActiveContractsTab({ ship, world, jobs, target, cueText, hintText }: {
                   const away = j.destination !== ship.location;
                   const pct = j.qty > 0 ? Math.max(0, Math.min(100, (j.delivered / j.qty) * 100)) : 0;
                   const suggestedCollect = target.collectJobId === j.id && j.destination === ship.location;
+                  // A cargo-haul contract is "ready to collect" once the
+                  // player has fully delivered the goods (delivered=qty)
+                  // AND is at the destination station. This replaces the
+                  // old auto-complete behavior — manual ships now claim
+                  // their reward with an explicit click.
+                  const cargoReady = !isTradeJob && j.delivered >= j.qty && !away;
+                  const collectableJobId = (isTradeJob && !away) || cargoReady ? j.id : undefined;
                   return (
-                    <tr key={j.id} className={`contract-row contract-tier-${j.tier}`}>
+                    <tr
+                      key={j.id}
+                      className={`contract-row contract-tier-${j.tier}`}
+                      data-tutorial-collect-job={collectableJobId}
+                    >
                       <td><span className={`tier-badge tier-${j.tier}`}>{j.tier.toUpperCase()}</span></td>
                       <td>
                         <span className="contract-title-row">
@@ -3741,6 +3771,18 @@ function ActiveContractsTab({ ship, world, jobs, target, cueText, hintText }: {
                               onClick={() => collectJob(j.id, ship.id)}
                               disabled={away}
                               title={away ? `Collect at ${dst}` : undefined}
+                            >
+                              <span className="btn-label">Collect</span>
+                            </button>
+                          </ActionCell>
+                        ) : cargoReady ? (
+                          // Manual delivery is complete — the reward is
+                          // sitting unclaimed until the player clicks.
+                          <ActionCell suggested={cueText.collectJobs[j.id] != null || target.collectJobId === j.id} hintText={cueText.collectJobs[j.id] ?? hintText} label="Collect">
+                            <button
+                              className={`btn-action ${target.collectJobId === j.id ? "btn-suggested" : "primary"}`}
+                              onClick={() => collectJob(j.id, ship.id)}
+                              title={`Claim Ç${j.reward.toLocaleString()}`}
                             >
                               <span className="btn-label">Collect</span>
                             </button>
@@ -3929,6 +3971,7 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
     manualActions ? (
       <button
         className="travel-panel-action"
+        data-tutorial="quick-travel"
         onClick={() => stepN(ship.ticksRemaining)}
         title={`Advance ${ship.ticksRemaining} ticks until arrival`}
       >
@@ -3953,7 +3996,7 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
       : `${neighborDests.length} reachable station${neighborDests.length === 1 ? "" : "s"}`;
 
   return (
-    <section className="bridge-card travel-card">
+    <section className="bridge-card travel-card" data-tutorial="travel-panel">
       <header
         className={`travel-panel-head art-panel-head ${travelSuggested ? "has-suggestion" : ""}`}
         style={currentLocation ? artCardStyle(stationArtUrl(currentLocation)) : undefined}
@@ -4019,6 +4062,7 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
                   return (
                     <tr
                       key={d.to}
+                      data-tutorial-travel-to={d.to}
                       className={infoFocusRowClass(pinned, `${isPoi ? "travel-is-poi" : ""} ${destinationJobs.length > 0 ? "travel-has-contract" : ""}`)}
                       aria-selected={selectedStation === d.to}
                       tabIndex={0}

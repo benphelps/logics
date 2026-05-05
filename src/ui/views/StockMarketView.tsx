@@ -189,7 +189,14 @@ export function StockMarketView() {
   const selectedHint = detail ? hintByEquity.get(detail.equity.id) ?? null : null;
   const stockGuideEnabled = useStore((s) => s.stockGuideEnabled);
   const setStockGuideEnabled = useStore((s) => s.setStockGuideEnabled);
-  const guidedTradeEnabled = stockGuidanceUnlocked && stockGuideEnabled;
+  // Tutorial bypass: during the exchange phase the orb is teaching the
+  // player how to trade, and the existing hint plumbing (auto-fill qty
+  // + price, button suggestion glow) is exactly what the lesson is
+  // about. Light up that pipeline regardless of the navigator-unlock
+  // and the user toggle so the inputs populate when the orb tells the
+  // player which row to trade.
+  const tutorialExchangeActive = useStore((s) => s.world.player?.tutorial?.phase === "exchange");
+  const guidedTradeEnabled = (stockGuidanceUnlocked && stockGuideEnabled) || tutorialExchangeActive;
   const topTradeHint = exchangeHints.find(h => h.action !== "watch" && h.executable) ?? null;
   const activeTradeHint = guidedTradeEnabled ? topTradeHint : null;
   const activeSelectedHint = activeTradeHint && detail?.equity.id === activeTradeHint.equityId
@@ -252,7 +259,7 @@ export function StockMarketView() {
         </div>
       )}
 
-      <div className="stocks-shell">
+      <div className="stocks-shell" data-tutorial="stocks-list">
         <aside className="stocks-shell-left">
           <EquitySelector
             rows={rows}
@@ -472,6 +479,7 @@ function EquitySelector({ rows, tapeRows, selectedId, pinnedIds, activeHint, bes
                 <button
                   key={kf}
                   type="button"
+                  data-tutorial-stock-kind={kf}
                   className={`bridge-tab ${kindFilter === kf ? "active" : ""} ${tabHasActiveHint(kf) ? "has-suggestion" : ""}`}
                   onClick={() => setKindFilter(kf)}
                   title={activeHint && tabHasActiveHint(kf) ? `Show ${activeHint.ticker}` : undefined}
@@ -553,6 +561,7 @@ const SelectorRow = memo(function SelectorRow({ row, selected, pinned, activeHin
   return (
     <button
       type="button"
+      data-tutorial-equity={eq.id}
       className={`stocks-selector-row ${selected ? "selected" : ""} ${pinned ? "is-pinned" : ""} ${tone} ${ownedTone} ${farRow ? "far" : ""}`}
       onClick={() => onSelectRow(eq.id)}
     >
@@ -889,6 +898,7 @@ function PositionAccordionItem(props: {
                   className={`btn-action stocks-position-close side-${pos.kind === "long" ? "sell" : "buy"} ${closeReadyForGuide ? "btn-suggested" : "primary"}`}
                   disabled={!props.docked || closeQty <= 0}
                   onClick={() => (pos.kind === "long" ? props.onSell(closeQty) : props.onCover(closeQty))}
+                  data-tutorial-trade-action={pos.kind === "long" ? "sell" : "cover"}
               >
                   {pos.kind === "long" ? "Sell qty" : "Cover qty"}
                 </button>
@@ -1676,6 +1686,7 @@ function UnifiedOrderForm({ equity, world, docked, access, hint, hintApplyKey = 
             className={`btn-action side-buy ${buyGuided ? "btn-suggested" : "primary"}`}
             disabled={buyDisabled}
             onClick={() => submit("buy")}
+            data-tutorial-trade-action="buy"
           >
             Buy · Ç{buyCost.toLocaleString()}
           </button>
@@ -1689,6 +1700,7 @@ function UnifiedOrderForm({ equity, world, docked, access, hint, hintApplyKey = 
             className={`btn-action side-sell ${sellGuided ? "btn-suggested" : "primary"}`}
             disabled={sellDisabled}
             onClick={() => submit("sell")}
+            data-tutorial-trade-action="sell"
           >
             Sell · Ç{sellNet.toLocaleString()}
           </button>
@@ -1702,6 +1714,7 @@ function UnifiedOrderForm({ equity, world, docked, access, hint, hintApplyKey = 
             className={`btn-action side-short ${shortGuided ? "btn-suggested" : "primary"}`}
             disabled={shortDisabled}
             onClick={() => submit("short")}
+            data-tutorial-trade-action="short"
           >
             Short · Ç{shortNet.toLocaleString()}
           </button>
@@ -2340,6 +2353,11 @@ interface TradeSideProps {
 }
 
 function TradeSide({ label, qty, setQty, max, costLabel, disabled, disabledReason, actionLabel, action, onAction }: TradeSideProps) {
+  // Tag the action button by intent ("buy" / "short") so the tutorial
+  // can spotlight whichever side the engine is recommending. Action
+  // names map: primary → buy, warning → short. Sell + cover live in
+  // the positions panel and carry their own attrs there.
+  const tradeAction = action === "primary" ? "buy" : "short";
   return (
     <div className={`stocks-trade-side action-${action}`}>
       <div className="stocks-trade-label">{label}</div>
@@ -2350,6 +2368,7 @@ function TradeSide({ label, qty, setQty, max, costLabel, disabled, disabledReaso
         value={qty}
         onChange={(e) => setQty(Math.max(1, Number(e.target.value) || 1))}
         disabled={disabled}
+        data-tutorial-trade-input={tradeAction}
       />
       <div className="stocks-trade-cost mono dim">{costLabel}</div>
       <div className="stocks-trade-actions">
@@ -2362,6 +2381,7 @@ function TradeSide({ label, qty, setQty, max, costLabel, disabled, disabledReaso
         onClick={onAction}
         disabled={disabled || qty <= 0 || qty > max}
         title={disabled ? disabledReason : ""}
+        data-tutorial-trade-action={tradeAction}
       >
         {actionLabel} {qty}
       </button>

@@ -54,6 +54,16 @@
   min-width: 0;
 }
 
+/* Sub-groups inside run-controls are inline-flex too, so the original
+   single-row layout is preserved while giving the tutorial spotlight a
+   single element to wrap "tick + speed" and "music + settings" callouts
+   each. */
+.topbar-controls-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .topbar-tick-pill {
   display: inline-flex;
   align-items: center;

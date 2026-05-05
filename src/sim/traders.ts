@@ -367,6 +367,15 @@ export function listTradeOptions(
   const inflightMap = inflight ?? inTransitArrivalsByDestGood(world);
   const here = fromLocation ?? trader.location;
   const srcMarket = world.markets[here];
+
+  // Player ships can't actually buy or sell goods at shipyards — that
+  // station kind only exposes a blueprint marketplace in the UI, not
+  // the goods table. Recommending a buy/sell here strands the player
+  // staring at a row that doesn't exist on the screen. NPCs use other
+  // pathfinding paths and aren't affected.
+  if (isPlayerShip(world, trader)) {
+    if (world.locations[here]?.traits.tags.includes("shipyard")) return [];
+  }
   const fuel = trader.currentFuel;
   const fuelFree = ignoresFuel(trader);
   const ft = activeFuelType(trader) ?? trader.fuelTypes[0] ?? null;
@@ -453,6 +462,15 @@ export function listTradeOptions(
     }
   }
 
+  // Same UI-mismatch reasoning as above, applied to the destination.
+  // For player ships, never recommend selling at a shipyard — the
+  // destination's UI hides the goods market on arrival. NPCs continue
+  // to consider all reachable neighbors normally.
+  const playerShip = isPlayerShip(world, trader);
+  const reachableDestinations = playerShip
+    ? destinations.filter(({ to }) => !world.locations[to]?.traits.tags.includes("shipyard"))
+    : destinations;
+
   for (const goodId of Object.keys(world.goods) as GoodId[]) {
     if (isUpgradeGood(goodId)) continue;
     const good = world.goods[goodId];
@@ -460,7 +478,7 @@ export function listTradeOptions(
     const srcStock = srcMarket.stock[goodId] ?? 0;
 
     const perDist = fuelPerDistanceFor(trader, ft);
-    for (const { to: dstId, dist } of destinations) {
+    for (const { to: dstId, dist } of reachableDestinations) {
 
       // Reserve cargo for accepted contracts at this destination whose good
       // isn't this primary good. The reservation only counts what's actually
@@ -1464,7 +1482,7 @@ export function installUpgradeFromCargo(world: World, trader: Trader, goodId: Go
 
   const result = finalizeUpgradeInstall(world, trader, goodId, previous);
   if (!result.ok) restoreUpgradeInstall(trader, snap);
-  if (result.ok && isPlayerShip(world, trader)) incrementManualActions(world);
+  if (result.ok && isPlayerShip(world, trader)) incrementManualActions(world, "install_upgrade");
   return result;
 }
 
@@ -1540,7 +1558,7 @@ export function installUpgradeFromMarket(world: World, trader: Trader, goodId: G
     market.stock[goodId] = stockBefore;
     market.treasury = treasuryBefore;
   }
-  if (result.ok && isPlayerShip(world, trader)) incrementManualActions(world);
+  if (result.ok && isPlayerShip(world, trader)) incrementManualActions(world, "install_upgrade");
   return result;
 }
 
@@ -1595,7 +1613,7 @@ export function buyAtLocation(world: World, trader: Trader, goodId: GoodId, qty:
       }
     }
   }
-  if (isPlayerShip(world, trader)) incrementManualActions(world);
+  if (isPlayerShip(world, trader)) incrementManualActions(world, "buy");
   return { ok: true, events };
 }
 
@@ -1641,7 +1659,7 @@ export function sellAtLocation(world: World, trader: Trader, goodId: GoodId, qty
   const events: TraderEvent[] = [];
   beginUnloadLots(world, trader, movedLots, events);
   for (const ev of events) pushTraderEvent(world, trader, ev);
-  if (isPlayerShip(world, trader)) incrementManualActions(world);
+  if (isPlayerShip(world, trader)) incrementManualActions(world, "sell");
   return { ok: true, events };
 }
 
@@ -1674,7 +1692,7 @@ export function refuelManual(world: World, trader: Trader, qty?: number): Execut
 
   const events: TraderEvent[] = [{ trader: trader.id, kind: "refuel", good: ft.good, qty: buyQty, unitPrice: price }];
   for (const ev of events) pushTraderEvent(world, trader, ev);
-  if (isPlayerShip(world, trader)) incrementManualActions(world);
+  if (isPlayerShip(world, trader)) incrementManualActions(world, "refuel");
   return { ok: true, events };
 }
 
@@ -1723,7 +1741,7 @@ export function travelTo(world: World, trader: Trader, dst: LocationId): Execute
   const events: TraderEvent[] = [];
   departForReposition(world, trader, nextHop, firstFuel, firstTicks, events);
   for (const ev of events) pushTraderEvent(world, trader, ev);
-  if (isPlayerShip(world, trader)) incrementManualActions(world);
+  if (isPlayerShip(world, trader)) incrementManualActions(world, "travel");
   return { ok: true, events };
 }
 

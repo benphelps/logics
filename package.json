@@ -27,6 +27,7 @@
     "headshots:seed": "tsx src/tools/seedHeadshots.ts"
   },
   "dependencies": {
+    "@google/model-viewer": "^4.2.0",
     "@tanstack/react-table": "^8.21.3",
     "chiptune3": "^0.8.6",
     "lightweight-charts": "^5.2.0",

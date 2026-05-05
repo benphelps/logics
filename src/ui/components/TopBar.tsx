@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { MdAdd, MdBolt, MdClose, MdCode, MdMenu, MdMonetizationOn, MdMusicNote, MdRestartAlt, MdSave, MdSkipNext } from "react-icons/md";
+import { MdAdd, MdBolt, MdClose, MdCode, MdMenu, MdMonetizationOn, MdMusicNote, MdRestartAlt, MdSave, MdSchool, MdSkipNext } from "react-icons/md";
 import { useStore, type Speed, type Tab } from "../store";
 import { useIsMobile } from "../useIsMobile";
 import { useCrewHeadshot } from "../headshots";
@@ -53,6 +53,7 @@ export function TopBar() {
   const deleteGame = useStore((s) => s.deleteGame);
   const loadDeveloperState = useStore((s) => s.loadDeveloperState);
   const giveCredits = useStore((s) => s.giveCredits);
+  const replayTutorial = useStore((s) => s.replayTutorial);
   const devSpawnEncounter = useStore((s) => s.devSpawnEncounter);
   const activeSaveId = useStore((s) => s.activeSaveId);
   const saveSlots = useStore((s) => s.saveSlots);
@@ -78,7 +79,7 @@ export function TopBar() {
   return (
     <section className={`topbar-shell ${isMobile ? "topbar-mobile" : ""}`} aria-label="Game controls">
       <div className="topbar-nav-row">
-        <div className="topbar-tabs topbar-ship-tabs">
+        <div className="topbar-tabs topbar-ship-tabs" data-tutorial="ship-selector">
           <details ref={shipMenuRef} className={`topbar-menu topbar-ship-picker ${playerShips.length === 0 ? "is-empty" : ""}`}>
             <summary className="topbar-tab topbar-ship-tab" aria-label="Controlled ship">
               <span className="topbar-ship-summary-main">
@@ -128,11 +129,12 @@ export function TopBar() {
           </details>
         </div>
 
-        <nav className="topbar-tabs topbar-view-tabs" aria-label="Game views">
+        <nav className="topbar-tabs topbar-view-tabs" aria-label="Game views" data-tutorial="view-tabs">
           {TABS.map(tab => (
             <button
               key={tab.id}
               className={`topbar-tab ${selectedTab === tab.id ? "active" : ""}`}
+              data-tutorial={`tab-${tab.id}`}
               onClick={() => selectTab(tab.id)}
             >
               {tab.label}
@@ -141,40 +143,45 @@ export function TopBar() {
         </nav>
 
         <div className="topbar-run-controls">
-          <span className="topbar-tick-pill mono" aria-label={`Tick ${tick.toLocaleString()}`}>
-            <span>Tick</span>
-            <strong>{tick.toLocaleString()}</strong>
-          </span>
-          <div className="topbar-speed-tabs" aria-label="Game speed">
-            <button className="topbar-tab topbar-step-button" onClick={step} disabled={speed !== 0} title="Step one tick" aria-label="Step one tick">
-              <MdSkipNext className="topbar-tab-icon" aria-hidden="true" focusable="false" />
-            </button>
-            {SPEED_PRESETS.map((p) => (
-              <button
-                key={p.value}
-                className={`topbar-tab ${speed === p.value ? "active" : ""}`}
-                onClick={() => setSpeed(p.value)}
-              >
-                {p.label}
+          <div className="topbar-controls-group" data-tutorial="game-controls">
+            <span className="topbar-tick-pill mono" aria-label={`Tick ${tick.toLocaleString()}`}>
+              <span>Tick</span>
+              <strong>{tick.toLocaleString()}</strong>
+            </span>
+            <div className="topbar-speed-tabs" aria-label="Game speed">
+              <button className="topbar-tab topbar-step-button" onClick={step} disabled={speed !== 0} title="Step one tick" aria-label="Step one tick">
+                <MdSkipNext className="topbar-tab-icon" aria-hidden="true" focusable="false" />
               </button>
-            ))}
+              {SPEED_PRESETS.map((p) => (
+                <button
+                  key={p.value}
+                  className={`topbar-tab ${speed === p.value ? "active" : ""}`}
+                  onClick={() => setSpeed(p.value)}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
           </div>
-          <button
-            className={`topbar-tab topbar-menu-button topbar-music-button ${musicModalOpen || music.snapshot.playing ? "active" : ""}`}
-            onClick={openMusicModal}
-            aria-label="Open music tracker"
-            title="Music tracker"
-          >
-            <MdMusicNote className="topbar-tab-icon" aria-hidden="true" focusable="false" />
-          </button>
-          <button
-            className="topbar-tab topbar-menu-button"
-            onClick={openSaveModal}
-            aria-label="Open save menu"
-            title="Save games"
-          >
-            <MdMenu className="topbar-tab-icon" aria-hidden="true" focusable="false" />
-          </button>
+          <div className="topbar-controls-group" data-tutorial="settings-buttons">
+            <button
+              className={`topbar-tab topbar-menu-button topbar-music-button ${musicModalOpen || music.snapshot.playing ? "active" : ""}`}
+              onClick={openMusicModal}
+              aria-label="Open music tracker"
+              title="Music tracker"
+            >
+              <MdMusicNote className="topbar-tab-icon" aria-hidden="true" focusable="false" />
+            </button>
+            <button
+              className="topbar-tab topbar-menu-button"
+              onClick={openSaveModal}
+              aria-label="Open save menu"
+              title="Save games"
+              data-tutorial="save-menu"
+            >
+              <MdMenu className="topbar-tab-icon" aria-hidden="true" focusable="false" />
+            </button>
+          </div>
         </div>
 
         {isMobile && mobilePanels && mobilePanels.length > 0 && (
@@ -237,6 +244,17 @@ export function TopBar() {
             >
               <MdAdd aria-hidden="true" focusable="false" />
               <span>New game</span>
+            </button>
+            <button
+              className="topbar-command"
+              onClick={() => {
+                replayTutorial();
+                closeSaveModal();
+              }}
+              title="Show the onboarding helper from the start"
+            >
+              <MdSchool aria-hidden="true" focusable="false" />
+              <span>Replay tutorial</span>
             </button>
           </div>
         </section>

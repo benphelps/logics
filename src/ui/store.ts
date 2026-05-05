@@ -21,6 +21,7 @@ import { abandonJob, acceptJob, collectTradeJob } from "../sim/jobs";
 import { fireCrew, hireCrew, recomputeShipStats } from "../sim/crew";
 import { deriveCrewIdentity } from "../sim/crewIdentity";
 import { MILESTONES, replenishUnlockedUpgrades } from "../sim/milestones";
+import { INTERFACE_TOUR, resetTutorial as resetTutorialInWorld, type TutorialFocus } from "../sim/tutorial";
 import { releaseCrewHeadshots } from "./headshots";
 import { flushHistoryFromWorld, hydrateHistoryRings } from "./historyDb";
 import { abandonPosition, adjustPlayerLimit, buyShares, cancelPlayerLimit, coverShares, placeLimitBuy, placeLimitSell, sellShares, setStopLoss, setTakeProfit, shortShares } from "../sim/stock";
@@ -616,6 +617,17 @@ interface UiState {
   // Toast queue — populated when tickWorld() returns spawned news events.
   // The toast component drains entries via dismissNewsToast as they auto-fade.
   newsToasts: ActiveNewsEvent[];
+  // What the tutorial wants the right-column info panel to show during
+  // the current step. DockedView reads this and overrides its local
+  // hover/pin focus stack — pinning the relevant good (during a buy)
+  // or current station (during a sell) trains the player to read those
+  // panels as part of the action. null = no override.
+  tutorialFocus: TutorialFocus;
+  // Mirror of EncounterModal's local phase state, so the combat sub-
+  // tutorial can react to "rolling" vs "revealed" without coupling to
+  // modal internals. The modal updates this via setEncounterPhase on
+  // every phase change. null = no encounter / not mounted.
+  encounterPhase: "choosing" | "rolling" | "revealed" | null;
   // Pending new-game flow — non-null while the syndicate picker is open.
   // Holds the seed + a preview world the picker reads for its roster.
   pendingNewGame: PendingNewGame | null;
@@ -726,6 +738,42 @@ interface UiState {
   // names are ignored — caller should validate before invoking.
   renameShip: (shipId: TraderId, name: string) => void;
   dismissNewsToast: (uid: string) => void;
+  // Tutorial actions. The controller advances phases automatically when
+  // perTypeCount predicates are met; these actions are for explicit
+  // player interactions (skip / replay / move past a phase manually).
+  advanceTutorialSetup: () => void;
+  advanceTutorialTour: () => void;
+  skipTutorialTour: () => void;
+  // Skip the current cargo/exchange phase forward. Cargo → exchange,
+  // exchange → done. The orb shows a "Skip section" button that calls
+  // this so a returning-feeling player can step out without dismissing
+  // the whole tutorial.
+  skipTutorialPhase: () => void;
+  // End-of-loop fork prompt response. "continue" bumps loopGoal so the
+  // player gets one more lap and the fork re-fires after that.
+  // "exchange" graduates to the equity phase. "skip" dismisses.
+  acknowledgeTutorialFork: (choice: "continue" | "exchange" | "skip") => void;
+  // Combat sub-tutorial controls. Advance steps the local stop index;
+  // finish marks combat tutorial as seen so it never re-fires.
+  advanceCombatTutorial: () => void;
+  finishCombatTutorial: () => void;
+  // Pushed by EncounterModal so the tutorial can pick the right combat
+  // sub-stop (action card / dice easter egg / revealed results).
+  setEncounterPhase: (phase: "choosing" | "rolling" | "revealed" | null) => void;
+  // Set the info-panel focus the tutorial wants pinned. Called by the
+  // controller every render so DockedView always reflects the latest
+  // step's focus.
+  setTutorialFocus: (focus: TutorialFocus) => void;
+  // Move to the farewell phase — used both by the auto-exit-exchange
+  // effect (after 3 stock trades) and by the orb's "Finish tutorial"
+  // skip button. The actual transition to "done" happens after the
+  // player acknowledges the parting orb.
+  finishTutorial: () => void;
+  // Final hand-off — farewell → done. Called from the parting orb's
+  // single advance button.
+  bidFarewell: () => void;
+  dismissTutorial: () => void;
+  replayTutorial: () => void;
 }
 
 export const useStore = create<UiState>((set, get) => {
@@ -998,6 +1046,8 @@ export const useStore = create<UiState>((set, get) => {
     panelScrollPositions: { ...(initialGame.panelScrollPositions ?? {}) },
     lastError: null,
     newsToasts: [],
+    tutorialFocus: null,
+    encounterPhase: null,
     pendingNewGame: initialPendingNewGame,
     pendingSeed: null,
     pendingWorldLoad: initialGame.worldPromise != null,
@@ -1108,6 +1158,125 @@ export const useStore = create<UiState>((set, get) => {
     },
     dismissNewsToast: (uid) => {
       set({ newsToasts: get().newsToasts.filter(t => t.uid !== uid) });
+    },
+    advanceTutorialSetup: () => {
+      // Wizard committed — flip the orb out of "setup" into the
+      // interface tour. Called from the controller via an effect when
+      // pendingNewGame becomes null while tutorial is still in setup.
+      const w = get().world;
+      const t = w.player?.tutorial;
+      if (!t || t.phase !== "setup") return;
+      t.phase = "tour";
+      t.tourStop = 0;
+      persistCurrentGame();
+    },
+    advanceTutorialTour: () => {
+      const w = get().world;
+      const t = w.player?.tutorial;
+      if (!t || t.phase !== "tour") return;
+      const next = t.tourStop + 1;
+      if (next >= INTERFACE_TOUR.length) {
+        // Tour complete — flip to cargo coaching. The controller picks
+        // a hint from the suggestions engine on the next render.
+        t.phase = "cargo";
+        t.tourStop = 0;
+      } else {
+        t.tourStop = next;
+      }
+      persistCurrentGame();
+    },
+    skipTutorialTour: () => {
+      const w = get().world;
+      const t = w.player?.tutorial;
+      if (!t || t.phase !== "tour") return;
+      // Skipping the tour drops straight into the cargo phase — the
+      // player still gets engine-driven coaching unless they also dismiss.
+      t.phase = "cargo";
+      t.tourStop = 0;
+      persistCurrentGame();
+    },
+    skipTutorialPhase: () => {
+      const w = get().world;
+      const t = w.player?.tutorial;
+      if (!t) return;
+      if (t.phase === "cargo") t.phase = "exchange";
+      else if (t.phase === "exchange") t.phase = "done";
+      persistCurrentGame();
+    },
+    acknowledgeTutorialFork: (choice) => {
+      const w = get().world;
+      const t = w.player?.tutorial;
+      if (!t) return;
+      if (choice === "continue") {
+        // Another lap — bump loopGoal so the fork won't re-fire until
+        // the player has completed one more full buy+sell cycle.
+        t.loopGoal = (t.loopGoal ?? 3) + 1;
+      } else if (choice === "exchange") {
+        t.phase = "exchange";
+      } else if (choice === "skip") {
+        t.phase = "skipped";
+      }
+      persistCurrentGame();
+    },
+    advanceCombatTutorial: () => {
+      const w = get().world;
+      const t = w.player?.tutorial;
+      if (!t) return;
+      t.combatStop = (t.combatStop ?? 0) + 1;
+      persistCurrentGame();
+    },
+    finishCombatTutorial: () => {
+      const w = get().world;
+      const t = w.player?.tutorial;
+      if (!t) return;
+      t.combatSeen = true;
+      t.combatStop = 0;
+      persistCurrentGame();
+    },
+    setEncounterPhase: (phase) => {
+      if (get().encounterPhase === phase) return;
+      set({ encounterPhase: phase });
+    },
+    setTutorialFocus: (focus) => {
+      // Cheap shallow comparison — same kind + same target id means no
+      // change, so we can skip the set and avoid a re-render.
+      const cur = get().tutorialFocus;
+      if (cur === focus) return;
+      if (cur && focus && cur.kind === focus.kind) {
+        if (cur.kind === "good" && focus.kind === "good" && cur.good === focus.good && cur.source === focus.source) return;
+        if (cur.kind === "station" && focus.kind === "station" && cur.loc === focus.loc && cur.source === focus.source) return;
+      }
+      set({ tutorialFocus: focus });
+    },
+    finishTutorial: () => {
+      const w = get().world;
+      const t = w.player?.tutorial;
+      if (!t) return;
+      // Already past — nothing to do. Otherwise route through the
+      // farewell phase so the player gets the parting orb instead of
+      // having the tutorial silently disappear.
+      if (t.phase === "done" || t.phase === "farewell" || t.phase === "skipped") return;
+      t.phase = "farewell";
+      persistCurrentGame();
+    },
+    bidFarewell: () => {
+      const w = get().world;
+      const t = w.player?.tutorial;
+      if (!t) return;
+      t.phase = "done";
+      persistCurrentGame();
+    },
+    dismissTutorial: () => {
+      const w = get().world;
+      const t = w.player?.tutorial;
+      if (!t) return;
+      t.phase = "skipped";
+      persistCurrentGame();
+    },
+    replayTutorial: () => {
+      const w = get().world;
+      resetTutorialInWorld(w);
+      persistCurrentGame();
     },
     reset: () => openNewGameDialog("reset"),
     saveCurrentGame: () => persistCurrentGame({ lastError: null }, false, true),

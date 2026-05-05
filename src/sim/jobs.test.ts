@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { createWorld } from "./world";
 import { tickN, tickWorld } from "./tick";
 import {
-  abandonJob, acceptJob, creditJobOnDelivery, expireJobs, generateJobs,
+  abandonJob, acceptJob, collectTradeJob, creditJobOnDelivery, expireJobs, generateJobs,
   listAvailableRescueJobs, listLocalJobs, listLocalShortageJobs, listVisibleAvailableJobs,
   EXPIRY_TICKS_BY_TIER, MAX_OPEN_JOBS, PENALTY_FRACTION_BY_TIER, REWARD_MULT_BY_TIER,
   maxOpenJobs,
@@ -226,9 +226,12 @@ describe("jobs: accept / abandon / completion", () => {
     expect(ship.funds).toBe(fundsBefore);
   });
 
-  it("creditJobOnDelivery pays out reward to the ship when the delivered qty meets the contract", () => {
+  it("creditJobOnDelivery pays out reward to the ship when the delivered qty meets the contract (autopilot)", () => {
     const w = createWorld();
     const ship = w.traders[w.player!.shipIds[0]];
+    // Auto-completion only fires for autopilot ships — manual ships
+    // require the player to click Collect explicitly. See collectTradeJob.
+    ship.pilot = "auto";
     const jobId = "j-test";
     w.jobs[jobId] = {
       id: jobId, kind: "shortage", tier: "medium", good: "grain", qty: 5,
@@ -244,9 +247,10 @@ describe("jobs: accept / abandon / completion", () => {
     expect(w.jobs[jobId]).toBeUndefined();
   });
 
-  it("creditJobOnDelivery records partial progress until full delivery", () => {
+  it("creditJobOnDelivery records partial progress until full delivery (autopilot)", () => {
     const w = createWorld();
     const ship = w.traders[w.player!.shipIds[0]];
+    ship.pilot = "auto";
     const jobId = "j-test";
     w.jobs[jobId] = {
       id: jobId, kind: "shortage", tier: "low", good: "grain", qty: 10,
@@ -264,9 +268,43 @@ describe("jobs: accept / abandon / completion", () => {
     expect(ship.funds).toBe(fundsBefore + 500);
   });
 
-  it("sellAtLocation triggers job credit + reward after the drip completes", () => {
+  it("manual ships leave fully-delivered cargo contracts open until Collect is clicked", () => {
     const w = createWorld();
     const ship = w.traders[w.player!.shipIds[0]];
+    // ship.pilot defaults to "manual" — exactly the case where the
+    // engine should NOT auto-pay. Reward sits unclaimed; the player
+    // collects via collectTradeJob (unified for trade settlements +
+    // fully-delivered cargo).
+    expect(ship.pilot).toBe("manual");
+    const jobId = "j-test";
+    w.jobs[jobId] = {
+      id: jobId, kind: "shortage", tier: "medium", good: "grain", qty: 5,
+      destination: ship.location, reward: 1000, penalty: 250, postedTick: 0,
+      expiresAt: 999, acceptedBy: ship.id, delivered: 0,
+    };
+    const fundsBefore = ship.funds;
+    const events = creditJobOnDelivery(w, ship.id, ship.location, "grain", 5);
+    expect(events).toHaveLength(1);
+    // Even though delivered === qty, we report it as "partial" (i.e.
+    // not auto-finalized) and the reward is zero — the job stays open.
+    expect(events[0].partial).toBe(true);
+    expect(events[0].delivered).toBe(5);
+    expect(events[0].reward).toBe(0);
+    expect(ship.funds).toBe(fundsBefore);
+    expect(w.jobs[jobId]).toBeDefined();
+    expect(w.jobs[jobId].delivered).toBe(5);
+
+    // Player clicks Collect → reward paid, job removed.
+    const r = collectTradeJob(w, jobId, ship.id);
+    expect(r.ok).toBe(true);
+    expect(ship.funds).toBe(fundsBefore + 1000);
+    expect(w.jobs[jobId]).toBeUndefined();
+  });
+
+  it("sellAtLocation triggers job credit + reward after the drip completes (autopilot)", () => {
+    const w = createWorld();
+    const ship = w.traders[w.player!.shipIds[0]];
+    ship.pilot = "auto";
     ship.cargo = [{ good: "grain", qty: 8, source: "verdant", unitPrice: 5, purchasedAt: 0 }];
     w.markets[ship.location].stock.grain = 0;
     const jobId = "j-test";
