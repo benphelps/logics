@@ -1,16 +1,17 @@
-import type { BookTrade, Equity, EquityId, GoodId, ShipLogEntry, TradeRecord, TraderId, World } from "../sim/types";
+import type { BookTrade, Encounter, Equity, EquityId, GoodId, ShipLogEntry, TradeRecord, TraderId, World } from "../sim/types";
 import type { RecentNewsEvent } from "../sim/news/types";
 
 // Preserve the pre-rename IndexedDB name so existing local history streams
 // stay attached to migrated Ledgway saves.
 const DB_NAME = "logics-history";
-const DB_VERSION = 7;
+const DB_VERSION = 8;
 const STORE_HISTORY = "equityHistory";
 const STORE_TRADES = "equityTrades";
 const STORE_LOG = "traderLog";
 const STORE_LEDGER = "tradeLedger";
 const STORE_NEWS = "newsEvents";
 const STORE_SPOT_HISTORY = "commoditySpotHistory";
+const STORE_ENCOUNTERS = "encounters";
 // Save world payloads. Keyed on the save slot id (string). Worlds got too
 // big for localStorage's ~5 MB per-origin quota once cargo lots, positions,
 // and contracts accumulated; IDB has no such practical cap. localStorage
@@ -21,6 +22,7 @@ const IDX_LOG = "byTraderTick";
 const IDX_LEDGER_SHIP = "byShipTick";
 const IDX_LEDGER_GAME = "byGameTick";
 const IDX_NEWS_GAME = "byGameTick";
+const IDX_ENCOUNTERS_GAME = "byGameTick";
 
 export interface HistorySample {
   gameId: string;
@@ -63,6 +65,15 @@ export interface PersistedNewsEvent extends RecentNewsEvent {
   gameId: string;
 }
 
+// Combat encounters. world.encounterHistory caps to a small recent window;
+// IDB keeps the full timeline so the Combat ledger tab can paginate
+// backward indefinitely and the lane heatmap has more data when zoomed
+// out (Phase 4 may extend windows). Encounter.id is unique per game and
+// pairs with gameId for the compound primary key.
+export interface PersistedEncounter extends Encounter {
+  gameId: string;
+}
+
 // Per-(gameId) high-water marks. We only flush samples with tick > the mark
 // to avoid re-writing on every save. Reset implicitly on page reload — load
 // re-seeds these to world.tick before any new samples can be appended.
@@ -72,6 +83,7 @@ const logHighWater = new Map<string, number>();
 const ledgerHighWater = new Map<string, number>();
 const newsHighWater = new Map<string, number>();
 const spotHighWater = new Map<string, number>();
+const encountersHighWater = new Map<string, number>();
 
 // Per-gameId chain of pending flushes. Two saves in quick succession serialize
 // rather than racing the same high-water mark. hydrateHistoryRings awaits the
@@ -134,6 +146,11 @@ export function openHistoryDb(): Promise<IDBDatabase | null> {
         // localStorage so cold-start can render the save list synchronously.
         db.createObjectStore(STORE_SAVE_WORLDS);
       }
+      if (!db.objectStoreNames.contains(STORE_ENCOUNTERS)) {
+        const enc = db.createObjectStore(STORE_ENCOUNTERS, { keyPath: ["gameId", "id"] });
+        // Time-ordered index for paginated lookups by tick (Combat ledger).
+        enc.createIndex(IDX_ENCOUNTERS_GAME, ["gameId", "spawnedAt"], { unique: false });
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => {
@@ -156,6 +173,7 @@ export async function __resetHistoryDbForTests(): Promise<void> {
   ledgerHighWater.clear();
   newsHighWater.clear();
   spotHighWater.clear();
+  encountersHighWater.clear();
   pendingFlushes.clear();
   if (existing) {
     try {
@@ -246,6 +264,18 @@ export async function putNewsEvents(events: PersistedNewsEvent[]): Promise<void>
   await txDone(tx);
 }
 
+export async function putEncounters(encounters: PersistedEncounter[]): Promise<void> {
+  if (encounters.length === 0) return;
+  const db = await openHistoryDb();
+  if (!db) return;
+  const tx = db.transaction(STORE_ENCOUNTERS, "readwrite");
+  const store = tx.objectStore(STORE_ENCOUNTERS);
+  // Primary key is [gameId, id]; put is idempotent so re-flushing the same
+  // entry from the in-memory ring is a no-op.
+  for (const e of encounters) store.put(e);
+  await txDone(tx);
+}
+
 // --- world flush ------------------------------------------------------------
 
 // Extract anything in the world's in-memory rings that hasn't been written
@@ -270,6 +300,7 @@ async function doFlush(world: World): Promise<void> {
   const lastLedger = ledgerHighWater.get(gameId) ?? -1;
   const lastNews = newsHighWater.get(gameId) ?? -1;
   const lastSpot = spotHighWater.get(gameId) ?? -1;
+  const lastEnc = encountersHighWater.get(gameId) ?? -1;
 
   const history: HistorySample[] = [];
   const trades: PersistedTrade[] = [];
@@ -277,8 +308,9 @@ async function doFlush(world: World): Promise<void> {
   const ledger: PersistedTradeRecord[] = [];
   const news: PersistedNewsEvent[] = [];
   const spot: SpotHistorySample[] = [];
+  const encounters: PersistedEncounter[] = [];
 
-  let maxH = lastH, maxT = lastT, maxL = lastL, maxLedger = lastLedger, maxNews = lastNews, maxSpot = lastSpot;
+  let maxH = lastH, maxT = lastT, maxL = lastL, maxLedger = lastLedger, maxNews = lastNews, maxSpot = lastSpot, maxEnc = lastEnc;
 
   for (const eq of Object.values(world.equities ?? {})) {
     if (eq.history) {
@@ -338,6 +370,18 @@ async function doFlush(world: World): Promise<void> {
           spot.push({ gameId, goodId, tick: point.tick, price: point.price });
           if (point.tick > maxSpot) maxSpot = point.tick;
         }
+      }
+    }
+  }
+
+  // Combat encounters. The in-memory ring caps to ENCOUNTER_HISTORY_CAP
+  // (sim/combat/encounters.ts); IDB keeps the full timeline so the Combat
+  // ledger tab can paginate backward indefinitely.
+  if (world.encounterHistory) {
+    for (const enc of world.encounterHistory) {
+      if (enc.spawnedAt > lastEnc) {
+        encounters.push({ ...enc, gameId });
+        if (enc.spawnedAt > maxEnc) maxEnc = enc.spawnedAt;
       }
     }
   }
@@ -405,6 +449,11 @@ async function doFlush(world: World): Promise<void> {
             if (ring.length > SPOT_KEEP) ring.splice(0, ring.length - SPOT_KEEP);
           }
         }
+      }) : Promise.resolve(),
+      encounters.length > 0 ? putEncounters(encounters).then(() => {
+        encountersHighWater.set(gameId, maxEnc);
+        // Encounter ring is already capped in sim by recordEncounter; no
+        // in-memory trim needed here.
       }) : Promise.resolve(),
     ]);
   } catch (error) {
@@ -758,6 +807,40 @@ export async function getLogEntriesBefore(
   });
 }
 
+// Encounters older than `beforeTick` (exclusive), newest-first. Used by
+// the Combat ledger tab's pagination once the in-memory tail is exhausted.
+export async function getEncountersBefore(
+  gameId: string,
+  beforeTick: number,
+  limit: number,
+): Promise<PersistedEncounter[]> {
+  if (limit <= 0) return [];
+  const db = await openHistoryDb();
+  if (!db) return [];
+  const tx = db.transaction(STORE_ENCOUNTERS, "readonly");
+  const idx = tx.objectStore(STORE_ENCOUNTERS).index(IDX_ENCOUNTERS_GAME);
+  const range = IDBKeyRange.bound(
+    [gameId, Number.NEGATIVE_INFINITY],
+    [gameId, beforeTick],
+    false,
+    true,
+  );
+  const out: PersistedEncounter[] = [];
+  return new Promise<PersistedEncounter[]>((resolve, reject) => {
+    const req = idx.openCursor(range, "prev");
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (cursor && out.length < limit) {
+        out.push(cursor.value as PersistedEncounter);
+        cursor.continue();
+      } else {
+        resolve(out);
+      }
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
 // Per-ship trade ledger query — used by hydrate to repopulate ship.stockTrades.
 export async function getRecentTradeRecords(gameId: string, shipId: TraderId, limit: number): Promise<PersistedTradeRecord[]> {
   if (limit <= 0) return [];
@@ -944,7 +1027,7 @@ export async function deleteGame(gameId: string): Promise<void> {
   if (!gameId) return;
   const db = await openHistoryDb();
   if (!db) return;
-  const tx = db.transaction([STORE_HISTORY, STORE_TRADES, STORE_LOG, STORE_LEDGER, STORE_NEWS, STORE_SPOT_HISTORY], "readwrite");
+  const tx = db.transaction([STORE_HISTORY, STORE_TRADES, STORE_LOG, STORE_LEDGER, STORE_NEWS, STORE_SPOT_HISTORY, STORE_ENCOUNTERS], "readwrite");
   await Promise.all([
     deleteByGameId(tx.objectStore(STORE_HISTORY), gameId, "history"),
     deleteByGameId(tx.objectStore(STORE_TRADES), gameId, "trades"),
@@ -952,6 +1035,7 @@ export async function deleteGame(gameId: string): Promise<void> {
     deleteByGameId(tx.objectStore(STORE_LEDGER), gameId, "ledger"),
     deleteByGameId(tx.objectStore(STORE_NEWS), gameId, "news"),
     deleteByGameId(tx.objectStore(STORE_SPOT_HISTORY), gameId, "spot"),
+    deleteByGameId(tx.objectStore(STORE_ENCOUNTERS), gameId, "encounters"),
   ]);
   await txDone(tx);
   historyHighWater.delete(gameId);
@@ -960,12 +1044,13 @@ export async function deleteGame(gameId: string): Promise<void> {
   ledgerHighWater.delete(gameId);
   newsHighWater.delete(gameId);
   spotHighWater.delete(gameId);
+  encountersHighWater.delete(gameId);
 }
 
 function deleteByGameId(
   store: IDBObjectStore,
   gameId: string,
-  kind: "history" | "trades" | "log" | "ledger" | "news" | "spot",
+  kind: "history" | "trades" | "log" | "ledger" | "news" | "spot" | "encounters",
 ): Promise<void> {
   // history + news + spot use compound primary keys whose first element is
   // gameId; range-delete on the primary key directly. The auto-key /
@@ -979,6 +1064,11 @@ function deleteByGameId(
     return reqAsPromise(store.delete(range)).then(() => undefined);
   }
   if (kind === "news") {
+    const range = IDBKeyRange.bound([gameId, ""], [gameId, "￿"]);
+    return reqAsPromise(store.delete(range)).then(() => undefined);
+  }
+  if (kind === "encounters") {
+    // Compound primary key [gameId, id] (id is the encounter string id).
     const range = IDBKeyRange.bound([gameId, ""], [gameId, "￿"]);
     return reqAsPromise(store.delete(range)).then(() => undefined);
   }

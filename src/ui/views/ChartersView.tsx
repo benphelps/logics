@@ -26,7 +26,7 @@ import type { Encounter, ShipLogEntry, ShipLogTone, Syndicate, TradeRecord, Trad
 import { useStore } from "../store";
 import { useIsMobile } from "../useIsMobile";
 import { defaultMobilePanelId } from "../mobilePanels";
-import { getLogEntriesBefore, getTradeRecordsBefore } from "../historyDb";
+import { getEncountersBefore, getLogEntriesBefore, getTradeRecordsBefore } from "../historyDb";
 import { listMilestoneProgress, type MilestoneKey, type MilestoneProgress } from "../../sim/milestones";
 import { SYNDICATE_TRAITS } from "../../sim/data/syndicates";
 import { playerReputationWith } from "../../sim/control";
@@ -439,19 +439,80 @@ function SyndicateRepCard({ syndicate, isPlayer, reputation }: {
 
 // --- Combat tab (encounter feed) ---------------------------------------
 
+const COMBAT_LOG_PAGE_SIZE = 100;
+
 function CombatTabBody({ world }: { world: World }) {
   const [scope, setScope] = useState<"mine" | "all">("mine");
+  const gameId = world.gameId;
   const history = world.encounterHistory ?? [];
   const playerShipIds = useMemo(
     () => new Set(world.player?.shipIds ?? []),
     [world.player?.shipIds],
   );
-  const filtered = useMemo(() => {
-    if (scope === "all") return history;
-    return history.filter(enc => playerShipIds.has(enc.shipId));
+  const inMemory = useMemo(() => {
+    return scope === "all"
+      ? history
+      : history.filter(enc => playerShipIds.has(enc.shipId));
   }, [history, scope, playerShipIds]);
-  // Newest-first within the chosen scope.
-  const entries = useMemo(() => [...filtered].reverse(), [filtered]);
+
+  // Older encounters paginated from IDB once the user scrolls past the
+  // in-memory tail. Reset on game / scope change so we don't show stale
+  // entries from another save or another scope.
+  const [olderEntries, setOlderEntries] = useState<Encounter[]>([]);
+  const [exhausted, setExhausted] = useState(false);
+  const fetchingRef = useRef(false);
+  const sentinelRef = useRef<HTMLLIElement | null>(null);
+
+  useEffect(() => {
+    setOlderEntries([]);
+    setExhausted(false);
+    fetchingRef.current = false;
+  }, [gameId, scope]);
+
+  const combined = olderEntries.length > 0 ? [...inMemory, ...olderEntries] : inMemory;
+  // Sort newest-first within combined view.
+  const entries = useMemo(
+    () => [...combined].sort((a, b) => (b.resolution?.tick ?? b.spawnedAt) - (a.resolution?.tick ?? a.spawnedAt)),
+    [combined],
+  );
+
+  useEffect(() => {
+    if (exhausted || !gameId) return;
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    const obs = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting || fetchingRef.current) return;
+      const earliest = entries.length > 0
+        ? entries[entries.length - 1].spawnedAt
+        : world.tick;
+      fetchingRef.current = true;
+      getEncountersBefore(gameId, earliest, COMBAT_LOG_PAGE_SIZE).then(rows => {
+        fetchingRef.current = false;
+        // Filter by scope and exclude any rows already in the in-memory
+        // tail (set by spawnedAt+id pair).
+        const seen = new Set(combined.map(e => e.id));
+        const filtered = rows
+          .filter(r => !seen.has(r.id))
+          .filter(r => scope === "all" ? true : playerShipIds.has(r.shipId));
+        if (rows.length === 0) {
+          setExhausted(true);
+          return;
+        }
+        if (filtered.length === 0) {
+          // Page returned but nothing matched scope; keep paginating.
+          setOlderEntries(prev => [...prev]);
+          return;
+        }
+        setOlderEntries(prev => [...prev, ...filtered]);
+      }).catch(err => {
+        fetchingRef.current = false;
+        console.warn("[ledgway] encounter pagination failed", err);
+      });
+    }, { rootMargin: "200px" });
+    obs.observe(sentinel);
+    return () => obs.disconnect();
+  }, [entries, exhausted, gameId, scope, combined, playerShipIds, world.tick]);
+
   const mineCount = useMemo(
     () => history.filter(enc => playerShipIds.has(enc.shipId)).length,
     [history, playerShipIds],
@@ -465,7 +526,7 @@ function CombatTabBody({ world }: { world: World }) {
           <span className="charters-badges-name">Combat</span>
         </div>
         <div className="charters-badges-head-stat">
-          <span className="charters-badges-head-stat-num mono">{filtered.length}</span>
+          <span className="charters-badges-head-stat-num mono">{entries.length}</span>
           <span className="charters-badges-head-stat-label">encounters</span>
         </div>
       </div>
@@ -497,6 +558,9 @@ function CombatTabBody({ world }: { world: World }) {
             {entries.map((enc) => (
               <CombatEntry key={enc.id} world={world} encounter={enc} />
             ))}
+            {!exhausted && (
+              <li ref={sentinelRef} className="ledger-log-loading dim">Loading older encounters…</li>
+            )}
           </ol>
         )}
       </div>
