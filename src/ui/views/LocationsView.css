@@ -1089,18 +1089,17 @@
 }
 
 /* Stations-tab lane styling — two independent signals layered:
-     COLOR (--lane-length): green for short links between adjacent
-       stations, red for the longest hops in the sector. (Temporary
-       high-contrast palette while we tune; will go back to a quieter
-       white→slate spectrum once the read is right.)
+     COLOR (--lane-length): same muted slate-aligned green→amber→red
+       OKLCH ramp the Logistics-tab danger heatmap uses. Reusing the
+       palette keeps the visual language consistent across map tabs.
      OPACITY (--lane-hop): full strength for lanes adjacent to the
        player anchor, 50% for the furthest reachable lanes.
    Scoped via .hop-ramp so other tabs aren't affected. */
 .atlas-lane.hop-ramp .atlas-lane-inner {
   stroke: color-mix(
     in oklch,
-    oklch(74% 0.18 145),
-    oklch(60% 0.22 25) calc(var(--lane-length) * 100%)
+    oklch(70% 0.07 165),
+    oklch(58% 0.13 22) calc(var(--lane-length) * 100%)
   );
   stroke-opacity: calc(1 - var(--lane-hop) * 0.5);
 }
@@ -1519,14 +1518,16 @@
   );
 }
 
-/* Stations-tab lane-length ramp swatch — mirrors .atlas-lane.hop-ramp
-   stroke colour gradient so the player can compare a lane's tint to
-   the swatch and read the geographic length at a glance. */
+/* Stations-tab lane-length ramp swatch — same muted slate-aligned
+   green→amber→red palette as the Logistics-tab danger legend so the
+   visual vocabulary stays consistent. Three explicit stops anchor
+   amber at the midpoint instead of letting linear interpolation drift. */
 .atlas-legend-ramp-bar.hop {
   background: linear-gradient(
     in oklch to right,
-    oklch(74% 0.18 145) 0%,
-    oklch(60% 0.22 25) 100%
+    oklch(70% 0.07 165) 0%,
+    oklch(70% 0.10 75) 50%,
+    oklch(58% 0.13 22) 100%
   );
 }
 
