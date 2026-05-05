@@ -80,10 +80,11 @@ interface LaneDanger {
   count: number;
 }
 
-// How far back (in ticks) the lane danger heatmap looks. ~1000 ticks is the
-// rolling window — older encounters fade out so the map shows current
-// hotspots, not archaeological ones.
-const LANE_DANGER_WINDOW_TICKS = 1000;
+// How far back (in ticks) the lane danger heatmap looks. 250 ticks is a
+// rolling window short enough that a hot lane cools quickly when the
+// activity moves elsewhere, but long enough that a single encounter
+// doesn't disappear before the player notices it.
+const LANE_DANGER_WINDOW_TICKS = 250;
 
 // Live "ping" markers — encounters that fired within the last N ticks
 // flash on the map at the lane midpoint, fading out over the window so the
