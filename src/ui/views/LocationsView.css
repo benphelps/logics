@@ -3,15 +3,18 @@
   --atlas-surface-soft: #101419;
   --atlas-surface-raised: #1b2026;
   --atlas-line: rgba(255, 255, 255, 0.08);
-  /* Kind palette matches the table dots below the map, so the map and
-     the legend/sheet read in the same colour vocabulary. */
-  --atlas-hub: #76c7ff;
-  --atlas-mining: #e5b86b;
-  --atlas-agri: #7bcf98;
-  --atlas-frontier: #d58bdc;
-  --atlas-research: #8fa8ff;
-  --atlas-shipyard: #d4d8df;
-  --atlas-outpost: #efe6cf;
+  /* Kind palette matches the table dots below the map. Tuned for a
+     slate/HUD feel — all stops sit around 58-67% lightness with low
+     chroma (0.04-0.07) so they read as instrumentation against the
+     dark atlas surface rather than pastel candy. Hues stay
+     distinguishable for at-a-glance kind identification. */
+  --atlas-hub: oklch(67% 0.07 230);       /* cool steel cyan */
+  --atlas-mining: oklch(63% 0.06 70);     /* desaturated bronze */
+  --atlas-agri: oklch(63% 0.06 165);      /* muted teal-green */
+  --atlas-frontier: oklch(60% 0.07 320);  /* dusty plum */
+  --atlas-research: oklch(62% 0.07 270);  /* muted indigo */
+  --atlas-shipyard: oklch(70% 0.02 240);  /* cool gunmetal grey */
+  --atlas-outpost: oklch(67% 0.03 80);    /* warm cool grey */
   /* Map-area palette: matches the parent panel surface so the map
      reads as part of the panel rather than a darker inset. The bg
      colour is also used as the halo behind stations, ships, and
