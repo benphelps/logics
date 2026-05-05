@@ -1398,11 +1398,11 @@ const LanesLayer = memo(function LanesLayer({
         const cls = [
           "atlas-lane",
           traffic && traffic.count > 0 ? "traffic" : null,
-          // Logistics tab tints every lane on the calm→hot spectrum so
-          // the player can scan the whole sector for risk at a glance;
-          // intensity=0 paints the calm green end. Other tabs keep the
-          // neutral atlas-ink for zero-encounter lanes.
-          alwaysTintDanger || (danger && danger.count > 0) ? "danger" : null,
+          // Danger tint is logistics-tab only — that's where the heatmap
+          // legend sits and where the green→amber→red read is wanted.
+          // Other tabs use the neutral default (or the hop ramp on
+          // Stations) so unrelated tabs aren't bleeding combat colour.
+          alwaysTintDanger ? "danger" : null,
           // Stations tab opts every lane into the white→slate-blue
           // hop-distance ramp via this class.
           hop !== undefined ? "hop-ramp" : null,
