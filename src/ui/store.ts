@@ -547,6 +547,10 @@ interface UiState {
   loadGame: (id: string) => void;
   deleteGame: (id: string) => void;
   loadDeveloperState: () => void;
+  // Dev cheat: dump 1M Ç onto the player's flagship for tinkering. Only
+  // surfaced when ?dev=1 is on the URL — there's no production code path
+  // that calls this.
+  giveCredits: (amount: number) => void;
   selectTab: (t: Tab) => void;
   setFleetTab: (t: FleetTab) => void;
   setCommodityTab: (t: CommodityTab) => void;
@@ -1057,6 +1061,16 @@ export const useStore = create<UiState>((set, get) => {
       const existingDev = slots.find(slot => slot.kind === "developer") ?? null;
       const name = existingDev?.name ?? nextSaveName(slots, "Developer State");
       applyLoadedGame(saveGameSlot(existingDev?.id ?? null, name, "developer", createDeveloperWorld()));
+    },
+    giveCredits: (amount) => {
+      const w = get().world;
+      const flagshipId = w.player?.shipIds[0];
+      if (!flagshipId) return;
+      const ship = w.traders[flagshipId];
+      if (!ship) return;
+      ship.funds += amount;
+      set({ tickEpoch: get().tickEpoch + 1 });
+      persistCurrentGame();
     },
     selectTab: (t) => set({ selectedTab: t }),
     setFleetTab: (t) => { set({ fleetTab: t }); persistCurrentGame({}, false); },

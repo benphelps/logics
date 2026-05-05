@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { MdAdd, MdClose, MdCode, MdMenu, MdMusicNote, MdRestartAlt, MdSave, MdSkipNext } from "react-icons/md";
+import { MdAdd, MdClose, MdCode, MdMenu, MdMonetizationOn, MdMusicNote, MdRestartAlt, MdSave, MdSkipNext } from "react-icons/md";
 import { useStore, type Speed, type Tab } from "../store";
 import { useIsMobile } from "../useIsMobile";
 import { useCrewHeadshot } from "../headshots";
@@ -52,6 +52,7 @@ export function TopBar() {
   const loadGame = useStore((s) => s.loadGame);
   const deleteGame = useStore((s) => s.deleteGame);
   const loadDeveloperState = useStore((s) => s.loadDeveloperState);
+  const giveCredits = useStore((s) => s.giveCredits);
   const activeSaveId = useStore((s) => s.activeSaveId);
   const saveSlots = useStore((s) => s.saveSlots);
   const saveError = useStore((s) => s.saveError);
@@ -255,6 +256,17 @@ export function TopBar() {
               >
                 <MdCode aria-hidden="true" focusable="false" />
                 <span>Load dev state</span>
+              </button>
+              <button
+                className="topbar-command"
+                onClick={() => {
+                  giveCredits(1_000_000);
+                  closeSaveModal();
+                }}
+                title="Add Ç1,000,000 to your flagship's wallet"
+              >
+                <MdMonetizationOn aria-hidden="true" focusable="false" />
+                <span>Give Ç1M</span>
               </button>
               <button
                 className="topbar-command topbar-command-danger"
