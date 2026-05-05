@@ -1184,14 +1184,6 @@ function SectorMap({
                 <span>long</span>
               </div>
             </div>
-            <span className="atlas-legend-title">From your ship</span>
-            <div className="atlas-legend-ramp">
-              <div className="atlas-legend-ramp-bar hop-opacity" aria-hidden="true" />
-              <div className="atlas-legend-ramp-labels">
-                <span>nearby</span>
-                <span>far</span>
-              </div>
-            </div>
           </>
         )}
         {mapTab === "syndicates" && syndicateAccents.size > 0 && (
