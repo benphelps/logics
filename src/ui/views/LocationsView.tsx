@@ -111,6 +111,15 @@ function laneDangerIntensity(count: number): number {
   return 0.5 + ((count - DANGER_MEDIUM_AT) / (DANGER_HOT_AT - DANGER_MEDIUM_AT)) * 0.5;
 }
 
+// Stations-tab opacity falloff. hop=1 → 1.0, hop=maxHop → 0.5; linear
+// in between. Player anchor itself (hop=0) renders at full strength too
+// (its lanes are evaluated by their further endpoint, not the anchor).
+function fadeForHop(hop: number, maxHop: number): number {
+  if (maxHop <= 1) return 1;
+  if (hop <= 1) return 1;
+  return Math.max(0.5, 1 - 0.5 * (hop - 1) / (maxHop - 1));
+}
+
 interface EncounterPing {
   id: string;
   x: number;
@@ -502,74 +511,64 @@ function SectorMap({
   // Stations-mode visibility expansion. Three tiers from the player
   // anchor; selecting a station only contributes one hop on top.
   //   lvl1 = playerAnchor ∪ neighbours(playerAnchor) ∪ selectedId ∪ neighbours(selectedId)
-  //   lvl2 = neighbours(lvl1) \ lvl1   (only from playerAnchor)
-  //   lvl3 = neighbours(lvl2) \ (lvl1 ∪ lvl2)   (only from playerAnchor)
-  // Lanes whose furthest endpoint is at level 1 render at full
-  // strength; level 2 dims, level 3 dims further. Anything beyond is
-  // hidden so the local network stays the focus.
-  const { lvl1Stations, lvl2Stations, lvl3Stations } = useMemo(() => {
-    const lvl1 = new Set<LocationId>();
-    const lvl2 = new Set<LocationId>();
-    const lvl3 = new Set<LocationId>();
-    const expandOne = (id: LocationId | null) => {
-      if (!id) return;
-      lvl1.add(id);
-      for (const n of neighborMap.get(id) ?? []) lvl1.add(n);
-    };
-    expandOne(playerAnchor);
-    expandOne(selectedId);
-    if (playerAnchor) {
-      // Selecting a station limits the reveal to one hop per spec, so
-      // the outer rings only radiate from the player anchor.
-      const ring1 = new Set<LocationId>([playerAnchor]);
-      for (const n of neighborMap.get(playerAnchor) ?? []) ring1.add(n);
-      for (const m of ring1) {
-        for (const n of neighborMap.get(m) ?? []) {
-          if (!lvl1.has(n)) lvl2.add(n);
+  // BFS hop distance from the player's anchor station to every reachable
+  // station. Used by the stations tab to fade lanes / station markers
+  // continuously by hop distance — no hard hop limit. Stations in a
+  // disconnected component aren't in the map; downstream uses treat them
+  // as the maximum hop distance so they fade to the same minimum.
+  const hopFromAnchor = useMemo(() => {
+    const m = new Map<LocationId, number>();
+    if (!playerAnchor) return m;
+    m.set(playerAnchor, 0);
+    let frontier: LocationId[] = [playerAnchor];
+    while (frontier.length > 0) {
+      const next: LocationId[] = [];
+      for (const id of frontier) {
+        const dist = m.get(id) ?? 0;
+        for (const n of neighborMap.get(id) ?? []) {
+          if (!m.has(n)) {
+            m.set(n, dist + 1);
+            next.push(n);
+          }
         }
       }
-      for (const m of lvl2) {
-        for (const n of neighborMap.get(m) ?? []) {
-          if (!lvl1.has(n) && !lvl2.has(n)) lvl3.add(n);
-        }
-      }
+      frontier = next;
     }
-    return { lvl1Stations: lvl1, lvl2Stations: lvl2, lvl3Stations: lvl3 };
-  }, [neighborMap, playerAnchor, selectedId]);
+    return m;
+  }, [playerAnchor, neighborMap]);
 
-  // Per-tab visible lane set. Stations: lanes within 3 hops of the
-  // player anchor, banded by tier — primary (lvl1) full strength,
-  // dim (lvl2) softer, dimmer (lvl3) softer still. Syndicates: no
-  // lanes. Logistics: every lane (the analytic overview tab).
-  const { visibleLinks, dimLanes, dimmerLanes } = useMemo(() => {
+  const maxHopReachable = useMemo(() => {
+    let max = 0;
+    for (const v of hopFromAnchor.values()) if (v > max) max = v;
+    return max;
+  }, [hopFromAnchor]);
+
+  // Per-tab visible lane set + per-lane fade coefficient. Stations: every
+  // lane is shown, opacity fades linearly by furthest-endpoint hop so the
+  // closest lane reads at full strength and the most distant lane lands at
+  // 50%. Syndicates: no lanes. Logistics: every lane at full strength.
+  const { visibleLinks, laneFade } = useMemo(() => {
     if (mapTab === "syndicates") {
-      return { visibleLinks: [] as AtlasLink[], dimLanes: new Set<string>(), dimmerLanes: new Set<string>() };
+      return { visibleLinks: [] as AtlasLink[], laneFade: new Map<string, number>() };
     }
-    if (mapTab === "logistics") {
-      return { visibleLinks: orderedLinks, dimLanes: new Set<string>(), dimmerLanes: new Set<string>() };
+    if (mapTab !== "stations") {
+      return { visibleLinks: orderedLinks, laneFade: new Map<string, number>() };
     }
-    // stations: classify each lane by the further endpoint's tier.
-    const out: AtlasLink[] = [];
-    const dim = new Set<string>();
-    const dimmer = new Set<string>();
-    const lvlOf = (id: LocationId): number => {
-      if (lvl1Stations.has(id)) return 1;
-      if (lvl2Stations.has(id)) return 2;
-      if (lvl3Stations.has(id)) return 3;
-      return 0;
-    };
+    const fade = new Map<string, number>();
     for (const link of orderedLinks) {
-      const aLvl = lvlOf(link.a);
-      const bLvl = lvlOf(link.b);
-      if (aLvl === 0 || bLvl === 0) continue;
-      const tier = Math.max(aLvl, bLvl);
-      out.push(link);
+      const aHop = hopFromAnchor.get(link.a);
+      const bHop = hopFromAnchor.get(link.b);
+      // If either endpoint is unreachable from the anchor, treat the lane
+      // as max-distance — it still renders, just at the minimum fade.
+      const farHop = Math.max(
+        aHop ?? maxHopReachable,
+        bHop ?? maxHopReachable,
+      );
       const key = laneKey(link.a, link.b);
-      if (tier === 2) dim.add(key);
-      else if (tier === 3) dimmer.add(key);
+      fade.set(key, fadeForHop(farHop, maxHopReachable));
     }
-    return { visibleLinks: out, dimLanes: dim, dimmerLanes: dimmer };
-  }, [mapTab, orderedLinks, lvl1Stations, lvl2Stations, lvl3Stations]);
+    return { visibleLinks: orderedLinks, laneFade: fade };
+  }, [mapTab, orderedLinks, hopFromAnchor, maxHopReachable]);
 
   // Set of lane keys + endpoint stations that are currently rendered —
   // used to filter ships so we only show ones whose route is on screen.
@@ -603,22 +602,21 @@ function SectorMap({
   const displayedRoute = previewedRoute ?? selectedRoute;
   const displayedRouteIsPreview = previewedRoute !== null;
 
-  // Station fade tier — only fires in the stations tab. Stations
-  // outside the player's 1-hop ring fade gradually with hop distance,
-  // floored at the dimmest tier so disconnected stations stay visible
-  // (~35% opacity) rather than vanishing entirely.
-  const stationTier = useMemo(() => {
-    const m = new Map<LocationId, "dim" | "dimmer" | "dimmest">();
+  // Per-station opacity for the stations tab — same continuous falloff
+  // as the lanes. The anchor station (hop=0) and 1-hop neighbours render
+  // at full strength; the furthest reachable / disconnected stations
+  // floor at 50%. Empty map outside the stations tab — caller skips the
+  // fade entirely and renders normally.
+  const stationFade = useMemo(() => {
+    const m = new Map<LocationId, number>();
     if (mapTab !== "stations") return m;
     for (const p of projected) {
       const id = p.loc.id;
-      if (lvl1Stations.has(id)) continue;
-      if (lvl2Stations.has(id)) m.set(id, "dim");
-      else if (lvl3Stations.has(id)) m.set(id, "dimmer");
-      else m.set(id, "dimmest");
+      const hop = hopFromAnchor.get(id) ?? maxHopReachable;
+      m.set(id, fadeForHop(hop, maxHopReachable));
     }
     return m;
-  }, [mapTab, projected, lvl1Stations, lvl2Stations, lvl3Stations]);
+  }, [mapTab, projected, hopFromAnchor, maxHopReachable]);
 
   // Per-tab visible ship set. Stations: only ships whose lane (or dock
   // station) is part of the visible network. Syndicates: no docked
@@ -1006,8 +1004,7 @@ function SectorMap({
         )}
         <LanesLayer
           orderedLinks={visibleLinks}
-          dimLanes={dimLanes}
-          dimmerLanes={dimmerLanes}
+          laneFade={laneFade}
           projectedById={projectedById}
           laneTraffic={laneTraffic}
           peakLaneTraffic={peakLaneTraffic}
@@ -1136,7 +1133,11 @@ function SectorMap({
           playerLocation={playerLocation}
           hiddenKinds={hiddenKinds}
           syndicateAccents={displayAccents}
-          stationTier={stationTier}
+          // Stations tab paints markers via station-kind defaults rather
+          // than syndicate accents — the syndicates tab is where faction
+          // colours belong.
+          showFactionAccent={mapTab !== "stations"}
+          stationFade={stationFade}
           onSelect={onSelectStation}
           onEnter={onEnterStation}
           onLeave={hideTip}
@@ -1369,11 +1370,10 @@ interface LanesLayerProps {
   // activity, falling back to the neutral atlas-ink default.
   alwaysTintDanger: boolean;
   hoveredLane: string | null;
-  // Lane keys that should render at the "second step" tier (softer)
-  // and the "third step" tier (softer still). Used by the stations
-  // tab to band the 1/2/3-hop neighbourhood around the active ship.
-  dimLanes: Set<string>;
-  dimmerLanes: Set<string>;
+  // Per-lane opacity multiplier (0..1). Driven in the stations tab by
+  // the player anchor's hop-distance falloff; empty / missing entries
+  // render at full strength.
+  laneFade: Map<string, number>;
 }
 
 // Lane render-only. Hover detection lives on the parent SVG's
@@ -1382,7 +1382,7 @@ interface LanesLayerProps {
 // can't both highlight at once. Per-line SVG hit-zones were removed
 // for the same reason.
 const LanesLayer = memo(function LanesLayer({
-  orderedLinks, projectedById, laneTraffic, peakLaneTraffic, laneDanger, alwaysTintDanger, hoveredLane, dimLanes, dimmerLanes,
+  orderedLinks, projectedById, laneTraffic, peakLaneTraffic, laneDanger, alwaysTintDanger, hoveredLane, laneFade,
 }: LanesLayerProps) {
   return (
     <g className="atlas-lanes" pointerEvents="none">
@@ -1396,6 +1396,7 @@ const LanesLayer = memo(function LanesLayer({
         const danger = laneDanger.get(key);
         const dangerIntensity = danger ? laneDangerIntensity(danger.count) : 0;
         const isHovered = hoveredLane === key;
+        const fade = laneFade.get(key);
         const cls = [
           "atlas-lane",
           traffic && traffic.count > 0 ? "traffic" : null,
@@ -1405,8 +1406,6 @@ const LanesLayer = memo(function LanesLayer({
           // neutral atlas-ink for zero-encounter lanes.
           alwaysTintDanger || (danger && danger.count > 0) ? "danger" : null,
           isHovered ? "hovered" : null,
-          dimLanes.has(key) ? "dim" : null,
-          dimmerLanes.has(key) ? "dimmer" : null,
         ].filter(Boolean).join(" ");
         return (
           <g
@@ -1415,6 +1414,7 @@ const LanesLayer = memo(function LanesLayer({
             style={{
               "--lane-traffic-intensity": intensity,
               "--lane-danger-intensity": dangerIntensity,
+              "--lane-fade": fade ?? 1,
             } as CSSProperties}
           >
             <line className="atlas-lane-outline" x1={a.x} y1={a.y} x2={b.x} y2={b.y} />
@@ -1457,26 +1457,31 @@ interface StationsLayerProps {
   playerLocation: LocationId | null;
   hiddenKinds: Set<StationKind>;
   syndicateAccents: Map<SyndicateId, string>;
-  // Per-station fade tier — set in the stations tab to ghost stations
-  // that aren't directly connected to the player anchor. Missing
-  // entries render at full strength.
-  stationTier: Map<LocationId, "dim" | "dimmer" | "dimmest">;
+  // Whether station markers should pick up their syndicate's accent.
+  // Stations tab disables it so markers render with kind-default colours;
+  // syndicates / logistics tabs leave it on.
+  showFactionAccent: boolean;
+  // Per-station opacity multiplier (0..1) — driven by stations-tab
+  // hop-distance falloff. Missing entries render at full strength.
+  stationFade: Map<LocationId, number>;
   onSelect: (id: LocationId) => void;
   onEnter: (p: ProjectedLocation) => void;
   onLeave: () => void;
 }
 
 const StationsLayer = memo(function StationsLayer({
-  projected, selectedId, playerLocation, hiddenKinds, syndicateAccents, stationTier, onSelect, onEnter, onLeave,
+  projected, selectedId, playerLocation, hiddenKinds, syndicateAccents, showFactionAccent, stationFade, onSelect, onEnter, onLeave,
 }: StationsLayerProps) {
   return (
     <g className="atlas-nodes">
       {projected.map(p => {
         const factionKey = factionClassKey(p.loc.traits.faction);
-        const accent = p.loc.traits.faction ? syndicateAccents.get(p.loc.traits.faction) : null;
+        const accent = showFactionAccent && p.loc.traits.faction
+          ? syndicateAccents.get(p.loc.traits.faction)
+          : null;
         const isPlayerHere = playerLocation === p.loc.id;
         const isFiltered = hiddenKinds.has(p.kind);
-        const tier = stationTier.get(p.loc.id);
+        const fade = stationFade.get(p.loc.id);
         const cls = [
           "atlas-node",
           `atlas-node-${p.kind}`,
@@ -1484,13 +1489,15 @@ const StationsLayer = memo(function StationsLayer({
           selectedId === p.loc.id ? "selected" : null,
           isPlayerHere ? "player-here" : null,
           isFiltered ? "filtered" : null,
-          tier ? `atlas-node-${tier}` : null,
         ].filter(Boolean).join(" ");
+        const styleProps: CSSProperties = {};
+        if (accent) (styleProps as Record<string, string>)["--node-faction"] = accent;
+        if (fade !== undefined) (styleProps as Record<string, string | number>)["--node-fade"] = fade;
         return (
           <g
             key={p.loc.id}
             className={cls}
-            style={accent ? { "--node-faction": accent } as CSSProperties : undefined}
+            style={Object.keys(styleProps).length > 0 ? styleProps : undefined}
             role="button"
             tabIndex={0}
             onClick={() => onSelect(p.loc.id)}
