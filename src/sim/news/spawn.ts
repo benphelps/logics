@@ -199,13 +199,31 @@ const DURATION_BANDS: Record<"short" | "medium" | "long", [number, number]> = {
 export function applyResolvedNewsEvent(
   world: World,
   resolved: ResolvedNewsEvent,
+  fallbackTarget?: NewsTarget,
 ): ActiveNewsEvent | null {
   const state = world.newsEvents;
   if (!state || !state.enabled) return null;
   if (state.active.length >= MAX_ACTIVE_EVENTS) return null;
 
-  const effects = resolved.effects.filter(e => e.scope && (e.target.kind === "global" || e.target.id || e.target.category));
-  if (effects.length === 0) return null;
+  // The model occasionally hallucinates target ids that don't match any
+  // world entity (singular/plural slips, made-up slugs). If a fallback
+  // target is provided (i.e. the spawn request's intended target — which
+  // we picked from world state and is guaranteed valid), substitute it
+  // for any effect whose target doesn't resolve. Otherwise the event
+  // would land in active but get filtered out on the next save/load
+  // round-trip when backfillNewsEvents validates targets.
+  const repaired: NewsEffect[] = resolved.effects
+    .filter(e => e.scope)
+    .map(e => {
+      if (targetResolves(world, e.target)) return e;
+      if (fallbackTarget && targetResolves(world, fallbackTarget)) {
+        return { ...e, target: fallbackTarget };
+      }
+      return e;
+    })
+    .filter(e => targetResolves(world, e.target));
+  if (repaired.length === 0) return null;
+  const effects = repaired;
 
   const durationBand = resolved.durationBand ?? "medium";
   const [durMin, durMax] = DURATION_BANDS[durationBand];
@@ -239,6 +257,31 @@ function validTone(tone: string | undefined): NewsTone {
 
 function biasKey(eff: NewsEffect): string {
   return `${eff.scope}|${eff.target.kind}|${eff.target.id ?? eff.target.category ?? "*"}`;
+}
+
+// Mirror of targetIsValid in saveGames so apply-time and load-time agree
+// on what counts as resolvable. Kept inline here so the sim doesn't pull
+// from the UI layer.
+function targetResolves(world: World, target: NewsTarget): boolean {
+  if (target.kind === "global") return true;
+  if (!target.id && !target.category) return false;
+  if (target.id) {
+    switch (target.kind) {
+      case "good":      return world.goods[target.id] != null;
+      case "location":  return world.locations[target.id] != null;
+      case "syndicate": return world.syndicates[target.id] != null;
+      case "index":     return world.equities[target.id] != null;
+    }
+  }
+  if (target.category) {
+    if (target.kind === "good") {
+      return Object.values(world.goods).some(g => g.category === target.category);
+    }
+    if (target.kind === "location") {
+      return Object.values(world.locations).some(l => l.traits.faction === target.category);
+    }
+  }
+  return false;
 }
 
 function clamp(v: number, lo: number, hi: number): number {

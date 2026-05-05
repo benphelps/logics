@@ -154,7 +154,10 @@ export async function fetchNewsEvent(
         magnitude: e.magnitude,
       })),
     };
-    return applyResolvedNewsEvent(world, resolved);
+    // Pass the spawn request's target as the apply-time fallback so any
+    // hallucinated target ids on the model side get replaced with the
+    // intended target (which we picked from world state and know resolves).
+    return applyResolvedNewsEvent(world, resolved, request.target);
   } catch (err) {
     console.warn("[ledgway] news event request error", err);
     return null;
