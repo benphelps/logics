@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { CrewMember, CrewRole, Equity, EquityId, Job, World, LocationId, GoodId, JobId, Pilot, SyndicateId, Trader, TraderId, UpgradeSlot } from "../sim/types";
+import type { CrewMember, CrewRole, Encounter, EncounterAttacker, EncounterKind, Equity, EquityId, Job, World, LocationId, GoodId, JobId, OddsBand, Pilot, SyndicateId, Trader, TraderId, UpgradeSlot } from "../sim/types";
 import type { ActiveNewsEvent } from "../sim/news/types";
 import { createStartingWorld, DEFAULT_STARTING_WORLD, randomStartingWorldSeed } from "../sim/start";
 import { generateWorld } from "../sim/gen/world";
@@ -42,7 +42,7 @@ import { randomPilotName } from "./pilotNames";
 import { rollCrewIdentity } from "../sim/crewIdentity";
 import { mulberry32 } from "../sim/gen/rng";
 import { generateShipName } from "../sim/gen/names";
-import { resolvePendingEncounter as simResolvePendingEncounter } from "../sim/combat/encounters";
+import { recordEncounter, resolveEncounter as simResolveEncounter } from "../sim/combat/encounters";
 import { encounterLogMessage, encounterLogTone } from "../sim/combat/log";
 import { pushShipLog } from "../sim/log";
 import type { EncounterChoice } from "../sim/types";
@@ -200,6 +200,13 @@ const initialPendingNewGame: PendingNewGame | null = initialGame.isFreshStart
 const AUTOSAVE_THROTTLE_MS = 2_000;
 let pendingAutosave: ReturnType<typeof setTimeout> | null = null;
 let lastAutosaveAt = 0;
+// When stepN (Quick Travel) is interrupted by an encounter, this holds the
+// id of the ship that was traveling so dismissResolvedEncounter can resume
+// stepping the world until that ship arrives. We track the ship rather
+// than a tick count because the encounter itself consumes one transit tick
+// without advancing the ship — counting raw ticks would leave the ship
+// stranded one short of arrival.
+let quickTravelResumeShipId: string | null = null;
 
 function clearPendingAutosave(): void {
   if (pendingAutosave == null) return;
@@ -421,6 +428,105 @@ function completeDeveloperCharters(world: World): void {
   replenishUnlockedUpgrades(world);
 }
 
+// Dev affordance: build a randomized pending encounter so we can iterate on
+// the modal design without waiting for organic spawns. Intentionally varies
+// attacker kind, odds bands, and loss profiles each call so repeated clicks
+// surface a range of states (pirate vs rival; fight-favored vs flee-favored;
+// cargo+credits+hull losses vs subsets).
+const PIRATE_NAMES = [
+  "Carrion Vow", "Splintered Axiom", "Bone Ledger", "Heretic Star",
+  "Vagrant Hex", "Thresher's Promise", "Black Aubade", "Cinderhound",
+];
+const RIVAL_NAMES = [
+  "Cordon Vexil", "Iron Argument", "Marshal Quorum", "Tax Writ Nine",
+  "Border Lance", "Articulus VII", "Strait Edict", "Pursuant",
+];
+
+function pickFrom<T>(arr: readonly T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+function rangeInt(lo: number, hi: number): number {
+  return Math.floor(lo + Math.random() * (hi - lo + 1));
+}
+function oddsBandFor(p: number): OddsBand {
+  if (p >= 0.80) return "very_likely";
+  if (p >= 0.60) return "likely";
+  if (p >= 0.40) return "even";
+  if (p >= 0.20) return "risky";
+  return "longshot";
+}
+
+function buildDevEncounter(world: World, ship: Trader): Encounter {
+  const isRival = Math.random() < 0.35;
+  const kind: EncounterKind = isRival ? "rival_syndicate" : "pirate";
+  const attackerName = pickFrom(isRival ? RIVAL_NAMES : PIRATE_NAMES);
+  const attacker: EncounterAttacker = {
+    name: attackerName,
+    kind,
+    weaponPower: rangeInt(2, 10),
+    hull: rangeInt(4, 14),
+    speed: rangeInt(1, 3),
+    crewLevel: 0.2 + Math.random() * 0.6,
+    syndicateId: isRival ? Object.keys(world.syndicates)[0] : undefined,
+  };
+
+  // Pick odds across the full band spectrum so the action cards show a mix
+  // of "very likely" through "longshot" labels each click.
+  const pFight = 0.10 + Math.random() * 0.85;
+  const pFlee = 0.10 + Math.random() * 0.85;
+  const pNegotiate = isRival
+    ? 0.30 + Math.random() * 0.60
+    : 0.45;
+
+  // Loss profile mixes cargo/credits/hull. Even when ship cargo is empty,
+  // the modal renders the requested loss as a pill so the visual isn't
+  // dependent on the player having actually loaded up. Filter to transport
+  // goods only — losing "5 Singularity Burst Drive" reads as nonsense.
+  const fightCargo: { good: GoodId; qty: number }[] = [];
+  const transportGoodIds = Object.values(world.goods)
+    .filter(g => g.category !== "upgrade")
+    .map(g => g.id);
+  if (transportGoodIds.length > 0 && Math.random() < 0.7) {
+    fightCargo.push({ good: pickFrom(transportGoodIds), qty: rangeInt(2, 12) });
+    if (Math.random() < 0.4) {
+      fightCargo.push({ good: pickFrom(transportGoodIds), qty: rangeInt(1, 6) });
+    }
+  }
+  const fightCredits = rangeInt(500, 8000);
+  const fightHull = rangeInt(1, 5);
+
+  const fleeHull = rangeInt(0, 2);
+
+  const negotiateBribe = rangeInt(1500, 12000);
+  const negotiatePartialCargo: { good: GoodId; qty: number }[] = !isRival && transportGoodIds.length > 0 && Math.random() < 0.7
+    ? [{ good: pickFrom(transportGoodIds), qty: rangeInt(1, 5) }]
+    : [];
+
+  // Pick a destination for the eyebrow text — any other location.
+  const otherLocs = Object.keys(world.locations).filter(id => id !== ship.location);
+  const toLocation = otherLocs.length > 0 ? pickFrom(otherLocs) : ship.location;
+
+  const id = `enc-dev-${world.nextEncounterId ?? 1}-${Date.now() & 0xffff}`;
+  world.nextEncounterId = (world.nextEncounterId ?? 1) + 1;
+
+  return {
+    id,
+    spawnedAt: world.tick,
+    shipId: ship.id,
+    fromLocation: ship.location,
+    toLocation,
+    attacker,
+    pFight, pFlee, pNegotiate,
+    oddsFight: oddsBandFor(pFight),
+    oddsFlee: oddsBandFor(pFlee),
+    oddsNegotiate: oddsBandFor(pNegotiate),
+    fightLossOnFail: { credits: fightCredits, cargo: fightCargo, hull: fightHull },
+    fleeLossOnFail: { credits: 0, cargo: [], hull: fleeHull },
+    negotiateBribe,
+    negotiatePartialCargo,
+  };
+}
+
 function createDeveloperWorld(): World {
   // Re-seed every time the dev state is created so the layout / lane
   // network / shipyard placements / NPC fleet / news pool re-roll on
@@ -529,10 +635,13 @@ interface UiState {
   step: () => void;
   stepN: (n: number) => void;
   // Resolve a pending combat encounter with the player's choice. No-op when
-  // there's no pending encounter. Mutates ship state, records the encounter
-  // in world.encounterHistory, and clears world.pendingEncounter so the tick
-  // driver resumes.
+  // there's no pending encounter. Mutates ship state and records the encounter
+  // in world.encounterHistory. world.pendingEncounter is left intact (with
+  // resolution stamped) so the modal can render the dice-reveal phase before
+  // the player dismisses. Dismissal clears pendingEncounter and resumes the
+  // tick driver.
   resolveEncounter: (choice: EncounterChoice) => void;
+  dismissResolvedEncounter: () => void;
   reset: () => void;
   saveCurrentGame: () => void;
   createGame: () => void;
@@ -551,6 +660,11 @@ interface UiState {
   // surfaced when ?dev=1 is on the URL — there's no production code path
   // that calls this.
   giveCredits: (amount: number) => void;
+  // Dev affordance: stamp a randomized pending encounter on the player's
+  // flagship so we can iterate on the modal design without waiting for
+  // organic spawns. Each call randomizes attacker kind / odds / losses so
+  // repeated clicks produce a variety of encounter shapes.
+  devSpawnEncounter: () => void;
   selectTab: (t: Tab) => void;
   setFleetTab: (t: FleetTab) => void;
   setCommodityTab: (t: CommodityTab) => void;
@@ -922,7 +1036,12 @@ export const useStore = create<UiState>((set, get) => {
       for (let i = 0; i < n; i++) {
         // Stop early if an encounter spawned mid-batch (transit ticks roll
         // for encounters; the modal needs to interrupt the rest of the run).
-        if (w.pendingEncounter) break;
+        // The affected ship's id is stashed so dismissResolvedEncounter can
+        // resume stepping until it arrives at its destination.
+        if (w.pendingEncounter) {
+          quickTravelResumeShipId = w.pendingEncounter.shipId;
+          break;
+        }
         const report = tickWorld(w);
         if (report.hiresExpired.length > 0) expired.push(...report.hiresExpired);
         if (report.newsSpawned.length > 0) newsSpawned.push(...report.newsSpawned);
@@ -947,23 +1066,45 @@ export const useStore = create<UiState>((set, get) => {
     },
     resolveEncounter: (choice) => {
       const w = get().world;
-      if (!w.pendingEncounter) return;
-      const encounter = simResolvePendingEncounter(w, choice);
-      if (encounter) {
-        const ship = w.traders[encounter.shipId];
-        if (ship) {
-          pushShipLog(ship, {
-            tick: w.tick,
-            kind: "encounter",
-            message: encounterLogMessage(w, encounter),
-            tone: encounterLogTone(encounter),
-          });
-        }
-      }
-      // World is mutated in place (same ref) — bump tickEpoch so memoized
-      // selectors that key off it recompute their snapshots.
+      const encounter = w.pendingEncounter;
+      if (!encounter) return;
+      // Idempotent: if the encounter has already been resolved (e.g. the
+      // modal re-fired the action through a fast double-click), don't
+      // double-apply losses.
+      if (encounter.resolution) return;
+      const ship = w.traders[encounter.shipId];
+      if (!ship) return;
+      simResolveEncounter(w, ship, encounter, choice, false);
+      recordEncounter(w, encounter);
+      pushShipLog(ship, {
+        tick: w.tick,
+        kind: "encounter",
+        message: encounterLogMessage(w, encounter),
+        tone: encounterLogTone(encounter),
+      });
+      // Leave w.pendingEncounter set with resolution stamped so the modal
+      // can render the dice-reveal phase. dismissResolvedEncounter() clears
+      // it once the player acknowledges the result.
       set({ tickEpoch: get().tickEpoch + 1 });
       persistCurrentGame();
+    },
+    dismissResolvedEncounter: () => {
+      const w = get().world;
+      if (!w.pendingEncounter) return;
+      w.pendingEncounter = undefined;
+      set({ tickEpoch: get().tickEpoch + 1 });
+      persistCurrentGame();
+      // Resume an interrupted Quick Travel run by stepping until the ship
+      // arrives. Clear the baton before re-entering so a nested encounter
+      // mid-resume re-stamps it cleanly. If the ship is no longer in
+      // transit (e.g. arrived between dismissals or was destroyed), do
+      // nothing — there's no Quick Travel to continue.
+      const resumeShipId = quickTravelResumeShipId;
+      quickTravelResumeShipId = null;
+      if (!resumeShipId) return;
+      const ship = w.traders[resumeShipId];
+      if (!ship || ship.state !== "transit" || ship.ticksRemaining <= 0) return;
+      get().stepN(ship.ticksRemaining);
     },
     dismissNewsToast: (uid) => {
       set({ newsToasts: get().newsToasts.filter(t => t.uid !== uid) });
@@ -1069,6 +1210,17 @@ export const useStore = create<UiState>((set, get) => {
       const ship = w.traders[flagshipId];
       if (!ship) return;
       ship.funds += amount;
+      set({ tickEpoch: get().tickEpoch + 1 });
+      persistCurrentGame();
+    },
+    devSpawnEncounter: () => {
+      const w = get().world;
+      if (w.pendingEncounter) return;
+      const flagshipId = w.player?.shipIds[0];
+      if (!flagshipId) return;
+      const ship = w.traders[flagshipId];
+      if (!ship) return;
+      w.pendingEncounter = buildDevEncounter(w, ship);
       set({ tickEpoch: get().tickEpoch + 1 });
       persistCurrentGame();
     },

@@ -339,7 +339,11 @@ function settleUnloadedCargo(world: World, trader: Trader, lot: CargoLot, qty: n
 
 function beginUnloadLots(world: World, trader: Trader, lots: CargoLot[], events: TraderEvent[]): void {
   if (lots.length === 0) return;
-  const ticks = unloadTicksFor(trader);
+  // Player ships always unload instantly. The drip exists to spread NPC
+  // sell-side stock impact across ticks for price-EMA stability — that's
+  // an economy-balance lever for the simulated fleet, not a player UX
+  // concern. Buys settle in a single tick, so sells should too.
+  const ticks = isPlayerShip(world, trader) ? 0 : unloadTicksFor(trader);
   if (ticks <= 0) {
     for (const lot of lots) settleUnloadedCargo(world, trader, lot, lot.qty, events);
     return;

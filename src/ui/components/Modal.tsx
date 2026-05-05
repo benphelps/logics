@@ -1,5 +1,9 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import "./Modal.css";
+
+// Match the exit-animation duration in Modal.css. Bumping this here without
+// also adjusting the keyframe (or vice versa) leaves a stale-frame flash.
+const MODAL_EXIT_MS = 160;
 
 export interface ModalProps {
   open: boolean;
@@ -28,6 +32,27 @@ export function Modal({
   dialogClassName,
 }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  // We keep the modal mounted for one extra animation frame after `open`
+  // flips to false so the exit keyframes can play. `mounted` tracks whether
+  // anything renders at all; `exiting` toggles the CSS class that drives
+  // the fade-out.
+  const [mounted, setMounted] = useState(open);
+  const [exiting, setExiting] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      setExiting(false);
+      return;
+    }
+    if (!mounted) return;
+    setExiting(true);
+    const t = setTimeout(() => {
+      setMounted(false);
+      setExiting(false);
+    }, MODAL_EXIT_MS);
+    return () => clearTimeout(t);
+  }, [open, mounted]);
 
   useEffect(() => {
     if (!open) return;
@@ -46,17 +71,18 @@ export function Modal({
     dialogRef.current?.focus();
   }, [open]);
 
-  if (!open) return null;
+  if (!mounted) return null;
   return (
     <div
-      className="ui-modal-backdrop"
+      className={`ui-modal-backdrop ${exiting ? "exiting" : ""}`}
       onClick={() => {
+        if (exiting) return;
         if (closeOnBackdrop) onClose();
       }}
     >
       <div
         ref={dialogRef}
-        className={`ui-modal-dialog ${dialogClassName ?? ""}`}
+        className={`ui-modal-dialog ${exiting ? "exiting" : ""} ${dialogClassName ?? ""}`}
         role="dialog"
         aria-modal="true"
         tabIndex={-1}

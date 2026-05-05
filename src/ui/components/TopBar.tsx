@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { MdAdd, MdClose, MdCode, MdMenu, MdMonetizationOn, MdMusicNote, MdRestartAlt, MdSave, MdSkipNext } from "react-icons/md";
+import { MdAdd, MdBolt, MdClose, MdCode, MdMenu, MdMonetizationOn, MdMusicNote, MdRestartAlt, MdSave, MdSkipNext } from "react-icons/md";
 import { useStore, type Speed, type Tab } from "../store";
 import { useIsMobile } from "../useIsMobile";
 import { useCrewHeadshot } from "../headshots";
@@ -53,6 +53,7 @@ export function TopBar() {
   const deleteGame = useStore((s) => s.deleteGame);
   const loadDeveloperState = useStore((s) => s.loadDeveloperState);
   const giveCredits = useStore((s) => s.giveCredits);
+  const devSpawnEncounter = useStore((s) => s.devSpawnEncounter);
   const activeSaveId = useStore((s) => s.activeSaveId);
   const saveSlots = useStore((s) => s.saveSlots);
   const saveError = useStore((s) => s.saveError);
@@ -267,6 +268,17 @@ export function TopBar() {
               >
                 <MdMonetizationOn aria-hidden="true" focusable="false" />
                 <span>Give Ç1M</span>
+              </button>
+              <button
+                className="topbar-command"
+                onClick={() => {
+                  devSpawnEncounter();
+                  closeSaveModal();
+                }}
+                title="Stamp a randomized pending encounter on your flagship"
+              >
+                <MdBolt aria-hidden="true" focusable="false" />
+                <span>Spawn encounter</span>
               </button>
               <button
                 className="topbar-command topbar-command-danger"

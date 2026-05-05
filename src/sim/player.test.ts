@@ -120,11 +120,10 @@ describe("player primitives — manual buy / sell / refuel / travel", () => {
     const fundsBefore = ship.funds;
     const r = sellAtLocation(w, ship, "protein");
     expect(r.ok).toBe(true);
-    // Cargo moves to the unloading buffer immediately; settlement drips over
-    // UNLOAD_TICKS subsequent ticks.
+    // Player ships unload instantly — buys settle in 0 ticks, sells should
+    // too. The drip-unload still applies to NPC traders for price-EMA
+    // stability (see beginUnloadLots in traders.ts).
     expect(ship.cargo).toEqual([]);
-    expect(ship.unloadingCargo?.length).toBe(1);
-    tickN(w, UNLOAD_TICKS);
     expect(ship.unloadingCargo ?? []).toEqual([]);
     expect(ship.funds).toBeGreaterThan(fundsBefore);
   });

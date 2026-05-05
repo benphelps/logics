@@ -167,7 +167,12 @@ describe("ship upgrades", () => {
     expect(ship.cargo.some(l => l.good === "upg_cargo_3")).toBe(false);
   });
 
-  it("rapid cargo lift cuts unload time in half", () => {
+  it("player ships unload instantly regardless of unload-speed upgrades", () => {
+    // beginUnloadLots short-circuits to a 0-tick settle for player ships,
+    // so the rapid-cargo-lift upgrade (and any other unloadSpeedBonus
+    // source) is a no-op for the flagship. The upgrade still has effect
+    // on NPC ships, where the drip is an economy-balance lever rather
+    // than a UX papercut.
     const world = createWorld();
     const ship = playerShip(world);
     ship.funds = 100_000;
@@ -179,8 +184,6 @@ describe("ship upgrades", () => {
     const result = sellAtLocation(world, ship, "protein");
 
     expect(result.ok).toBe(true);
-    expect(ship.unloadingCargo?.[0]?.unloadTicksRemaining).toBe(2);
-    tickN(world, 2);
     expect(ship.unloadingCargo ?? []).toEqual([]);
   });
 
