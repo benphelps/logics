@@ -22,7 +22,7 @@ import {
   GiPathDistance,
   GiProcessor,
 } from "react-icons/gi";
-import type { Encounter, ShipLogEntry, ShipLogTone, Syndicate, TradeRecord, Trader, World } from "../../sim/types";
+import type { Encounter, ShipLogEntry, ShipLogTone, Syndicate, TradeRecord, Trader, UniverseBackstory, World } from "../../sim/types";
 import { useStore } from "../store";
 import { useIsMobile } from "../useIsMobile";
 import { defaultMobilePanelId } from "../mobilePanels";
@@ -555,6 +555,51 @@ interface SidebarProps {
   next: MilestoneProgress | null;
 }
 
+// Tiny inline preview of the universe backstory. Click to toggle the full
+// structured view (era, political, economic, tensions, timeline beats).
+// Renders nothing when no backstory is on the world (older saves loaded
+// before the news overhaul).
+function BackstoryEyebrow({ backstory }: { backstory: UniverseBackstory }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={`backstory-eyebrow ${open ? "open" : ""}`}>
+      <button
+        type="button"
+        className="backstory-eyebrow-toggle"
+        onClick={() => setOpen(v => !v)}
+        title={open ? "Hide backstory" : "Show backstory"}
+      >
+        <span className="backstory-eyebrow-tag">{backstory.era}</span>
+        <span className="backstory-eyebrow-tagline">{backstory.tagline}</span>
+        <span className="backstory-eyebrow-chevron" aria-hidden>{open ? "▾" : "▸"}</span>
+      </button>
+      {open && (
+        <div className="backstory-eyebrow-body">
+          {backstory.political && (
+            <p><span className="backstory-eyebrow-label">Political</span>{backstory.political}</p>
+          )}
+          {backstory.economic && (
+            <p><span className="backstory-eyebrow-label">Economic</span>{backstory.economic}</p>
+          )}
+          {backstory.tensions && (
+            <p><span className="backstory-eyebrow-label">Tensions</span>{backstory.tensions}</p>
+          )}
+          {backstory.timelineBeats.length > 0 && (
+            <ul className="backstory-eyebrow-timeline">
+              {backstory.timelineBeats.map((beat, i) => (
+                <li key={i}>
+                  <span className="backstory-eyebrow-beat-era">{beat.era}</span>
+                  <span className="backstory-eyebrow-beat-summary">{beat.summary}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CaptainsLedgerSidebar({ world, totalActions, earned, total, next }: SidebarProps) {
   const gameName = useStore((s) => s.gameName);
   const gameKind = useStore((s) => s.gameKind);
@@ -593,6 +638,9 @@ function CaptainsLedgerSidebar({ world, totalActions, earned, total, next }: Sid
             <span>{gameName}</span>
             <span>tick {world.tick.toLocaleString()}</span>
           </div>
+          {world.universeBackstory && (
+            <BackstoryEyebrow backstory={world.universeBackstory} />
+          )}
         </div>
 
         <div className="info-panel-scroll" data-scroll-key="charters:ledger">

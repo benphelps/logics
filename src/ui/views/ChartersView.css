@@ -443,6 +443,116 @@
   text-overflow: ellipsis;
 }
 
+/* Universe backstory eyebrow — shows the era + tagline as a clickable
+   row beneath the captain's ledger meta line. Expands inline to reveal
+   the full structured backstory (political/economic/tensions/timeline). */
+.backstory-eyebrow {
+  margin-top: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.backstory-eyebrow-toggle {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  min-width: 0;
+}
+
+.backstory-eyebrow-toggle:hover {
+  color: var(--text);
+}
+
+.backstory-eyebrow-tag {
+  flex: 0 0 auto;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.backstory-eyebrow-tagline {
+  flex: 1 1 auto;
+  font-size: 11.5px;
+  color: var(--text-dim);
+  font-style: italic;
+  line-height: 1.4;
+  /* Two-line clamp when collapsed so a long tagline doesn't push the
+     stat grid down indefinitely. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.backstory-eyebrow.open .backstory-eyebrow-tagline {
+  -webkit-line-clamp: unset;
+}
+
+.backstory-eyebrow-chevron {
+  flex: 0 0 auto;
+  font-size: 10px;
+  color: var(--text-dim);
+  align-self: center;
+  transition: transform 120ms ease;
+}
+
+.backstory-eyebrow-body {
+  margin-top: 8px;
+  display: grid;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.backstory-eyebrow-body p {
+  margin: 0;
+}
+
+.backstory-eyebrow-label {
+  display: inline-block;
+  margin-right: 6px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.backstory-eyebrow-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.backstory-eyebrow-timeline li {
+  display: grid;
+  grid-template-columns: minmax(80px, auto) 1fr;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.backstory-eyebrow-beat-era {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.backstory-eyebrow-beat-summary {
+  color: var(--text-dim);
+}
+
 /* ============================================================
    Milestone badge cards (used inside the top panel only)
    ============================================================ */

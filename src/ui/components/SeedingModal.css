@@ -31,6 +31,26 @@
   transition: width 120ms ease;
 }
 
+/* Backstory phase: no known duration, so we slide a bright band across
+   instead of filling. Reuses the save-loading shimmer. */
+.seeding-progress.indeterminate .seeding-progress-fill {
+  width: 35%;
+  inset: 0 auto 0 0;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent) 30%, transparent) 0%,
+    color-mix(in srgb, var(--accent) 90%, transparent) 50%,
+    color-mix(in srgb, var(--accent) 30%, transparent) 100%
+  );
+  animation: seeding-progress-pulse 1.6s ease-in-out infinite;
+  transition: none;
+}
+
+@keyframes seeding-progress-pulse {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(285%); }
+}
+
 .seeding-hint {
   margin: 0;
   font-size: 12px;

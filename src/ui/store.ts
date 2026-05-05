@@ -46,6 +46,9 @@ import { resolvePendingEncounter as simResolvePendingEncounter } from "../sim/co
 import { encounterLogMessage, encounterLogTone } from "../sim/combat/log";
 import { pushShipLog } from "../sim/log";
 import type { EncounterChoice } from "../sim/types";
+import type { NewsSpawnRequest } from "../sim/news";
+import { fetchNewsEvent, fetchUniverseBackstory, fallbackUniverseBackstory } from "./news";
+import type { UniverseBackstory } from "../sim/types";
 
 export type Speed = 0 | 1 | 4 | 16;
 
@@ -91,6 +94,10 @@ export interface PendingSeed {
   startedAt: number;
   durationMs: number;
   quotes: readonly string[];
+  // Phase the modal is currently in. "backstory" = waiting on the LLM-
+  // generated universe lore; "seeding" = the background tick warmup loop.
+  // The modal shows a slightly different copy line per phase.
+  phase: "backstory" | "seeding";
 }
 
 const SEED_QUOTES = [
@@ -785,6 +792,43 @@ export const useStore = create<UiState>((set, get) => {
     });
   };
 
+  // Fire a generated news event request for this world. The sim's
+  // tickNewsEvents already incremented pendingRequestCount; fetchNewsEvent
+  // decrements on completion. onApplied runs after the event is applied
+  // (or skipped) so the store can update tickEpoch + push toasts.
+  const handleNewsRequest = (
+    world: World,
+    request: NewsSpawnRequest | null,
+    saveId: string | null,
+    onApplied: () => void,
+  ) => {
+    if (!request || !saveId) return;
+    void fetchNewsEvent(world, request, saveId).then(applied => {
+      if (applied) onApplied();
+    });
+  };
+
+  // Generate (or fall back to a default) the universe backstory for a
+  // freshly-minted world. The server caches by gameId so a reset on the
+  // same game id reuses the same lore.
+  const resolveBackstory = async (world: World, syndicateId: SyndicateId): Promise<UniverseBackstory> => {
+    void syndicateId;     // future hook for "tone derived from chosen syndicate"
+    try {
+      return await fetchUniverseBackstory({
+        gameId: world.gameId,
+        syndicates: Object.values(world.syndicates).map(s => ({
+          id: s.id, name: s.name, trait: s.traitId, accentHex: s.accentHex,
+        })),
+        locations: Object.values(world.locations).slice(0, 16).map(l => ({
+          id: l.id, name: l.name, faction: l.traits.faction, population: l.population, tags: l.traits.tags,
+        })),
+      });
+    } catch (err) {
+      console.warn("[ledgway] backstory generation failed, using fallback", err);
+      return fallbackUniverseBackstory();
+    }
+  };
+
   const persistCurrentGame = (updates: Partial<Pick<UiState, "lastError" | "speed">> = {}, bumpEpoch = true, immediate = false) => {
     const current = get();
     if (bumpEpoch || Object.keys(updates).length > 0) {
@@ -855,12 +899,22 @@ export const useStore = create<UiState>((set, get) => {
       if (report.newsSpawned.length > 0) {
         set({ newsToasts: [...get().newsToasts, ...report.newsSpawned].slice(-6) });
       }
+      handleNewsRequest(w, report.newsRequest, get().activeSaveId, () => {
+        // Bump tickEpoch on async news arrival so memoized selectors re-read.
+        // Append the freshly-applied event to the toast queue.
+        const latest = get().world.newsEvents?.active.at(-1);
+        if (latest) {
+          set({ newsToasts: [...get().newsToasts, latest].slice(-6) });
+        }
+        set({ tickEpoch: get().tickEpoch + 1 });
+      });
       persistCurrentGame();
     },
     stepN: (n) => {
       const w = get().world;
       const expired: string[] = [];
       const newsSpawned: ActiveNewsEvent[] = [];
+      const newsRequests: NewsSpawnRequest[] = [];
       for (let i = 0; i < n; i++) {
         // Stop early if an encounter spawned mid-batch (transit ticks roll
         // for encounters; the modal needs to interrupt the rest of the run).
@@ -868,10 +922,22 @@ export const useStore = create<UiState>((set, get) => {
         const report = tickWorld(w);
         if (report.hiresExpired.length > 0) expired.push(...report.hiresExpired);
         if (report.newsSpawned.length > 0) newsSpawned.push(...report.newsSpawned);
+        if (report.newsRequest) newsRequests.push(report.newsRequest);
       }
       if (expired.length > 0) releaseCrewHeadshots(get().activeSaveId, expired);
       if (newsSpawned.length > 0) {
         set({ newsToasts: [...get().newsToasts, ...newsSpawned].slice(-6) });
+      }
+      // Fire each cadence-fired event request — concurrency cap inside
+      // the spawn module already prevented the queue from running away.
+      for (const req of newsRequests) {
+        handleNewsRequest(w, req, get().activeSaveId, () => {
+          const latest = get().world.newsEvents?.active.at(-1);
+          if (latest) {
+            set({ newsToasts: [...get().newsToasts, latest].slice(-6) });
+          }
+          set({ tickEpoch: get().tickEpoch + 1 });
+        });
       }
       persistCurrentGame();
     },
@@ -941,10 +1007,28 @@ export const useStore = create<UiState>((set, get) => {
           startedAt: performance.now(),
           durationMs: 6000,
           quotes: pickSeedQuotes(3),
+          phase: "backstory",
         },
       });
 
-      runSeedingLoop(world, intent, targetSaveId, name);
+      // Backstory generation runs in parallel with the tick warmup. We
+      // start the request first; once it resolves (or fails to a fallback)
+      // we flip the seed phase to "seeding" and start the tick chunks.
+      // The total wall-clock floor is durationMs in the seeding phase, so
+      // a slow LLM response just shifts when the player sees the world.
+      void resolveBackstory(world, syndicateId).then(backstory => {
+        world.universeBackstory = backstory;
+        // Bump tickEpoch so any UI bound to it (Captain's Ledger eyebrow)
+        // notices the lore landing during the seeding warmup.
+        const cur = get().pendingSeed;
+        if (cur) {
+          set({
+            tickEpoch: get().tickEpoch + 1,
+            pendingSeed: { ...cur, phase: "seeding", startedAt: performance.now() },
+          });
+        }
+        runSeedingLoop(world, intent, targetSaveId, name);
+      });
     },
     cancelNewGame: () => set({ pendingNewGame: null }),
     advanceNewGamePhase: (phase) => {

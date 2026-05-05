@@ -13,10 +13,13 @@ export type {
 
 export { eventMultiplier, invalidateEventCache } from "./modifier";
 export { createNewsEventsState, tickNewsEvents } from "./tick";
-export { getNewsPool, loadNewsPool, setNewsPoolForTests } from "./pool";
+export type { NewsTickReport } from "./tick";
 export {
+  applyResolvedNewsEvent,
   MAX_ACTIVE_EVENTS,
+  MAX_INFLIGHT_REQUESTS,
   NEWS_SPAWN_CHANCE,
   NEWS_SPAWN_PERIOD,
-  maybeSpawnEvent,
+  maybeQueueNewsRequest,
 } from "./spawn";
+export type { NewsBiasHint, NewsSpawnRequest, ResolvedNewsEvent } from "./spawn";

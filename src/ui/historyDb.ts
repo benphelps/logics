@@ -4,7 +4,7 @@ import type { RecentNewsEvent } from "../sim/news/types";
 // Preserve the pre-rename IndexedDB name so existing local history streams
 // stay attached to migrated Ledgway saves.
 const DB_NAME = "logics-history";
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 const STORE_HISTORY = "equityHistory";
 const STORE_TRADES = "equityTrades";
 const STORE_LOG = "traderLog";

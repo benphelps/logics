@@ -607,6 +607,48 @@ export interface Job {
   postedBy?: SyndicateId;
 }
 
+// --- universe backstory --------------------------------------------------
+// Per-game lore object generated at new-game time and saved with the slot.
+// Drives the on-demand news generator's continuity layer: every news event
+// spawn is conditioned on the backstory plus the recent target events.
+// Kept structured so prompt builders can pick specific fields per tier
+// (e.g. an event targeting a station might lean on `political` + the local
+// timeline beat, while a global event might pull `tensions` + `tagline`).
+//
+// Designed to extend cleanly when syndicates / stations / NPCs grow their
+// own backstories: those will hang off Syndicate / LocationDef / Trader
+// respectively rather than nesting inside this object.
+
+export interface TimelineBeat {
+  // Era or epoch label, e.g. "Pre-charter expansion".
+  era: string;
+  // 1-2 sentence summary of what happened in this beat.
+  summary: string;
+}
+
+export interface UniverseBackstory {
+  // One-liner setting hook — the eyebrow that appears on the Captain's
+  // Ledger sidebar. ~12 words.
+  tagline: string;
+  // The current era's name, e.g. "Late Charter Era", "Boundary Wars".
+  era: string;
+  // Paragraph describing the political situation: which syndicates are
+  // ascendant, which are pressed, what coalitions exist.
+  political: string;
+  // Paragraph on the economic backdrop: trade routes, prevailing
+  // shortages, new production hubs.
+  economic: string;
+  // Paragraph on unresolved tensions / brewing conflicts. Drives the
+  // shape of breaking news that follows.
+  tensions: string;
+  // 3-5 historical beats that the news writer can reference when
+  // generating follow-up events.
+  timelineBeats: TimelineBeat[];
+  // World tick the backstory was minted at. Useful for UI like "lore
+  // written at world start" timestamping; not used by the sim.
+  generatedAt: number;
+}
+
 // --- combat encounters ---------------------------------------------------
 // An encounter spawns probabilistically while a player ship is in transit.
 // Manual ships pause and surface a modal; auto ships resolve via policy.
@@ -716,7 +758,7 @@ export interface World {
   // bounded duration. See src/sim/news. Optional so older saves and minimal
   // test worlds round-trip without explicit setup; eventMultiplier short-
   // circuits to 1 when undefined.
-  newsEvents?: import("./news/types").NewsEventsState;
+  newsEvents?: import("./news/types.js").NewsEventsState;
   // Per-station syndicate control. control[locId][syndId] = 0..1, summing
   // to 1 across syndicates with a presence at that station. Drives the
   // atlas territory bubbles and downstream gameplay (crossing fees,
@@ -762,6 +804,11 @@ export interface World {
   // ledger feed + the atlas lane danger heatmap (Phase 3).
   encounterHistory?: Encounter[];
   nextEncounterId?: number;
+  // Per-game lore object — generated once at new-game time, saved with the
+  // slot. Provides continuity context to the on-demand news generator.
+  // Optional only because old/test worlds may not have one; new-game flow
+  // populates it before the sim runs.
+  universeBackstory?: UniverseBackstory;
 }
 
 // --- order book ----------------------------------------------------------

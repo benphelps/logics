@@ -23,7 +23,8 @@ function tickCommoditySpotHistory(world: World): void {
   }
 }
 import { runPlayerStockAutopilot } from "./stock/playerAutopilot";
-import { getNewsPool, tickNewsEvents } from "./news";
+import { tickNewsEvents } from "./news";
+import type { NewsSpawnRequest } from "./news";
 import type { ActiveNewsEvent } from "./news/types";
 
 export interface TickReport {
@@ -36,6 +37,10 @@ export interface TickReport {
   hiresExpired: HireId[];
   newsSpawned: ActiveNewsEvent[];
   newsExpired: ActiveNewsEvent[];
+  // Set when the news cadence wants to fire a generated event this tick.
+  // The UI store reads this and POSTs /api/news/event; the response
+  // mutates world.newsEvents.active when it lands.
+  newsRequest: NewsSpawnRequest | null;
 }
 
 function produce(loc: LocationDef, market: MarketState): void {
@@ -83,7 +88,7 @@ export function tickWorld(world: World): TickReport {
 
   // Resolve news events first so the freshly-spawned/expired set is visible
   // to price/treasury/stock evaluations later in this same tick.
-  const newsReport = tickNewsEvents(world, getNewsPool());
+  const newsReport = tickNewsEvents(world);
 
   const traderEvents = stepTraders(world);
 
@@ -157,6 +162,7 @@ export function tickWorld(world: World): TickReport {
     hiresExpired,
     newsSpawned: [...newsReport.spawned, ...controlReport.spawnedNews],
     newsExpired: newsReport.expired,
+    newsRequest: newsReport.spawnRequest,
   };
 }
 

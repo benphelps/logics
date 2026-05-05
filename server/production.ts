@@ -3,6 +3,7 @@ import { stat } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { extname, resolve, sep } from "node:path";
 import { handleHeadshotRequest } from "./headshots.js";
+import { handleNewsRequest } from "./news.js";
 import { handleShipArtRequest } from "./ship-art.js";
 import { handleSyndicateInsigniaRequest } from "./syndicate-insignia.js";
 
@@ -42,6 +43,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     if (await handleHeadshotRequest(req, res)) return;
     if (await handleShipArtRequest(req, res)) return;
     if (await handleSyndicateInsigniaRequest(req, res)) return;
+    if (await handleNewsRequest(req, res)) return;
     await serveStatic(req, res);
   } catch (error) {
     if (res.headersSent) {

@@ -18,8 +18,7 @@
     "audit": "tsx src/sim/scenarios/audit.ts",
     "audit:progression": "tsx src/sim/scenarios/progression_audit.ts",
     "art:coverage": "tsx src/tools/artCoverage.ts",
-    "headshots:seed": "tsx src/tools/seedHeadshots.ts",
-    "news:gen": "tsx src/tools/genNewsEvents.ts"
+    "headshots:seed": "tsx src/tools/seedHeadshots.ts"
   },
   "dependencies": {
     "@tanstack/react-table": "^8.21.3",

@@ -27,27 +27,31 @@ export function SeedingModal() {
   if (!seed) return null;
 
   const elapsed = Math.max(0, now - seed.startedAt);
+  const isBackstory = seed.phase === "backstory";
   const totalQuoteSlots = Math.max(1, Math.ceil(seed.durationMs / QUOTE_INTERVAL_MS));
   const slot = Math.min(totalQuoteSlots - 1, Math.floor(elapsed / QUOTE_INTERVAL_MS));
   const quote = seed.quotes[Math.min(slot, seed.quotes.length - 1)] ?? "Reticulating splines";
-  const progressPct = Math.min(100, (elapsed / seed.durationMs) * 100);
+  // Backstory phase has no fixed duration — show an indeterminate pulse
+  // bar instead of a true progress fill.
+  const progressPct = isBackstory ? 100 : Math.min(100, (elapsed / seed.durationMs) * 100);
 
   return (
     <Modal
       open={true}
       onClose={() => { /* non-dismissable */ }}
       closeOnBackdrop={false}
-      eyebrow="Seeding the universe"
-      title="Settling the sector"
+      eyebrow={isBackstory ? "Writing universe history" : "Seeding the universe"}
+      title={isBackstory ? "Drafting the backstory" : "Settling the sector"}
       dialogClassName="seeding-dialog"
     >
-      <p className="seeding-quote mono">{quote}…</p>
-      <div className="seeding-progress" aria-hidden>
+      <p className="seeding-quote mono">{isBackstory ? "Listening to the syndicates" : quote}…</p>
+      <div className={`seeding-progress${isBackstory ? " indeterminate" : ""}`} aria-hidden>
         <div className="seeding-progress-fill" style={{ width: `${progressPct}%` }} />
       </div>
       <p className="seeding-hint dim">
-        NPC freighters are running their first runs while you wait. The picker locks until
-        the universe has a bit of history under it.
+        {isBackstory
+          ? "Our wire-service desk is sketching the political and economic shape of your universe. This unlocks the news system's continuity layer."
+          : "NPC freighters are running their first runs while you wait. The picker locks until the universe has a bit of history under it."}
       </p>
     </Modal>
   );

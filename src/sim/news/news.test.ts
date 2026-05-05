@@ -1,18 +1,23 @@
-import { describe, expect, it, beforeEach } from "vitest";
+// News-system tests after the on-demand-generation refactor. The pool
+// pick + placeholder substitution is gone; events are now applied via
+// applyResolvedNewsEvent when /api/news/event lands. These tests cover:
+//   - the modifier query layer (still pure)
+//   - tick expiry + recent ring buffer
+//   - spawn cadence producing a request spec without firing the API
+//   - applyResolvedNewsEvent finalizing a synthetic LLM response
+//   - long-run bias balance across many synthetic events
+
+import { describe, expect, it } from "vitest";
 import { createWorld } from "../world";
 import { tickWorld } from "../tick";
 import { eventMultiplier } from "./modifier";
 import { createNewsEventsState, tickNewsEvents } from "./tick";
-import { setNewsPoolForTests, getNewsPool } from "./pool";
-import type { ActiveNewsEvent, NewsEventTemplate } from "./types";
+import { applyResolvedNewsEvent, MAX_INFLIGHT_REQUESTS } from "./spawn";
+import type { ActiveNewsEvent, NewsEffect, NewsScope, NewsTarget } from "./types";
 
 function freshWorld() {
   return createWorld({ player: null });
 }
-
-beforeEach(() => {
-  setNewsPoolForTests([]);
-});
 
 describe("news/modifier — short-circuits", () => {
   it("returns 1 when world.newsEvents is undefined", () => {
@@ -61,9 +66,7 @@ describe("news/modifier — matching", () => {
       scope: "commodity_price", magnitude: 0.10, direction: -1,
       target: { kind: "good", category: "food" },
     }));
-    // grain is category "food"
     expect(eventMultiplier(w, "commodity_price", { goodId: "grain" })).toBeCloseTo(0.90, 4);
-    // ore is category "raw" — should not match
     expect(eventMultiplier(w, "commodity_price", { goodId: "ore" })).toBe(1);
   });
 
@@ -105,9 +108,9 @@ describe("news/tick — expiry and recent buffer", () => {
     w.tick = 100;
     const ev = makeActive({ scope: "maintenance", magnitude: 0.10, direction: 1, target: { kind: "global" } });
     ev.spawnedAt = 90;
-    ev.expiresAt = 95; // past
+    ev.expiresAt = 95;
     w.newsEvents!.active.push(ev);
-    const report = tickNewsEvents(w, []);
+    const report = tickNewsEvents(w);
     expect(report.expired).toHaveLength(1);
     expect(w.newsEvents!.active).toHaveLength(0);
     expect(w.newsEvents!.recent).toHaveLength(1);
@@ -120,152 +123,142 @@ describe("news/tick — expiry and recent buffer", () => {
     const ev = makeActive({ scope: "maintenance", magnitude: 0.10, direction: 1, target: { kind: "global" } });
     ev.spawnedAt = 40; ev.expiresAt = 100;
     w.newsEvents!.active.push(ev);
-    tickNewsEvents(w, []);
+    tickNewsEvents(w);
     expect(w.newsEvents!.active).toHaveLength(1);
   });
 });
 
-describe("news/spawn — determinism + cadence", () => {
-  it("two fresh worlds with the same tick & pool spawn the same event", () => {
-    const pool = miniPool();
-    setNewsPoolForTests(pool);
-    const a = freshWorld(); const b = freshWorld();
-    a.tick = 30; b.tick = 30;
-    const ra = tickNewsEvents(a, pool);
-    const rb = tickNewsEvents(b, pool);
-    expect(ra.spawned.length).toBe(rb.spawned.length);
-    if (ra.spawned.length > 0) {
-      expect(ra.spawned[0].templateId).toBe(rb.spawned[0].templateId);
-      expect(ra.spawned[0].headline).toBe(rb.spawned[0].headline);
-      expect(ra.spawned[0].expiresAt).toBe(rb.spawned[0].expiresAt);
-    }
-  });
-
-  it("never spawns when pool is empty", () => {
+describe("news/spawn — cadence + request spec", () => {
+  it("returns a spawn request when the cadence fires", () => {
     const w = freshWorld();
-    for (let t = 0; t < 1000; t++) {
-      w.tick = t;
-      const r = tickNewsEvents(w, []);
-      expect(r.spawned).toHaveLength(0);
-    }
-  });
-
-  it("never spawns when disabled", () => {
-    const w = freshWorld();
-    w.newsEvents!.enabled = false;
-    const pool = miniPool();
+    let sawRequest = false;
     for (let t = 0; t < 600; t++) {
       w.tick = t;
-      tickNewsEvents(w, pool);
+      const r = tickNewsEvents(w);
+      if (r.spawnRequest) {
+        sawRequest = true;
+        expect(r.spawnRequest.tier).toMatch(/^(world|sector|station|good)$/);
+        expect(r.spawnRequest.biasHint).toMatch(/^(favor_negative|favor_positive|neutral)$/);
+      }
     }
+    expect(sawRequest).toBe(true);
+  });
+
+  it("never returns a spawn request when disabled", () => {
+    const w = freshWorld();
+    w.newsEvents!.enabled = false;
+    for (let t = 0; t < 600; t++) {
+      w.tick = t;
+      const r = tickNewsEvents(w);
+      expect(r.spawnRequest).toBeNull();
+    }
+  });
+
+  it("respects MAX_INFLIGHT_REQUESTS — won't queue while pending count is at the cap", () => {
+    const w = freshWorld();
+    w.newsEvents!.pendingRequestCount = MAX_INFLIGHT_REQUESTS;
+    let queued = 0;
+    for (let t = 0; t < 600; t++) {
+      w.tick = t;
+      const r = tickNewsEvents(w);
+      if (r.spawnRequest) queued += 1;
+    }
+    expect(queued).toBe(0);
+  });
+});
+
+describe("news/spawn — applyResolvedNewsEvent", () => {
+  it("appends the resolved event, increments nextEventId, updates bias", () => {
+    const w = freshWorld();
+    const before = w.newsEvents!.nextEventId;
+    const applied = applyResolvedNewsEvent(w, {
+      headline: "Test headline",
+      body: "Test body",
+      tone: "warn",
+      durationBand: "short",
+      effects: [{
+        scope: "encounter_chance",
+        target: { kind: "global" },
+        direction: 1,
+        magnitude: 0.20,
+      }],
+    });
+    expect(applied).not.toBeNull();
+    expect(w.newsEvents!.active).toHaveLength(1);
+    expect(w.newsEvents!.nextEventId).toBe(before + 1);
+    const biasKey = "encounter_chance|global|*";
+    expect(w.newsEvents!.bias[biasKey]).toBeCloseTo(0.20, 5);
+  });
+
+  it("rejects events with no usable effects", () => {
+    const w = freshWorld();
+    const applied = applyResolvedNewsEvent(w, {
+      headline: "Bad event",
+      body: "",
+      effects: [],
+    });
+    expect(applied).toBeNull();
     expect(w.newsEvents!.active).toHaveLength(0);
   });
 });
 
-describe("news — long-run mean reversion", () => {
-  it("bias on each scope stays near zero across 5000 ticks", () => {
+describe("news — long-run bias balance with synthetic events", () => {
+  it("alternating direction events keep bias near zero across many spawns", () => {
     const w = freshWorld();
-    const pool = balancedMiniPool();
-    setNewsPoolForTests(pool);
-    for (let t = 0; t < 5000; t++) {
-      tickWorld(w);
+    let sign = 1;
+    for (let i = 0; i < 200; i++) {
+      applyResolvedNewsEvent(w, {
+        headline: `Synthetic ${i}`,
+        body: "",
+        durationBand: "short",
+        effects: [{
+          scope: "maintenance",
+          target: { kind: "global" },
+          direction: sign === 1 ? 1 : -1,
+          magnitude: 0.15,
+        }],
+      });
+      sign = -sign;
     }
-    const state = w.newsEvents!;
-    for (const [, value] of Object.entries(state.bias)) {
-      expect(Math.abs(value)).toBeLessThan(0.5);
-    }
-  }, 15_000);
+    // Bias decays each tick, but we never tick — so the sum-of-deltas is
+    // exactly tracked. With perfectly alternating direction the running
+    // sum hovers near 0 (final value = 0 if even count, ±0.15 if odd).
+    const biasValue = w.newsEvents!.bias["maintenance|global|*"] ?? 0;
+    expect(Math.abs(biasValue)).toBeLessThan(0.16);
+  });
 });
 
 describe("news — wired into tickWorld", () => {
-  it("populates report.newsSpawned / newsExpired", () => {
-    const pool = miniPool();
-    setNewsPoolForTests(pool);
+  it("tick reports surface a newsRequest when cadence fires", () => {
     const w = freshWorld();
-    let saw = false;
+    let sawRequest = false;
     for (let i = 0; i < 200; i++) {
       const r = tickWorld(w);
-      if (r.newsSpawned.length > 0) saw = true;
+      if (r.newsRequest) sawRequest = true;
     }
-    expect(saw).toBe(true);
-  });
-
-  it("does not break determinism — same seed ticks identically", () => {
-    const pool = miniPool();
-    setNewsPoolForTests(pool);
-    const a = freshWorld(); const b = freshWorld();
-    for (let i = 0; i < 300; i++) { tickWorld(a); tickWorld(b); }
-    expect(a.tick).toBe(b.tick);
-    expect(a.newsEvents!.active.length).toBe(b.newsEvents!.active.length);
-    expect(a.newsEvents!.nextEventId).toBe(b.newsEvents!.nextEventId);
+    expect(sawRequest).toBe(true);
   });
 });
 
 // --- helpers ----------------------------------------------------------------
 
 function makeActive(opts: {
-  scope: import("./types").NewsScope;
+  scope: NewsScope;
   magnitude: number;
   direction: 1 | -1;
-  target?: import("./types").NewsTarget;
+  target?: NewsTarget;
 }): ActiveNewsEvent {
   const target = opts.target ?? { kind: "global" };
+  const effect: NewsEffect = { scope: opts.scope, target, direction: opts.direction, magnitude: opts.magnitude };
   return {
     uid: `news-test-${Math.random().toString(36).slice(2, 8)}`,
     templateId: "test-template",
     spawnedAt: 0,
     expiresAt: 999_999,
-    effects: [{ scope: opts.scope, target, direction: opts.direction, magnitude: opts.magnitude }],
+    effects: [effect],
     headline: "Test Event",
     body: "Test body",
     category: "test",
     tone: "info",
   };
 }
-
-function miniPool(): NewsEventTemplate[] {
-  return [
-    {
-      id: "test-storm-001",
-      category: "weather",
-      headline: "Solar storm batters {station}",
-      body: "Maintenance crews scramble across {station} to weather the flare.",
-      effects: [{ scope: "maintenance", target: { kind: "location" }, direction: 1, magnitude: 0 }],
-      durationBand: "short", magnitudeBand: "medium",
-      placeholderRequirements: { station: true },
-    },
-    {
-      id: "test-festival-001",
-      category: "festival",
-      headline: "{station} hosts a homecoming festival",
-      body: "Crowds drive demand for {good}.",
-      effects: [{ scope: "commodity_price", target: { kind: "good" }, direction: 1, magnitude: 0 }],
-      durationBand: "medium", magnitudeBand: "low",
-      placeholderRequirements: { station: true, good: true },
-    },
-  ];
-}
-
-function balancedMiniPool(): NewsEventTemplate[] {
-  // Mix of up and down for the same scope so the bias balances over time.
-  return [
-    {
-      id: "bal-up-001",
-      category: "weather",
-      headline: "Disruption strikes",
-      body: "Costs rise.",
-      effects: [{ scope: "maintenance", target: { kind: "global" }, direction: 1, magnitude: 0 }],
-      durationBand: "short", magnitudeBand: "medium",
-    },
-    {
-      id: "bal-dn-001",
-      category: "discovery",
-      headline: "Efficiency breakthrough",
-      body: "Costs fall.",
-      effects: [{ scope: "maintenance", target: { kind: "global" }, direction: -1, magnitude: 0 }],
-      durationBand: "short", magnitudeBand: "medium",
-    },
-  ];
-}
-
-void getNewsPool; // type-check the import
