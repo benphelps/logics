@@ -81,7 +81,7 @@ export function fallbackUniverseBackstory(): UniverseBackstory {
     political: "The five charter syndicates hold the lanes between trade hubs but are perpetually short of trust. Border stations sway between flags as coalitions form, dissolve, and re-form on each fiscal quarter.",
     economic: "Bulk feedstocks move on long established routes; advanced goods cluster around the high-tech research stations. Shortages flare unpredictably as production hubs trade favours rather than commodities.",
     tensions: "An undeclared shadow war over commodity contracts simmers along contested borders. Privateers exploit the gaps; patrol fleets exploit the privateers; nobody wins twice in a row.",
-    timelineBeats: [],
+    storyBeats: [],
     generatedAt: Date.now(),
   };
 }

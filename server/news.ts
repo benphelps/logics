@@ -177,17 +177,19 @@ ${tone}
 Output JSON with this shape:
 {
   "tagline": "12-word setting hook, no quotes inside",
-  "era": "current era's short name, 1-3 words",
+  "era": "current period's thematic name, 1-3 words (e.g. 'Late Charter Era', 'Boundary Frictions') — NEVER use years or dates",
   "political": "1 paragraph (60-90 words) on the political situation among the syndicates",
   "economic": "1 paragraph (60-90 words) on trade, shortages, production hubs",
   "tensions": "1 paragraph (60-90 words) on unresolved tensions and brewing conflicts",
-  "timelineBeats": [
-    { "era": "era label", "summary": "1-2 sentences" },
+  "storyBeats": [
+    { "label": "thematic chapter name", "summary": "1-2 sentences" },
     ...
   ]
 }
 
-Include 3-5 timelineBeats covering the run-up to the current era. Reference the actual syndicate and station names above where possible — concrete proper nouns drive immersion. Avoid generic placeholders.`;
+CRITICAL: Ledgway has no in-game calendar — there are no years, dates, or numeric timestamps in this universe. NEVER write "2245-2280", "in 2189", "the third decade", etc. Story chapters are NAMED phases like "The Splintering", "Charter Compact", "Vault Rights Dispute".
+
+Include 3-5 storyBeats — thematic anchors covering the run-up to the current era. Reference actual syndicate and station names above. Concrete proper nouns drive immersion. Avoid generic placeholders.`;
 }
 
 async function generateBackstory(body: BackstoryRequestBody): Promise<{ backstory: import("../src/sim/types.js").UniverseBackstory; cached: boolean }> {
@@ -227,14 +229,23 @@ async function generateBackstory(body: BackstoryRequestBody): Promise<{ backstor
 }
 
 function sanitizeBackstory(p: Partial<import("../src/sim/types.js").UniverseBackstory>): import("../src/sim/types.js").UniverseBackstory {
-  const rawBeats: unknown[] = Array.isArray(p.timelineBeats) ? p.timelineBeats as unknown[] : [];
+  // Accept either the new "storyBeats" key or the legacy "timelineBeats"
+  // key during the transition — model output sometimes echoes whatever
+  // labels show up in the prompt history.
+  const rawBeats: unknown[] = Array.isArray((p as Record<string, unknown>).storyBeats)
+    ? (p as Record<string, unknown>).storyBeats as unknown[]
+    : Array.isArray((p as Record<string, unknown>).timelineBeats)
+      ? (p as Record<string, unknown>).timelineBeats as unknown[]
+      : [];
   const beats = rawBeats
     .filter((b): b is Record<string, unknown> => !!b && typeof b === "object")
     .map(b => ({
-      era: String(b.era ?? "").slice(0, 80),
+      // Accept "label" (new shape) or "era" (legacy) so model stragglers
+      // still parse cleanly.
+      label: String(b.label ?? b.era ?? "").slice(0, 80),
       summary: String(b.summary ?? "").slice(0, 400),
     }))
-    .filter(b => b.era.length > 0 && b.summary.length > 0)
+    .filter(b => b.label.length > 0 && b.summary.length > 0)
     .slice(0, 6);
   return {
     tagline: String(p.tagline ?? "").slice(0, 200),
@@ -242,7 +253,7 @@ function sanitizeBackstory(p: Partial<import("../src/sim/types.js").UniverseBack
     political: String(p.political ?? "").slice(0, 1200),
     economic: String(p.economic ?? "").slice(0, 1200),
     tensions: String(p.tensions ?? "").slice(0, 1200),
-    timelineBeats: beats,
+    storyBeats: beats,
     generatedAt: 0,
   };
 }
@@ -287,7 +298,7 @@ function buildEventUserPrompt(body: NewsEventRequestBody): string {
 - Economic: ${back.economic}
 - Tensions: ${back.tensions}
 - Timeline beats:
-${back.timelineBeats.map((b: { era: string; summary: string }) => `  · ${b.era}: ${b.summary}`).join("\n")}` : "(no backstory provided)";
+${back.storyBeats.map((b: { label: string; summary: string }) => `  · ${b.label}: ${b.summary}`).join("\n")}` : "(no backstory provided)";
 
   return `Generate ONE news event in this universe.
 

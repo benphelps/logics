@@ -619,10 +619,15 @@ export interface Job {
 // own backstories: those will hang off Syndicate / LocationDef / Trader
 // respectively rather than nesting inside this object.
 
-export interface TimelineBeat {
-  // Era or epoch label, e.g. "Pre-charter expansion".
-  era: string;
-  // 1-2 sentence summary of what happened in this beat.
+// Narrative anchor a news writer can reference for continuity. Deliberately
+// not "TimelineBeat" because Ledgway has no in-game calendar — these are
+// thematic chapters of the universe's lived history, not dated epochs. The
+// LLM is instructed to label them as named phases ("The Splintering",
+// "Charter Compact") rather than years.
+export interface StoryBeat {
+  // Thematic chapter label — a named phase, never a year or date.
+  label: string;
+  // 1-2 sentences describing what shaped the universe in this chapter.
   summary: string;
 }
 
@@ -630,7 +635,8 @@ export interface UniverseBackstory {
   // One-liner setting hook — the eyebrow that appears on the Captain's
   // Ledger sidebar. ~12 words.
   tagline: string;
-  // The current era's name, e.g. "Late Charter Era", "Boundary Wars".
+  // Current period's thematic name, e.g. "Late Charter Era", "Boundary
+  // Frictions". Avoids dated epochs since the game has no calendar.
   era: string;
   // Paragraph describing the political situation: which syndicates are
   // ascendant, which are pressed, what coalitions exist.
@@ -641,9 +647,9 @@ export interface UniverseBackstory {
   // Paragraph on unresolved tensions / brewing conflicts. Drives the
   // shape of breaking news that follows.
   tensions: string;
-  // 3-5 historical beats that the news writer can reference when
-  // generating follow-up events.
-  timelineBeats: TimelineBeat[];
+  // 3-5 thematic anchors the news writer references for continuity. No
+  // dates — each is a named chapter of the universe's lived history.
+  storyBeats: StoryBeat[];
   // World tick the backstory was minted at. Useful for UI like "lore
   // written at world start" timestamping; not used by the sim.
   generatedAt: number;

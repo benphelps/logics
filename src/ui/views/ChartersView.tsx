@@ -584,11 +584,11 @@ function BackstoryEyebrow({ backstory }: { backstory: UniverseBackstory }) {
           {backstory.tensions && (
             <p><span className="backstory-eyebrow-label">Tensions</span>{backstory.tensions}</p>
           )}
-          {backstory.timelineBeats.length > 0 && (
+          {backstory.storyBeats.length > 0 && (
             <ul className="backstory-eyebrow-timeline">
-              {backstory.timelineBeats.map((beat, i) => (
+              {backstory.storyBeats.map((beat, i) => (
                 <li key={i}>
-                  <span className="backstory-eyebrow-beat-era">{beat.era}</span>
+                  <span className="backstory-eyebrow-beat-era">{beat.label}</span>
                   <span className="backstory-eyebrow-beat-summary">{beat.summary}</span>
                 </li>
               ))}
