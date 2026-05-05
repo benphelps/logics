@@ -121,6 +121,7 @@ const ROLES = [
   "trade analyst",
   "freighter crew",
   "security officer",
+  "mercenary",
 ];
 
 const QUALITIES: HeadshotQuality[] = ["low", "medium", "high"];
@@ -191,6 +192,13 @@ const ROLE_PROMPTS: Record<string, {
     props: "holstered sidearm or scanner kept low and non-threatening, checkpoint rail behind",
     lighting: "harder overhead security light with red-blue accents kept subtle",
     posture: "watchful, disciplined, protective",
+  },
+  "mercenary": {
+    background: "ship gunbay alcove, exposed weapon mounts and ammunition crates, scratched plating, scorched paint, no readable markings",
+    clothing: "battle-worn combat fatigues, plate carrier with scuffed pauldrons, gauntleted forearm cuffs, fingerless gloves, a small enamel unit pin without text",
+    props: "one hand resting on a weapon strap or holstered sidearm at the hip, knuckle dust or carbon scoring on the sleeve",
+    lighting: "low-angle warning amber from the weapon bay mixed with cool corridor blue, harder shadows than the rest of the crew",
+    posture: "loose-shouldered and ready, weight slightly forward, neither dramatic nor showy — career professional, not an action hero",
   },
 };
 
