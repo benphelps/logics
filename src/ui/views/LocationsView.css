@@ -1059,11 +1059,7 @@
 .atlas-lane {
   --lane-traffic-intensity: 0;
   --lane-danger-intensity: 0;
-  --lane-fade: 1;
-  /* Wrapper opacity multiplies into the inner stroke so the
-     hop-distance falloff applies uniformly to both the colored danger
-     gradient and the neutral ink default. */
-  opacity: var(--lane-fade);
+  --lane-hop: 0;
 }
 
 .atlas-lane-outline {
@@ -1091,8 +1087,18 @@
   stroke-width: 1.8;
 }
 
-/* Stations-mode tier classes were replaced by a continuous --lane-fade
-   custom property applied via the wrapper opacity above. */
+/* Stations-tab hop-distance ramp: lanes color-mix from near-white at
+   the closest hop to a lighter slate blue at the furthest. Applied via
+   the .hop-ramp class so it doesn't bleed onto other tabs. Opacity
+   stays at 1 throughout — distance reads as colour shift, not fade. */
+.atlas-lane.hop-ramp .atlas-lane-inner {
+  stroke: color-mix(
+    in oklch,
+    oklch(96% 0.01 240),
+    oklch(68% 0.04 245) calc(var(--lane-hop) * 100%)
+  );
+  stroke-opacity: calc(0.85 - var(--lane-hop) * 0.15);
+}
 
 /* Danger heatmap — muted, slate-aligned green → amber → rose ramp on
    the logistics tab. Lower chroma than the saturated v1 ramp so it
@@ -1365,13 +1371,8 @@
   opacity: 0.18;
 }
 
-/* Stations-tab continuous opacity falloff. Hop distance from the player
-   anchor produces a 0..1 fade that lands as the wrapper opacity here.
-   Closest lane / station = 1.0; furthest reachable + disconnected = 0.5. */
-.atlas-node {
-  --node-fade: 1;
-  opacity: var(--node-fade);
-}
+/* Stations stay fully opaque on every tab — distance / faction context
+   reads through lane colour and badges instead of node opacity. */
 
 .atlas-player-route-leg {
   stroke: var(--atlas-player);
@@ -1510,6 +1511,17 @@
     oklch(70% 0.07 165) 0%,
     oklch(70% 0.10 75) 50%,
     oklch(58% 0.13 22) 100%
+  );
+}
+
+/* Stations-tab hop-distance ramp swatch — mirrors .atlas-lane.hop-ramp
+   stroke gradient so the player can compare a lane's tint to its
+   distance from their anchor station at a glance. */
+.atlas-legend-ramp-bar.hop {
+  background: linear-gradient(
+    in oklch to right,
+    oklch(96% 0.01 240) 0%,
+    oklch(68% 0.04 245) 100%
   );
 }
 

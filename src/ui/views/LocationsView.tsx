@@ -111,13 +111,14 @@ function laneDangerIntensity(count: number): number {
   return 0.5 + ((count - DANGER_MEDIUM_AT) / (DANGER_HOT_AT - DANGER_MEDIUM_AT)) * 0.5;
 }
 
-// Stations-tab opacity falloff. hop=1 → 1.0, hop=maxHop → 0.5; linear
-// in between. Player anchor itself (hop=0) renders at full strength too
-// (its lanes are evaluated by their further endpoint, not the anchor).
-function fadeForHop(hop: number, maxHop: number): number {
-  if (maxHop <= 1) return 1;
-  if (hop <= 1) return 1;
-  return Math.max(0.5, 1 - 0.5 * (hop - 1) / (maxHop - 1));
+// Stations-tab lane color position. hop=1 → 0 (closest, near-white);
+// hop=maxHop → 1 (furthest, light slate blue). Lanes interpolate between
+// via OKLCH color-mix in CSS — opacity stays at 1 throughout, only the
+// hue shifts. Player anchor's adjacent lanes (farHop=1) read brightest.
+function laneHopRatio(hop: number, maxHop: number): number {
+  if (maxHop <= 1) return 0;
+  if (hop <= 1) return 0;
+  return Math.min(1, (hop - 1) / (maxHop - 1));
 }
 
 interface EncounterPing {
@@ -543,31 +544,32 @@ function SectorMap({
     return max;
   }, [hopFromAnchor]);
 
-  // Per-tab visible lane set + per-lane fade coefficient. Stations: every
-  // lane is shown, opacity fades linearly by furthest-endpoint hop so the
-  // closest lane reads at full strength and the most distant lane lands at
-  // 50%. Syndicates: no lanes. Logistics: every lane at full strength.
-  const { visibleLinks, laneFade } = useMemo(() => {
+  // Per-tab visible lane set + per-lane hop ratio (0=closest, 1=furthest).
+  // Stations: every lane shown; CSS color-mixes white → slate blue based
+  // on the ratio so distance reads as colour shift instead of opacity.
+  // Syndicates: no lanes. Logistics: every lane at neutral ratio (the
+  // danger heatmap drives the colour there).
+  const { visibleLinks, laneHop } = useMemo(() => {
     if (mapTab === "syndicates") {
-      return { visibleLinks: [] as AtlasLink[], laneFade: new Map<string, number>() };
+      return { visibleLinks: [] as AtlasLink[], laneHop: new Map<string, number>() };
     }
     if (mapTab !== "stations") {
-      return { visibleLinks: orderedLinks, laneFade: new Map<string, number>() };
+      return { visibleLinks: orderedLinks, laneHop: new Map<string, number>() };
     }
-    const fade = new Map<string, number>();
+    const hop = new Map<string, number>();
     for (const link of orderedLinks) {
       const aHop = hopFromAnchor.get(link.a);
       const bHop = hopFromAnchor.get(link.b);
       // If either endpoint is unreachable from the anchor, treat the lane
-      // as max-distance — it still renders, just at the minimum fade.
+      // as max-distance — it still renders, just at the bluest end.
       const farHop = Math.max(
         aHop ?? maxHopReachable,
         bHop ?? maxHopReachable,
       );
       const key = laneKey(link.a, link.b);
-      fade.set(key, fadeForHop(farHop, maxHopReachable));
+      hop.set(key, laneHopRatio(farHop, maxHopReachable));
     }
-    return { visibleLinks: orderedLinks, laneFade: fade };
+    return { visibleLinks: orderedLinks, laneHop: hop };
   }, [mapTab, orderedLinks, hopFromAnchor, maxHopReachable]);
 
   // Set of lane keys + endpoint stations that are currently rendered —
@@ -602,21 +604,9 @@ function SectorMap({
   const displayedRoute = previewedRoute ?? selectedRoute;
   const displayedRouteIsPreview = previewedRoute !== null;
 
-  // Per-station opacity for the stations tab — same continuous falloff
-  // as the lanes. The anchor station (hop=0) and 1-hop neighbours render
-  // at full strength; the furthest reachable / disconnected stations
-  // floor at 50%. Empty map outside the stations tab — caller skips the
-  // fade entirely and renders normally.
-  const stationFade = useMemo(() => {
-    const m = new Map<LocationId, number>();
-    if (mapTab !== "stations") return m;
-    for (const p of projected) {
-      const id = p.loc.id;
-      const hop = hopFromAnchor.get(id) ?? maxHopReachable;
-      m.set(id, fadeForHop(hop, maxHopReachable));
-    }
-    return m;
-  }, [mapTab, projected, hopFromAnchor, maxHopReachable]);
+  // Stations stay fully opaque on the stations tab — only the lane colour
+  // shifts with hop distance. Hop information was previously plumbed
+  // through stationFade; that's now dropped.
 
   // Per-tab visible ship set. Stations: only ships whose lane (or dock
   // station) is part of the visible network. Syndicates: no docked
@@ -1004,7 +994,7 @@ function SectorMap({
         )}
         <LanesLayer
           orderedLinks={visibleLinks}
-          laneFade={laneFade}
+          laneHop={laneHop}
           projectedById={projectedById}
           laneTraffic={laneTraffic}
           peakLaneTraffic={peakLaneTraffic}
@@ -1137,7 +1127,6 @@ function SectorMap({
           // than syndicate accents — the syndicates tab is where faction
           // colours belong.
           showFactionAccent={mapTab !== "stations"}
-          stationFade={stationFade}
           onSelect={onSelectStation}
           onEnter={onEnterStation}
           onLeave={hideTip}
@@ -1165,6 +1154,14 @@ function SectorMap({
                 );
               })}
             </ul>
+            <span className="atlas-legend-title">Lane distance</span>
+            <div className="atlas-legend-ramp">
+              <div className="atlas-legend-ramp-bar hop" aria-hidden="true" />
+              <div className="atlas-legend-ramp-labels">
+                <span>nearby</span>
+                <span>far</span>
+              </div>
+            </div>
           </>
         )}
         {mapTab === "syndicates" && syndicateAccents.size > 0 && (
@@ -1370,10 +1367,11 @@ interface LanesLayerProps {
   // activity, falling back to the neutral atlas-ink default.
   alwaysTintDanger: boolean;
   hoveredLane: string | null;
-  // Per-lane opacity multiplier (0..1). Driven in the stations tab by
-  // the player anchor's hop-distance falloff; empty / missing entries
-  // render at full strength.
-  laneFade: Map<string, number>;
+  // Per-lane hop ratio (0=closest, 1=furthest). Driven in the stations
+  // tab by the player anchor's BFS distance; missing entries fall back
+  // to neutral ink. CSS color-mixes the inner stroke between near-white
+  // and light slate based on this value.
+  laneHop: Map<string, number>;
 }
 
 // Lane render-only. Hover detection lives on the parent SVG's
@@ -1382,7 +1380,7 @@ interface LanesLayerProps {
 // can't both highlight at once. Per-line SVG hit-zones were removed
 // for the same reason.
 const LanesLayer = memo(function LanesLayer({
-  orderedLinks, projectedById, laneTraffic, peakLaneTraffic, laneDanger, alwaysTintDanger, hoveredLane, laneFade,
+  orderedLinks, projectedById, laneTraffic, peakLaneTraffic, laneDanger, alwaysTintDanger, hoveredLane, laneHop,
 }: LanesLayerProps) {
   return (
     <g className="atlas-lanes" pointerEvents="none">
@@ -1396,7 +1394,7 @@ const LanesLayer = memo(function LanesLayer({
         const danger = laneDanger.get(key);
         const dangerIntensity = danger ? laneDangerIntensity(danger.count) : 0;
         const isHovered = hoveredLane === key;
-        const fade = laneFade.get(key);
+        const hop = laneHop.get(key);
         const cls = [
           "atlas-lane",
           traffic && traffic.count > 0 ? "traffic" : null,
@@ -1405,6 +1403,9 @@ const LanesLayer = memo(function LanesLayer({
           // intensity=0 paints the calm green end. Other tabs keep the
           // neutral atlas-ink for zero-encounter lanes.
           alwaysTintDanger || (danger && danger.count > 0) ? "danger" : null,
+          // Stations tab opts every lane into the white→slate-blue
+          // hop-distance ramp via this class.
+          hop !== undefined ? "hop-ramp" : null,
           isHovered ? "hovered" : null,
         ].filter(Boolean).join(" ");
         return (
@@ -1414,7 +1415,7 @@ const LanesLayer = memo(function LanesLayer({
             style={{
               "--lane-traffic-intensity": intensity,
               "--lane-danger-intensity": dangerIntensity,
-              "--lane-fade": fade ?? 1,
+              "--lane-hop": hop ?? 0,
             } as CSSProperties}
           >
             <line className="atlas-lane-outline" x1={a.x} y1={a.y} x2={b.x} y2={b.y} />
@@ -1461,16 +1462,13 @@ interface StationsLayerProps {
   // Stations tab disables it so markers render with kind-default colours;
   // syndicates / logistics tabs leave it on.
   showFactionAccent: boolean;
-  // Per-station opacity multiplier (0..1) — driven by stations-tab
-  // hop-distance falloff. Missing entries render at full strength.
-  stationFade: Map<LocationId, number>;
   onSelect: (id: LocationId) => void;
   onEnter: (p: ProjectedLocation) => void;
   onLeave: () => void;
 }
 
 const StationsLayer = memo(function StationsLayer({
-  projected, selectedId, playerLocation, hiddenKinds, syndicateAccents, showFactionAccent, stationFade, onSelect, onEnter, onLeave,
+  projected, selectedId, playerLocation, hiddenKinds, syndicateAccents, showFactionAccent, onSelect, onEnter, onLeave,
 }: StationsLayerProps) {
   return (
     <g className="atlas-nodes">
@@ -1481,7 +1479,6 @@ const StationsLayer = memo(function StationsLayer({
           : null;
         const isPlayerHere = playerLocation === p.loc.id;
         const isFiltered = hiddenKinds.has(p.kind);
-        const fade = stationFade.get(p.loc.id);
         const cls = [
           "atlas-node",
           `atlas-node-${p.kind}`,
@@ -1490,14 +1487,11 @@ const StationsLayer = memo(function StationsLayer({
           isPlayerHere ? "player-here" : null,
           isFiltered ? "filtered" : null,
         ].filter(Boolean).join(" ");
-        const styleProps: CSSProperties = {};
-        if (accent) (styleProps as Record<string, string>)["--node-faction"] = accent;
-        if (fade !== undefined) (styleProps as Record<string, string | number>)["--node-fade"] = fade;
         return (
           <g
             key={p.loc.id}
             className={cls}
-            style={Object.keys(styleProps).length > 0 ? styleProps : undefined}
+            style={accent ? { "--node-faction": accent } as CSSProperties : undefined}
             role="button"
             tabIndex={0}
             onClick={() => onSelect(p.loc.id)}
