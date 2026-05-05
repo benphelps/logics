@@ -1060,6 +1060,7 @@
   --lane-traffic-intensity: 0;
   --lane-danger-intensity: 0;
   --lane-hop: 0;
+  --lane-length: 0;
 }
 
 .atlas-lane-outline {
@@ -1087,16 +1088,17 @@
   stroke-width: 1.8;
 }
 
-/* Stations-tab hop-distance ramp: lanes color-mix from near-white at
-   the closest hop to a lighter slate blue at the furthest, AND opacity
-   falls off from 1.0 (closest) to 0.5 (furthest). Both signals layered
-   so distance reads strongly even at a glance. Scoped via .hop-ramp so
-   other tabs are untouched. */
+/* Stations-tab lane styling — two independent signals layered:
+     COLOR (--lane-length): white for short links between adjacent
+       stations, slate blue for the longest hops in the sector.
+     OPACITY (--lane-hop): full strength for lanes adjacent to the
+       player anchor, 50% for the furthest reachable lanes.
+   Scoped via .hop-ramp so other tabs aren't affected. */
 .atlas-lane.hop-ramp .atlas-lane-inner {
   stroke: color-mix(
     in oklch,
     oklch(96% 0.01 240),
-    oklch(68% 0.04 245) calc(var(--lane-hop) * 100%)
+    oklch(68% 0.04 245) calc(var(--lane-length) * 100%)
   );
   stroke-opacity: calc(1 - var(--lane-hop) * 0.5);
 }
@@ -1515,14 +1517,24 @@
   );
 }
 
-/* Stations-tab hop-distance ramp swatch — mirrors .atlas-lane.hop-ramp
-   stroke gradient so the player can compare a lane's tint to its
-   distance from their anchor station at a glance. */
+/* Stations-tab lane-length ramp swatch — mirrors .atlas-lane.hop-ramp
+   stroke colour gradient so the player can compare a lane's tint to
+   the swatch and read the geographic length at a glance. */
 .atlas-legend-ramp-bar.hop {
   background: linear-gradient(
     in oklch to right,
     oklch(96% 0.01 240) 0%,
     oklch(68% 0.04 245) 100%
+  );
+}
+
+/* Player-distance opacity swatch — same neutral tone with a 1.0→0.5
+   alpha falloff matching .atlas-lane.hop-ramp's stroke-opacity rule. */
+.atlas-legend-ramp-bar.hop-opacity {
+  background: linear-gradient(
+    to right,
+    oklch(82% 0.02 240 / 1) 0%,
+    oklch(82% 0.02 240 / 0.5) 100%
   );
 }
 

@@ -544,32 +544,53 @@ function SectorMap({
     return max;
   }, [hopFromAnchor]);
 
-  // Per-tab visible lane set + per-lane hop ratio (0=closest, 1=furthest).
-  // Stations: every lane shown; CSS color-mixes white → slate blue based
-  // on the ratio so distance reads as colour shift instead of opacity.
-  // Syndicates: no lanes. Logistics: every lane at neutral ratio (the
-  // danger heatmap drives the colour there).
-  const { visibleLinks, laneHop } = useMemo(() => {
+  // Per-tab visible lane set + two per-lane signals on the stations tab:
+  //   laneHop:    BFS distance from the player anchor (0=closest, 1=far),
+  //               drives the lane's *opacity* falloff.
+  //   laneLength: the lane's own geographic distance (0=shortest in the
+  //               sector, 1=longest), drives the *colour* — white for
+  //               short links, lighter slate blue for long ones.
+  // Other tabs return empty maps; the danger heatmap on Logistics drives
+  // its own colouring.
+  const { visibleLinks, laneHop, laneLength } = useMemo(() => {
     if (mapTab === "syndicates") {
-      return { visibleLinks: [] as AtlasLink[], laneHop: new Map<string, number>() };
+      return {
+        visibleLinks: [] as AtlasLink[],
+        laneHop: new Map<string, number>(),
+        laneLength: new Map<string, number>(),
+      };
     }
     if (mapTab !== "stations") {
-      return { visibleLinks: orderedLinks, laneHop: new Map<string, number>() };
+      return {
+        visibleLinks: orderedLinks,
+        laneHop: new Map<string, number>(),
+        laneLength: new Map<string, number>(),
+      };
     }
+    // Compute min/max link distance once so the per-lane normalization
+    // covers the full sector spread without flattening at the bottom or
+    // saturating at the top.
+    let minDist = Infinity;
+    let maxDist = 0;
+    for (const link of orderedLinks) {
+      if (link.dist < minDist) minDist = link.dist;
+      if (link.dist > maxDist) maxDist = link.dist;
+    }
+    const lengthSpan = Math.max(0.0001, maxDist - minDist);
     const hop = new Map<string, number>();
+    const length = new Map<string, number>();
     for (const link of orderedLinks) {
       const aHop = hopFromAnchor.get(link.a);
       const bHop = hopFromAnchor.get(link.b);
-      // If either endpoint is unreachable from the anchor, treat the lane
-      // as max-distance — it still renders, just at the bluest end.
       const farHop = Math.max(
         aHop ?? maxHopReachable,
         bHop ?? maxHopReachable,
       );
       const key = laneKey(link.a, link.b);
       hop.set(key, laneHopRatio(farHop, maxHopReachable));
+      length.set(key, Math.min(1, Math.max(0, (link.dist - minDist) / lengthSpan)));
     }
-    return { visibleLinks: orderedLinks, laneHop: hop };
+    return { visibleLinks: orderedLinks, laneHop: hop, laneLength: length };
   }, [mapTab, orderedLinks, hopFromAnchor, maxHopReachable]);
 
   // Set of lane keys + endpoint stations that are currently rendered —
@@ -995,6 +1016,7 @@ function SectorMap({
         <LanesLayer
           orderedLinks={visibleLinks}
           laneHop={laneHop}
+          laneLength={laneLength}
           projectedById={projectedById}
           laneTraffic={laneTraffic}
           peakLaneTraffic={peakLaneTraffic}
@@ -1154,9 +1176,17 @@ function SectorMap({
                 );
               })}
             </ul>
-            <span className="atlas-legend-title">Lane distance</span>
+            <span className="atlas-legend-title">Lane length</span>
             <div className="atlas-legend-ramp">
               <div className="atlas-legend-ramp-bar hop" aria-hidden="true" />
+              <div className="atlas-legend-ramp-labels">
+                <span>short</span>
+                <span>long</span>
+              </div>
+            </div>
+            <span className="atlas-legend-title">From your ship</span>
+            <div className="atlas-legend-ramp">
+              <div className="atlas-legend-ramp-bar hop-opacity" aria-hidden="true" />
               <div className="atlas-legend-ramp-labels">
                 <span>nearby</span>
                 <span>far</span>
@@ -1367,11 +1397,13 @@ interface LanesLayerProps {
   // activity, falling back to the neutral atlas-ink default.
   alwaysTintDanger: boolean;
   hoveredLane: string | null;
-  // Per-lane hop ratio (0=closest, 1=furthest). Driven in the stations
-  // tab by the player anchor's BFS distance; missing entries fall back
-  // to neutral ink. CSS color-mixes the inner stroke between near-white
-  // and light slate based on this value.
+  // Per-lane opacity ratio (0=closest, 1=furthest from player anchor).
+  // Drives stroke-opacity on the Stations tab so distant lanes fade.
   laneHop: Map<string, number>;
+  // Per-lane length ratio (0=shortest sector link, 1=longest). Drives
+  // stroke colour on the Stations tab so short hops read white and long
+  // hops read slate blue.
+  laneLength: Map<string, number>;
 }
 
 // Lane render-only. Hover detection lives on the parent SVG's
@@ -1380,7 +1412,7 @@ interface LanesLayerProps {
 // can't both highlight at once. Per-line SVG hit-zones were removed
 // for the same reason.
 const LanesLayer = memo(function LanesLayer({
-  orderedLinks, projectedById, laneTraffic, peakLaneTraffic, laneDanger, alwaysTintDanger, hoveredLane, laneHop,
+  orderedLinks, projectedById, laneTraffic, peakLaneTraffic, laneDanger, alwaysTintDanger, hoveredLane, laneHop, laneLength,
 }: LanesLayerProps) {
   return (
     <g className="atlas-lanes" pointerEvents="none">
@@ -1395,16 +1427,15 @@ const LanesLayer = memo(function LanesLayer({
         const dangerIntensity = danger ? laneDangerIntensity(danger.count) : 0;
         const isHovered = hoveredLane === key;
         const hop = laneHop.get(key);
+        const length = laneLength.get(key);
         const cls = [
           "atlas-lane",
           traffic && traffic.count > 0 ? "traffic" : null,
           // Danger tint is logistics-tab only — that's where the heatmap
           // legend sits and where the green→amber→red read is wanted.
-          // Other tabs use the neutral default (or the hop ramp on
-          // Stations) so unrelated tabs aren't bleeding combat colour.
           alwaysTintDanger ? "danger" : null,
           // Stations tab opts every lane into the white→slate-blue
-          // hop-distance ramp via this class.
+          // length ramp + the player-distance opacity falloff.
           hop !== undefined ? "hop-ramp" : null,
           isHovered ? "hovered" : null,
         ].filter(Boolean).join(" ");
@@ -1416,6 +1447,7 @@ const LanesLayer = memo(function LanesLayer({
               "--lane-traffic-intensity": intensity,
               "--lane-danger-intensity": dangerIntensity,
               "--lane-hop": hop ?? 0,
+              "--lane-length": length ?? 0,
             } as CSSProperties}
           >
             <line className="atlas-lane-outline" x1={a.x} y1={a.y} x2={b.x} y2={b.y} />
