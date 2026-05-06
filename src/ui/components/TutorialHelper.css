@@ -36,8 +36,9 @@
      pair feels like it's drifting rather than snapping. The orb leads
      the bubble by a short delay so they don't move in perfect lockstep
      — it adds a nice trailing-companion feel. */
-  transition: top 720ms cubic-bezier(0.65, 0, 0.35, 1),
-              left 720ms cubic-bezier(0.65, 0, 0.35, 1);
+  transition:
+    top 720ms cubic-bezier(0.65, 0, 0.35, 1),
+    left 720ms cubic-bezier(0.65, 0, 0.35, 1);
 }
 
 .tutorial-helper.positioned .tutorial-helper-bubble {
@@ -47,8 +48,12 @@
 /* Orb sits behind the bubble so the speech panel reads cleanly even
    when they overlap; the head/shoulders peek out where they extend
    past the bubble's footprint. */
-.tutorial-helper.positioned .tutorial-helper-orb { z-index: 1100; }
-.tutorial-helper.positioned .tutorial-helper-bubble { z-index: 1101; }
+.tutorial-helper.positioned .tutorial-helper-orb {
+  z-index: 1100;
+}
+.tutorial-helper.positioned .tutorial-helper-bubble {
+  z-index: 1101;
+}
 
 /* Tail is only meaningful in the default flex layout (orb directly to
    the left of bubble). In positioned mode the orb floats free of the
@@ -80,8 +85,13 @@
 }
 
 @keyframes tutorial-helper-orb-float {
-  0%, 100% { transform: translateY(0); }
-  50%      { transform: translateY(-6px); }
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -119,8 +129,14 @@
 }
 
 @keyframes tutorial-helper-bubble-in {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .tutorial-helper-title {
@@ -132,7 +148,7 @@
 }
 
 .tutorial-helper-body {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--text-dim);
   line-height: 1.45;
   margin-bottom: 10px;
