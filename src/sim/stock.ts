@@ -440,7 +440,30 @@ function commodityFundamental(world: World, eq: Equity): number {
   return commoditySpotPrice(world, eq.underlyingId, eq.anchorPrice);
 }
 
+// Tick-scoped memo. The volume-weighted spot scans every location and was
+// the largest single hotspot in profile.ts: tickCommoditySpotHistory hits it
+// once per good, recomputeEquityPrice (commodityFundamental) hits it once
+// per commodity equity, and every NPC agent decision recomputes it again
+// inside effectiveFair. Within a tick, market.stock and market.prices are
+// stable across all callers (production/consumption ran in tickWorld before
+// any of these), so a per-(world, tick) cache is safe. Pattern mirrors
+// news/modifier.ts. Only memoizes the "denom > 0" branch — the fallback
+// branch is caller-specific and only fires when no inventory exists at all.
+interface SpotCacheEntry {
+  tick: number;
+  values: Map<string, number>;
+}
+const spotCache = new WeakMap<World, SpotCacheEntry>();
+
 export function commoditySpotPrice(world: World, goodId: string, fallback: number): number {
+  let entry = spotCache.get(world);
+  if (!entry || entry.tick !== world.tick) {
+    entry = { tick: world.tick, values: new Map() };
+    spotCache.set(world, entry);
+  }
+  const cached = entry.values.get(goodId);
+  if (cached !== undefined) return cached;
+
   let numerator = 0;
   let denom = 0;
   const base = world.goods[goodId]?.basePrice ?? fallback;
@@ -461,7 +484,9 @@ export function commoditySpotPrice(world: World, goodId: string, fallback: numbe
     denom += weight;
   }
   if (denom <= 0) return fallback;
-  return numerator / denom;
+  const value = numerator / denom;
+  entry.values.set(goodId, value);
+  return value;
 }
 
 // Basis fundamental — the station's local market price for the good.
@@ -2078,12 +2103,17 @@ function drawShareCashFlow(world: World, eq: Equity, amount: number): number {
 // --- per-tick stock-market step --------------------------------------------
 
 export function tickStockMarket(world: World): void {
-  if (Object.keys(world.equities).length === 0) return;   // no market initialized
+  // Snapshot the equity list once per tick — Object.values allocates a fresh
+  // array each call and we used to do it three times here (ageOrders,
+  // matchBook, recomputeEquityPrice). At 50 stations that's 125 equities ×
+  // three iterations + array allocations per tick.
+  const equities = Object.values(world.equities);
+  if (equities.length === 0) return;   // no market initialized
 
   // Expire old agent quotes before anyone refreshes. Previously TTL was set
   // but never decremented after the synthetic-MM phase was removed, which
   // let stale quotes linger if an agent stopped trading.
-  for (const eq of Object.values(world.equities)) {
+  for (const eq of equities) {
     ageOrders(ensureOrderBook(world, eq.id));
   }
 
@@ -2091,7 +2121,7 @@ export function tickStockMarket(world: World): void {
   // whole market does not re-quote on the same tick. Their orders join
   // whatever is left in the book from prior ticks.
   stepStockAgents(world);
-  for (const eq of Object.values(world.equities)) {
+  for (const eq of equities) {
     const matched = matchBook(ensureOrderBook(world, eq.id), world.tick);
     if (matched.length === 0) continue;
     // Limit-order crosses during tick: settle BOTH sides. Non-player sides
@@ -2110,7 +2140,7 @@ export function tickStockMarket(world: World): void {
   // EMA toward fundamental — fallback movement when no trades printed this
   // tick. When a player trade ran between ticks, eq.price was updated to the
   // last fill, so the EMA blends from there toward fundamental.
-  for (const eq of Object.values(world.equities)) {
+  for (const eq of equities) {
     recomputeEquityPrice(world, eq);
   }
   // Trigger checks immediately after the price update so stops fire on the

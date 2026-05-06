@@ -297,18 +297,24 @@ export interface ControlTickReport {
 // fraction² weighting means a station deep inside a rival cluster
 // drifts hard, while a station inside its own cluster mostly gets
 // reinforcing nudges from itself.
+// Cached world radius (distance from origin to the farthest station). Stations
+// don't move, so the value is invariant for the lifetime of a world. Keyed by
+// the locations record so a fresh world (reload, new game) recomputes.
+const radiusCache = new WeakMap<object, number>();
+
 function applyNeighborPressure(world: World): boolean {
   if (!world.control) return false;
   const locs = Object.values(world.locations);
   if (locs.length === 0) return false;
 
-  // Approx world radius — distance from origin to the farthest station.
-  // Cheap to recompute each tick at our scales; would memoise if we
-  // started seeing it in profiles.
-  let maxR = 0;
-  for (const loc of locs) {
-    const r = Math.hypot(loc.position.x, loc.position.y);
-    if (r > maxR) maxR = r;
+  let maxR = radiusCache.get(world.locations);
+  if (maxR === undefined) {
+    maxR = 0;
+    for (const loc of locs) {
+      const r = Math.hypot(loc.position.x, loc.position.y);
+      if (r > maxR) maxR = r;
+    }
+    radiusCache.set(world.locations, maxR);
   }
   if (maxR <= 0) return false;
   const radius = maxR * NEIGHBOR_RADIUS_FACTOR;

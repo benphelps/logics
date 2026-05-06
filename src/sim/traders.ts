@@ -1,4 +1,4 @@
-import type { CargoLot, FuelType, GoodId, JobId, LocationId, ShipUpgradeSlots, Trader, TraderEvent, UpgradeSlot, World } from "./types";
+import type { CargoLot, FuelType, GoodId, Job, JobId, LocationId, ShipUpgradeSlots, Trader, TraderEvent, TraderId, UpgradeSlot, World } from "./types";
 import { distance as legDistance, findRoutePath, pathDistance, reachableNeighbors, routeDistance } from "./geometry";
 import { marketQuote, priceFor } from "./pricing";
 import {
@@ -252,14 +252,20 @@ type RouteJobBonus = {
 
 const JOB_TIER_RANK = { high: 0, medium: 1, low: 2 } as const;
 
-function addRouteJobBonus(
-  map: Map<string, RouteJobBonus[]>,
-  key: string,
+// Insert into the nested jobBonusMap (destination → good → bonuses).
+// Nested map keeps the inner double-loop in listTradeOptions free of
+// string-concat allocations on every (good, dst) pair.
+function addRouteJobBonusNested(
+  map: Map<LocationId, Map<GoodId, RouteJobBonus[]>>,
+  dst: LocationId,
+  good: GoodId,
   entry: RouteJobBonus,
 ): void {
-  const list = map.get(key);
+  let inner = map.get(dst);
+  if (!inner) { inner = new Map(); map.set(dst, inner); }
+  const list = inner.get(good);
   if (list) list.push(entry);
-  else map.set(key, [entry]);
+  else inner.set(good, [entry]);
 }
 
 function scoreRouteJobBonus(
@@ -288,16 +294,101 @@ function scoreRouteJobBonus(
   return { total, jobId, jobAccepted };
 }
 
-function inTransitArrivalsByDestGood(world: World): Map<string, number> {
-  const acc = new Map<string, number>();
+// Inflight cargo grouped by destination → good → qty. Nested map (instead of
+// the old `${dst}|${good}` string-keyed flat map) so the hot inner loop in
+// listTradeOptions can do a single Map<dst>.get(...)?.get(goodId) lookup
+// without allocating a fresh concat-string per (good, destination) pair.
+function inTransitArrivalsByDestGood(world: World): Map<LocationId, Map<GoodId, number>> {
+  const acc = new Map<LocationId, Map<GoodId, number>>();
   for (const t of Object.values(world.traders)) {
     if (t.state !== "transit" || !t.destination) continue;
+    let inner = acc.get(t.destination);
+    if (!inner) { inner = new Map(); acc.set(t.destination, inner); }
     for (const lot of t.cargo) {
-      const key = `${t.destination}|${lot.good}`;
-      acc.set(key, (acc.get(key) ?? 0) + lot.qty);
+      inner.set(lot.good, (inner.get(lot.good) ?? 0) + lot.qty);
     }
   }
   return acc;
+}
+
+// Per-tick index built once in stepTraders and threaded through the trader
+// helpers. Replaces N-traders × all-jobs walks (listTradeOptions builds
+// jobBonusMap + reservedMassByDest, stepTrader's acceptedTradeJobs/contract
+// preloads, etc.) with a single jobs walk plus per-trader Map lookups.
+// Optional everywhere — when absent, callers fall back to building the
+// equivalent slice locally so external entry points (UI suggestions,
+// scenarios, tests) keep working unchanged.
+export interface TraderTickIndex {
+  inflight: Map<LocationId, Map<GoodId, number>>;
+  // Unaccepted shortage jobs grouped by destination + good. Only populated
+  // for jobs with kind="shortage", acceptedBy=null, good!=null.
+  unacceptedShortageBonuses: Map<LocationId, Map<GoodId, RouteJobBonus[]>>;
+  // Accepted shortage / rescue jobs (kind!="trade", good!=null, acceptedBy
+  // set), keyed by trader id. The same jobs that the contract-load preload
+  // and the reserved-mass calculation need.
+  acceptedJobsByTrader: Map<TraderId, Job[]>;
+  // Accepted trade-settlement jobs (kind="trade"), pre-sorted, keyed by
+  // accepting trader. Used by stepTrader's two-line acceptedTradeJobs(...)
+  // probes.
+  acceptedTradeJobsByTrader: Map<TraderId, Job[]>;
+}
+
+export function buildTraderTickIndex(world: World): TraderTickIndex {
+  const inflight = inTransitArrivalsByDestGood(world);
+  const unacceptedShortageBonuses = new Map<LocationId, Map<GoodId, RouteJobBonus[]>>();
+  const acceptedJobsByTrader = new Map<TraderId, Job[]>();
+  const acceptedTradeJobsByTrader = new Map<TraderId, Job[]>();
+
+  for (const j of Object.values(world.jobs)) {
+    if (j.kind === "trade") {
+      if (j.acceptedBy) {
+        const list = acceptedTradeJobsByTrader.get(j.acceptedBy);
+        if (list) list.push(j);
+        else acceptedTradeJobsByTrader.set(j.acceptedBy, [j]);
+      }
+      continue;
+    }
+    if (j.good == null) continue;
+    if (j.acceptedBy) {
+      const list = acceptedJobsByTrader.get(j.acceptedBy);
+      if (list) list.push(j);
+      else acceptedJobsByTrader.set(j.acceptedBy, [j]);
+      continue;
+    }
+    // Unaccepted: only "shortage" kind seeds the unaccepted-bonus map (matches
+    // listTradeOptions' Branch 2).
+    if (j.kind !== "shortage") continue;
+    let inner = unacceptedShortageBonuses.get(j.destination);
+    if (!inner) {
+      inner = new Map();
+      unacceptedShortageBonuses.set(j.destination, inner);
+    }
+    let bucket = inner.get(j.good);
+    if (!bucket) {
+      bucket = [];
+      inner.set(j.good, bucket);
+    }
+    bucket.push({
+      jobId: j.id,
+      perUnit: j.reward / j.qty,
+      remaining: j.qty,
+      accepted: false,
+      tierRank: JOB_TIER_RANK[j.tier],
+      expiresAt: j.expiresAt,
+    });
+  }
+
+  // Mirror acceptedTradeJobs(...)'s sort so direct map-lookups behave
+  // identically to the legacy helper.
+  for (const list of acceptedTradeJobsByTrader.values()) {
+    list.sort((a, b) =>
+      a.expiresAt - b.expiresAt
+      || b.reward - a.reward
+      || a.destination.localeCompare(b.destination),
+    );
+  }
+
+  return { inflight, unacceptedShortageBonuses, acceptedJobsByTrader, acceptedTradeJobsByTrader };
 }
 
 function settleUnloadedCargo(world: World, trader: Trader, lot: CargoLot, qty: number, events: TraderEvent[]): void {
@@ -358,13 +449,14 @@ function beginUnloadLots(world: World, trader: Trader, lots: CargoLot[], events:
 export function listTradeOptions(
   world: World,
   trader: Trader,
-  inflight?: Map<string, number>,
+  inflight?: Map<LocationId, Map<GoodId, number>>,
   drawFraction: number = MAX_DRAW_FRACTION,
   fromLocation?: LocationId,
+  index?: TraderTickIndex,
 ): TradeOption[] {
   if (maintenanceTravelBlockReason(trader)) return [];
 
-  const inflightMap = inflight ?? inTransitArrivalsByDestGood(world);
+  const inflightMap = inflight ?? index?.inflight ?? inTransitArrivalsByDestGood(world);
   const here = fromLocation ?? trader.location;
   const srcMarket = world.markets[here];
 
@@ -399,35 +491,53 @@ export function listTradeOptions(
   // engine actively chase contract-aligned trades instead of stumbling onto
   // them.
   const willRealizeUnaccepted = canUseContractCargoPlanning(world, trader);
-  const jobBonusMap = new Map<string, RouteJobBonus[]>();
-  for (const j of Object.values(world.jobs)) {
-    if (j.kind === "trade" || !j.good) continue;
-    if (j.acceptedBy === trader.id) {
-      const remaining = j.qty - j.delivered;
-      if (remaining <= 0) continue;
-      // Accepted contracts: include penalty-avoided in the bonus. The player
-      // owes that money if the contract expires unfilled, so completing it
-      // is worth reward + penalty, not just reward. Steers the engine to
-      // follow through on commitments instead of getting distracted.
-      const perUnit = (j.reward + j.penalty) / j.qty;
-      addRouteJobBonus(jobBonusMap, `${j.destination}|${j.good}`, {
-        jobId: j.id,
-        perUnit,
-        remaining,
-        accepted: true,
-        tierRank: JOB_TIER_RANK[j.tier],
-        expiresAt: j.expiresAt,
-      });
-    } else if (j.acceptedBy == null && j.kind === "shortage" && willRealizeUnaccepted) {
+  // Nested map (destination → good → bonuses) so the inner double-loop
+  // can do `jobBonusMap.get(dstId)?.get(goodId)` without allocating a
+  // concat string per (good, dst) iteration.
+  const jobBonusMap = new Map<LocationId, Map<GoodId, RouteJobBonus[]>>();
+  // Accepted shortage/rescue contracts for this trader. From the per-tick
+  // index when available; otherwise filtered locally for external callers.
+  const acceptedJobs = index?.acceptedJobsByTrader.get(trader.id) ?? (index
+    ? []
+    : Object.values(world.jobs).filter(j => j.kind !== "trade" && j.good != null && j.acceptedBy === trader.id));
+  for (const j of acceptedJobs) {
+    if (!j.good) continue;
+    const remaining = j.qty - j.delivered;
+    if (remaining <= 0) continue;
+    // Accepted contracts: include penalty-avoided in the bonus. The player
+    // owes that money if the contract expires unfilled, so completing it
+    // is worth reward + penalty, not just reward. Steers the engine to
+    // follow through on commitments instead of getting distracted.
+    const perUnit = (j.reward + j.penalty) / j.qty;
+    addRouteJobBonusNested(jobBonusMap, j.destination, j.good, {
+      jobId: j.id,
+      perUnit,
+      remaining,
+      accepted: true,
+      tierRank: JOB_TIER_RANK[j.tier],
+      expiresAt: j.expiresAt,
+    });
+  }
+  if (willRealizeUnaccepted) {
+    if (index) {
       // Unaccepted: just reward — no commitment cost yet.
-      addRouteJobBonus(jobBonusMap, `${j.destination}|${j.good}`, {
-        jobId: j.id,
-        perUnit: j.reward / j.qty,
-        remaining: j.qty,
-        accepted: false,
-        tierRank: JOB_TIER_RANK[j.tier],
-        expiresAt: j.expiresAt,
-      });
+      for (const [destId, perGood] of index.unacceptedShortageBonuses) {
+        for (const [goodId, bucket] of perGood) {
+          for (const entry of bucket) addRouteJobBonusNested(jobBonusMap, destId, goodId, entry);
+        }
+      }
+    } else {
+      for (const j of Object.values(world.jobs)) {
+        if (j.kind !== "shortage" || !j.good || j.acceptedBy != null) continue;
+        addRouteJobBonusNested(jobBonusMap, j.destination, j.good, {
+          jobId: j.id,
+          perUnit: j.reward / j.qty,
+          remaining: j.qty,
+          accepted: false,
+          tierRank: JOB_TIER_RANK[j.tier],
+          expiresAt: j.expiresAt,
+        });
+      }
     }
   }
 
@@ -446,9 +556,11 @@ export function listTradeOptions(
   // and crowds out the contract goods the player came here for.
   const reservedMassByDest = new Map<LocationId, Map<GoodId, number>>();
   if (canUseContractCargoPlanning(world, trader)) {
-    for (const j of Object.values(world.jobs)) {
-      if (j.kind === "trade" || !j.good) continue;
-      if (j.acceptedBy !== trader.id) continue;
+    // Reuse the same accepted-jobs slice computed above. The acceptedJobs
+    // slice already contains exactly the (kind!="trade", good!=null,
+    // acceptedBy===trader.id) jobs we need.
+    for (const j of acceptedJobs) {
+      if (!j.good) continue;
       const remaining = j.qty - j.delivered;
       if (remaining <= 0) continue;
       const goodObj = world.goods[j.good]; if (!goodObj) continue;
@@ -514,7 +626,7 @@ export function listTradeOptions(
       const dst = world.locations[dstId];
       const dstTarget = dst.targetStock[goodId] ?? 0;
       const dstStockNow = dstMarket.stock[goodId] ?? 0;
-      const inflightToDst = inflightMap.get(`${dstId}|${goodId}`) ?? 0;
+      const inflightToDst = inflightMap.get(dstId)?.get(goodId) ?? 0;
       const dstStockAtArrival = dstStockNow + INFLIGHT_WEIGHT * inflightToDst;
       const grossSellPrice = dstTarget > 0
         ? priceFor(world.goods[goodId].basePrice, dstStockAtArrival, dstTarget)
@@ -533,7 +645,7 @@ export function listTradeOptions(
       const tripDockingFee = trader.capacity * DOCKING_FEE_PER_CAPACITY;
       let totalProfit = grossProfitPerUnit * maxQty - tripMaintenance - tripDockingFee;
       // Layer in any matching contract bonus for this trader.
-      const jobBonus = scoreRouteJobBonus(jobBonusMap.get(`${dstId}|${goodId}`), maxQty);
+      const jobBonus = scoreRouteJobBonus(jobBonusMap.get(dstId)?.get(goodId), maxQty);
       totalProfit += jobBonus.total;
       if (totalProfit <= 0) continue;
       const profitPerTick = totalProfit / (travelTicks + 1);
@@ -560,8 +672,8 @@ export function listTradeOptions(
   return options;
 }
 
-function evaluateOptions(world: World, trader: Trader, inflight: Map<string, number>): TradeOption | null {
-  const opts = listTradeOptions(world, trader, inflight, playerDrawFraction(world, trader));
+function evaluateOptions(world: World, trader: Trader, index: TraderTickIndex): TradeOption | null {
+  const opts = listTradeOptions(world, trader, index.inflight, playerDrawFraction(world, trader), undefined, index);
   return opts[0] ?? null;
 }
 
@@ -617,6 +729,7 @@ export function listSpeculativeOptions(
   world: World,
   trader: Trader,
   drawFraction: number = MAX_DRAW_FRACTION,
+  index?: TraderTickIndex,
 ): SpeculativeOption[] {
   if (maintenanceTravelBlockReason(trader)) return [];
 
@@ -638,6 +751,9 @@ export function listSpeculativeOptions(
     .slice(0, SPECULATIVE_NEAREST_K);
 
   const perDist = fuelPerDistanceFor(trader, ft);
+  // Hoist inflight outside the K-candidate fan-out so each candidate's
+  // listTradeOptions call doesn't rebuild it from scratch.
+  const sharedInflight = index?.inflight ?? inTransitArrivalsByDestGood(world);
   for (const { id: viaId, dist } of candidates) {
     const emptyFuelNeeded = dist * perDist;
     if (!fuelFree && emptyFuelNeeded > fuel!.qty) continue;
@@ -657,8 +773,12 @@ export function listSpeculativeOptions(
     const fuelCost = emptyFuelNeeded * localFuelPrice;
     const positioningCost = fuelCost + emptyTripMaint + emptyDockingFee;
 
-    // Best trade originating from via (assuming refueled at via)
-    const tradesFromVia = listTradeOptions(world, trader, undefined, drawFraction, viaId);
+    // Best trade originating from via (assuming refueled at via). Reuses the
+    // tick index so the K candidate via-points don't each rebuild inflight +
+    // job indices from scratch. When no index is provided (external callers),
+    // build a local inflight map once outside the candidates loop so the
+    // K-fan-out still shares it.
+    const tradesFromVia = listTradeOptions(world, trader, sharedInflight, drawFraction, viaId, index);
     const best = tradesFromVia[0];
     if (!best) continue;
 
@@ -734,7 +854,7 @@ function routePressureScore(world: World, dst: LocationId): number {
   return pressure;
 }
 
-function listRepositionOptions(world: World, trader: Trader, allowUnsafeHop = false): RepositionOption[] {
+function listRepositionOptions(world: World, trader: Trader, allowUnsafeHop = false, index?: TraderTickIndex): RepositionOption[] {
   const fuelFree = ignoresFuel(trader);
   const ft = activeFuelType(trader) ?? trader.fuelTypes[0] ?? null;
   const fuel = trader.currentFuel;
@@ -767,7 +887,7 @@ function listRepositionOptions(world: World, trader: Trader, allowUnsafeHop = fa
     const routeDegree = reachableNeighbors(world, to).length;
     const futureTrade = cargoLoaded
       ? 0
-      : listTradeOptions(world, trader, undefined, playerDrawFraction(world, trader), to)[0]?.totalProfit ?? 0;
+      : listTradeOptions(world, trader, index?.inflight, playerDrawFraction(world, trader), to, index)[0]?.totalProfit ?? 0;
     const cargoValue = cargoLoaded ? cargoExitValue(world, trader, to) : 0;
     const pressure = routePressureScore(world, to);
     const score = futureTrade + cargoValue + pressure + routeDegree * 2 - travelCost - dist * 0.05 - (safeHop ? 0 : 100);
@@ -934,8 +1054,8 @@ function nextHopToward(world: World, from: LocationId, dst: LocationId): { to: L
   return null;
 }
 
-function serviceTradeSettlementJob(world: World, trader: Trader, events: TraderEvent[]): boolean {
-  const jobs = acceptedTradeJobs(world, trader);
+function serviceTradeSettlementJob(world: World, trader: Trader, events: TraderEvent[], acceptedTradeJobsForTrader?: Job[]): boolean {
+  const jobs = acceptedTradeJobsForTrader ?? acceptedTradeJobs(world, trader);
   const job = jobs.find(j => j.destination === trader.location) ?? jobs[0];
   if (!job) return false;
 
@@ -999,7 +1119,7 @@ function executeAutoLoadoutPlan(
   trader: Trader,
   plan: RoutePlanCandidate,
   events: TraderEvent[],
-  inflight: Map<string, number>,
+  inflight: Map<LocationId, Map<GoodId, number>>,
 ): boolean {
   const fuelFree = ignoresFuel(trader);
   const ft = activeFuelType(trader) ?? trader.fuelTypes[0] ?? null;
@@ -1023,14 +1143,16 @@ function executeAutoLoadoutPlan(
 
   const travelTicks = travelTicksFor(trader, dist);
   departForReposition(world, trader, plan.dst, fuelNeeded, travelTicks, events);
+  let dstBucket = inflight.get(plan.dst);
+  if (!dstBucket) { dstBucket = new Map(); inflight.set(plan.dst, dstBucket); }
   for (const lot of trader.cargo) {
-    const key = `${plan.dst}|${lot.good}`;
-    inflight.set(key, (inflight.get(key) ?? 0) + lot.qty);
+    dstBucket.set(lot.good, (dstBucket.get(lot.good) ?? 0) + lot.qty);
   }
   return true;
 }
 
-function stepTrader(world: World, trader: Trader, events: TraderEvent[], inflight: Map<string, number>): void {
+function stepTrader(world: World, trader: Trader, events: TraderEvent[], index: TraderTickIndex): void {
+  const inflight = index.inflight;
   if (trader.state === "transit") {
     // If a pending encounter is targeting this ship, freeze its transit step
     // until the player resolves the modal. Defensive — the tick driver also
@@ -1141,23 +1263,24 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
     return;
   }
 
-  if (acceptedTradeJobs(world, trader).some(j => j.destination === trader.location)) {
+  const acceptedTrades = index.acceptedTradeJobsByTrader.get(trader.id);
+  if (acceptedTrades && acceptedTrades.some(j => j.destination === trader.location)) {
     trader.noOpportunityTicks = 0;
-    serviceTradeSettlementJob(world, trader, events);
+    serviceTradeSettlementJob(world, trader, events, acceptedTrades);
     return;
   }
 
   tryRefuel(world, trader, events);
   restoreNpcOperatingFloat(world, trader);
 
-  if (acceptedTradeJobs(world, trader).length > 0) {
+  if (acceptedTrades && acceptedTrades.length > 0) {
     trader.noOpportunityTicks = 0;
-    serviceTradeSettlementJob(world, trader, events);
+    serviceTradeSettlementJob(world, trader, events, acceptedTrades);
     return;
   }
 
   const loadoutPlan = bestAutoLoadoutPlan(world, trader);
-  const choice = evaluateOptions(world, trader, inflight);
+  const choice = evaluateOptions(world, trader, index);
   if (loadoutPlan && (!choice || loadoutPlan.value >= choice.totalProfit)) {
     if (executeAutoLoadoutPlan(world, trader, loadoutPlan, events, inflight)) return;
   }
@@ -1166,7 +1289,7 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
     // No direct trade — try speculative travel: empty trip to a station
     // where a profitable trade exists, even after positioning costs.
     if (trader.cargo.length === 0) {
-      const speculative = listSpeculativeOptions(world, trader, playerDrawFraction(world, trader));
+      const speculative = listSpeculativeOptions(world, trader, playerDrawFraction(world, trader), index);
       const sp = speculative[0];
       if (sp) {
         // Depart empty for the via point. On arrival, refuel + take the
@@ -1179,7 +1302,7 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
     trader.noOpportunityTicks = (trader.noOpportunityTicks ?? 0) + 1;
     if (trader.noOpportunityTicks >= MAX_NO_OPPORTUNITY_TICKS) {
       const emergencyHop = selectRefuelType(world, trader) == null;
-      const reposition = listRepositionOptions(world, trader, emergencyHop)[0];
+      const reposition = listRepositionOptions(world, trader, emergencyHop, index)[0];
       if (reposition) {
         departForReposition(world, trader, reposition.to, reposition.fuelNeeded, reposition.travelTicks, events);
         return;
@@ -1207,8 +1330,11 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
   let preloadMass = 0;
   let fundsLeft = trader.funds;
   if (canPreloadContracts) {
-    const accs = Object.values(world.jobs)
-      .filter(j => j.kind !== "trade" && j.good != null && j.acceptedBy === trader.id && j.destination === choice.to && j.good !== choice.good)
+    // Per-tick index already partitioned (kind!="trade", good!=null,
+    // acceptedBy===trader.id) — narrow by destination + good here.
+    const accepted = index.acceptedJobsByTrader.get(trader.id) ?? [];
+    const accs = accepted
+      .filter(j => j.good != null && j.destination === choice.to && j.good !== choice.good)
       .sort((a, b) => tierRank[a.tier] - tierRank[b.tier]);
     for (const c of accs) {
       if (!c.good) continue;
@@ -1261,9 +1387,10 @@ function stepTrader(world: World, trader: Trader, events: TraderEvent[], infligh
 
   departForReposition(world, trader, choice.to, choice.fuelNeeded, choice.travelTicks, events);
 
+  let dstBucket = inflight.get(choice.to);
+  if (!dstBucket) { dstBucket = new Map(); inflight.set(choice.to, dstBucket); }
   for (const lot of trader.cargo) {
-    const key = `${choice.to}|${lot.good}`;
-    inflight.set(key, (inflight.get(key) ?? 0) + lot.qty);
+    dstBucket.set(lot.good, (dstBucket.get(lot.good) ?? 0) + lot.qty);
   }
 }
 
@@ -1784,13 +1911,20 @@ export function repairShip(world: World, trader: Trader): { ok: true; paid: numb
 
 export function stepTraders(world: World): TraderEvent[] {
   const events: TraderEvent[] = [];
-  const inflight = inTransitArrivalsByDestGood(world);
-  const playerIds = new Set(world.player?.shipIds ?? []);
-  const orderedTraders = Object.values(world.traders).sort((a, b) =>
-    Number(playerIds.has(b.id)) - Number(playerIds.has(a.id))
-  );
-  for (const trader of orderedTraders) {
-    stepTrader(world, trader, events, inflight);
+  const index = buildTraderTickIndex(world);
+  // Player ships go first (so their state is settled before NPC scoring
+  // sees it), then everyone else. Avoids the per-tick sort that allocated
+  // a fresh ordered array.
+  const seen = new Set<TraderId>();
+  for (const id of world.player?.shipIds ?? []) {
+    const ship = world.traders[id];
+    if (!ship) continue;
+    seen.add(id);
+    stepTrader(world, ship, events, index);
+  }
+  for (const trader of Object.values(world.traders)) {
+    if (seen.has(trader.id)) continue;
+    stepTrader(world, trader, events, index);
   }
   // Update stranded counters once per tick. Drives rescue-job tier escalation:
   // the longer a trader has been stuck, the more urgent (and lucrative) the
