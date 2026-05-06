@@ -4382,7 +4382,7 @@ function TravelOptions({ ship, world, loc, target, hintText, cueText, selectedSt
       : `${neighborDests.length} reachable station${neighborDests.length === 1 ? "" : "s"}`;
 
   return (
-    <section className="bridge-card travel-card" data-tutorial="travel-panel">
+    <section className={`bridge-card travel-card ${travelSuggested ? "has-suggestion" : ""}`} data-tutorial="travel-panel">
       <header
         className={`travel-panel-head art-panel-head ${travelSuggested ? "has-suggestion" : ""}`}
         style={currentLocation ? artCardStyle(stationArtUrl(currentLocation)) : undefined}

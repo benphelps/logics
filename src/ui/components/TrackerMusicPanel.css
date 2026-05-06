@@ -190,8 +190,7 @@
 }
 
 .tracker-table-wrap {
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.065);
   border-radius: 5px;
   background:
@@ -200,9 +199,15 @@
   background-size: 100% 24px;
 }
 
+.tracker-table-stack {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
 .tracker-table {
-  width: max(100%, var(--tracker-table-width, 458px));
-  min-width: var(--tracker-table-width, 458px);
+  width: 100%;
+  min-width: 0;
   border-collapse: collapse;
   table-layout: fixed;
   font-size: 11px;
@@ -214,7 +219,7 @@
 }
 
 .tracker-channel-col {
-  width: 96px;
+  width: calc((100% - 74px) / var(--tracker-visible-channel-count, 4));
 }
 
 .tracker-table th,

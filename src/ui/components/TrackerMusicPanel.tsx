@@ -4,14 +4,21 @@ import { TRACKER_MODES } from "../music/keygenTracker";
 import type { KeygenMusicControls } from "../music/useKeygenMusic";
 import "./TrackerMusicPanel.css";
 
+const MAX_CHANNELS_PER_TABLE = 8;
+const BASE_VISIBLE_ROWS = 14;
+
 export function TrackerMusicPanel({ music }: { music: KeygenMusicControls }) {
   const { snapshot } = music;
   const activeStep = snapshot.row;
-  const visibleRows = rowsAround(snapshot.pattern, activeStep, 14);
+  const channelBands = channelBandsFor(snapshot.channelLabels, MAX_CHANNELS_PER_TABLE);
+  const baseVisibleRowCount = channelBands.length > 1
+    ? Math.max(4, Math.ceil(BASE_VISIBLE_ROWS / channelBands.length))
+    : BASE_VISIBLE_ROWS;
+  const visibleRowCount = baseVisibleRowCount % 2 === 0 ? baseVisibleRowCount + 1 : baseVisibleRowCount;
+  const visibleRows = rowsAround(snapshot.pattern, activeStep, visibleRowCount);
   const progress = snapshot.duration > 0 ? Math.min(1, Math.max(0, snapshot.position / snapshot.duration)) : 0;
   const panelStyle = {
     "--tracker-channel-count": snapshot.channelLabels.length,
-    "--tracker-table-width": `${74 + snapshot.channelLabels.length * 96}px`,
   } as CSSProperties;
   const progressStyle = { transform: `scaleX(${progress})` };
   const footnote = snapshot.mode.credit
@@ -83,40 +90,56 @@ export function TrackerMusicPanel({ music }: { music: KeygenMusicControls }) {
       {snapshot.error && <div className="tracker-error">{snapshot.error}</div>}
 
       <div className="tracker-table-wrap">
-        <table className="tracker-table mono">
-          <colgroup>
-            <col className="tracker-row-col" />
-            {snapshot.channelLabels.map((label, index) => <col className="tracker-channel-col" key={`${label}-${index}`} />)}
-          </colgroup>
-          <thead>
-            <tr>
-              <th>Row</th>
-              {snapshot.channelLabels.map((label, index) => (
-                <th className="tracker-channel-heading" key={`${label}-${index}`}>
-                  <span className="tracker-header-vu" aria-hidden="true">
-                    <i style={{ transform: `scaleX(${Math.max(0.06, snapshot.levels[index] ?? 0)})` }} />
-                  </span>
-                  <span className="tracker-channel-label">{label}</span>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {visibleRows.map(row => {
-              const active = row.step === activeStep;
-              return (
-                <tr key={`${row.step}-${active ? "active" : "idle"}`} className={active ? "active" : ""}>
-                  <td>{row.section}:{formatRowStep(row.step, snapshot.pattern.length)}</td>
-                  {snapshot.channelLabels.map((label, index) => (
-                    <td key={`${label}-${index}`} className={row.channels[index] ? `has-event channel-${index % 8}` : ""}>
-                      {row.channels[index]?.label ?? "..."}
-                    </td>
-                  ))}
+        <div className="tracker-table-stack">
+          {channelBands.map((band) => (
+            <table
+              className="tracker-table mono"
+              key={`channels-${band.start}`}
+              style={{ "--tracker-visible-channel-count": band.labels.length } as CSSProperties}
+            >
+              <colgroup>
+                <col className="tracker-row-col" />
+                {band.labels.map((label, offset) => (
+                  <col className="tracker-channel-col" key={`${label}-${band.start + offset}`} />
+                ))}
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>Row</th>
+                  {band.labels.map((label, offset) => {
+                    const channelIndex = band.start + offset;
+                    return (
+                      <th className="tracker-channel-heading" key={`${label}-${channelIndex}`}>
+                        <span className="tracker-header-vu" aria-hidden="true">
+                          <i style={{ transform: `scaleX(${Math.max(0.06, snapshot.levels[channelIndex] ?? 0)})` }} />
+                        </span>
+                        <span className="tracker-channel-label">{label}</span>
+                      </th>
+                    );
+                  })}
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              </thead>
+              <tbody>
+                {visibleRows.map(row => {
+                  const active = row.step === activeStep;
+                  return (
+                    <tr key={`${band.start}-${row.step}-${active ? "active" : "idle"}`} className={active ? "active" : ""}>
+                      <td>{row.section}:{formatRowStep(row.step, snapshot.pattern.length)}</td>
+                      {band.labels.map((label, offset) => {
+                        const channelIndex = band.start + offset;
+                        return (
+                          <td key={`${label}-${channelIndex}`} className={row.channels[channelIndex] ? `has-event channel-${channelIndex % 8}` : ""}>
+                            {row.channels[channelIndex]?.label ?? "..."}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ))}
+        </div>
       </div>
 
       <div className="tracker-footer">
@@ -156,4 +179,12 @@ function rowsAround<T extends { step: number }>(rows: T[], activeStep: number, c
     out.push(rows[((start + i) % rows.length + rows.length) % rows.length]);
   }
   return out;
+}
+
+function channelBandsFor(labels: readonly string[], size: number): Array<{ start: number; labels: readonly string[] }> {
+  const out: Array<{ start: number; labels: readonly string[] }> = [];
+  for (let start = 0; start < labels.length; start += size) {
+    out.push({ start, labels: labels.slice(start, start + size) });
+  }
+  return out.length > 0 ? out : [{ start: 0, labels: [] }];
 }
