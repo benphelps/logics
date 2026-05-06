@@ -17,6 +17,7 @@ import {
 } from "react-icons/gi";
 import { useStore, type FleetTab } from "../store";
 import { useIsMobile } from "../useIsMobile";
+import { DEV_MODE } from "../devMode";
 import { defaultMobilePanelId } from "../mobilePanels";
 import { distance, reachableNeighbors } from "../../sim/geometry";
 import { describeHint, getGuidedPlan, hintTarget, type GuidedHint, type GuidedPlan, type HintTarget } from "../../sim/suggestions";
@@ -117,11 +118,18 @@ function ShipPanel({ ship, world }: { ship: Trader; world: World }) {
     ? world.locations[ship.destination!]
     : world.locations[ship.location];
   const guidanceUnlocked = hasCrew(ship, "navigator");
-  const guidedPlan = guidanceUnlocked
-    ? getGuidedPlan(world, ship, { mode: ship.pilot === "auto" ? "actual" : "advisory" })
+  const guidanceMode = ship.pilot === "auto" ? "actual" : "advisory";
+  const engineGuidedPlan = guidanceUnlocked || DEV_MODE
+    ? getGuidedPlan(world, ship, { mode: guidanceMode })
+    : null;
+  const engineTarget = engineGuidedPlan ? fullTargetFromGuidedPlan(engineGuidedPlan) : {};
+  const guidedPlan = guidanceUnlocked && engineGuidedPlan
+    ? engineGuidedPlan
     : lockedGuidancePlan();
   const hint = guidedPlan.current;
-  const target = guidanceUnlocked ? targetFromGuidedPlan(guidedPlan) : {};
+  const target = guidanceUnlocked && engineGuidedPlan
+    ? visibleTargetFromGuidedPlan(engineGuidedPlan, world, ship)
+    : {};
   const cueText = guidanceUnlocked ? cueTextFromGuidedPlan(guidedPlan, world) : emptyCueText(GUIDANCE_LOCKED_TEXT);
   const hintText = cueText.fallback;
   const isCriticalHint = target.critical === true;
@@ -140,6 +148,17 @@ function ShipPanel({ ship, world }: { ship: Trader; world: World }) {
         critical={isCriticalHint}
         inTransit={inTransit}
       />
+      {DEV_MODE && engineGuidedPlan && (
+        <SuggestionDebugPanel
+          ship={ship}
+          world={world}
+          guidedPlan={engineGuidedPlan}
+          mode={guidanceMode}
+          guidanceUnlocked={guidanceUnlocked}
+          engineTarget={engineTarget}
+          uiTarget={target}
+        />
+      )}
     </article>
   );
 }
@@ -205,6 +224,225 @@ function ActionCell({ suggested, hintText, critical, label, children }: {
   );
 }
 
+function SuggestionDebugPanel({ ship, world, guidedPlan, mode, guidanceUnlocked, engineTarget, uiTarget }: {
+  ship: Trader;
+  world: World;
+  guidedPlan: GuidedPlan;
+  mode: "advisory" | "actual";
+  guidanceUnlocked: boolean;
+  engineTarget: HintTarget;
+  uiTarget: HintTarget;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+  const actionSteps = debugActionSteps(world, guidedPlan);
+
+  return (
+    <aside className="suggestion-debug-panel" aria-label="Suggestion debug panel">
+      <header className="suggestion-debug-head">
+        <div className="suggestion-debug-title">
+          <span>Suggestion Debug</span>
+          <span className="mono">{guidedPlan.current.kind}</span>
+        </div>
+        <button
+          type="button"
+          className="suggestion-debug-toggle"
+          onClick={() => setCollapsed(v => !v)}
+        >
+          {collapsed ? "Open" : "Hide"}
+        </button>
+      </header>
+      {!collapsed && (
+        <div className="suggestion-debug-body">
+          <div className="suggestion-debug-meta">
+            <span>{ship.name}</span>
+            <span className="mono">{mode}</span>
+            <span>{guidanceUnlocked ? "navigator" : "locked UI"}</span>
+            <span>{guidedPlan.hints.length} hint{guidedPlan.hints.length === 1 ? "" : "s"}</span>
+          </div>
+          <div className="suggestion-debug-targets">
+            <DebugTargetRow label="engine target" target={engineTarget} />
+            <DebugTargetRow label="ui target" target={uiTarget} />
+          </div>
+          <ol className="suggestion-debug-actions">
+            {actionSteps.map((step, index) => (
+              <li key={`${step.hintIndex}-${index}-${step.text}`} className={step.current ? "current" : ""}>
+                <span className="mono">{index + 1}</span>
+                <span>{step.text}</span>
+                <code>{step.hintKind}</code>
+              </li>
+            ))}
+          </ol>
+          <details className="suggestion-debug-raw">
+            <summary>Raw hints</summary>
+            <ol className="suggestion-debug-steps">
+              {guidedPlan.hints.map((hint, index) => (
+                <li key={`${planHintKeyForDebug(hint)}-${index}`} className={index === 0 ? "current" : ""}>
+                  <div className="suggestion-debug-step-head">
+                    <span>{index === 0 ? "current" : `lookahead ${index}`}</span>
+                    <code>{hint.kind}</code>
+                  </div>
+                  <p>{describeHint(hint, world)}</p>
+                  <code className="suggestion-debug-target-code">{targetSummary(hintTarget(hint))}</code>
+                </li>
+              ))}
+            </ol>
+          </details>
+        </div>
+      )}
+    </aside>
+  );
+}
+
+function debugActionSteps(world: World, guidedPlan: GuidedPlan): {
+  text: string;
+  hintKind: GuidedHint["kind"];
+  hintIndex: number;
+  current: boolean;
+}[] {
+  return guidedPlan.hints
+    .flatMap((hint, hintIndex) =>
+      structuredDebugStepTexts(hint, world).map((step, stepIndex) => ({
+        ...step,
+        hintKind: hint.kind,
+        hintIndex,
+        order: debugGroupOrder(step.group),
+        sourceIndex: hintIndex * 100 + stepIndex,
+        current: false,
+      })),
+    )
+    .sort((a, b) => a.order - b.order || a.sourceIndex - b.sourceIndex)
+    .map((step, index) => ({
+      text: step.text,
+      hintKind: step.hintKind,
+      hintIndex: step.hintIndex,
+      current: index === 0,
+    }));
+}
+
+type DebugStepGroup = "accept" | "sell" | "refuel" | "buy" | "collect" | "travel" | "after_travel" | "wait";
+type StructuredDebugStep = { text: string; group: DebugStepGroup };
+
+function debugGroupOrder(group: DebugStepGroup): number {
+  switch (group) {
+    case "accept": return 0;
+    case "sell": return 1;
+    case "refuel": return 2;
+    case "buy": return 3;
+    case "collect": return 4;
+    case "travel": return 5;
+    case "after_travel": return 6;
+    case "wait": return 7;
+  }
+}
+
+function structuredDebugStepTexts(hint: GuidedHint, world: World): StructuredDebugStep[] {
+  const goodName = (id: string) => world.goods[id]?.name ?? id;
+  const locName = (id: string) => world.locations[id]?.name ?? id;
+  const contractName = (jobId: JobId) => {
+    const job = world.jobs[jobId];
+    if (!job) return jobId;
+    if (job.kind === "trade") return job.trade?.ticker ? `${job.trade.ticker} settlement` : "trade settlement";
+    return job.good ? `${goodName(job.good)} contract` : `${job.kind} contract`;
+  };
+
+  switch (hint.kind) {
+    case "buy_for_route":
+      return [
+        { group: "buy", text: `Buy ${formatQty(hint.qty)} ${goodName(hint.good)}` },
+        { group: "travel", text: `Fly to ${locName(hint.dst)}` },
+        { group: "after_travel", text: `Sell ${formatQty(hint.qty)} ${goodName(hint.good)}` },
+      ];
+    case "travel_to_sell":
+      return [
+        { group: "travel", text: `Fly to ${locName(hint.dst)}` },
+        ...(hint.jobId && hint.jobAccepted === false ? [{ group: "after_travel", text: `Accept ${contractName(hint.jobId)}` } satisfies StructuredDebugStep] : []),
+        { group: "after_travel", text: `Sell ${formatQty(hint.qty)} ${goodName(hint.good)}` },
+      ];
+    case "sell_here":
+      return [{ group: "sell", text: `Sell ${formatQty(hint.qty)} ${goodName(hint.good)} here` }];
+    case "refuel":
+      return [{ group: "refuel", text: "Refuel" }];
+    case "speculate":
+      return [
+        { group: "travel", text: `Reposition to ${locName(hint.via)}` },
+        { group: "after_travel", text: `Buy ${goodName(hint.thenBuy)}` },
+        { group: "after_travel", text: `Sell at ${locName(hint.thenSellAt)}` },
+      ];
+    case "accept_job":
+      return [{ group: "accept", text: `Accept ${contractName(hint.jobId)}` }];
+    case "collect_trade_job":
+      return [{ group: "collect", text: `Collect ${contractName(hint.jobId)}` }];
+    case "travel_to_collect_trade_job":
+      return [
+        { group: "travel", text: `Fly to ${locName(hint.dst)}` },
+        { group: "after_travel", text: `Collect ${contractName(hint.jobId)}` },
+      ];
+    case "route_plan": {
+      const out: StructuredDebugStep[] = [];
+      for (const jobId of hint.acceptJobIds) out.push({ group: "accept", text: `Accept ${contractName(jobId)}` });
+      for (const sell of hint.loaded ?? []) out.push({ group: "buy", text: `Keep ${formatQty(sell.qty)} ${goodName(sell.good)} loaded` });
+      for (const buy of hint.buys) out.push({ group: "buy", text: `Buy ${formatQty(buy.qty)} ${goodName(buy.good)} (${buy.reason})` });
+      out.push({ group: "travel", text: `Fly to ${locName(hint.dst)}` });
+      for (const buy of hint.futureBuys ?? []) out.push({ group: "after_travel", text: `Buy ${formatQty(buy.qty)} ${goodName(buy.good)} at ${locName(hint.dst)} (${buy.reason})` });
+      if ((hint.futureBuys?.length ?? 0) > 0) out.push({ group: "after_travel", text: "Return and deliver" });
+      else out.push({ group: "after_travel", text: "Sell or deliver cargo" });
+      return out;
+    }
+    case "job_plan": {
+      const out: StructuredDebugStep[] = [];
+      for (const jobId of hint.acceptJobIds) out.push({ group: "accept", text: `Accept ${contractName(jobId)}` });
+      for (const sell of hint.sells) out.push({ group: "sell", text: `Sell ${formatQty(sell.qty)} ${goodName(sell.good)} here` });
+      return out;
+    }
+    case "wait":
+      return [{ group: "wait", text: hint.reason }];
+  }
+}
+
+function DebugTargetRow({ label, target }: { label: string; target: HintTarget }) {
+  return (
+    <div className="suggestion-debug-target-row">
+      <span>{label}</span>
+      <code>{targetSummary(target)}</code>
+    </div>
+  );
+}
+
+function targetSummary(target: HintTarget): string {
+  const parts: string[] = [];
+  const buyGoods = Object.entries(target.buyGoods ?? {})
+    .filter((entry): entry is [string, number] => typeof entry[1] === "number" && entry[1] > 0);
+  if (target.buyGood) parts.push(`buyGood=${target.buyGood}${target.buyQty != null ? `:${formatQty(target.buyQty)}` : ""}`);
+  if (buyGoods.length > 0) parts.push(`buyGoods=${buyGoods.map(([good, qty]) => `${good}:${formatQty(qty)}`).join(",")}`);
+  if (target.sellGood) parts.push(`sellGood=${target.sellGood}`);
+  if (target.sellGoods && target.sellGoods.length > 0) parts.push(`sellGoods=${target.sellGoods.join(",")}`);
+  if (target.carryGood) parts.push(`carryGood=${target.carryGood}`);
+  if (target.carryGoods && target.carryGoods.length > 0) parts.push(`carryGoods=${target.carryGoods.join(",")}`);
+  if (target.travelTo) parts.push(`travelTo=${target.travelTo}${target.travelLabel ? `(${target.travelLabel})` : ""}`);
+  if (target.refuel) parts.push(`refuel${target.critical ? ":critical" : ""}`);
+  if (target.acceptJobId) parts.push(`acceptJobId=${target.acceptJobId}`);
+  if (target.acceptJobIds && target.acceptJobIds.length > 0) parts.push(`acceptJobIds=${target.acceptJobIds.join(",")}`);
+  if (target.collectJobId) parts.push(`collectJobId=${target.collectJobId}`);
+  if (target.collectJobIds && target.collectJobIds.length > 0) parts.push(`collectJobIds=${target.collectJobIds.join(",")}`);
+  return parts.length > 0 ? parts.join(" | ") : "none";
+}
+
+function planHintKeyForDebug(hint: GuidedHint): string {
+  switch (hint.kind) {
+    case "buy_for_route": return `${hint.kind}-${hint.good}-${hint.dst}-${Math.round(hint.qty)}`;
+    case "travel_to_sell": return `${hint.kind}-${hint.good}-${hint.dst}-${Math.round(hint.qty)}`;
+    case "sell_here": return `${hint.kind}-${hint.good}-${Math.round(hint.qty)}`;
+    case "refuel": return `${hint.kind}-${hint.critical}`;
+    case "speculate": return `${hint.kind}-${hint.via}-${hint.thenBuy}-${hint.thenSellAt}`;
+    case "accept_job": return `${hint.kind}-${hint.jobId}`;
+    case "collect_trade_job": return `${hint.kind}-${hint.jobId}`;
+    case "travel_to_collect_trade_job": return `${hint.kind}-${hint.jobId}-${hint.dst}`;
+    case "route_plan": return `${hint.kind}-${hint.dst}-${hint.acceptJobIds.join(",")}-${hint.buys.map(b => `${b.good}:${Math.round(b.qty)}`).join(",")}`;
+    case "job_plan": return `${hint.kind}-${hint.acceptJobIds.join(",")}-${hint.sells.map(s => `${s.good}:${Math.round(s.qty)}`).join(",")}`;
+    case "wait": return `${hint.kind}-${hint.reason}`;
+  }
+}
+
 function IconLabel({ icon: Icon, children }: { icon: IconType; children: ReactNode }) {
   return (
     <span className="icon-label">
@@ -225,15 +463,133 @@ function lockedGuidancePlan(): GuidedPlan {
   return { current: hint, hints: [hint] };
 }
 
-function targetFromGuidedPlan(guidedPlan: GuidedPlan): HintTarget {
+function fullTargetFromGuidedPlan(guidedPlan: GuidedPlan): HintTarget {
+  return mergeHintTargets(guidedPlan.hints.map(hintTarget));
+}
+
+type SuggestionActionGroup = "accept" | "sell" | "refuel" | "buy" | "collect" | "travel";
+
+function visibleTargetFromGuidedPlan(guidedPlan: GuidedPlan, world: World, ship: Trader): HintTarget {
+  for (const group of VISIBLE_ACTION_GROUP_ORDER) {
+    const target = targetForActionGroup(guidedPlan, group, world, ship);
+    if (!targetIsEmpty(target)) return target;
+  }
+  return {};
+}
+
+const VISIBLE_ACTION_GROUP_ORDER: SuggestionActionGroup[] = ["accept", "sell", "refuel", "buy", "collect", "travel"];
+
+function targetForActionGroup(guidedPlan: GuidedPlan, group: SuggestionActionGroup, world: World, ship: Trader): HintTarget {
+  switch (group) {
+    case "accept": {
+      const acceptJobIds = plannedAcceptJobIds(guidedPlan.hints, world, ship);
+      return acceptJobIds.length > 0 ? acceptTarget(acceptJobIds) : {};
+    }
+    case "sell":
+      return sellTargetFromHints(guidedPlan.hints);
+    case "refuel":
+      return mergeHintTargets(guidedPlan.hints.map(hintTarget), { group: "refuel" });
+    case "buy":
+      return buyTargetFromHints(guidedPlan.hints);
+    case "collect":
+      return collectTargetFromHints(guidedPlan.hints, world, ship);
+    case "travel":
+      return travelTargetFromHints(guidedPlan.hints);
+  }
+}
+
+function plannedAcceptJobIds(hints: GuidedHint[], world: World, ship: Trader): JobId[] {
+  const ids = new Set<JobId>();
+  for (const hint of hints) {
+    const target = hintTarget(hint);
+    if (target.acceptJobId) ids.add(target.acceptJobId);
+    for (const jobId of target.acceptJobIds ?? []) ids.add(jobId);
+  }
+  return orderAcceptJobIds(world, ship, [...ids].filter(jobId => world.jobs[jobId]?.acceptedBy == null));
+}
+
+function orderAcceptJobIds(world: World, ship: Trader, jobIds: JobId[]): JobId[] {
+  const tierRank = { high: 0, medium: 1, low: 2 } as const;
+  return [...jobIds].sort((a, b) => {
+    const aj = world.jobs[a];
+    const bj = world.jobs[b];
+    const aLocal = aj?.destination === ship.location ? 0 : 1;
+    const bLocal = bj?.destination === ship.location ? 0 : 1;
+    return aLocal - bLocal
+      || tierRank[aj?.tier ?? "low"] - tierRank[bj?.tier ?? "low"]
+      || (aj?.expiresAt ?? 0) - (bj?.expiresAt ?? 0)
+      || a.localeCompare(b);
+  });
+}
+
+function acceptTarget(acceptJobIds: JobId[]): HintTarget {
+  return {
+    acceptJobIds,
+    ...(acceptJobIds.length === 1 ? { acceptJobId: acceptJobIds[0] } : {}),
+  };
+}
+
+function sellTargetFromHints(hints: GuidedHint[]): HintTarget {
+  return mergeHintTargets(hints.map(hintTarget), { group: "sell" });
+}
+
+function buyTargetFromHints(hints: GuidedHint[]): HintTarget {
+  return mergeHintTargets(hints.map(hintTarget), { group: "buy" });
+}
+
+function collectTargetFromHints(hints: GuidedHint[], world: World, ship: Trader): HintTarget {
+  const ids = new Set<JobId>();
+  for (const hint of hints) {
+    const target = hintTarget(hint);
+    if (target.collectJobId) ids.add(target.collectJobId);
+    for (const jobId of target.collectJobIds ?? []) ids.add(jobId);
+  }
+  const collectJobIds = [...ids].filter(jobId => world.jobs[jobId]?.destination === ship.location);
+  return collectJobIds.length > 0
+    ? {
+        collectJobIds,
+        collectJobId: collectJobIds[0],
+      }
+    : {};
+}
+
+function travelTargetFromHints(hints: GuidedHint[]): HintTarget {
+  for (const hint of hints) {
+    const target = hintTarget(hint);
+    if (target.travelTo) {
+      return {
+        travelTo: target.travelTo,
+        travelLabel: target.travelLabel,
+        carryGood: target.carryGood,
+        carryGoods: target.carryGoods,
+      };
+    }
+  }
+  return {};
+}
+
+function targetIsEmpty(target: HintTarget): boolean {
+  return target.buyGood == null
+    && Object.keys(target.buyGoods ?? {}).length === 0
+    && target.sellGood == null
+    && (target.sellGoods?.length ?? 0) === 0
+    && target.travelTo == null
+    && target.refuel !== true
+    && target.acceptJobId == null
+    && (target.acceptJobIds?.length ?? 0) === 0
+    && target.collectJobId == null
+    && (target.collectJobIds?.length ?? 0) === 0;
+}
+
+function mergeHintTargets(targets: HintTarget[], opts: { group?: SuggestionActionGroup } = {}): HintTarget {
   const target: HintTarget = {};
   const buyGoods: Partial<Record<GoodId, number>> = {};
   const sellGoods = new Set<GoodId>();
   const acceptJobIds = new Set<NonNullable<HintTarget["acceptJobId"]>>();
   const collectJobIds = new Set<JobId>();
 
-  for (const hint of guidedPlan.hints) {
-    const stepTarget = hintTarget(hint);
+  for (const stepTarget of targets) {
+    if (opts.group != null && !targetMatchesGroup(stepTarget, opts.group)) continue;
     if (stepTarget.buyGood) {
       buyGoods[stepTarget.buyGood] = (buyGoods[stepTarget.buyGood] ?? 0) + (stepTarget.buyQty ?? 0);
     }
@@ -253,6 +609,7 @@ function targetFromGuidedPlan(guidedPlan: GuidedPlan): HintTarget {
     if (stepTarget.acceptJobId) acceptJobIds.add(stepTarget.acceptJobId);
     for (const jobId of stepTarget.acceptJobIds ?? []) acceptJobIds.add(jobId);
     if (stepTarget.collectJobId) collectJobIds.add(stepTarget.collectJobId);
+    for (const jobId of stepTarget.collectJobIds ?? []) collectJobIds.add(jobId);
   }
 
   const buyEntries = (Object.keys(buyGoods) as GoodId[]).flatMap((good): [GoodId, number][] => {
@@ -281,9 +638,29 @@ function targetFromGuidedPlan(guidedPlan: GuidedPlan): HintTarget {
   }
 
   const collectList = [...collectJobIds];
-  if (collectList.length > 0) target.collectJobId = collectList[0];
+  if (collectList.length > 0) {
+    target.collectJobIds = collectList;
+    target.collectJobId = collectList[0];
+  }
 
   return target;
+}
+
+function targetMatchesGroup(target: HintTarget, group: SuggestionActionGroup): boolean {
+  switch (group) {
+    case "accept":
+      return target.acceptJobId != null || (target.acceptJobIds?.length ?? 0) > 0;
+    case "sell":
+      return target.sellGood != null || (target.sellGoods?.length ?? 0) > 0;
+    case "refuel":
+      return target.refuel === true;
+    case "buy":
+      return target.buyGood != null || Object.keys(target.buyGoods ?? {}).length > 0;
+    case "collect":
+      return target.collectJobId != null || (target.collectJobIds?.length ?? 0) > 0;
+    case "travel":
+      return target.travelTo != null;
+  }
 }
 
 type CueTextMap = {
@@ -775,6 +1152,7 @@ function ContractsTab({ ship, world, loc, target, hintText, cueText, interaction
   );
   const jobs = [...remoteSuggested, ...local].sort((a, b) =>
     Number(suggestedIds.has(b.id)) - Number(suggestedIds.has(a.id))
+    || Number(b.destination === loc.id) - Number(a.destination === loc.id)
     || localJobSort(a, b)
   );
 
@@ -1700,9 +2078,16 @@ function targetSuggestsContracts(target: HintTarget): boolean {
   return target.acceptJobId != null || (target.acceptJobIds?.length ?? 0) > 0;
 }
 
+function targetCollectJobIds(target: HintTarget): JobId[] {
+  return [
+    ...(target.collectJobId ? [target.collectJobId] : []),
+    ...(target.collectJobIds ?? []),
+  ].filter((jobId, index, arr) => arr.indexOf(jobId) === index);
+}
+
 function targetSuggestsLocalContracts(world: World, target: HintTarget, ship: Trader): boolean {
-  if (target.collectJobId) {
-    const job = world.jobs[target.collectJobId];
+  for (const jobId of targetCollectJobIds(target)) {
+    const job = world.jobs[jobId];
     if (job?.destination === ship.location) return true;
   }
   const acceptIds = [
@@ -2672,9 +3057,10 @@ function ShipCargoTabs({ ship, world, loc, groups, inTransit, target, hintText, 
   const activeContracts = Object.values(world.jobs).filter(j => j.acceptedBy === ship.id);
   const manualActions = ship.pilot !== "auto";
   const cargoSuggested = manualActions && targetSuggestsCargoAction(target);
-  const contractsSuggested = manualActions && target.collectJobId != null && activeContracts.some(j => j.id === target.collectJobId);
+  const collectJobIds = targetCollectJobIds(target);
+  const contractsSuggested = manualActions && collectJobIds.some(jobId => activeContracts.some(j => j.id === jobId));
   const cargoHintText = cueText.sections.cargo ?? hintText;
-  const contractHintText = target.collectJobId ? cueText.collectJobs[target.collectJobId] ?? hintText : hintText;
+  const contractHintText = collectJobIds[0] ? cueText.collectJobs[collectJobIds[0]] ?? hintText : hintText;
 
   return (
     <div className="ship-cargo-section">
@@ -3722,7 +4108,7 @@ function ActiveContractsTab({ ship, world, jobs, target, cueText, hintText }: {
                     : j.good ? world.goods[j.good]?.name ?? j.good : "Contract";
                   const away = j.destination !== ship.location;
                   const pct = j.qty > 0 ? Math.max(0, Math.min(100, (j.delivered / j.qty) * 100)) : 0;
-                  const suggestedCollect = target.collectJobId === j.id && j.destination === ship.location;
+                  const suggestedCollect = targetCollectJobIds(target).includes(j.id) && j.destination === ship.location;
                   // A cargo-haul contract is "ready to collect" once the
                   // player has fully delivered the goods (delivered=qty)
                   // AND is at the destination station. This replaces the
@@ -3778,9 +4164,9 @@ function ActiveContractsTab({ ship, world, jobs, target, cueText, hintText }: {
                         ) : cargoReady ? (
                           // Manual delivery is complete — the reward is
                           // sitting unclaimed until the player clicks.
-                          <ActionCell suggested={cueText.collectJobs[j.id] != null || target.collectJobId === j.id} hintText={cueText.collectJobs[j.id] ?? hintText} label="Collect">
+                          <ActionCell suggested={suggestedCollect} hintText={cueText.collectJobs[j.id] ?? hintText} label="Collect">
                             <button
-                              className={`btn-action ${target.collectJobId === j.id ? "btn-suggested" : "primary"}`}
+                              className={`btn-action ${suggestedCollect ? "btn-suggested" : "primary"}`}
                               onClick={() => collectJob(j.id, ship.id)}
                               title={`Claim Ç${j.reward.toLocaleString()}`}
                             >

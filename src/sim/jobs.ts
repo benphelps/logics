@@ -58,8 +58,8 @@ export const REWARD_MULT_BY_TIER: Record<JobTier, number> = { low: 1.6, medium: 
 export const PENALTY_FRACTION_BY_TIER: Record<JobTier, number> = { low: 0, medium: 0.25, high: 1.0 };
 
 // Expiry window from time of posting (ticks). High-tier jobs are urgent; low can sit.
-export const EXPIRY_TICKS_BY_TIER: Record<JobTier, number> = { low: 120, medium: 60, high: 30 };
-export const TRADE_JOB_EXPIRY_TICKS = 90;
+export const EXPIRY_TICKS_BY_TIER: Record<JobTier, number> = { low: 240, medium: 120, high: 60 };
+export const TRADE_JOB_EXPIRY_TICKS = 180;
 export const EXCHANGE_LOSS_FORGIVENESS_RATE = 0.20;
 export const EXCHANGE_LOSS_FORGIVENESS_MAX = 5_000;
 

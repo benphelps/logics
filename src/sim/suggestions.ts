@@ -981,6 +981,7 @@ export interface HintTarget {
   acceptJobId?: JobId;
   acceptJobIds?: JobId[];
   collectJobId?: JobId;
+  collectJobIds?: JobId[];
 }
 
 export function hintTarget(hint: GuidedHint): HintTarget {

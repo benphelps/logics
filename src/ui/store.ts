@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { CrewMember, CrewRole, Encounter, EncounterAttacker, EncounterKind, Equity, EquityId, Job, World, LocationId, GoodId, JobId, OddsBand, Pilot, SyndicateId, Trader, TraderId, UpgradeSlot } from "../sim/types";
+import type { CrewMember, CrewRole, Encounter, EncounterAttacker, EncounterKind, Equity, EquityId, Job, World, LocationId, GoodId, JobId, OddsBand, Pilot, ShipLogEntry, SyndicateId, Trader, TraderId, UpgradeSlot } from "../sim/types";
 import type { ActiveNewsEvent } from "../sim/news/types";
 import { createStartingWorld, DEFAULT_STARTING_WORLD, randomStartingWorldSeed } from "../sim/start";
 import { generateWorld } from "../sim/gen/world";
@@ -225,6 +225,53 @@ function selectedPlayerShipId(world: World, selectedTrader: TraderId | null): Tr
   return selectedTrader && ids.includes(selectedTrader) && world.traders[selectedTrader]
     ? selectedTrader
     : ids[0];
+}
+
+type ShipLogCursor = Map<TraderId, number>;
+
+function capturePlayerShipLogCursor(world: World): ShipLogCursor {
+  const cursor = new Map<TraderId, number>();
+  for (const id of world.player?.shipIds ?? []) {
+    const ship = world.traders[id];
+    if (ship) cursor.set(id, ship.log?.length ?? 0);
+  }
+  return cursor;
+}
+
+function contractToastFromLog(world: World, ship: Trader, entry: ShipLogEntry, absoluteIndex: number): ActiveNewsEvent | null {
+  if (entry.kind !== "job_completed" && entry.kind !== "job_expired") return null;
+  const tone = entry.kind === "job_completed"
+    ? "good"
+    : entry.tone === "bad" ? "bad" : "warn";
+  const headline = entry.kind === "job_completed"
+    ? "Contract completed"
+    : tone === "bad" ? "Contract failed" : "Contract expired";
+  return {
+    uid: `contract-${world.gameId}-${ship.id}-${entry.tick}-${absoluteIndex}-${entry.kind}`,
+    templateId: `ui-${entry.kind}`,
+    spawnedAt: entry.tick,
+    expiresAt: entry.tick + 1,
+    effects: [],
+    headline,
+    body: entry.message,
+    category: "contracts",
+    tone,
+  };
+}
+
+function collectContractToastsFromLogs(world: World, cursor: ShipLogCursor): ActiveNewsEvent[] {
+  const toasts: ActiveNewsEvent[] = [];
+  for (const id of world.player?.shipIds ?? []) {
+    const ship = world.traders[id];
+    if (!ship) continue;
+    const start = cursor.get(id) ?? 0;
+    const entries = ship.log ?? [];
+    for (let i = start; i < entries.length; i++) {
+      const toast = contractToastFromLog(world, ship, entries[i], i);
+      if (toast) toasts.push(toast);
+    }
+  }
+  return toasts;
 }
 
 function devCrew(role: CrewRole, name: string, tier: number, modifiers: CrewMember["modifiers"]): CrewMember {
@@ -614,7 +661,7 @@ interface UiState {
   mobilePanel: Record<string, string>;
   panelScrollPositions: PanelScrollPositions;
   lastError: string | null;
-  // Toast queue — populated when tickWorld() returns spawned news events.
+  // Toast queue — populated by news events and ship-log contract outcomes.
   // The toast component drains entries via dismissNewsToast as they auto-fade.
   newsToasts: ActiveNewsEvent[];
   // What the tutorial wants the right-column info panel to show during
@@ -1019,6 +1066,11 @@ export const useStore = create<UiState>((set, get) => {
     }, delay);
   };
 
+  const pushToasts = (toasts: ActiveNewsEvent[]) => {
+    if (toasts.length === 0) return;
+    set({ newsToasts: [...get().newsToasts, ...toasts].slice(-6) });
+  };
+
   return {
     world: initialGame.world,
     speed: 0,
@@ -1060,26 +1112,24 @@ export const useStore = create<UiState>((set, get) => {
       // The tick driver gates on this too, but step is also called manually
       // from "Step" buttons — guard at the source.
       if (w.pendingEncounter) return;
+      const logCursor = capturePlayerShipLogCursor(w);
       const report = tickWorld(w);
       if (report.hiresExpired.length > 0) {
         releaseCrewHeadshots(get().activeSaveId, report.hiresExpired);
       }
-      if (report.newsSpawned.length > 0) {
-        set({ newsToasts: [...get().newsToasts, ...report.newsSpawned].slice(-6) });
-      }
+      pushToasts([...report.newsSpawned, ...collectContractToastsFromLogs(w, logCursor)]);
       handleNewsRequest(w, report.newsRequest, get().activeSaveId, () => {
         // Bump tickEpoch on async news arrival so memoized selectors re-read.
         // Append the freshly-applied event to the toast queue.
         const latest = get().world.newsEvents?.active.at(-1);
-        if (latest) {
-          set({ newsToasts: [...get().newsToasts, latest].slice(-6) });
-        }
+        if (latest) pushToasts([latest]);
         set({ tickEpoch: get().tickEpoch + 1 });
       });
       persistCurrentGame();
     },
     stepN: (n) => {
       const w = get().world;
+      const logCursor = capturePlayerShipLogCursor(w);
       const expired: string[] = [];
       const newsSpawned: ActiveNewsEvent[] = [];
       const newsRequests: NewsSpawnRequest[] = [];
@@ -1098,17 +1148,13 @@ export const useStore = create<UiState>((set, get) => {
         if (report.newsRequest) newsRequests.push(report.newsRequest);
       }
       if (expired.length > 0) releaseCrewHeadshots(get().activeSaveId, expired);
-      if (newsSpawned.length > 0) {
-        set({ newsToasts: [...get().newsToasts, ...newsSpawned].slice(-6) });
-      }
+      pushToasts([...newsSpawned, ...collectContractToastsFromLogs(w, logCursor)]);
       // Fire each cadence-fired event request — concurrency cap inside
       // the spawn module already prevented the queue from running away.
       for (const req of newsRequests) {
         handleNewsRequest(w, req, get().activeSaveId, () => {
           const latest = get().world.newsEvents?.active.at(-1);
-          if (latest) {
-            set({ newsToasts: [...get().newsToasts, latest].slice(-6) });
-          }
+          if (latest) pushToasts([latest]);
           set({ tickEpoch: get().tickEpoch + 1 });
         });
       }
@@ -1467,7 +1513,9 @@ export const useStore = create<UiState>((set, get) => {
     },
     collectJob: (jobId, traderId) => {
       const w = get().world;
+      const logCursor = capturePlayerShipLogCursor(w);
       const r = collectTradeJob(w, jobId, traderId);
+      pushToasts(collectContractToastsFromLogs(w, logCursor));
       persistCurrentGame({ lastError: r.ok ? null : r.reason });
     },
     abandonJob: (jobId) => {
