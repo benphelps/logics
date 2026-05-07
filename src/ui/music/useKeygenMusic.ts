@@ -9,6 +9,7 @@ export interface KeygenMusicControls {
   regenerate: () => void;
   setVolume: (volume: number) => void;
   setMode: (mode: TrackerModeId) => void;
+  seek: (position: number) => void;
 }
 
 export function useKeygenMusic(): KeygenMusicControls {
@@ -48,5 +49,9 @@ export function useKeygenMusic(): KeygenMusicControls {
     engine?.setMode(mode);
   }, [engine]);
 
-  return { snapshot, start, stop, toggle, regenerate, setVolume, setMode };
+  const seek = useCallback((position: number) => {
+    engine?.seek(position);
+  }, [engine]);
+
+  return { snapshot, start, stop, toggle, regenerate, setVolume, setMode, seek };
 }

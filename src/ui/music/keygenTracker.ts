@@ -1,4 +1,22 @@
-export type TrackerModeId = "space-voyage" | "helly-space" | "spacecraft" | "space-light" | "scifi";
+export type TrackerModeId =
+  | "space-voyage"
+  | "helly-space"
+  | "spacecraft"
+  | "space-light"
+  | "scifi"
+  | "space-debris"
+  | "endless-hallways"
+  | "tom-hanks"
+  | "eight-bit-bytes"
+  | "endfield"
+  | "virtual-light"
+  | "twylight-intro"
+  | "drifting-mix"
+  | "satell"
+  | "celestial-fantasia"
+  | "yuki-satellites"
+  | "pod"
+  | "multi-universe-traveler";
 
 export interface TrackerMode {
   id: TrackerModeId;
@@ -83,6 +101,7 @@ interface ChiptunePlayer {
   stop: () => void;
   setRepeatCount: (repeatCount: number) => void;
   setVol: (volume: number) => void;
+  seek: (position: number) => void;
 }
 
 type ChiptuneConstructor = new (config?: {
@@ -145,6 +164,136 @@ export const TRACKER_MODES: readonly TrackerMode[] = [
     channelLabels: channelLabels(16),
     moduleUrl: "/audio/tracker/scifi.s3m",
     manifestUrl: "/audio/tracker/scifi.json",
+  },
+  {
+    id: "space-debris",
+    label: "Space Debris",
+    format: "MOD",
+    bpm: 125,
+    channelCount: 4,
+    channelLabels: channelLabels(4),
+    moduleUrl: "/audio/tracker/space_debris.mod",
+    manifestUrl: "/audio/tracker/space-debris.json",
+  },
+  {
+    id: "endless-hallways",
+    label: "Lost in Endless Hallways",
+    format: "MPTM",
+    bpm: 141,
+    channelCount: 12,
+    channelLabels: channelLabels(12),
+    moduleUrl: "/audio/tracker/lost_in_endless_hallways.mptm",
+    manifestUrl: "/audio/tracker/endless-hallways.json",
+  },
+  {
+    id: "tom-hanks",
+    label: "Tom Hanks",
+    format: "MOD",
+    bpm: 125,
+    channelCount: 4,
+    channelLabels: channelLabels(4),
+    moduleUrl: "/audio/tracker/tom_hanks.mod",
+    manifestUrl: "/audio/tracker/tom-hanks.json",
+  },
+  {
+    id: "eight-bit-bytes",
+    label: "Eight 8-bit Sized Bytes",
+    format: "MPTM",
+    bpm: 240,
+    channelCount: 50,
+    channelLabels: channelLabels(50),
+    moduleUrl: "/audio/tracker/platonist_-_eight_8-bit_sized_bytes.mptm",
+    manifestUrl: "/audio/tracker/eight-bit-bytes.json",
+  },
+  {
+    id: "endfield",
+    label: "Endfield",
+    format: "MOD",
+    bpm: 125,
+    channelCount: 4,
+    channelLabels: channelLabels(4),
+    moduleUrl: "/audio/tracker/endfield.mod",
+    manifestUrl: "/audio/tracker/endfield.json",
+  },
+  {
+    id: "virtual-light",
+    label: "Virtual Light",
+    format: "S3M",
+    bpm: 107,
+    channelCount: 9,
+    channelLabels: channelLabels(9),
+    moduleUrl: "/audio/tracker/phandral_-_virtual_light.s3m",
+    manifestUrl: "/audio/tracker/virtual-light.json",
+  },
+  {
+    id: "twylight-intro",
+    label: "Twylight (Intro)",
+    format: "MOD",
+    bpm: 125,
+    channelCount: 4,
+    channelLabels: channelLabels(4),
+    moduleUrl: "/audio/tracker/4-mat_-_twylight_intro_ver.mod",
+    manifestUrl: "/audio/tracker/twylight-intro.json",
+  },
+  {
+    id: "drifting-mix",
+    label: "Drifting Mix",
+    format: "MOD",
+    bpm: 125,
+    channelCount: 4,
+    channelLabels: channelLabels(4),
+    moduleUrl: "/audio/tracker/drifting_mix.mod",
+    manifestUrl: "/audio/tracker/drifting-mix.json",
+  },
+  {
+    id: "satell",
+    label: "Satell",
+    format: "S3M",
+    bpm: 125,
+    channelCount: 8,
+    channelLabels: channelLabels(8),
+    moduleUrl: "/audio/tracker/SATELL.S3M",
+    manifestUrl: "/audio/tracker/satell.json",
+  },
+  {
+    id: "celestial-fantasia",
+    label: "Celestial Fantasia",
+    format: "S3M",
+    bpm: 144,
+    channelCount: 13,
+    channelLabels: channelLabels(13),
+    moduleUrl: "/audio/tracker/celestial_fantasia.s3m",
+    manifestUrl: "/audio/tracker/celestial-fantasia.json",
+  },
+  {
+    id: "yuki-satellites",
+    label: "Yuki Satellites",
+    format: "XM",
+    bpm: 188,
+    channelCount: 32,
+    channelLabels: channelLabels(32),
+    moduleUrl: "/audio/tracker/radix_-_yuki_satellites.xm",
+    manifestUrl: "/audio/tracker/yuki-satellites.json",
+  },
+  {
+    id: "pod",
+    label: "POD",
+    format: "S3M",
+    bpm: 134,
+    channelCount: 16,
+    channelLabels: channelLabels(16),
+    moduleUrl: "/audio/tracker/pod.s3m",
+    manifestUrl: "/audio/tracker/pod.json",
+  },
+  {
+    id: "multi-universe-traveler",
+    label: "Multi-Universe Traveler",
+    format: "IT",
+    bpm: 165,
+    channelCount: 9,
+    channelLabels: channelLabels(9),
+    moduleUrl: "/audio/tracker/theduccinator_-_multi-universe_traveler.it",
+    manifestUrl: "/audio/tracker/multi-universe-traveler.json",
   },
 ];
 
@@ -235,6 +384,15 @@ export class KeygenTracker {
   setVolume(volume: number): void {
     this.volume = clamp(volume, 0, 1);
     this.player?.setVol(this.volume);
+    this.emit();
+  }
+
+  seek(position: number): void {
+    if (!this.player || this.duration <= 0) return;
+    const target = clamp(position, 0, this.duration);
+    this.player.seek(target);
+    this.position = target;
+    this.lastProgressEmitAt = target;
     this.emit();
   }
 

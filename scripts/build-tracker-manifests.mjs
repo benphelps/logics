@@ -10,6 +10,19 @@ const tracks = [
   { id: "spacecraft", file: "enacostione_-_spacecraft.xm", title: "Spacecraft" },
   { id: "space-light", file: "01_space_light.it", title: "Space Light" },
   { id: "scifi", file: "scifi.s3m", title: "Sci-Fi Satellites" },
+  { id: "space-debris", file: "space_debris.mod", title: "Space Debris" },
+  { id: "endless-hallways", file: "lost_in_endless_hallways.mptm", title: "Lost in Endless Hallways" },
+  { id: "tom-hanks", file: "tom_hanks.mod", title: "Tom Hanks" },
+  { id: "eight-bit-bytes", file: "platonist_-_eight_8-bit_sized_bytes.mptm", title: "Eight 8-bit Sized Bytes" },
+  { id: "endfield", file: "endfield.mod", title: "Endfield" },
+  { id: "virtual-light", file: "phandral_-_virtual_light.s3m", title: "Virtual Light" },
+  { id: "twylight-intro", file: "4-mat_-_twylight_intro_ver.mod", title: "Twylight (Intro)" },
+  { id: "drifting-mix", file: "drifting_mix.mod", title: "Drifting Mix" },
+  { id: "satell", file: "SATELL.S3M", title: "Satell" },
+  { id: "celestial-fantasia", file: "celestial_fantasia.s3m", title: "Celestial Fantasia" },
+  { id: "yuki-satellites", file: "radix_-_yuki_satellites.xm", title: "Yuki Satellites" },
+  { id: "pod", file: "pod.s3m", title: "POD" },
+  { id: "multi-universe-traveler", file: "theduccinator_-_multi-universe_traveler.it", title: "Multi-Universe Traveler" },
 ];
 
 await mkdir(outDir, { recursive: true });
