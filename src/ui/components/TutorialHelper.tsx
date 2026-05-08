@@ -314,8 +314,11 @@ const ORB_LIGHTS: readonly OrbLightConfig[] = [
   },
 ];
 
-// Initial light index for click + WASD tuning. Use ',' / '.' keys at
-// runtime to cycle through other lights without rebuilding.
+// Initial light index for click + WASD tuning. Only consulted when
+// DEBUG_LIGHT_TUNING is flipped to true in the rAF effect — in
+// production the flag is off and this constant is unused. Use ',' /
+// '.' keys at runtime to cycle through other lights without
+// rebuilding when tuning.
 const DEBUG_TUNE_INDEX = 3;
 
 // Floating helper orb + speech-bubble pair. Tracks the spotlit element
