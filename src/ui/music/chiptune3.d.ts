@@ -15,6 +15,7 @@ declare module "chiptune3" {
     play(buffer: ArrayBuffer): void;
     pause(): void;
     stop(): void;
+    seek(position: number): void;
     setRepeatCount(repeatCount: number): void;
     setVol(volume: number): void;
   }

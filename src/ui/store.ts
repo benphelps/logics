@@ -1130,8 +1130,13 @@ export const useStore = create<UiState>((set, get) => {
     stepN: (n) => {
       const w = get().world;
       // Bail if the modal is already up — the player can't issue more
-      // ticks until they've resolved the current encounter.
-      if (w.pendingEncounter) return;
+      // ticks until they've resolved the current encounter. We bind to
+      // a local first so the truthiness narrow lands on `initialEnc`
+      // instead of `w.pendingEncounter` — otherwise TS would treat
+      // every later `w.pendingEncounter` read as `undefined` (the
+      // narrowed type from this guard) and reject `.shipId` accesses.
+      const initialEnc = w.pendingEncounter;
+      if (initialEnc) return;
       const logCursor = capturePlayerShipLogCursor(w);
       const expired: string[] = [];
       const newsSpawned: ActiveNewsEvent[] = [];

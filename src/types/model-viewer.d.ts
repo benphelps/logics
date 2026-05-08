@@ -6,6 +6,11 @@
 import type { DetailedHTMLProps, HTMLAttributes } from "react";
 
 interface ModelViewerAttributes extends HTMLAttributes<HTMLElement> {
+  // <model-viewer> is a Web Component — React 19 passes attributes
+  // through verbatim for custom elements, so the JSX needs to use the
+  // native `class` attribute (not `className`) for CSS targeting.
+  // Add `class` to the typing so TS accepts it.
+  class?: string;
   src?: string;
   alt?: string;
   poster?: string;
@@ -29,6 +34,21 @@ interface ModelViewerAttributes extends HTMLAttributes<HTMLElement> {
   "disable-pan"?: boolean | "";
   loading?: "auto" | "lazy" | "eager";
   reveal?: "auto" | "interaction" | "manual";
+}
+
+// React 19 moved the JSX namespace from a global into React.JSX (per the
+// new types in @types/react@19). Augment that scoped namespace via the
+// "react" module so <model-viewer> is recognised in JSX. The empty
+// `declare global { namespace JSX {} }` block is kept for compatibility
+// with any legacy global-JSX consumers; the React.JSX merge is what the
+// app's tsx files actually pick up.
+declare module "react" {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace JSX {
+    interface IntrinsicElements {
+      "model-viewer": DetailedHTMLProps<ModelViewerAttributes, HTMLElement>;
+    }
+  }
 }
 
 declare global {

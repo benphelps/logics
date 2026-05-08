@@ -672,7 +672,7 @@ export function TutorialHelper({
       | (HTMLElement & {
           loaded?: boolean;
           [$scene]?: {
-            target: { add: (o: PointLight | Mesh) => void };
+            target: { add: (o: PointLight | Mesh | Points) => void };
             queueRender: () => void;
           };
         })
