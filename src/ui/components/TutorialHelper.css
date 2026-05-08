@@ -66,10 +66,17 @@
 .tutorial-helper-orb {
   position: relative;
   width: 240px;
-  height: 240px;
+  /* Taller than the model body so the downward thruster plumes have
+     screen space to render before being clipped at the canvas edge.
+     model-viewer auto-frames the model to its bounding box, leaving
+     the extra height below as empty room for the particle stream. */
+  height: 320px;
   flex: none;
   margin-bottom: 4px;
-  animation: tutorial-helper-orb-float 4200ms ease-in-out infinite;
+  /* Vertical bob is driven from the rAF loop in TutorialHelper.tsx
+     (alongside the head/eye motion) so it shares a clock with the
+     mouth-light render invalidation — keeps the talking light fluid
+     even while the head is otherwise still. */
 }
 
 .tutorial-helper-orb-model {
@@ -84,20 +91,8 @@
   pointer-events: none;
 }
 
-@keyframes tutorial-helper-orb-float {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-6px);
-  }
-}
 
 @media (prefers-reduced-motion: reduce) {
-  .tutorial-helper-orb {
-    animation: none;
-  }
   .tutorial-helper.positioned .tutorial-helper-orb,
   .tutorial-helper.positioned .tutorial-helper-bubble {
     transition: none;
@@ -147,11 +142,215 @@
   letter-spacing: 0.01em;
 }
 
+/* Voice controls float in the bubble's top-right. They sit above the
+   title with a small inset, so a short title still has the icons clear
+   of the text. The icons are the same dim treatment as a tracker
+   transport — visible but never the loudest thing in the bubble. */
+.tutorial-helper-audio-controls {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 2px;
+  z-index: 1;
+}
+
+.tutorial-helper-audio-button {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.tutorial-helper-audio-button:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--border);
+  color: var(--text-dim);
+}
+
+.tutorial-helper-audio-button.muted {
+  color: var(--warn);
+}
+
+/* Browser blocked the autoplay attempt — pulse the replay icon so the
+   player notices and clicks to start audio. The next pointer / key
+   event anywhere in the document also retries automatically (via
+   useTutorialAudio's listener), but a visible nudge is friendlier. */
+.tutorial-helper-audio-button.needs-activation {
+  color: var(--accent);
+  animation: tutorial-helper-audio-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes tutorial-helper-audio-pulse {
+  0%, 100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tutorial-helper-audio-button.needs-activation {
+    animation: none;
+    opacity: 1;
+  }
+}
+
+.tutorial-helper-audio-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Volume button + slider pop-down. The wrapper is the hover/focus
+   target — when the player hovers the speaker icon (or the popover
+   itself), the slider becomes visible and interactive. */
+.tutorial-helper-audio-volume {
+  position: relative;
+  display: inline-flex;
+}
+
+.tutorial-helper-audio-volume-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  padding: 6px 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  /* Hidden + non-interactive by default. Hover/focus on the wrapper
+     fades it in; pointer-events are gated so the popover doesn't
+     swallow clicks while invisible. */
+  opacity: 0;
+  pointer-events: none;
+  transform-origin: top center;
+  transform: translateX(-50%) scaleY(0.92);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+  z-index: 2;
+}
+
+.tutorial-helper-audio-volume:hover .tutorial-helper-audio-volume-popover,
+.tutorial-helper-audio-volume:focus-within .tutorial-helper-audio-volume-popover {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) scaleY(1);
+}
+
+.tutorial-helper-audio-volume-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 84px;
+  height: 14px;
+  background: transparent;
+  cursor: pointer;
+  margin: 0;
+}
+
+/* WebKit/Blink track + thumb */
+.tutorial-helper-audio-volume-slider::-webkit-slider-runnable-track {
+  height: 3px;
+  background: var(--border-strong);
+  border-radius: 2px;
+}
+.tutorial-helper-audio-volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 11px;
+  height: 11px;
+  background: var(--text-dim);
+  border-radius: 50%;
+  border: none;
+  margin-top: -4px;
+  transition: background 120ms ease;
+}
+.tutorial-helper-audio-volume-slider:hover::-webkit-slider-thumb,
+.tutorial-helper-audio-volume-slider:focus::-webkit-slider-thumb {
+  background: var(--text);
+}
+
+/* Firefox track + thumb */
+.tutorial-helper-audio-volume-slider::-moz-range-track {
+  height: 3px;
+  background: var(--border-strong);
+  border-radius: 2px;
+}
+.tutorial-helper-audio-volume-slider::-moz-range-thumb {
+  width: 11px;
+  height: 11px;
+  background: var(--text-dim);
+  border-radius: 50%;
+  border: none;
+  transition: background 120ms ease;
+}
+.tutorial-helper-audio-volume-slider:hover::-moz-range-thumb,
+.tutorial-helper-audio-volume-slider:focus::-moz-range-thumb {
+  background: var(--text);
+}
+
+/* Reserve a little right-side padding on the title so it never crashes
+   into the icon row on narrow bubbles. */
+.tutorial-helper-audio-controls + .tutorial-helper-title {
+  padding-right: 56px;
+}
+
 .tutorial-helper-body {
   font-size: 14px;
   color: var(--text-dim);
   line-height: 1.45;
   margin-bottom: 10px;
+}
+
+/* The tour stops use a tiny markdown subset (paragraphs + bullet
+   lists). Paragraphs are stacked with a small gap; lists indent and
+   reuse the same gap so the rhythm reads as a single block. */
+.tutorial-helper-body .tutorial-helper-paragraph {
+  margin: 0;
+}
+
+.tutorial-helper-body .tutorial-helper-paragraph + .tutorial-helper-paragraph,
+.tutorial-helper-body .tutorial-helper-paragraph + .tutorial-helper-list,
+.tutorial-helper-body .tutorial-helper-list + .tutorial-helper-paragraph {
+  margin-top: 8px;
+}
+
+.tutorial-helper-body .tutorial-helper-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+}
+
+.tutorial-helper-body .tutorial-helper-list li {
+  padding-left: 2px;
+}
+
+.tutorial-helper-body strong {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.tutorial-helper-body em {
+  font-style: italic;
+  color: var(--text);
 }
 
 .tutorial-helper-actions {

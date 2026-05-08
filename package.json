@@ -24,7 +24,8 @@
     "audit:progression": "tsx src/sim/scenarios/progression_audit.ts",
     "art:coverage": "tsx src/tools/artCoverage.ts",
     "tracker:manifests": "node scripts/build-tracker-manifests.mjs",
-    "headshots:seed": "tsx src/tools/seedHeadshots.ts"
+    "headshots:seed": "tsx src/tools/seedHeadshots.ts",
+    "tutorial:audio": "tsx src/tools/generateTutorialAudio.ts"
   },
   "dependencies": {
     "@google/model-viewer": "^4.2.0",

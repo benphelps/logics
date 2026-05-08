@@ -140,14 +140,19 @@
 }
 
 .ui-modal-btn.primary {
-  background: rgba(31, 111, 168, 0.55);
-  border-color: rgba(118, 199, 255, 0.45);
-  color: white;
+  /* Ghosted accent: a low-alpha blue wash with a tinted-light label,
+     matching the in-game .player-view button.primary pattern. The older
+     filled treatment (a saturated blue with white text) felt too loud
+     for the NPE / buy-ship CTAs against the dim modal surface. */
+  background: rgba(79, 182, 255, 0.14);
+  border-color: rgba(79, 182, 255, 0.45);
+  color: #d8efff;
 }
 
 .ui-modal-btn.primary:hover:not(:disabled) {
-  background: rgba(40, 130, 195, 0.7);
-  border-color: rgba(140, 213, 255, 0.6);
+  background: rgba(79, 182, 255, 0.22);
+  border-color: rgba(116, 196, 242, 0.65);
+  color: #fff;
 }
 
 .ui-modal-btn.danger {

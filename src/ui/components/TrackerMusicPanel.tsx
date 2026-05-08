@@ -66,8 +66,19 @@ export function TrackerMusicPanel({ music }: { music: KeygenMusicControls }) {
 
           <div className="tracker-progress-line mono">
             <span>{formatTime(snapshot.position)}</span>
-            <span className="tracker-progress-bar" aria-hidden="true">
-              <i style={progressStyle} />
+            <span className="tracker-progress-bar">
+              <i style={progressStyle} aria-hidden="true" />
+              <input
+                className="tracker-progress-input"
+                type="range"
+                min={0}
+                max={Math.max(0.001, snapshot.duration)}
+                step={0.01}
+                value={Math.min(snapshot.position, snapshot.duration || 0)}
+                onChange={(event) => music.seek(Number(event.target.value))}
+                disabled={snapshot.duration <= 0}
+                aria-label="Seek position"
+              />
             </span>
             <span>{formatTime(snapshot.duration)}</span>
           </div>

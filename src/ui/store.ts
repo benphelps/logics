@@ -21,7 +21,7 @@ import { abandonJob, acceptJob, collectTradeJob } from "../sim/jobs";
 import { fireCrew, hireCrew, recomputeShipStats } from "../sim/crew";
 import { deriveCrewIdentity } from "../sim/crewIdentity";
 import { MILESTONES, replenishUnlockedUpgrades } from "../sim/milestones";
-import { INTERFACE_TOUR, resetTutorial as resetTutorialInWorld, type TutorialFocus } from "../sim/tutorial";
+import { INTERFACE_TOUR, TUTORIAL_DEFAULT_LOOPS, resetTutorial as resetTutorialInWorld, type TutorialFocus } from "../sim/tutorial";
 import { releaseCrewHeadshots } from "./headshots";
 import { flushHistoryFromWorld, hydrateHistoryRings } from "./historyDb";
 import { abandonPosition, adjustPlayerLimit, buyShares, cancelPlayerLimit, coverShares, placeLimitBuy, placeLimitSell, sellShares, setStopLoss, setTakeProfit, shortShares } from "../sim/stock";
@@ -1129,23 +1129,29 @@ export const useStore = create<UiState>((set, get) => {
     },
     stepN: (n) => {
       const w = get().world;
+      // Bail if the modal is already up — the player can't issue more
+      // ticks until they've resolved the current encounter.
+      if (w.pendingEncounter) return;
       const logCursor = capturePlayerShipLogCursor(w);
       const expired: string[] = [];
       const newsSpawned: ActiveNewsEvent[] = [];
       const newsRequests: NewsSpawnRequest[] = [];
       for (let i = 0; i < n; i++) {
-        // Stop early if an encounter spawned mid-batch (transit ticks roll
-        // for encounters; the modal needs to interrupt the rest of the run).
-        // The affected ship's id is stashed so dismissResolvedEncounter can
-        // resume stepping until it arrives at its destination.
-        if (w.pendingEncounter) {
-          quickTravelResumeShipId = w.pendingEncounter.shipId;
-          break;
-        }
         const report = tickWorld(w);
         if (report.hiresExpired.length > 0) expired.push(...report.hiresExpired);
         if (report.newsSpawned.length > 0) newsSpawned.push(...report.newsSpawned);
         if (report.newsRequest) newsRequests.push(report.newsRequest);
+        // Stop the moment an encounter spawned this tick. Stash the
+        // affected ship's id so dismissResolvedEncounter can resume
+        // stepping until it arrives. Checking after tickWorld (rather
+        // than at the top of the next iteration) catches encounters
+        // that fire on the final tick of the batch — those previously
+        // slipped past because the loop exited naturally before the
+        // top-check could re-run.
+        if (w.pendingEncounter) {
+          quickTravelResumeShipId = w.pendingEncounter.shipId;
+          break;
+        }
       }
       if (expired.length > 0) releaseCrewHeadshots(get().activeSaveId, expired);
       pushToasts([...newsSpawned, ...collectContractToastsFromLogs(w, logCursor)]);
@@ -1256,7 +1262,7 @@ export const useStore = create<UiState>((set, get) => {
       if (choice === "continue") {
         // Another lap — bump loopGoal so the fork won't re-fire until
         // the player has completed one more full buy+sell cycle.
-        t.loopGoal = (t.loopGoal ?? 3) + 1;
+        t.loopGoal = (t.loopGoal ?? TUTORIAL_DEFAULT_LOOPS) + 1;
       } else if (choice === "exchange") {
         t.phase = "exchange";
       } else if (choice === "skip") {

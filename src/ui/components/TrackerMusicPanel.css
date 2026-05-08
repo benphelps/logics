@@ -123,6 +123,7 @@
 }
 
 .tracker-progress-bar {
+  position: relative;
   display: block;
   height: 6px;
   overflow: hidden;
@@ -139,6 +140,40 @@
   background: linear-gradient(90deg, #55c7a5, #d9a24b);
   transform-origin: left center;
   transition: transform 130ms linear;
+}
+
+.tracker-progress-input {
+  position: absolute;
+  inset: -6px 0;
+  width: 100%;
+  height: calc(100% + 12px);
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.tracker-progress-input:disabled {
+  cursor: not-allowed;
+}
+
+.tracker-progress-input::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 0;
+  background: transparent;
+}
+
+.tracker-progress-input::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 0;
+  background: transparent;
 }
 
 .tracker-player-volume {

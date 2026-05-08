@@ -46,7 +46,13 @@ export function SeedingModal() {
     >
       <p className="seeding-quote mono">{isBackstory ? "Listening to the syndicates" : quote}…</p>
       <div className={`seeding-progress${isBackstory ? " indeterminate" : ""}`} aria-hidden>
-        <div className="seeding-progress-fill" style={{ width: `${progressPct}%` }} />
+        {/* Indeterminate phase: don't pass an inline width — it would
+            override the .indeterminate rule's 35% sliding band and leave
+            the fill solid at 100% the whole time. */}
+        <div
+          className="seeding-progress-fill"
+          style={isBackstory ? undefined : { width: `${progressPct}%` }}
+        />
       </div>
       <p className="seeding-hint dim">
         {isBackstory

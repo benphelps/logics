@@ -43,7 +43,15 @@ export interface InterfaceTourStop {
   // that just dim the screen and let the orb monologue.
   selector: string | null;
   title: string;
+  // Body text shown in the helper bubble. Supports a tiny markdown
+  // subset rendered by formatTutorialBody — **bold**, *italic*,
+  // paragraph breaks (blank line), and `- ` bullet lists.
   body: string;
+  // Spoken-aloud version with v3 audio tags ([amused], [curious], etc.),
+  // ALL CAPS for emphasis, ellipses/em-dashes for pacing. Numbers are
+  // spelled out so ElevenLabs Flash/Multilingual variants don't mangle
+  // them. Generation script reads this; UI never displays it.
+  tts: string;
   // When true, render a flat full-screen dim with no cutout. Used by
   // intro / transition stops that have no specific spotlight target.
   fullDim?: boolean;
@@ -80,48 +88,247 @@ const TUT = (name: string) => `[data-tutorial="${name}"]`;
 //  12) product sell row  — Market signals section, good-focused
 //  13) travel panel      — fly-to neighbours
 // After that the action coaching takes over (3 buy/sell loops).
+// First-time-mechanic intros: longer, voiced explanations that fire the
+// FIRST time the engine surfaces a given action (e.g., the player's
+// first contract, first refuel, first stock trade). After the player
+// completes the action once, perTypeCount flips and we revert to the
+// snappy one-line flavor copy in `currentFlavor()`. Each intro has a
+// stable id used both to key `seenIntros` and to look up the matching
+// audio clip under public/audio/tutorial/<id>.ogg.
+export interface TutorialIntro {
+  id: string;
+  title: string;
+  // Markdown body, same subset as InterfaceTourStop.body.
+  body: string;
+  // Voiced version with v3 audio tags. Numbers spelled out.
+  tts: string;
+}
+
+export const TUTORIAL_INTROS: Readonly<Record<string, TutorialIntro>> = {
+  nextBuy: {
+    id: "intro-next-buy",
+    title: "Next: buying",
+    body:
+      "Next we'll learn about **buying**. Click the highlighted tab to open the cargo panel.",
+    tts:
+      "[amused] Next we'll learn about buying. Click the highlighted tab to open the cargo panel.",
+  },
+  nextSell: {
+    id: "intro-next-sell",
+    title: "Next: selling",
+    body:
+      "Next we'll learn about **selling**. Click the highlighted tab to open the cargo panel.",
+    tts:
+      "[amused] Next we'll learn about selling. Click the highlighted tab to open the cargo panel.",
+  },
+  buy: {
+    id: "intro-buy",
+    title: "Your first buy",
+    body:
+      "This is where the cargo loop starts.\n\n" +
+      "Every station **produces** some goods cheap and **consumes** others at a premium. The spotlit row is the cheapest thing the engine thinks you can flip for a profit somewhere nearby.\n\n" +
+      "Each purchase becomes a **lot** — quantity, price, station of origin, the tick you bought it. Lots never merge, so your cost basis stays honest across mixed buys. Credits come straight out of the ship's wallet; you can't buy what you can't afford.\n\n" +
+      "Click the highlighted buy button to load up.",
+    tts:
+      "[amused] This is where the cargo loop starts. [curious] Every station produces some goods cheap and consumes others at a premium. The spotlit row is the cheapest thing the engine thinks you can flip for a profit somewhere nearby… Each purchase becomes a lot — quantity, price, station of origin, the tick you bought it. Lots never merge, so your cost basis stays honest. [mischievously] Click the highlighted buy button to load up.",
+  },
+  sell: {
+    id: "intro-sell",
+    title: "Your first sale",
+    body:
+      "Time to cash out.\n\n" +
+      "When you sell, the oldest **lot** leaves first and the proceeds settle straight into the ship's wallet. The price depends on how badly this station wants the good — empty warehouse means premium prices, full warehouse means a discount.\n\n" +
+      "Glance at the **Market pressure** row in the right panel before clicking. If the good in your hold is listed as *begging to import*, you're golden. If not, the price will sting.\n\n" +
+      "Click the highlighted row to sell.",
+    tts:
+      "[amused] Time to cash out. [curious] When you sell, the oldest lot leaves first and the proceeds settle straight into the ship's wallet. The price depends on how badly this station wants the good — empty warehouse means premium prices, full warehouse means a discount. [mischievously] Glance at the market pressure row before clicking. If the good in your hold is listed as begging to import, you're golden. If not, the price will sting. [amused] Click the highlighted row to sell.",
+  },
+  refuel: {
+    id: "intro-refuel",
+    title: "First refuel",
+    body:
+      "Time to top up the tank.\n\n" +
+      "Fuel burns all at once on **departure**, based on trip distance and your engine's efficiency. The travel panel won't let you launch if the tank can't cover the next hop — so you'll never strand mid-route, but you can absolutely get stuck dockside if you ignore the gauge.\n\n" +
+      "A couple of details:\n" +
+      "- Ships have a **fuel preference list** and pick the cheapest compatible type they can buy locally. You don't normally have to think about which fuel — just *that* you need some.\n" +
+      "- Switching fuel types **dumps** any incompatible residual. Don't swap mid-tank if you're trying to save credits.\n" +
+      "- Refuels come straight out of the ship's wallet, like everything else.\n\n" +
+      "Click the highlighted refuel button to fill up.",
+    tts:
+      "[amused] Time to top up the tank. [curious] Fuel burns all at once on departure, based on trip distance and your engine's efficiency. The travel panel won't let you launch if the tank can't cover the next hop — so you'll never strand mid-route, but you can absolutely get stuck dockside if you ignore the gauge. [mischievously] Refuels come straight out of the ship's wallet, like everything else. [amused] Click the highlighted refuel button to fill up.",
+  },
+  combatIntro: {
+    id: "combat-intro",
+    title: "First contact",
+    body:
+      "Looks like we ran into someone.\n\n" +
+      "The encounter modal **pauses the universe** while you decide. You'll see who flagged you down, what they want, and three options: **Fight**, **Flee**, **Negotiate**. Each shows your odds and the concrete cost if it flops.\n\n" +
+      "The engine highlights its pick — usually flee, since it's the cheapest \"lose\" outcome. But the call's yours. Want a walkthrough of the three choices?",
+    tts:
+      "[amused] Looks like we ran into someone. [curious] The encounter modal pauses the universe while you decide. You'll see who flagged you down, what they want, and three options — Fight, Flee, Negotiate. Each shows your odds and the concrete cost if it flops. [mischievously] The engine highlights its pick — usually flee, since it's the cheapest \"lose\" outcome. But the call's yours. Want a walkthrough of the three choices?",
+  },
+  combatChoosing: {
+    id: "combat-choosing",
+    title: "Pick your move",
+    body:
+      "Three choices, each with **fuzzy odds** — very likely, likely, even, risky, longshot — and a concrete cost line if it goes wrong.\n\n" +
+      "- **Fight** — best with a *mercenary* aboard or a beefy hull. Win: drive them off clean. Lose: hull damage and cargo gone (lightest items first).\n" +
+      "- **Flee** — best with a fast, lightly-loaded ship. Win: outrun them untouched. Lose: a few hull scratches on the way out.\n" +
+      "- **Negotiate** — bribe your way out with credits or partial cargo. Best with decent reputation. Cleanest exit if it works; collapses to the worst case if it doesn't.\n\n" +
+      "The highlighted card is the engine's pick. Trust it or don't — but pick something.",
+    tts:
+      "[curious] Three choices, each with fuzzy odds and a concrete cost line if it goes wrong. [mischievously] The highlighted card is the engine's pick. Trust it or don't — but pick something.",
+  },
+  combatRevealed: {
+    id: "combat-revealed",
+    title: "Read the damage",
+    body:
+      "The panel above tells you what just happened — your choice, the roll, the outcome.\n\n" +
+      "Read the **gains** (cargo recovered, credits earned), the **losses** (cargo gone, credits paid), and any **hull damage**. Hull repairs cost credits at any docked station; until you pay, the bar in your ship card stays dim. Cargo loss goes lightest-first, so a hold full of fuel cells suffers less than one full of bullion.\n\n" +
+      "Hit **Continue** to resume the trip.",
+    tts:
+      "[curious] The panel above tells you what just happened — your choice, the roll, the outcome. Read the gains, the losses, and any hull damage. Hull repairs cost credits at any docked station; until you pay, the bar in your ship card stays dim. [amused] Cargo loss goes lightest-first — so a hold full of fuel cells suffers less than one full of bullion. [mischievously] Hit Continue to resume the trip.",
+  },
+  nextContract: {
+    id: "intro-next-contract",
+    title: "Next: contracts",
+    body:
+      "Next we'll learn about **contracts**. Click the highlighted tab to open the contracts panel.",
+    tts:
+      "[amused] Next we'll learn about contracts. Click the highlighted tab to open the contracts panel.",
+  },
+  nextCollect: {
+    id: "intro-next-collect",
+    title: "Next: collect",
+    body:
+      "Time to **collect your payout**. Click the highlighted tab to open the contracts panel.",
+    tts:
+      "[amused] Time to collect your payout. Click the highlighted tab to open the contracts panel.",
+  },
+  contract: {
+    id: "intro-contract",
+    title: "Your first contract",
+    body:
+      "A **contract** is a named, deadlined job posted by a station or a stranded captain. *\"Haul forty grain to Haven by tick six thousand, payout twelve hundred credits.\"* Stuff like that. Take it, do the run, and you'll earn more than you would on the open market — plus a little reputation with the destination's syndicate while you're at it.\n\n" +
+      "A few flavours:\n" +
+      "- **Shortage hauls** — bring goods to a station that's running low.\n" +
+      "- **Rescues** — deliver fuel to a captain who's stuck out somewhere.\n" +
+      "- **Trade settlements** — when you close a stock position, the cheque shows up here as a *\"go pick up your money\"* job.\n\n" +
+      "The big idea: contracts pay you a **bonus** on top of a trade you'd already be doing. The one I've spotlighted lines up with our current move. Taking it costs nothing and pays extra. Click the highlighted row to accept.",
+    tts:
+      "[amused] A contract is a named, deadlined job posted by a station or a stranded captain. [curious] Take it, do the run, and you'll earn more than you would on the open market — plus a little reputation with the destination's syndicate while you're at it. [mischievously] The big idea: contracts pay you a BONUS on top of a trade you'd already be doing. The one I've spotlighted lines up with our current move. [amused] Click the highlighted row to accept.",
+  },
+} as const;
+
+// Audio-only cues: short voiced one-liners played over the engine's
+// own body copy. Unlike TUTORIAL_INTROS, cues don't override the bubble
+// title/body — the bubble keeps the engine's snappy, dynamic copy
+// (e.g., "Buy 12 grain"), and the cue rides on top as a personality
+// nudge. Fires once per condition (gating lives in the controller).
+export interface TutorialCue {
+  id: string;
+  tts: string;
+}
+
+export const TUTORIAL_CUES: Readonly<Record<string, TutorialCue>> = {
+  buyFill: {
+    id: "cue-buy-fill",
+    tts: "[amused] Go ahead and buy the remaining suggested goods. Always a full cargo bay!",
+  },
+  departure: {
+    id: "cue-departure",
+    tts: "[amused] Hold's loaded — time to head out! Click the highlighted destination to launch.",
+  },
+  quickTravel: {
+    id: "cue-quick-travel",
+    tts: "[mischievously] Don't feel like watching the timer tick down? Hit quick-travel to skip straight to arrival.",
+  },
+} as const;
+
+// Title strings produced by the action-specific resolutions below.
+// Re-exported as constants so the controller can match on them without
+// stringly-typed comparisons sprinkled through render code.
+export const TUTORIAL_HINT_TITLE_BUY = "Buy low";
+export const TUTORIAL_HINT_TITLE_SELL = "Sell high";
+export const TUTORIAL_HINT_TITLE_TRAVEL = "Fly";
+export const TUTORIAL_HINT_TITLE_REFUEL = "Refuel";
+export const TUTORIAL_HINT_TITLE_ACCEPT = "Take a contract";
+export const TUTORIAL_HINT_TITLE_COLLECT = "Collect";
+
 export const INTERFACE_TOUR: readonly InterfaceTourStop[] = [
   {
     id: "intro",
     selector: null,
     fullDim: true,
     title: "Welcome aboard",
-    body: "Hey. I'm your friendly orb-shaped tour guide. Quick UI walkthrough first, then I'll hold your hand for a few dozen ticks while you find your sea legs. Bail any time.",
+    body:
+      "Hey. I'm your friendly orb-shaped tour guide.\n\n" +
+      "Here's the deal: Ledgway is a logistics game. You buy cargo cheap at one station, fly it somewhere it's worth more, and pocket the difference. The whole universe runs on a heartbeat called a **tick** — every station produces, consumes, and reprices once per tick, every NPC takes their turn, every event you'll see ripples out from there.\n\n" +
+      "I'll walk you through the interface first — every panel, every button. Then I'll spotlight a few cargo runs so you can feel the loop. Bail any time with **Skip tutorial**. I won't take it personally. Much.",
+    tts:
+      "[amused] Hey. I'm your friendly orb-shaped tour guide… Here's the deal: Ledgway is a logistics game. You buy cargo cheap at one station, fly it somewhere it's worth more, and pocket the difference. The whole universe runs on a heartbeat called a tick. [curious] I'll walk you through the interface first. Then I'll spotlight a few cargo runs so you can feel the loop. [mischievously] Bail any time. I won't take it personally. Much.",
     switchTab: "player",
   },
   {
     id: "ui-ship",
     selector: TUT("ship-selector"),
     title: "Ship selector",
-    body: "Your active ship lives here. Once you own more than one, this is how you pick which captain to micromanage.",
+    body:
+      "Your active ship lives here.\n\n" +
+      "Right now you've got one — a starter hauler with a small hold, a modest tank, and a wallet of its own. Ships in Ledgway are *financially independent*: each hull has its own cargo, its own funds, its own crew. When you eventually buy a second one, this selector is how you swap which captain you're micromanaging.\n\n" +
+      "The little stat row underneath is hull, cargo capacity, and fuel — your three \"am I about to do something stupid?\" gauges.",
+    tts:
+      "Your active ship lives here. [curious] Ships in Ledgway are financially independent: each hull has its own cargo, its own funds, its own crew. When you eventually buy a second one, this selector is how you swap which captain you're micromanaging. [amused] The stat row is hull, cargo capacity, and fuel — your three \"am I about to do something stupid\" gauges.",
     switchTab: "player",
   },
   {
     id: "ui-tabs",
     selector: TUT("view-tabs"),
     title: "Main tabs",
-    body: "Cargo, Exchange, Markets, Atlas, Ledger. You'll spend most of your life on the first two; the rest are reference.",
+    body:
+      "The five top-level views.\n\n" +
+      "- **Cargo** — your ship, your hold, the local market, and where to fly. You'll spend most of your life here.\n" +
+      "- **Exchange** — the stock market layered on top of the world. Stations, syndicates, commodities, futures. The long game.\n" +
+      "- **Markets** — every station's prices in one giant cross-reference. Read it like a map, find the gaps, exploit them.\n" +
+      "- **Atlas** — the sector map. Who controls what, where the lanes run, who's mad at whom.\n" +
+      "- **Ledger** — your captain's diary. Every buy, sell, fight, and faction shift. Search it later when you can't remember why you went broke.",
+    tts:
+      "The five top-level views. [curious] Cargo — your ship, your hold, the local market, and where to fly. Exchange — the stock market layered on top of the world. The long game. Markets — every station's prices in one giant cross-reference. Find the gaps, exploit them. Atlas — the sector map. Who controls what, who's mad at whom. [amused] Ledger — your captain's diary. Search it later when you can't remember why you went broke.",
     switchTab: "player",
   },
   {
     id: "ui-controls",
     selector: TUT("game-controls"),
     title: "Tick & game controls",
-    body: "The universe runs on ticks — the number on the left is the heartbeat. Pause, step one, real-time, or fast-forward depending on your patience.",
+    body:
+      "The universe runs on **ticks** — single moments of game-time where everything happens at once, in a fixed order.\n\n" +
+      "The number on the left is the heartbeat. Right of it: **pause**, **step one tick**, **real-time**, and a few fast-forward presets. Same starting world plus same actions always lands you in the same place — which is what makes saves trustworthy, and why the game is perfectly happy if you walk away mid-flight and come back tomorrow.\n\n" +
+      "Pro tip: when something interesting is happening, slow it down. When you're refuelling for the third time at a backwater outpost… crank it up.",
+    tts:
+      "The universe runs on ticks… The number on the left is the heartbeat. Right of it: pause, step one tick, real-time, and fast-forward presets. [curious] Same starting world plus same actions always lands you in the same place — which is what makes saves trustworthy. [mischievously] Pro tip: when something interesting is happening, slow it down. When you're refuelling for the third time at a backwater outpost… crank it up.",
     switchTab: "player",
   },
   {
     id: "ui-settings",
     selector: TUT("settings-buttons"),
     title: "Music & settings",
-    body: "The notes button hides a tracker. The menu button is saves, new game, and yes — a 'replay tutorial' option for when nostalgia hits.",
+    body:
+      "Two utility buttons.\n\n" +
+      "The notes button hides a **tracker** — proper retro chiptune, fully shippable in a logistics game about hauling crates through space. Don't @ me.\n\n" +
+      "The menu button is your save slots, new game, options, and yes — a **Replay tutorial** option for when nostalgia hits. Auto-save runs every tick, so a refresh never costs more than a moment of progress.",
+    tts:
+      "Two utility buttons… The notes button hides a tracker — proper retro chiptune. [sarcastic] Don't at me… The menu button is your save slots, new game, options, and yes — a \"Replay tutorial\" option for when nostalgia hits. [amused] Auto-save runs every tick, so a refresh never costs more than a moment.",
     switchTab: "player",
   },
   {
     id: "ui-game-area",
     selector: TUT("game-area"),
     title: "Main game area",
-    body: "Whatever the active tab shows lives here. Most of what we'll cover next happens inside this rectangle.",
+    body:
+      "Everything the active tab shows lives in this rectangle.\n\n" +
+      "Switch tabs and the whole view swaps in. Most of what we'll cover next happens here — the cargo bay, the markets, the info panel, the travel options. Keep an eye on it.",
+    tts:
+      "Everything the active tab shows lives in this rectangle… Switch tabs and the whole view swaps in. Most of what we'll cover next happens here. [amused] Keep an eye on it.",
     switchTab: "player",
   },
   {
@@ -129,35 +336,60 @@ export const INTERFACE_TOUR: readonly InterfaceTourStop[] = [
     selector: null,
     fullDim: true,
     title: "Enough chrome",
-    body: "Ohh, I love shiny chrome. But we don't haul shiny chrome — we haul actual cargo. Now let's get on to some space truckin'.",
+    body:
+      "Ohh, I love shiny chrome. But we don't *haul* shiny chrome — we haul actual cargo.\n\n" +
+      "Now let's get on to some space truckin'. Next up: the four panels you'll be living inside.",
+    tts:
+      "[amused] Ohh, I love shiny chrome. But we don't haul shiny chrome — we haul actual cargo. [mischievously] Now let's get on to some space truckin'.",
     switchTab: "player",
   },
   {
     id: "cargo",
     selector: TUT("cargo-panel"),
     title: "Cargo bay",
-    body: "Your hold. Cargo lives here, when you have any. Also where you fire crew and second-guess your upgrade choices.",
+    body:
+      "Your hold.\n\n" +
+      "Every purchase is remembered as a **lot** — quantity, price, station of origin, the tick you bought it. Lots never merge, so the cost basis of every good is honest. The card shows a weighted average, but the truth underneath is \"I bought twelve grain at fourteen and eight more at eighteen — selling above sixteen still profits.\"\n\n" +
+      "When you sell, the oldest lot leaves first. This panel's also where you fire crew, second-guess your upgrade choices, and stare wistfully at goods you haven't unloaded yet.",
+    tts:
+      "Your hold. [curious] Every purchase is remembered as a lot — quantity, price, station of origin, the tick you bought it. Lots never merge, so the cost basis of every good is honest… When you sell, the oldest lot leaves first. [amused] This panel's also where you fire crew, second-guess your upgrade choices, and stare wistfully at goods you haven't unloaded yet.",
     switchTab: "player",
   },
   {
     id: "markets",
     selector: TUT("markets-panel"),
     title: "Markets",
-    body: "The station's wares. Buy low. Sell high. The whole game in three syllables.",
+    body:
+      "The station's wares — what they make, what they need, the price they're asking right now.\n\n" +
+      "Stations *produce* some goods locally and *consume* others. **Producers** are cheap — they've got stockpiles. **Consumers** are expensive — they're hungry. The whole game is: find a place that makes X cheap, find another place that needs X badly, fly between them.\n\n" +
+      "Prices ease toward their target instead of snapping, so a single trade won't whiplash the market. But they *will* drift if you keep hammering the same route.\n\n" +
+      "Buy low. Sell high. The whole game in three syllables.",
+    tts:
+      "The station's wares — what they make, what they need, the price they're asking right now. [curious] Producers are cheap — they've got stockpiles. Consumers are expensive — they're hungry. The whole game is: find a place that makes X cheap, find another place that needs X badly, fly between them. [amused] Buy low. Sell high. The whole game in three syllables.",
     switchTab: "player",
   },
   {
     id: "info-panel",
     selector: TUT("info-panel"),
     title: "Info panel",
-    body: "Reads your mind. Hover something, get the numbers. There's even a 'just tell me where to sell it' line for when thinking feels expensive.",
+    body:
+      "The right column reads your mind.\n\n" +
+      "Hover any good, ship, station, or contract — the panel below fills in. Stats, recent trades, profit estimates, and (once you've hired a Navigator) one-line action cues like *\"Buy twelve grain → fly to Ironhold → sell. Net three thousand two hundred credits.\"*\n\n" +
+      "Without a Navigator the panel still works as a reference — you just won't get the **verb**. Hire one as soon as you can afford it. It's the single biggest \"aha\" moment in the game.",
+    tts:
+      "The right column reads your mind. Hover any good, ship, station, or contract — the panel below fills in. Stats, recent trades, profit estimates, and once you've hired a navigator, one-line action cues. [curious] Without a navigator, the panel still works as a reference — you just won't get the verb. [mischievously] Hire one as soon as you can afford it. It's the single biggest \"aha\" moment in the game.",
     switchTab: "player",
   },
   {
     id: "info-station-sell",
     selector: TUT("info-station-pressure"),
     title: "What sells here",
-    body: "Stations love surplus, hate shortage. This row tells you which is which — i.e. what sells like hotcakes and what they're begging to import. Glance here before every sell.",
+    body:
+      "The **Market pressure** row tells you which goods this station is *desperate* for and which ones they're drowning in.\n\n" +
+      "Stations love surplus — when their warehouse is empty, prices spike and they'll pay above market. They hate excess — when it's overflowing, prices crater. This row sorts the local goods into \"begging to import\" and \"please, take it off our hands.\"\n\n" +
+      "Glance here before every sell. If the thing in your hold isn't on the *want* list, you'll get bottom-of-band prices.",
+    tts:
+      "The market pressure row tells you which goods this station is desperate for and which ones they're drowning in. [curious] Stations love surplus — when their warehouse is empty, prices spike and they'll pay above market. They hate excess — when it's overflowing, prices crater. [amused] Glance here before every sell. If the thing in your hold isn't on the WANT list, you'll get bottom-of-band prices.",
     switchTab: "player",
     focus: "currentStation",
   },
@@ -165,7 +397,12 @@ export const INTERFACE_TOUR: readonly InterfaceTourStop[] = [
     id: "info-product-sell",
     selector: TUT("info-product-signals"),
     title: "Where to sell it",
-    body: "Pin a good. Get the best nearby buyer, the route P&L, and where to dump it. Math is hard. Let the panel do it.",
+    body:
+      "Pin a good and the **Market signals** section shows the answer to \"where do I take this for the best price?\"\n\n" +
+      "Best nearby buyer, the route **P&L** (price difference minus fuel and docking), and a one-click **fly there** if you've got the tank for it.\n\n" +
+      "Math is hard. Let the panel do it.",
+    tts:
+      "Pin a good and the market signals section shows the answer to \"where do I take this for the best price?\" [curious] Best nearby buyer, the route P-and-L, and a one-click \"fly there\" if you've got the tank for it. [amused] Math is hard. Let the panel do it.",
     switchTab: "player",
     focus: "anyCargoGood",
   },
@@ -173,7 +410,13 @@ export const INTERFACE_TOUR: readonly InterfaceTourStop[] = [
     id: "travel",
     selector: TUT("travel-panel"),
     title: "Travel panel",
-    body: "Where you actually fly somewhere. Neighbours only — for far stations you hop. Easiest panel in the game. Probably.",
+    body:
+      "Where you actually *go* somewhere.\n\n" +
+      "The list shows **neighbours** — stations you can reach in one trip. For anywhere further, you hop: pick a neighbour, fly there, pick the next. Hire a Navigator and you can plan multi-hop routes in one go (still burns the full fuel up front — no refuelling at intermediate stops).\n\n" +
+      "Fuel burns all at once on departure, based on trip distance and engine efficiency. If the tank can't cover the trip, the panel won't let you launch — no surprises, no being stranded mid-route.\n\n" +
+      "Easiest panel in the game. Probably.",
+    tts:
+      "Where you actually go somewhere… The list shows neighbours — stations you can reach in one trip. For anywhere further, you hop: pick a neighbour, fly there, pick the next. [curious] Hire a navigator and you can plan multi-hop routes in one go… Fuel burns all at once on departure. [amused] If the tank can't cover the trip, the panel won't let you launch. [mischievously] Easiest panel in the game. Probably.",
     switchTab: "player",
   },
 ] as const;
@@ -232,6 +475,15 @@ function travelSelectorFor(world: World, ship: Trader, dst: LocationId): string 
 interface HintResolution {
   selector: string;
   fleetTab: FleetTab | null;
+  // Optional override for the "switch panel" spotlight when the player
+  // isn't on `fleetTab` yet. Two card-strips share the FleetTab state
+  // (ship card on the left, markets/exchange card on the right), and
+  // for a few actions — most notably "accept a contract" — the
+  // actionable button lives on the markets-card side, not the ship
+  // card. Without this override, the spotlight defaults to the
+  // ship-card's tab button, which has the right name but the wrong
+  // contents (player's active contracts vs station's available ones).
+  subTabSelector?: string;
   title: string;
   body: string;
   focus: TutorialFocus;
@@ -368,7 +620,7 @@ function buyResolution(world: World, good: GoodId, qty: number | undefined): Hin
   return {
     selector: `[data-tutorial-buy-good="${good}"]`,
     fleetTab: "cargo",
-    title: "Buy low",
+    title: TUTORIAL_HINT_TITLE_BUY,
     body: currentFlavor(world).buy(good, qty, world),
     // Pin the good so the right-column info panel shows route profit
     // for this specific commodity — the player learns where to read
@@ -381,7 +633,7 @@ function sellResolution(world: World, ship: Trader, good: GoodId, qty: number | 
   return {
     selector: `[data-tutorial-sell-good="${good}"]`,
     fleetTab: "cargo",
-    title: "Sell high",
+    title: TUTORIAL_HINT_TITLE_SELL,
     body: currentFlavor(world).sell(good, qty, world),
     // Pin the current station — its info panel surfaces the local
     // best-sell-price context the player should learn to scan.
@@ -395,7 +647,7 @@ function travelResolution(world: World, ship: Trader, dst: LocationId): HintReso
   return {
     selector: sel,
     fleetTab: null,
-    title: "Fly",
+    title: TUTORIAL_HINT_TITLE_TRAVEL,
     body: currentFlavor(world).travel(dst, world),
     // Open the destination's info panel so the player sees what's
     // there before flying.
@@ -407,7 +659,12 @@ function acceptResolution(world: World, jobId: string): HintResolution {
   return {
     selector: `[data-tutorial-accept-job="${jobId}"]`,
     fleetTab: "contracts",
-    title: "Take a contract",
+    // The Take button lives on the markets-card's "Contracts" tab
+    // (station's available board). The ship-card's "Contracts" tab
+    // shows the player's active jobs and would lead them to the wrong
+    // panel. Spotlight the markets-side tab specifically.
+    subTabSelector: `[data-tutorial-contracts-board-tab="true"]`,
+    title: TUTORIAL_HINT_TITLE_ACCEPT,
     body: currentFlavor(world).accept(),
     focus: null,
   };
@@ -427,7 +684,7 @@ function refuelResolution(world: World): HintResolution {
   return {
     selector: `[data-tutorial="refuel-button"]`,
     fleetTab: null,
-    title: "Refuel",
+    title: TUTORIAL_HINT_TITLE_REFUEL,
     body: currentFlavor(world).refuel(),
     focus: null,
   };
@@ -437,7 +694,7 @@ function collectResolution(world: World, jobId: string): HintResolution {
   return {
     selector: `[data-tutorial-collect-job="${jobId}"]`,
     fleetTab: "contracts",
-    title: "Collect",
+    title: TUTORIAL_HINT_TITLE_COLLECT,
     body: currentFlavor(world).collect(),
     focus: null,
   };
@@ -521,6 +778,10 @@ export interface ResolvedCargoHint {
   // (we don't auto-switch — the click is part of the guide).
   requiredTab: Tab;
   requiredFleetTab: FleetTab | null;
+  // Optional spotlight override for the "switch panel" step (see
+  // HintResolution.subTabSelector). null/undefined means use the
+  // default `[data-tutorial-fleet-tab="${requiredFleetTab}"]`.
+  subTabSelector?: string;
   title: string;
   body: string;
   focus: TutorialFocus;
@@ -578,6 +839,7 @@ function contractOverrideIfNeeded(
     selector: res.selector,
     requiredTab: "player",
     requiredFleetTab: res.fleetTab,
+    subTabSelector: res.subTabSelector,
     title: res.title,
     body: res.body,
     focus: res.focus,
@@ -598,6 +860,7 @@ export function resolveCargoHint(world: World, ship: Trader): ResolvedCargoHint 
       selector: target.selector,
       requiredTab: "player",
       requiredFleetTab: target.fleetTab,
+      subTabSelector: target.subTabSelector,
       title: target.title,
       body: target.body,
       focus: target.focus,
@@ -625,6 +888,7 @@ export function resolveCargoHint(world: World, ship: Trader): ResolvedCargoHint 
     selector: target.selector,
     requiredTab: "player",
     requiredFleetTab: target.fleetTab,
+    subTabSelector: target.subTabSelector,
     title: target.title,
     body: target.body,
     focus: target.focus,
@@ -668,22 +932,28 @@ export function resolveStockHint(world: World, shipId?: string): ResolvedStockHi
 
 // --- phase transitions ----------------------------------------------------
 
-// One full buy → travel → sell cycle is a "loop". Three is the default
-// goal; the player gets a fork prompt at the end of each loop after
-// that, and either keeps going (loopGoal++) or graduates to the
-// exchange phase. The fork is the only path out of cargo coaching
-// short of the manual skip button.
-export const TUTORIAL_DEFAULT_LOOPS = 3;
+// One full buy → travel → sell cycle is a "loop". Default goal is 1 —
+// with the voiced first-time intros for buy / sell / contract carrying
+// most of the teaching, a single supervised lap is enough to graduate.
+// The fork prompt fires after that one loop and either bumps loopGoal
+// (player picked "Another logistics route") or graduates to the
+// exchange. The fork is the only path out of cargo coaching short of
+// the manual skip button.
+export const TUTORIAL_DEFAULT_LOOPS = 1;
 
 export function tutorialLoopsCompleted(world: World): number {
   const t = world.player?.tutorial;
   if (!t) return 0;
-  // Loops = min(buys, sells). A buy without a matching sell isn't a
-  // completed loop yet; a sell without a buy could be a freebie
-  // (e.g. the starter plasma-fuel haul) which still pays.
+  // A complete logistics loop is buy → travel → sell. Including travel
+  // in the min ensures freebie starter cargo (player begins the cargo
+  // phase already holding goods, which yields a sell with no preceding
+  // travel) doesn't accidentally satisfy a loop on its own. Same for
+  // tutorial replays where prior buy/sell counts are wiped to zero —
+  // the player has to perform all three actions in sequence to count.
   const buy = t.perTypeCount.buy ?? 0;
   const sell = t.perTypeCount.sell ?? 0;
-  return Math.min(buy, sell);
+  const travel = t.perTypeCount.travel ?? 0;
+  return Math.min(buy, sell, travel);
 }
 
 // Fork condition: the player has completed `loopGoal` full buy+sell
@@ -697,7 +967,7 @@ export function shouldShowLoopFork(world: World): boolean {
   const accept = t.perTypeCount.accept_contract ?? 0;
   const deliver = t.perTypeCount.deliver_contract ?? 0;
   // ?? TUTORIAL_DEFAULT_LOOPS handles older saves that pre-date the
-  // loopGoal field — they fall through to the default 3-loop target.
+  // loopGoal field — they fall through to the current default.
   const goal = t.loopGoal ?? TUTORIAL_DEFAULT_LOOPS;
   return tutorialLoopsCompleted(world) >= goal && accept >= 1 && deliver >= 1;
 }

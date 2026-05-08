@@ -3,6 +3,14 @@ import { useStore } from "../store";
 import {
   INTERFACE_TOUR,
   TUTORIAL_EXCHANGE_TRADES,
+  TUTORIAL_CUES,
+  TUTORIAL_HINT_TITLE_ACCEPT,
+  TUTORIAL_HINT_TITLE_BUY,
+  TUTORIAL_HINT_TITLE_COLLECT,
+  TUTORIAL_HINT_TITLE_REFUEL,
+  TUTORIAL_HINT_TITLE_SELL,
+  TUTORIAL_HINT_TITLE_TRAVEL,
+  TUTORIAL_INTROS,
   quickTravelBody,
   resolveCargoHint,
   resolveStockHint,
@@ -13,6 +21,8 @@ import {
 } from "../../sim/tutorial";
 import { TutorialOverlay } from "./TutorialOverlay";
 import { TutorialHelper, type TutorialHelperProps } from "./TutorialHelper";
+import { formatTutorialBody } from "../tutorialMarkdown";
+import { useTutorialAudio } from "../useTutorialAudio";
 
 // Top-level orchestrator. Each render reads world.player.tutorial.phase
 // and the matching suggestion engine; the helper + spotlight are driven
@@ -67,6 +77,7 @@ export function TutorialController() {
   const bidFarewell = useStore(s => s.bidFarewell);
   const setTutorialFocus = useStore(s => s.setTutorialFocus);
   const pendingNewGame = useStore(s => s.pendingNewGame);
+  const pendingSeed = useStore(s => s.pendingSeed);
 
   const player = world.player;
   const tutorial = player?.tutorial;
@@ -112,15 +123,17 @@ export function TutorialController() {
   }, [tutorial, world, finish, tickEpoch]);
 
   // Auto setup→tour transition. The new-game wizard drives "setup"
-  // while it's mounted; the moment confirmNewGame fires (or the player
-  // cancels) pendingNewGame goes null and we move into the interface
-  // tour with the freshly-built world.
+  // while it's mounted; once both the wizard AND the seeding loop are
+  // done (pendingNewGame and pendingSeed both null) we move into the
+  // interface tour with the freshly-built world. Holding through
+  // seeding keeps the orb on the wait-message instead of trying to
+  // start the tour against a centred seeding modal.
   useEffect(() => {
     if (!tutorial) return;
-    if (tutorial.phase === "setup" && !pendingNewGame) {
+    if (tutorial.phase === "setup" && !pendingNewGame && !pendingSeed) {
       advanceSetup();
     }
-  }, [tutorial, pendingNewGame, advanceSetup]);
+  }, [tutorial, pendingNewGame, pendingSeed, advanceSetup]);
 
   // Combat sub-tutorial advancement effects.
   //   1) Player clicks an action card (or otherwise leaves "choosing")
@@ -186,6 +199,135 @@ export function TutorialController() {
     if (tourStopDef?.switchTab) selectTab(tourStopDef.switchTab);
   }, [tourStopDef, selectTab]);
 
+  // Resolve the first-time-mechanic intro (if any) the cargo phase
+  // should be playing right now. One per major action — buy, sell,
+  // accept-contract, refuel — fires the very first time the engine
+  // surfaces that action and reverts to the snappy flavor copy once
+  // the player has moved past the introductory phase.
+  //
+  // Buy/sell intros gate on tutorialLoopsCompleted === 0 (no full
+  // buy → travel → sell cycle yet) rather than the per-action counter,
+  // so the panel stays parked through every additional buy at the
+  // source station and every sell at the destination — long enough for
+  // the ~30s audio to play through without the bubble swapping out
+  // mid-sentence after the very first transaction.
+  //
+  // Gate on subtab match: the intro's body talks about the panel the
+  // player is staring at, so the audio shouldn't fire while they're
+  // still being told to switch tabs. Once they're on the right subtab,
+  // the intro lands cleanly with audio + body in sync.
+  const activeIntro = (() => {
+    if (tutorial?.phase !== "cargo" || !cargoHint) return null;
+    if (cargoHint.requiredFleetTab && fleetTab !== cargoHint.requiredFleetTab) return null;
+    const counts = tutorial.perTypeCount;
+    const introLoop = tutorialLoopsCompleted(world) === 0;
+    if (cargoHint.title === TUTORIAL_HINT_TITLE_BUY && introLoop) {
+      return TUTORIAL_INTROS.buy;
+    }
+    if (cargoHint.title === TUTORIAL_HINT_TITLE_SELL && introLoop) {
+      return TUTORIAL_INTROS.sell;
+    }
+    if (cargoHint.title === TUTORIAL_HINT_TITLE_REFUEL && (counts.refuel ?? 0) === 0) {
+      return TUTORIAL_INTROS.refuel;
+    }
+    if (cargoHint.title === TUTORIAL_HINT_TITLE_ACCEPT && (counts.accept_contract ?? 0) === 0) {
+      return TUTORIAL_INTROS.contract;
+    }
+    return null;
+  })();
+
+  // Tab-nav intro — the "Next we'll learn about X" voiced cue that
+  // fires on the Switch panel step BEFORE a first-time mechanic
+  // intro. Mutually exclusive with activeIntro: that one fires once
+  // the player is on the right subtab; this one fires while they're
+  // still being asked to click the tab.
+  const activeNextIntro = (() => {
+    if (tutorial?.phase !== "cargo" || !cargoHint) return null;
+    if (!cargoHint.requiredFleetTab) return null;
+    if (fleetTab === cargoHint.requiredFleetTab) return null;
+    const counts = tutorial.perTypeCount;
+    if (cargoHint.title === TUTORIAL_HINT_TITLE_BUY && tutorialLoopsCompleted(world) === 0) {
+      return TUTORIAL_INTROS.nextBuy;
+    }
+    if (cargoHint.title === TUTORIAL_HINT_TITLE_SELL && tutorialLoopsCompleted(world) === 0) {
+      return TUTORIAL_INTROS.nextSell;
+    }
+    if (cargoHint.title === TUTORIAL_HINT_TITLE_ACCEPT && (counts.accept_contract ?? 0) === 0) {
+      return TUTORIAL_INTROS.nextContract;
+    }
+    if (cargoHint.title === TUTORIAL_HINT_TITLE_COLLECT && tutorialLoopsCompleted(world) === 0) {
+      return TUTORIAL_INTROS.nextCollect;
+    }
+    return null;
+  })();
+
+  // Audio-only cues: short voiced one-liners played over the engine's
+  // body copy without overriding it. Fires when no full intro is
+  // active. Each cue gates on a one-shot condition; once the matching
+  // perTypeCount tick rolls past, the cue stays silent forever.
+  const activeCue = (() => {
+    if (activeIntro) return null;
+    if (tutorial?.phase !== "cargo") return null;
+    const counts = tutorial.perTypeCount;
+
+    // Quick-travel cue fires during the player's FIRST transit only.
+    // travel was bumped on departure, so === 1 means "in flight on the
+    // first hop". cargoHint is null while in transit, so this branch
+    // doesn't depend on it.
+    if (ship?.state === "transit" && ship.pilot === "manual" && (counts.travel ?? 0) === 1) {
+      return TUTORIAL_CUES.quickTravel;
+    }
+
+    if (!cargoHint) return null;
+    if (cargoHint.requiredFleetTab && fleetTab !== cargoHint.requiredFleetTab) return null;
+
+    if (cargoHint.title === TUTORIAL_HINT_TITLE_BUY && (counts.buy ?? 0) === 1) {
+      return TUTORIAL_CUES.buyFill;
+    }
+    if (cargoHint.title === TUTORIAL_HINT_TITLE_TRAVEL && (counts.travel ?? 0) === 0) {
+      return TUTORIAL_CUES.departure;
+    }
+    return null;
+  })();
+
+  // Combat sub-tutorial audio gates: the encounter modal pauses the
+  // universe, so this branch supersedes everything else. Only the
+  // intro, choosing-phase, and revealed-phase stops are voiced — the
+  // rolling state is too brief (~1s) for audio to land cleanly.
+  const combatAudioId = (() => {
+    if (!world.pendingEncounter || tutorial?.combatSeen) return null;
+    const stop = tutorial?.combatStop ?? 0;
+    if (stop === 0) return TUTORIAL_INTROS.combatIntro.id;
+    if (encounterPhase === "rolling") return null;
+    if (encounterPhase === "revealed") return TUTORIAL_INTROS.combatRevealed.id;
+    return TUTORIAL_INTROS.combatChoosing.id;
+  })();
+
+  // Voice clip for whatever the orb is monologuing right now. Combat
+  // takes priority because the modal pauses everything else; then tour
+  // stops, first-time mechanic intros, audio cues. Other phases stay
+  // silent — action coaching reuses engine flavor copy that wasn't
+  // pre-rendered, and the wizard / seeding stops let the modal carry
+  // the message. Hook is called unconditionally so React's rules stay
+  // happy across phase swaps.
+  const audioSrc = (() => {
+    if (combatAudioId) return `/audio/tutorial/${combatAudioId}.ogg`;
+    if (tutorial?.phase === "tour" && tourStopDef) {
+      return `/audio/tutorial/${tourStopDef.id}.ogg`;
+    }
+    if (activeNextIntro) {
+      return `/audio/tutorial/${activeNextIntro.id}.ogg`;
+    }
+    if (activeIntro) {
+      return `/audio/tutorial/${activeIntro.id}.ogg`;
+    }
+    if (activeCue) {
+      return `/audio/tutorial/${activeCue.id}.ogg`;
+    }
+    return null;
+  })();
+  const audioControls = useTutorialAudio(audioSrc);
+
   // Resolve the current step into a single config object so the JSX
   // below mounts ONE TutorialHelper and ONE TutorialOverlay across all
   // transitions. React reuses the same component instances; only props
@@ -201,6 +343,25 @@ export function TutorialController() {
     // would obscure the wizard content. Once pendingNewGame goes null
     // the auto-flip above moves us into "tour".
     if (tutorial.phase === "setup") {
+      // Seeding window: wizard has committed but the universe is still
+      // being built. The seeding modal owns the centre — pin the orb to
+      // the bottom-left and have him narrate the wait so he doesn't
+      // disappear (or worse, start the tour) while the player stares
+      // at a progress bar.
+      if (!pendingNewGame && pendingSeed) {
+        const isBackstory = pendingSeed.phase === "backstory";
+        return {
+          helper: {
+            title: isBackstory ? "Drafting your universe" : "Settling the sector",
+            body: isBackstory
+              ? "Hang tight — the wire desk is sketching the political and economic shape of your sector. I'll start the tour the second it's ready."
+              : "Almost there — the freighters are running their first laps so the markets have some history when you arrive. Hold on a beat.",
+            onDismiss: dismiss,
+            dismissLabel: "Skip tutorial",
+            fallbackPlacement: "bottom-left",
+          },
+        };
+      }
       if (!pendingNewGame) return null;
       switch (pendingNewGame.phase) {
         case "intro":
@@ -210,7 +371,7 @@ export function TutorialController() {
               body: "I'm your onboard helper — I'll keep showing up while you find your feet. Skim the cards, then hit Continue when you're ready.",
               onDismiss: dismiss,
               dismissLabel: "Skip tutorial",
-              fallbackPlacement: "bottom-right",
+              fallbackPlacement: "bottom-left",
             },
           };
         case "pilot":
@@ -220,7 +381,7 @@ export function TutorialController() {
               body: "Roll a name with the dice if nothing's coming to you. Pick traits, then click reroll for a portrait — takes about fifteen seconds. Hit Continue when you're set.",
               onDismiss: dismiss,
               dismissLabel: "Skip tutorial",
-              fallbackPlacement: "bottom-right",
+              fallbackPlacement: "bottom-left",
             },
           };
         case "syndicate":
@@ -230,7 +391,7 @@ export function TutorialController() {
               body: "Each syndicate sets your colors and your starting station. The trait card shows their edge. Click one and hit Begin — you're stuck with the choice.",
               onDismiss: dismiss,
               dismissLabel: "Skip tutorial",
-              fallbackPlacement: "bottom-right",
+              fallbackPlacement: "bottom-left",
             },
           };
       }
@@ -247,56 +408,82 @@ export function TutorialController() {
     // AND the modal's encounterPhase ("choosing" vs "rolling" vs
     // "revealed"), so the orb tracks the modal state rather than racing
     // a 1.2s dice roll on its own.
+    // Encounter in progress AFTER the combat sub-tutorial has played
+    // — orb stays parked in the corner so he doesn't disappear, but
+    // doesn't try to coach. Without this branch the controller falls
+    // through to the cargo phase logic, which immediately tries to
+    // spotlight the quick-travel button — pointing the player at a
+    // control they can't reach while the encounter modal is up.
+    if (world.pendingEncounter && tutorial.combatSeen) {
+      return {
+        helper: {
+          title: "Your move",
+          body: null,
+          fallbackPlacement: "bottom-left",
+        },
+      };
+    }
+
     if (world.pendingEncounter && !tutorial.combatSeen) {
       const stop = tutorial.combatStop ?? 0;
       const inMainTutorial =
         tutorial.phase !== "done" && tutorial.phase !== "skipped";
 
+      // Combat orb sits parked in the bottom-left for every sub-stop.
+      // The encounter modal owns the centre; spotlights highlight the
+      // action cards / continue button via overlay.selector but the
+      // orb itself never tracks them — we'd just be pulling it toward
+      // a target the player is also being told to read.
+      const combatPlacement = "bottom-left" as const;
+
       // Stop 0: intro monologue, no spotlight inside the modal — let
       // the player read the stat card, then click Next.
       if (stop === 0) {
-        const intro = inMainTutorial
-          ? "I knew this was going to happen! Looks like we got into a bit of a scuffle. Want some tips on getting out alive?"
-          : "Hey, it's you again! First combat encounter — let me run you through the basics real quick.";
+        const intro = TUTORIAL_INTROS.combatIntro;
         return {
           helper: {
-            title: "Combat 101",
-            body: intro,
+            title: intro.title,
+            body: formatTutorialBody(intro.body),
+            fallbackPlacement: combatPlacement,
             onAdvance: advanceCombat,
-            advanceLabel: "Tips, please",
+            advanceLabel: inMainTutorial ? "Tips, please" : "Walk me through it",
             onSkip: finishCombat,
             skipLabel: "I've got this",
+            audioControls,
           },
         };
       }
 
       // Past intro — modal phase decides what to surface.
       if (encounterPhase === "rolling") {
-        // Dice are spinning — too fast to spotlight anything useful.
-        // Drop a quick easter-egg line so the orb has personality
-        // through the gap.
+        // Dice are spinning — about a second of animation. No body
+        // text and no audio: nothing fits in that window cleanly.
+        // Helper stays mounted with a bare title so the bubble
+        // doesn't unmount/remount across the dice roll.
         return {
           helper: {
             title: "Rolling…",
-            body: "Don't blink. The dice gods are voting.",
+            body: null,
+            fallbackPlacement: combatPlacement,
           },
         };
       }
 
       if (encounterPhase === "revealed") {
-        // Resolution panel is up — spotlight the Continue button and
-        // tell the player to read the message above it. The reveal
-        // contains the loss/gain summary — players actually want to
-        // see that, so we don't cover the panel itself.
+        // Resolution panel is up — spotlight the Continue button so
+        // the player knows where to head next, but keep the orb in the
+        // corner reading the gains / losses summary aloud.
         const continueSelector = `[data-tutorial="encounter-continue"]`;
+        const revealed = TUTORIAL_INTROS.combatRevealed;
         return {
           overlay: { selector: continueSelector, padding: 6 },
           helper: {
-            title: "Read it and weep (or cheer)",
-            body: "The panel above tells you what just happened — gains, losses, hull damage. Once you've taken it in, hit Continue to wrap up.",
-            lookAtSelector: continueSelector,
+            title: revealed.title,
+            body: formatTutorialBody(revealed.body),
+            fallbackPlacement: combatPlacement,
             onSkip: finishCombat,
             skipLabel: "Got it",
+            audioControls,
           },
         };
       }
@@ -305,14 +492,16 @@ export function TutorialController() {
       // recommended action card. The card already wears a `.recommended`
       // class and a green-glow visual treatment; we just point at it.
       const recommendedSelector = `[data-tutorial-encounter-recommended="true"]`;
+      const choosing = TUTORIAL_INTROS.combatChoosing;
       return {
         overlay: { selector: recommendedSelector, padding: 6 },
         helper: {
-          title: "Pick the recommended move",
-          body: "Each option shows your odds and what it'll cost if it flops. The highlighted one is the engine's pick — usually flee, but trust it either way.",
-          lookAtSelector: recommendedSelector,
+          title: choosing.title,
+          body: formatTutorialBody(choosing.body),
+          fallbackPlacement: combatPlacement,
           onSkip: finishCombat,
           skipLabel: "I've got this",
+          audioControls,
         },
       };
     }
@@ -343,7 +532,7 @@ export function TutorialController() {
         },
         helper: {
           title: tourStopDef.title,
-          body: tourStopDef.body,
+          body: formatTutorialBody(tourStopDef.body),
           lookAtSelector: tourStopDef.selector,
           onAdvance: advanceTour,
           advanceLabel: isLast ? "Start playing" : "Next",
@@ -351,6 +540,7 @@ export function TutorialController() {
           skipLabel: "Skip tour",
           onDismiss: dismiss,
           dismissLabel: "Skip tutorial",
+          audioControls,
         },
       };
     }
@@ -374,6 +564,9 @@ export function TutorialController() {
             skipLabel: "Skip section",
             onDismiss: dismiss,
             dismissLabel: "Skip tutorial",
+            // First-transit cue rides on top of the engine body — show
+            // the audio controls so the player can mute / replay.
+            audioControls: activeCue ? audioControls : undefined,
           },
         };
       }
@@ -472,8 +665,34 @@ export function TutorialController() {
       }
 
       if (cargoHint.requiredFleetTab && fleetTab !== cargoHint.requiredFleetTab) {
-        const subTabSelector = `[data-tutorial-fleet-tab="${cargoHint.requiredFleetTab}"]`;
+        // Resolution can override the spotlight target when the named
+        // fleet tab is ambiguous between cards (e.g. "contracts" exists
+        // on both the ship card and the markets card, but only the
+        // markets-card version has the actionable Take button).
+        const subTabSelector = cargoHint.subTabSelector
+          ?? `[data-tutorial-fleet-tab="${cargoHint.requiredFleetTab}"]`;
         const subTabName = FLEET_TAB_LABELS[cargoHint.requiredFleetTab];
+
+        // First-time-mechanic tab nav: voiced "Next we'll learn about X"
+        // cue that hands off to the action intro on the next render.
+        // Plain "Switch panel" prompt is the fallback for repeated
+        // navigation later in the run.
+        if (activeNextIntro) {
+          return {
+            overlay: { selector: subTabSelector, padding: 4 },
+            helper: {
+              title: activeNextIntro.title,
+              body: formatTutorialBody(activeNextIntro.body),
+              lookAtSelector: subTabSelector,
+              onSkip: skipPhase,
+              skipLabel: "Skip section",
+              onDismiss: dismiss,
+              dismissLabel: "Skip tutorial",
+              audioControls,
+            },
+          };
+        }
+
         return {
           overlay: { selector: subTabSelector, padding: 4 },
           helper: {
@@ -489,18 +708,49 @@ export function TutorialController() {
       }
 
       const loopsDone = tutorialLoopsCompleted(world);
-      const goal = tutorial.loopGoal ?? 3;
-      const loopLabel = `Loop ${Math.min(loopsDone + 1, goal)}/${goal}`;
+      const goal = tutorial.loopGoal ?? 1;
+      // Default goal is 1, so a "Loop 1/1" prefix is just noise. We
+      // only surface the lap counter when the player has opted into
+      // extra laps via the fork ("Another logistics route") — at that
+      // point seeing "Lap 2/2" tells them where they are in the run
+      // they explicitly asked for.
+      const loopLabel = goal > 1 ? `Lap ${Math.min(loopsDone + 1, goal)}/${goal}` : null;
+
+      // First-time intro override: replace the snappy one-line body with
+      // the full mechanic explanation + voice. Drop the loop label so
+      // the intro reads as a single teaching beat rather than "Loop 1/3
+      // — Take a contract." Once the player accepts, perTypeCount flips
+      // and we fall back through to the standard render below.
+      if (activeIntro) {
+        return {
+          overlay: { selector: cargoHint.selector, padding: 8 },
+          helper: {
+            title: activeIntro.title,
+            body: formatTutorialBody(activeIntro.body),
+            lookAtSelector: cargoHint.selector,
+            onSkip: skipPhase,
+            skipLabel: "Skip section",
+            onDismiss: dismiss,
+            dismissLabel: "Skip tutorial",
+            audioControls,
+          },
+        };
+      }
+
       return {
         overlay: { selector: cargoHint.selector, padding: 8 },
         helper: {
-          title: `${loopLabel} · ${cargoHint.title}`,
+          title: loopLabel ? `${loopLabel} · ${cargoHint.title}` : cargoHint.title,
           body: cargoHint.body,
           lookAtSelector: cargoHint.selector,
           onSkip: skipPhase,
           skipLabel: "Skip section",
           onDismiss: dismiss,
           dismissLabel: "Skip tutorial",
+          // Cues ride on top of the engine's body copy — when one is
+          // playing, surface the audio controls so the player can mute
+          // / replay it without anywhere to put the body intro UI.
+          audioControls: activeCue ? audioControls : undefined,
         },
       };
     }

@@ -2185,6 +2185,7 @@ function StationExchangeCard({ ship, world, loc, target, hintText, cueText, sele
         </button>
         <button
           className={`bridge-tab ${tab === "contracts" ? "active" : ""} ${contractsSuggested ? "has-suggestion" : ""}`}
+          data-tutorial-contracts-board-tab="true"
           onClick={() => setTab("contracts")}
           title={contractsSuggested ? contractHintText : undefined}
         >
