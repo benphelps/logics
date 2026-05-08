@@ -77,8 +77,14 @@ export interface ActiveNewsEvent {
 export interface RecentNewsEvent {
   uid: string;
   templateId: string;
-  tick: number;
+  tick: number;                 // tick at which the event expired
   effects: NewsEffect[];
+  // Carried forward from the active event so chart markers and history UIs
+  // can show headline/tone/spawn-time after expiry. Optional for back-compat
+  // with pre-existing saves and IDB rows.
+  spawnedAt?: number;
+  headline?: string;
+  tone?: NewsTone;
 }
 
 export interface NewsEventsState {

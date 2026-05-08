@@ -7,10 +7,13 @@ import {
   HistogramSeries,
   LineStyle,
   createChart,
+  createSeriesMarkers,
   type IChartApi,
   type IPriceLine,
   type ISeriesApi,
+  type ISeriesMarkersPluginApi,
   type LogicalRange,
+  type SeriesMarker,
   type Time,
   type UTCTimestamp,
 } from "lightweight-charts";
@@ -40,6 +43,7 @@ import {
   type PlayerLimitView,
 } from "../../sim/stock";
 import { listStockExchangeHints, type StockExchangeHint } from "../../sim/stock/suggestions";
+import { listEquityNewsMarkers, type EquityNewsMarker } from "./newsHelpers";
 import { goodArtUrl, shipArtUrl, stationArtUrl, stationKind, stationKindLabel, stationScale, stationScaleLabel, stationSubtype, stationSubtypeLabel } from "../art";
 import { SortableHeaderButton, SortableRows, SortableTh } from "../components/SortableTable";
 import { useIsMobile } from "../useIsMobile";
@@ -3084,6 +3088,14 @@ function normalizeSparklineHistory(history: { tick: number; price: number }[]): 
     .map(([tick, price]) => ({ tick, price }));
 }
 
+// Tone → marker fill, mirrored in .stocks-sparkline-news-tip.tone-* in CSS.
+const TONE_COLOR: Record<"good" | "bad" | "warn" | "info", string> = {
+  good: "#6cd99a",
+  bad:  "#ef6f7d",
+  warn: "#e6b450",
+  info: "#6db0ff",
+};
+
 // Two-panel chart powered by lightweight-charts: price area on top +
 // volume histogram pinned to the bottom of the same canvas. Position
 // reference lines (avg entry, stop-loss, take-profit) ride along the
@@ -3096,6 +3108,15 @@ export function Sparkline({ equity, position }: { equity: Equity; position: Stoc
   const priceSeriesRef = useRef<ISeriesApi<"Area"> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const priceLinesRef = useRef<IPriceLine[]>([]);
+  const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+  // Flat list mirroring whatever was last passed to setMarkers, kept around
+  // for the mousemove hit-test that drives the headline tooltip.
+  const equityMarkersRef = useRef<EquityNewsMarker[]>([]);
+  const [newsTip, setNewsTip] = useState<{
+    marker: EquityNewsMarker;
+    x: number;
+    y: number;
+  } | null>(null);
   // Bumps when the container first acquires a non-zero width. The chart
   // is created at mount-time, sometimes when the panel layout hasn't
   // settled and clientWidth = 0 — at that point the initial setData
@@ -3196,6 +3217,7 @@ export function Sparkline({ equity, position }: { equity: Equity; position: Stoc
       chartRef.current = chart;
       priceSeriesRef.current = price;
       volumeSeriesRef.current = volume;
+      markersRef.current = createSeriesMarkers(price, []);
 
       ro = new ResizeObserver(() => {
         if (!chartRef.current) return;
@@ -3220,6 +3242,8 @@ export function Sparkline({ equity, position }: { equity: Equity; position: Stoc
       priceSeriesRef.current = null;
       volumeSeriesRef.current = null;
       priceLinesRef.current = [];
+      markersRef.current = null;
+      equityMarkersRef.current = [];
     };
   }, []);
 
@@ -3460,11 +3484,94 @@ export function Sparkline({ equity, position }: { equity: Equity; position: Stoc
     position?.takeProfit,
   ]);
 
+  // News-event markers. Pull active + recent events from the world and map
+  // those that target this equity to chart markers at their spawn tick.
+  // Re-runs on tick (tickEpoch) and on equity switch. layoutGen is in deps
+  // because the markers plugin instance is only created once the chart has
+  // built — we need to retry setMarkers after that lands.
+  const newsWorld = useStore(s => s.world);
+  const newsTickEpoch = useStore(s => s.tickEpoch);
+  const newsMarkers = useMemo(
+    () => listEquityNewsMarkers(equity, newsWorld),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [equity.id, newsWorld, newsTickEpoch],
+  );
+  useEffect(() => {
+    const plugin = markersRef.current;
+    if (!plugin) return;
+    const seriesMarkers: SeriesMarker<Time>[] = newsMarkers.map(m => ({
+      time: m.spawnedAt as UTCTimestamp,
+      position: "aboveBar",
+      shape: "circle",
+      color: TONE_COLOR[m.tone],
+      size: 1,
+      id: m.uid,
+    }));
+    // Series-markers requires sorted-ascending time order.
+    seriesMarkers.sort((a, b) => (a.time as number) - (b.time as number));
+    equityMarkersRef.current = newsMarkers;
+    plugin.setMarkers(seriesMarkers);
+  }, [newsMarkers, layoutGen]);
+
+  // Headline tooltip. Hit-test the cursor against every marker's pixel x
+  // (computed via timeScale().timeToCoordinate) — within ±10px of any
+  // marker's x we show its headline. We avoid subscribeCrosshairMove
+  // because it snaps param.time to the nearest *price-series* data point,
+  // which often doesn't equal the marker's spawn tick.
+  useEffect(() => {
+    const div = containerRef.current;
+    const chart = chartRef.current;
+    if (!div || !chart) return;
+    const HIT_RADIUS_PX = 10;
+    const onMove = (e: MouseEvent) => {
+      const markers = equityMarkersRef.current;
+      if (markers.length === 0) {
+        setNewsTip(prev => (prev ? null : prev));
+        return;
+      }
+      const rect = div.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const ts = chart.timeScale();
+      let best: { m: EquityNewsMarker; dx: number; px: number } | null = null;
+      for (const m of markers) {
+        const px = ts.timeToCoordinate(m.spawnedAt as UTCTimestamp);
+        if (px == null) continue;
+        const dx = Math.abs(px - x);
+        if (dx > HIT_RADIUS_PX) continue;
+        if (!best || dx < best.dx) best = { m, dx, px };
+      }
+      if (!best || !best.m.headline) {
+        setNewsTip(prev => (prev ? null : prev));
+        return;
+      }
+      setNewsTip({ marker: best.m, x: best.px, y });
+    };
+    const onLeave = () => setNewsTip(null);
+    div.addEventListener("mousemove", onMove);
+    div.addEventListener("mouseleave", onLeave);
+    return () => {
+      div.removeEventListener("mousemove", onMove);
+      div.removeEventListener("mouseleave", onLeave);
+    };
+  }, [layoutGen]);
+
   return (
     <div className="stocks-sparkline-wrap">
       <div ref={containerRef} className="stocks-sparkline" />
       {history.length < 2 && (
         <div className="stocks-sparkline-empty dim">Building price history…</div>
+      )}
+      {newsTip && (
+        <div
+          className={`stocks-sparkline-news-tip tone-${newsTip.marker.tone}`}
+          style={{
+            left: Math.max(0, Math.min(newsTip.x + 12, (containerRef.current?.clientWidth ?? 0) - 232)),
+            top: Math.max(0, newsTip.y - 28),
+          }}
+        >
+          {newsTip.marker.headline}
+        </div>
       )}
     </div>
   );

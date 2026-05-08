@@ -903,6 +903,28 @@
   height: 100%;
 }
 
+/* Floating tooltip shown when the crosshair lines up with a news-event
+   marker on the price series. Position is set inline via JS. */
+.stocks-sparkline-news-tip {
+  position: absolute;
+  pointer-events: none;
+  max-width: 220px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: rgba(8, 12, 18, 0.94);
+  color: rgba(220, 230, 240, 0.92);
+  font-size: 11px;
+  line-height: 1.35;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  z-index: 4;
+  white-space: normal;
+}
+.stocks-sparkline-news-tip.tone-good { border-left: 2px solid #6cd99a; }
+.stocks-sparkline-news-tip.tone-bad  { border-left: 2px solid #ef6f7d; }
+.stocks-sparkline-news-tip.tone-warn { border-left: 2px solid #e6b450; }
+.stocks-sparkline-news-tip.tone-info { border-left: 2px solid #6db0ff; }
+
 .stocks-sparkline-empty {
   position: absolute;
   inset: 0;

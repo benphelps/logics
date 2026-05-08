@@ -37,6 +37,9 @@ export function tickNewsEvents(world: World): NewsTickReport {
           templateId: ev.templateId,
           tick: world.tick,
           effects: ev.effects,
+          spawnedAt: ev.spawnedAt,
+          headline: ev.headline,
+          tone: ev.tone,
         });
       } else {
         stillActive.push(ev);
